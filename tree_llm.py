@@ -99,9 +99,6 @@ result = response['result']
 print("generated code",  parse_result(result))
 
 
-# response = code_llm.predict(text=user_question, temperature=0.1)
-# print(response)
-
 # while True:  # Start an infinite loop for the chat interface
 #     user_question = input("You: ")  # Get user input from the command line
 #     if user_question.lower() in ['exit', 'quit']:  # Allow user to exit the chat
