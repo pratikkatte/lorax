@@ -8,6 +8,8 @@ from langchain_openai import OpenAIEmbeddings
 from langchain_openai import ChatOpenAI
 from langchain.prompts import PromptTemplate
 from langchain.chains import RetrievalQA
+import re
+
 
 # To create data.txt
 def repo_to_text(path, output_file):
@@ -29,24 +31,15 @@ def repo_to_text(path, output_file):
 
 
 
-def process(data):
+def process(data, embeddings):
     python_splitter = character.RecursiveCharacterTextSplitter.from_language(
         language=base.Language.PYTHON, chunk_size=50, chunk_overlap=0
     )
     python_docs = python_splitter.create_documents([data])
-    
-    embeddings = OpenAIEmbeddings(openai_api_key="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")
-    print("embeddings")
-
     text_embeddings = embeddings.embed_documents([data])
-    print("embeddings")
 
     text_embedding_pairs = zip(data, text_embeddings)
-    print("embeddings")
-
     db = FAISS.from_embeddings(text_embedding_pairs, embeddings)
-    print("return")
-
     return db
 
 # if data exists
@@ -56,13 +49,23 @@ if os.path.isfile('data.text'):
         data = file.read()
 else:
     print("File does not exist.")
-db = process(data)
+
+
+embeddings = OpenAIEmbeddings(openai_api_key="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")
+
+if os.path.exists('faiss_index'):
+    db = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)
+else:
+    db = process(data, embeddings)
+    db.save_local("faiss_index")
 
 retriever = db.as_retriever(
     search_type="similarity",  # Also test "similarity", "mmr"
     search_kwargs={"k": 5},)
 
-print("retriever")
+def parse_result(input_result):
+    code_block = input_result.split('```')[1].replace('python','')
+    return code_block
 
 code_llm = ChatOpenAI(model="gpt-4", organization="org-N2oYJymjmrdzDGaWIRX70FLf", openai_api_key="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", temperature=0)
 prompt_RAG = """
@@ -79,6 +82,7 @@ prompt_RAG = """
     {context}
 
     Helpful Response :
+    Generate Python function:
     """
 
 prompt_RAG_tempate = PromptTemplate(
@@ -88,19 +92,23 @@ prompt_RAG_tempate = PromptTemplate(
 qa_chain = RetrievalQA.from_llm(
     llm=code_llm, prompt=prompt_RAG_tempate, retriever=retriever, return_source_documents=True
 )
+user_question = "given a tree sequence calculate the diversity"
 
-# user_question = "given a tree sequence calculate the diversity"
+response = qa_chain({"query": user_question})
+result = response['result']
+print("generated code",  parse_result(result))
+
 
 # response = code_llm.predict(text=user_question, temperature=0.1)
 # print(response)
 
-while True:  # Start an infinite loop for the chat interface
-    user_question = input("You: ")  # Get user input from the command line
-    if user_question.lower() in ['exit', 'quit']:  # Allow user to exit the chat
-        print("Exiting chat. Goodbye!")
-        break
+# while True:  # Start an infinite loop for the chat interface
+#     user_question = input("You: ")  # Get user input from the command line
+#     if user_question.lower() in ['exit', 'quit']:  # Allow user to exit the chat
+#         print("Exiting chat. Goodbye!")
+#         break
 
-    response = code_llm.predict(text=user_question, temperature=0.1)  # Get response from the model
-    print(f"Response: {response}")  # Print the model's response
+#     response = code_llm.predict(text=user_question, temperature=0.1)  # Get response from the model
+#     print(f"Response: {response}")  # Print the model's response
 
 
