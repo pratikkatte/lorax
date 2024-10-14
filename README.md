@@ -10,10 +10,15 @@ In this initial proof-of-concept, the tskit source code is used as a knowledge b
 Current version is a naive ```prompt:answer``` approach which does not evaluate the accuracy of the generated code. 
 
 ### Next things to do.
-- [ ] Code generation can be improved using [Flow Engineering Approach](https://arxiv.org/pdf/2401.08500). Use LangGraph and openai Function Calling to setup the workflow. 
+- [x] Code generation can be improved using [Flow Engineering Approach](https://arxiv.org/pdf/2401.08500). Use LangGraph and openai Function Calling to setup the workflow. 
   ![alt text](assets/image.png)
-- [ ] Code execution with error checking.
-- [ ] Multiple Iterations. 
+- [x] Code execution with error checking.
+- [x] Multiple Iterations.
+- [ ] Terminal chat interface / UI interface (flask-reactjs)
+- [ ] human-in-the-loop. (human intervention to review the code or correct it.)
+- [ ] Additional node(tool) to ask general tree-sequence question that are not related to code-generation.
+- [ ] Accuracy/reliability of the generated answer.
+      
 
 ### Exploration
 -  How to enhance treesequence analysis. one way is [MemoRAG](https://github.com/qhjqhj00/MemoRAG). Memory-based knowledge discovery for long contexts. 
