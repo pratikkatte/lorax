@@ -14,7 +14,7 @@ Current version is a naive ```prompt:answer``` approach which does not evaluate 
   ![alt text](assets/image.png)
 - [x] Code execution with error checking.
 - [x] Multiple Iterations.
-- [ ] Terminal chat interface / UI interface (flask-reactjs)
+- [x] Terminal chat interface / UI interface (flask-reactjs)
 - [ ] human-in-the-loop. (human intervention to review the code or correct it.)
 - [ ] Additional node(tool) to ask general tree-sequence question that are not related to code-generation.
 - [ ] Accuracy/reliability of the generated answer.
