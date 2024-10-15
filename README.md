@@ -18,22 +18,7 @@ Current version is a naive ```prompt:answer``` approach which does not evaluate 
 - [ ] human-in-the-loop. (human intervention to review the code or correct it.)
 - [ ] Additional node(tool) to ask general tree-sequence question that are not related to code-generation.
 - [ ] Accuracy/reliability of the generated answer.
-      
 
 ### Exploration
 -  How to enhance treesequence analysis. one way is [MemoRAG](https://github.com/qhjqhj00/MemoRAG). Memory-based knowledge discovery for long contexts. 
-
-
-
-### How to Run. 
-To install required dependencies
-```
-conda create -n treesequences python=3.10
-conda activate treesequences
-pip install -r requirments.txt
-```
-To test the program, run the following command:
-```
-python tree_llm.py
-```
 
