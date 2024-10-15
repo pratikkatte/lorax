@@ -15,7 +15,7 @@ def generator_tool():
                 Here is a relevant set of tskit documentation:  \n ------- \n  {context} \n ------- \n Answer the user 
                 question based on the above provided documentation. Ensure any code you provide should be a callable function and can be executed \n 
                 with all required imports and variables defined. Structure your answer with a description of the code solution. \n
-                Then list the imports. And finally list the functioning code block. Here is the user question:""",
+                Then list the imports. And finally list the functioning code block. The function should return a string providing the answer. Here is the user question:""",
                 ), 
                 ("placeholder", "{messages}"),  
             ]
