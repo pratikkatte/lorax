@@ -1,7 +1,17 @@
 from typing import List, TypedDict, Any
 from langgraph.graph import END, StateGraph, START
+from types import ModuleType
+import sys
+import ast
+import inspect
 
 # from IPython.display import Image, display
+
+# Max tries
+max_iterations = 3
+# Reflect
+# flag = 'reflect'
+flag = "do not reflect"
 
 class GraphState(TypedDict):
     """
@@ -12,6 +22,7 @@ class GraphState(TypedDict):
     iterations: int
     code_generator: Any
     retriever: Any
+    flag: str
     
 
 def generate(state: GraphState):
@@ -116,6 +127,84 @@ def code_check(state: GraphState):
         
     }
 
+
+def execute_code(state: GraphState):
+
+    print("--- executing code ---")
+
+    # State
+    messages = state['messages']
+    iterations = state['iterations']
+    code_solution = state['generation']
+    code = code_solution.code
+    imports = code_solution.imports
+    code_generator = state['code_generator']
+    retriever = state['retriever']
+
+    try:
+        # Create a new module to execute the code
+        mod = ModuleType("dynamic_module")
+        sys.modules["dynamic_module"] = mod
+
+        # Combine imports and code
+        full_code = imports + "\n\n" + code
+
+        # Execute the combined code
+        exec(full_code, mod.__dict__)
+
+        # Parse the code to find the last defined function
+        tree = ast.parse(full_code)
+        functions = [node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)]
+        if not functions:
+            raise ValueError("No function found in the generated code")
+
+        last_function = functions[-1]
+        function_name = last_function.name
+
+        # Get the function from the module
+        func = getattr(mod, function_name)
+
+        # Check if the function requires arguments
+        sig = inspect.signature(func)
+        params = sig.parameters
+        call_args = []  # Placeholder for args if needed
+        call_kwargs = {}  # Placeholder for kwargs if needed
+
+        # Call the function
+        result = func(*call_args, **call_kwargs)
+        
+        # Log the result in messages
+        messages += [
+            ("assistant", f"Code executed successfully. Result: {result}")
+        ]
+    except Exception as e:
+        print("-- code execution failed --")
+        error_message = [("user", f"Code execution failed with error: {e}")]
+        messages += error_message
+
+        return {
+            "generation": code_solution,
+            "messages": messages,
+            "iterations": iterations,
+            "error": 'yes',
+            "input_files": "../data/sample.trees",
+            "code_generator": code_generator,
+            "retriever": retriever
+        }
+
+    print(" -- finished code execution --")
+
+    return {
+        "generation": code_solution,
+        "messages": messages,
+        "error": "no",
+        "iterations": iterations,
+        "input_files": "../data/sample.trees",
+        "code_generator": code_generator,
+        "retriever": retriever
+    }
+
+
 def decide_to_finish(state: GraphState):
     """
     Determines whether to finish.
@@ -128,6 +217,8 @@ def decide_to_finish(state: GraphState):
     """
     error = state["error"]
     iterations = state["iterations"]
+    flag = state.get("flag", "generate")
+    max_iterations = 3
 
     if error == "no" or iterations == max_iterations:
         print("---DECISION: FINISH---")
@@ -150,20 +241,38 @@ def create_graph():
     # Define the nodes
     workflow.add_node("generate", generate) # generation solution
     workflow.add_node("check_code", code_check) # check execution. 
+    workflow.add_node("execute_code", execute_code)  # execute code
     # workflow.add_node("reflect", reflect)  # reflect
 
     # Build graph
     workflow.add_edge(START, "generate")
     workflow.add_edge("generate", "check_code")
+    
     # workflow.add_edge("check_code", END)
 
     workflow.add_conditional_edges(
-        "check_code", 
+        "check_code",
     decide_to_finish,
         {
             "end": END,
             "generate": "generate",
         },
     )
+
+    workflow.add_edge("check_code", "execute_code")
+
+    workflow.add_conditional_edges(
+        "execute_code",
+    decide_to_finish,
+        {
+            "end": END,
+            "generate": "generate",
+        },
+    )
+
+
     app = workflow.compile()
+
+    app.get_graph().print_ascii()
+
     return app

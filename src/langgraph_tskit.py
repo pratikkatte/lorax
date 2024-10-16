@@ -37,11 +37,12 @@ def chat_interface():
         # print(response)
         solution = app.invoke({"messages": [("user", user_input)], "iterations": 0, "error": "", "code_generator":code_generator,"retriever": retriever})
 
-        llm_output = solution['generation']
-        print(solution['generation'].code)
+        # llm_output = solution['generation']
+        # print(solution['generation'].code)
 
-        response = execute_generated_code(llm_output, "data/sample.trees")
-        print(response)
+        # response = execute_generated_code(llm_output, "data/sample.trees")
+        print(solution['generation'].prefix)
+        print(solution['generation'].code)
  
 if __name__== "__main__":
     chat_interface()
