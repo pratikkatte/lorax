@@ -35,14 +35,15 @@ def chat_interface():
         app = create_graph()
         # response = f"Bot: You said: {user_input}"
         # print(response)
-        solution = app.invoke({"messages": [("user", user_input)], "iterations": 0, "error": "", "code_generator":code_generator,"retriever": retriever})
+        solution = app.invoke({"messages": [("user", user_input)], "iterations": 0, "error": "", "code_generator":code_generator,"retriever": retriever, "input_files": "../data/sample.trees"})
 
         # llm_output = solution['generation']
         # print(solution['generation'].code)
 
         # response = execute_generated_code(llm_output, "data/sample.trees")
         print(solution['generation'].prefix)
-        print(solution['generation'].code)
+        print("\n\nGenerated Code:\n" + solution['generation'].code)
+        print("\n\n RESULT: " + str(solution['result']))
  
 if __name__== "__main__":
     chat_interface()
