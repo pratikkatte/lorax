@@ -86,6 +86,7 @@ def execute_code(state: GraphState):
     retriever = state['retriever']
     input_files = state['input_files']
     generation = state['generation']
+    error = state['error']
 
     # print("Imports: ", imports)
 
@@ -110,13 +111,15 @@ def execute_code(state: GraphState):
         result = execute_generated_code(generation, input_files)
     except Exception as e:
         print("-- code execution failed --")
-        error_message = [("user", f"Your solution failed the code execution test: {e}")]
-        messages += error_message
+        error_message = f"Your solution failed the code execution test: {e}"
+
+        if error_message not in error:
+            error += "\n" + error_message
         return {
             "generation": code_solution,
             "messages": messages,
             "iterations": iterations,
-            "error": 'no',
+            "error": error,
         }
 
     # no errors
