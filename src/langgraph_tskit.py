@@ -47,24 +47,16 @@ def chat_interface():
 
 def api_interface(user_input):
     
-    # if user_input.lower() == 'exit':
-    #     print("Goodbye!")
-    #     sys.exit()
     
     app = create_graph()
-    # response = f"Bot: You said: {user_input}"
-    # print(response)
+
     solution = app.invoke({"messages": [("user", user_input)], "iterations": 0, "error": "", "code_generator":code_generator,"retriever": retriever, "input_files": "../data/sample.trees"})
 
-    # llm_output = solution['generation']
-    # print(solution['generation'].code)
 
-    # response = execute_generated_code(llm_output, "data/sample.trees")
-    # print(solution['generation'].prefix)
-    # print("\n\nGenerated Code:\n" + solution['generation'].code)
-    # print("\n\n RESULT: " + str(solution))
-
-    llm_output = f"Prefix: {solution['generation'].prefix}\n\nGenerated Code: {solution['generation'].code}\n\n RESULT: {str(solution['result'])}"
+    if solution['error'] != 'no':
+        llm_output = f"Error: {solution['error']}\n\nGenerated Code:\n{solution['generation'].code}"
+    else:
+        llm_output = f"Prefix: {solution['generation'].prefix}\n\nGenerated Code:\n{solution['generation'].code}\n\n RESULT:\n{str(solution['result'])}"
 
     return llm_output
         

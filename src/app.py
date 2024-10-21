@@ -3,6 +3,12 @@ from langgraph_tskit import api_interface
 
 app = Flask(__name__)
 
+# Test GET endpoint
+@app.route('/', methods=['GET'])
+def status():
+    print("Status endpoint accessed")
+    return "Success 200!"
+
 # Define the /api/chat endpoint
 @app.route('/api/chat', methods=['POST'])
 def chat():
@@ -20,5 +26,5 @@ def chat():
 
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    app.run(host='0.0.0.0', port=5001, debug=True)
 
