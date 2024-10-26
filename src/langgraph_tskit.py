@@ -6,44 +6,51 @@ from tools import generator_tool
 from graph import create_graph
 from utils import execute_generated_code
 
+
 print("here")
 
-vector_store = get_vector_store()
-retriever = vector_store.as_retriever(
-    search_type="similarity",  # Also test "similarity", "mmr"
-    search_kwargs={"k": 5})
-
-code_generator = generator_tool()
 
 question = "Calculate the diversity of the given treesequence."
 
-# print(result)
-
-# repo_to_text("../../tskit", 'data.text')
 
 def chat_interface():
     print("Tree-sequence analysis")
     print("Type 'exit' to end the conversation.")
     
+    app = create_graph()
+
+    def stream_graph_updates(user_input: str):
+        messages = {
+            "messages": [("user", user_input)], 
+            "iterations": 3, 
+            "error": "", 
+            "input_files": "../data/sample.trees"
+        }
+        config = {"configurable": {"thread_id": "6"}}
+        for event in app.stream(messages, config):
+            for value in event.values():
+                prefix = value['generation'].prefix
+                code = value['generation'].code
+                result = value['result']
+                
+
+        return prefix, code, result
+
+
     while True:
-        user_input = input("You: ").strip()
-        
-        if user_input.lower() == 'exit':
+        # try:
+        user_input = input("User: ")
+        if user_input.lower() in ["quit", "exit", "q"]:
             print("Goodbye!")
-            sys.exit()
-        
-        app = create_graph()
-        # response = f"Bot: You said: {user_input}"
-        # print(response)
-        solution = app.invoke({"messages": [("user", user_input)], "iterations": 0, "error": "", "code_generator":code_generator,"retriever": retriever, "input_files": "../data/sample.trees"})
+            break
 
-        # llm_output = solution['generation']
-        # print(solution['generation'].code)
+        output_prefix, output_code, output_result = stream_graph_updates(user_input)
 
-        # response = execute_generated_code(llm_output, "data/sample.trees")
-        print(solution['generation'].prefix)
-        print("\n\nGenerated Code:\n" + solution['generation'].code)
-        print("\n\n RESULT: " + str(solution['result']))
+        print("ASSISTANT:")
+
+        print(output_prefix)
+        print("\n\nGenerated Code:\n" + output_code)
+        print("\n\n RESULT: " + output_result)
 
 def api_interface(user_input):
     
