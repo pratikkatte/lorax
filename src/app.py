@@ -1,5 +1,8 @@
 from flask import Flask, request, jsonify
 from langgraph_tskit import api_interface
+from graph import create_graph
+
+graph = create_graph()
 
 app = Flask(__name__)
 
@@ -16,7 +19,7 @@ def chat():
     message = data.get('message')
 
 
-    llm_output = api_interface(message)
+    llm_output = api_interface(graph, message)
 
     # Process the incoming message here (for now, we simply return it)
     print(f"Response message: {llm_output}")
