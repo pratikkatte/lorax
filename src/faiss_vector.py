@@ -6,6 +6,12 @@ from langchain_openai import OpenAIEmbeddings
 from langchain_text_splitters.character import RecursiveCharacterTextSplitter
 from langchain_text_splitters.base import Language
 from langchain_text_splitters import character, base
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# OpenAI API Key
+openai_key = os.environ.get('OPENAI_API_KEY')
 
 
 def repo_to_text(path, output_file):
@@ -35,7 +41,7 @@ def read_document(file_path):
 def get_vector_store():
     """
     """
-    embeddings = OpenAIEmbeddings(openai_api_key="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")
+    embeddings = OpenAIEmbeddings()
 
     if os.path.exists('tskit-vector'):
         vector_store = FAISS.load_local("tskit-vector", embeddings, allow_dangerous_deserialization=True)

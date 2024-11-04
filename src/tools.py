@@ -3,6 +3,13 @@ from utils import code, check_claude_output, insert_errors, parse_output
 
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
+
+# OpenAI API Key
+openai_key = os.environ.get('OPENAI_API_KEY')
 
 def generator_tool():
     # understnad, how this format of prompt engineering helps the LLM to get good results. 
@@ -23,7 +30,7 @@ def generator_tool():
 
     expt_llm = "gpt-4o-mini"
 
-    code_llm = ChatOpenAI(temperature=0, model=expt_llm, api_key="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")
+    code_llm = ChatOpenAI(temperature=0, model=expt_llm)
 
     structured_code_llm = code_llm.with_structured_output(code, include_raw=True)
 
