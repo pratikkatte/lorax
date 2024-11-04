@@ -3,6 +3,12 @@ import ast
 from types import ModuleType
 import sys
 import inspect
+import dspy
+
+class generalInfoStruct(dspy.Signature):
+    "Answer the question. You are an expert in treesequence related questions"
+    question = dspy.InputField()
+    answer = dspy.OutputField(desc="Answer in brief")
 
 # Optional: Check for errors in case tool use is flaky
 def check_claude_output(tool_output):
@@ -46,6 +52,13 @@ def parse_output(solution):
     """When we add 'include_raw=True' to structured output,
     it will return a dict w 'raw', 'parsed', 'parsing_error'."""
     return solution["parsed"]
+
+class routerStruct(dspy.Signature):
+    """Answer questions with 'yes' or 'no'. 
+    If the question requires generating a code and using the given tressequence and tskit library in order to provide the answer, then respond with 'yes' else respond with 'no' 
+    """
+    question = dspy.InputField()
+    answer = dspy.OutputField(desc="in 1 word")
 
 class code(BaseModel):
     """
