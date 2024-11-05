@@ -35,7 +35,7 @@ def read_document(file_path):
 def get_vector_store():
     """
     """
-    embeddings = OpenAIEmbeddings(openai_api_key="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")
+    embeddings = OpenAIEmbeddings()
 
     if os.path.exists('tskit-vector'):
         vector_store = FAISS.load_local("tskit-vector", embeddings, allow_dangerous_deserialization=True)

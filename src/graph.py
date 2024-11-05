@@ -4,9 +4,6 @@ from langgraph.graph import END, StateGraph, START
 import dspy
 from utils import execute_generated_code, routerStruct, generalInfoStruct
 
-os.environ['OPENAI_API_KEY'] = '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'
-
-# from IPython.display import Image, display
 turbo = dspy.OpenAI(model='gpt-4o')
 dspy.settings.configure(lm=turbo)
 
