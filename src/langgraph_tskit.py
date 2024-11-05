@@ -33,33 +33,39 @@ def chat_interface():
             sys.exit()
         
         app = create_graph()
-        # response = f"Bot: You said: {user_input}"
-        # print(response)
-        solution = app.invoke({"messages": [("user", user_input)], "iterations": 0, "error": "", "code_generator":code_generator,"retriever": retriever, "input_files": "../data/sample.trees"})
+        solution = app.invoke({"messages": [("user", user_input)], "iterations": 0, "error": "", "code_generator":code_generator,"retriever": retriever, "input_files": "./data/sample.trees"})
+        llm_output = parseSolution(solution)
+        print(llm_output)        
+        # print(llm_output['generation'].prefix)
+        # print("\n\nGenerated Code:\n {0} \n".format(llm_output['generation'].code))
+        # print(llm_output['result'])
 
-        # llm_output = solution['generation']
-        # print(solution['generation'].code)
+def parseSolution(input_solution):
+    if input_solution['error'] != None:
+        print("error", input_solution['error'])
+        llm_output = f"Error: {input_solution['error']}\n\nGenerated Code:\n{input_solution['generation'].imports}\n{input_solution['generation'].code}"
+    else:
+        if 'generation' in input_solution.keys():
+            prefix = input_solution['generation'].prefix
+            code = f"{input_solution['generation'].imports} \n\n {input_solution['generation'].code}"
+            result = input_solution['result']
+            llm_output = f"{prefix} \n\n {code} \n\n {result}"
+            print(llm_output)
+            return llm_output
+        else:
+            llm_output = input_solution['result']
 
-        # response = execute_generated_code(llm_output, "data/sample.trees")
-        print(solution['generation'].prefix)
-        print("\n\nGenerated Code:\n" + solution['generation'].code)
-        print("\n\n RESULT: " + str(solution['result']))
+    return llm_output
 
 def api_interface(user_input):
     
-    
     app = create_graph()
 
-    solution = app.invoke({"messages": [("user", user_input)], "iterations": 0, "error": "", "code_generator":code_generator,"retriever": retriever, "input_files": "../data/sample.trees"})
+    solution = app.invoke({"messages": [("user", user_input)], "iterations": 0, "error": "", "code_generator":code_generator,"retriever": retriever, "input_files": "./data/sample.trees"})
 
-
-    if solution['error'] != 'no':
-        llm_output = f"Error: {solution['error']}\n\nGenerated Code:\n{solution['generation'].code}"
-    else:
-        llm_output = f"Prefix: {solution['generation'].prefix}\n\nGenerated Code:\n{solution['generation'].code}\n\n RESULT:\n{str(solution['result'])}"
+    llm_output = parseSolution(solution)
 
     return llm_output
-        
  
 if __name__== "__main__":
     chat_interface()
