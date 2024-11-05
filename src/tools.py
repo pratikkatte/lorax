@@ -23,7 +23,7 @@ def generator_tool():
 
     expt_llm = "gpt-4o-mini"
 
-    code_llm = ChatOpenAI(temperature=0, model=expt_llm, api_key="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")
+    code_llm = ChatOpenAI(temperature=0, model=expt_llm)
 
     structured_code_llm = code_llm.with_structured_output(code, include_raw=True)
 

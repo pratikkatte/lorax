@@ -5,8 +5,11 @@ from faiss_vector import get_vector_store, repo_to_text
 from tools import generator_tool
 from graph import create_graph
 from utils import execute_generated_code
+from dotenv import load_dotenv
 
-print("here")
+load_dotenv()
+
+assert os.path.exists("data/"), "Ensure that a treesequence file is stored in the src/data folder. A link to an example treesequence file is in src/README.md"
 
 vector_store = get_vector_store()
 retriever = vector_store.as_retriever(
@@ -16,10 +19,6 @@ retriever = vector_store.as_retriever(
 code_generator = generator_tool()
 
 question = "Calculate the diversity of the given treesequence."
-
-# print(result)
-
-# repo_to_text("../../tskit", 'data.text')
 
 def chat_interface():
     print("Tree-sequence analysis")
@@ -35,10 +34,7 @@ def chat_interface():
         app = create_graph()
         solution = app.invoke({"messages": [("user", user_input)], "iterations": 0, "error": "", "code_generator":code_generator,"retriever": retriever, "input_files": "./data/sample.trees"})
         llm_output = parseSolution(solution)
-        print(llm_output)        
-        # print(llm_output['generation'].prefix)
-        # print("\n\nGenerated Code:\n {0} \n".format(llm_output['generation'].code))
-        # print(llm_output['result'])
+        print(llm_output)
 
 def parseSolution(input_solution):
     if input_solution['error'] != None:
@@ -50,7 +46,6 @@ def parseSolution(input_solution):
             code = f"{input_solution['generation'].imports} \n\n {input_solution['generation'].code}"
             result = input_solution['result']
             llm_output = f"{prefix} \n\n {code} \n\n {result}"
-            print(llm_output)
             return llm_output
         else:
             llm_output = input_solution['result']
