@@ -1,18 +1,17 @@
+import os
 from typing import List, TypedDict, Any
 from langgraph.graph import END, StateGraph, START
-from types import ModuleType
-import sys
-import ast
-import inspect
-from utils import execute_generated_code
+import dspy
+from utils import execute_generated_code, routerStruct, generalInfoStruct
+
+os.environ['OPENAI_API_KEY'] = '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'
 
 # from IPython.display import Image, display
+turbo = dspy.OpenAI(model='gpt-4o')
+dspy.settings.configure(lm=turbo)
 
 # Max tries
 max_iterations = 3
-# Reflect
-# flag = 'reflect'
-flag = "do not reflect"
 
 class GraphState(TypedDict):
     """
@@ -25,8 +24,7 @@ class GraphState(TypedDict):
     retriever: Any
     result: str
     input_files: str
-    flag: str
-    
+    next: str
 
 def generate(state: GraphState):
     """
@@ -40,24 +38,23 @@ def generate(state: GraphState):
     code_generator = state['code_generator']
     retriever = state['retriever']
 
+    if error != "no":
+        question = messages[-1][1] + "\n" + error + "\n" + "Now, try again. Invoke the code tool to structure the output with a prefix, imports, and code block:"
 
+        messages += [(
+            "user",
+            question
+        )]
+    else:
+        question = messages[-1][1]
 
-    if error == "yes":
-        messages += [
-            (
-                "user",
-                "Now, try again. Invoke the code tool to structure the output with a prefix, imports, and code block:",
-            )
-        ]
-
-    # Solution
-    question = messages[-1][1]
     docs = retriever.get_relevant_documents(question)
     context = "\n".join([doc.page_content for doc in docs])
+    # print("context", context)
     code_solution = code_generator.invoke(
         {"context": context, "messages": messages}
     )
-
+    
     messages += [
         (
             "assistant",
@@ -72,7 +69,6 @@ def generate(state: GraphState):
             "code_generator":code_generator,
             "retriever":retriever
             }
-    # return "new code genration"
 
 def execute_code(state: GraphState):
 
@@ -80,39 +76,18 @@ def execute_code(state: GraphState):
     messages = state['messages']
     iterations = state['iterations']
     code_solution = state['generation']
-    code = code_solution.code
-    imports = code_solution.imports
     code_generator = state['code_generator']
     retriever = state['retriever']
     input_files = state['input_files']
     generation = state['generation']
     error = state['error']
 
-    # print("Imports: ", imports)
-
-    # try:
-    #     result = execute_generated_code(imports, input_files)
-    #     print("Result: ", result)
-    # except Exception as e:
-    #     print(" -- Import Check Failed --")
-    #     error_message = [("user", f"The generated import failed to import libraries. \n {0}".format(e))]
-    #     messages += error_message
-
-    #     return {
-    #         "generation": code_solution,
-    #         "messages": messages,
-    #         "iterations": iterations,
-    #         "error": 'no',
-    #         "code_generator":code_generator,
-    #         "retriever":retriever
-    #     }
-    # check code
     try:
         result = execute_generated_code(generation, input_files)
     except Exception as e:
         print("-- code execution failed --")
-        error_message = f"Your solution failed the code execution test: {e}"
-
+        error_message = f"The solution failed the code execution test: {e}"
+        
         if error_message not in error:
             error += "\n" + error_message
         return {
@@ -131,7 +106,7 @@ def execute_code(state: GraphState):
     return {
         "generation": code_solution,
         "messages": messages,
-        "error": "no",
+        "error": None,
         "iterations": iterations,
         "code_generator":code_generator,
         "retriever":retriever,
@@ -151,67 +126,83 @@ def decide_to_finish(state: GraphState):
     """
     error = state["error"]
     iterations = state["iterations"]
-    flag = state.get("flag", "generate")
     max_iterations = 3
 
-    if error == "no" or iterations == max_iterations:
+    if error == None or iterations == max_iterations:
         print("---DECISION: FINISH---")
         return "end"
     else:
         print("---DECISION: RE-TRY SOLUTION---")
-        if flag == "reflect":
-            return "reflect"
-        else:
-            return "generate"
-        
-def display_graph(input_graph):
-    #display(Image(input_graph.get_graph().draw_mermaid_png()))
-    pass
+        return "generate"
 
-# def request_tree_sequence():
-#     """
-#     Request tree sequence input from user.
-#     This can be a string representation or a file path.
-#     """
-#     print("Please provide your tree sequence as a string or a path to a file.")
-#     user_input = input("Tree sequence: ")
-#     # You can later choose to either use this input directly or load from file
-#     if user_input.endswith(".trees"):  # Assuming the user provided a file path
-#         with open(user_input, 'r') as file:
-#             tree_sequence = file.read()
-#     else:
-#         tree_sequence = user_input  # Assuming input is directly the tree sequence string
+def router_call(state: GraphState):
+    next = state['next']
+
+    if next == 'no':
+        return 'general_info'
+    else:
+        return 'generate'
     
-#     return tree_sequence
+def router(state: GraphState):
+    """
+    """
+    # state
+    question = state['messages'][-1][1]
+    decider = dspy.ChainOfThought(routerStruct)
+    pred = decider(question=question)
+    answer = pred.answer 
+    return {
+        "next": answer.lower()
+    }
 
+def general_info(state: GraphState):
+    """
+    """
+    question = state['messages'][-1][1]
+    decider = dspy.ChainOfThought(generalInfoStruct)
+
+    pred = decider(question=question)
+    answer = pred.answer
+    messages = state['messages']
+    messages += [ (
+            "assistant",
+            f"{answer}",
+        )]
+    return {
+        "result": answer,
+        "error":None
+    }
 
 def create_graph():
 
     workflow = StateGraph(GraphState)
 
     # Define the nodes
+    workflow.add_node("router", router)
     workflow.add_node("generate", generate) # generation solution
     workflow.add_node("execute_code", execute_code)  # execute code
-    # workflow.add_node("reflect", reflect)  # reflect
+    workflow.add_node("general_info", general_info)
 
     # Build graph
-    workflow.add_edge(START, "generate")
-    workflow.add_edge("generate", "execute_code")
+    workflow.add_edge(START, "router")
+    workflow.add_edge("generate", "execute_code")    
+    workflow.add_edge("general_info", END)
     
-    # workflow.add_edge("check_code", END)
-
     workflow.add_conditional_edges(
-        "execute_code",
-    decide_to_finish,
+        "execute_code", 
+        decide_to_finish,
         {
             "end": END,
             "generate": "generate",
         },
     )
-
-
+    workflow.add_conditional_edges(
+        'router',
+        router_call,
+        {
+            'generate':"generate",
+            "general_info":"general_info"
+        }
+    )
     app = workflow.compile()
-
-    # app.get_graph().print_ascii()
-
     return app
