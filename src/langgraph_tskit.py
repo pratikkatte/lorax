@@ -1,10 +1,8 @@
-import getpass
 import os
 import sys
-from faiss_vector import get_vector_store, repo_to_text
+from faiss_vector import get_vector_store
 from tools import generator_tool
 from graph import create_graph
-from utils import execute_generated_code
 from dotenv import load_dotenv
 
 load_dotenv()
