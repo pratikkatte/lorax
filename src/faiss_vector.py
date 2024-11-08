@@ -1,12 +1,10 @@
 import os 
-
 from langchain_community.vectorstores import FAISS
 from langchain_openai import OpenAIEmbeddings
 
 from langchain_text_splitters.character import RecursiveCharacterTextSplitter
 from langchain_text_splitters.base import Language
 from langchain_text_splitters import character, base
-
 
 def repo_to_text(path, output_file):
     with open(output_file, 'w', encoding='utf-8') as file:
