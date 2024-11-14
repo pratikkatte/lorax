@@ -3,6 +3,9 @@ from utils import code, check_claude_output, insert_errors, parse_output
 
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
+from dotenv import load_dotenv
+
+load_dotenv()
 
 def generator_tool():
     # understnad, how this format of prompt engineering helps the LLM to get good results. 
