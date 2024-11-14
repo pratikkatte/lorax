@@ -1,7 +1,5 @@
 import os
 import sys
-from faiss_vector import get_vector_store
-from tools import generator_tool
 from graph import create_graph
 from dotenv import load_dotenv
 
@@ -9,14 +7,8 @@ load_dotenv()
 
 assert os.path.exists("data/"), "Ensure that a treesequence file is stored in the src/data folder. A link to an example treesequence file is in src/README.md"
 
-vector_store = get_vector_store()
-retriever = vector_store.as_retriever(
-    search_type="similarity",  # Also test "similarity", "mmr"
-    search_kwargs={"k": 5})
-
-code_generator = generator_tool()
-
 question = "Calculate the diversity of the given treesequence."
+app = create_graph()
 
 def chat_interface():
     print("Tree-sequence analysis")
@@ -29,10 +21,13 @@ def chat_interface():
             print("Goodbye!")
             sys.exit()
         
-        app = create_graph()
-        solution = app.invoke({"messages": [("user", user_input)], "iterations": 0, "error": "", "code_generator":code_generator,"retriever": retriever, "input_files": "./data/sample.trees"})
+        config = {"configurable": {"thread_id": "5"}}
+        message = {"messages": [("user", user_input)], "iterations": 0, "error": "", "input_files": "./data/sample.trees"}
+
+        solution = app.invoke(message, config)
+        print(solution)
         llm_output = parseSolution(solution)
-        print(llm_output)
+        # print(llm_output)
 
 def parseSolution(input_solution):
     if input_solution['error'] != None:
@@ -51,10 +46,9 @@ def parseSolution(input_solution):
     return llm_output
 
 def api_interface(user_input):
-    
-    app = create_graph()
 
-    solution = app.invoke({"messages": [("user", user_input)], "iterations": 0, "error": "", "code_generator":code_generator,"retriever": retriever, "input_files": "./data/sample.trees"})
+    config = {"configurable": {"thread_id": "1"}}
+    solution = app.invoke({"messages": [{"type": "user", "content": user_input}], "iterations": 0, "error": "", "input_files": "./data/sample.trees"}, config)
 
     llm_output = parseSolution(solution)
 
