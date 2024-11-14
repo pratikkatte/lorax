@@ -22,19 +22,18 @@ def chat_interface():
             sys.exit()
         
         config = {"configurable": {"thread_id": "5"}}
-        message = {"messages": [("user", user_input)], "iterations": 0, "error": "", "input_files": "./data/sample.trees"}
+        message = {"messages": [("user", user_input)], "iterations": 0, "error": "", "input_files": "./data/sample.trees", "next": None, "generation": None, "result": None}
 
         solution = app.invoke(message, config)
-        print(solution)
         llm_output = parseSolution(solution)
-        # print(llm_output)
+        print(llm_output)
 
 def parseSolution(input_solution):
     if input_solution['error'] != None:
         print("error", input_solution['error'])
         llm_output = f"Error: {input_solution['error']}\n\nGenerated Code:\n{input_solution['generation'].imports}\n{input_solution['generation'].code}"
     else:
-        if 'generation' in input_solution.keys():
+        if 'generation' in input_solution.keys() and input_solution['generation'] != None:
             prefix = input_solution['generation'].prefix
             code = f"{input_solution['generation'].imports} \n\n {input_solution['generation'].code}"
             result = input_solution['result']
@@ -47,8 +46,9 @@ def parseSolution(input_solution):
 
 def api_interface(user_input):
 
-    config = {"configurable": {"thread_id": "1"}}
-    solution = app.invoke({"messages": [{"type": "user", "content": user_input}], "iterations": 0, "error": "", "input_files": "./data/sample.trees"}, config)
+    config = {"configurable": {"thread_id": "5"}}
+    message = {"messages": [("user", user_input)], "iterations": 0, "error": "", "input_files": "./data/sample.trees", "next": None, "generation": None, "result": None}
+    solution = app.invoke(message, config)
 
     llm_output = parseSolution(solution)
 
