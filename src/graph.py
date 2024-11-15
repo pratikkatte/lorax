@@ -5,7 +5,7 @@ from langgraph.graph import END, StateGraph, START
 from langgraph.graph.message import add_messages
 from typing_extensions import TypedDict
 import dspy
-from utils import execute_generated_code, routerStruct, generalInfoStruct
+from utils import execute_generated_code, 
 from faiss_vector import get_vector_store
 from tools import generator_tool
 from langgraph.checkpoint.memory import MemorySaver
@@ -13,8 +13,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-turbo = dspy.OpenAI(model='gpt-4o')
-dspy.settings.configure(lm=turbo)
+from utils import execute_generated_code
+from tools import routerTool, generalInfoTool
 
 vector_store = get_vector_store()
 retriever = vector_store.as_retriever(
@@ -145,7 +145,7 @@ def decide_to_finish(state: GraphState):
 
 def router_call(state: GraphState):
     next = state['next']
-
+    
     if next == 'no':
         return 'general_info'
     else:
@@ -155,31 +155,30 @@ def router(state: GraphState):
     """
     """
     # state
-    question = state['messages'][-1].content
-    decider = dspy.ChainOfThought(routerStruct)
-    pred = decider(question=question)
-    answer = pred.answer 
+    question = state['messages'][-1][1]
+
+    query = {'query':question}
+    answer = routerTool(query)
+
     return {
-        "next": answer.lower()
+        "next": answer.content.lower()
     }
 
 def general_info(state: GraphState):
     """
     """
-    question = str(state['messages'])
-    decider = dspy.ChainOfThought(generalInfoStruct)
+    conversation = state['messages']
 
-    pred = decider(question=question)
-    answer = pred.answer
-    messages = state['messages']
-    messages = [ (
+    answer = generalInfoTool(conversation)
+
+    conversation += [ (
             "assistant",
-            f"{answer}",
+            f"{answer.content}",
         )]
     return {
-        "messages": messages,
-        "result": answer,
-        "error":None
+        "result": answer.content,
+        "error":None,
+        "messages": conversation
     }
 
 def create_graph():
