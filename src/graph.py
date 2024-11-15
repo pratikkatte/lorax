@@ -1,29 +1,15 @@
-import os
+
 import os
 from typing import Annotated, List
 from langgraph.graph import END, StateGraph, START
 from langgraph.graph.message import add_messages
 from typing_extensions import TypedDict
-import dspy
-from utils import execute_generated_code, 
-from faiss_vector import get_vector_store
-from tools import generator_tool
-from langgraph.checkpoint.memory import MemorySaver
-from dotenv import load_dotenv
-
-load_dotenv()
-
+from tools import routerTool, generalInfoTool, generatorTool
 from utils import execute_generated_code
-from tools import routerTool, generalInfoTool
 
-vector_store = get_vector_store()
-retriever = vector_store.as_retriever(
-    search_type="similarity",  # Also test "similarity", "mmr"
-    search_kwargs={"k": 5})
 
-code_generator = generator_tool()
+from langgraph.checkpoint.memory import MemorySaver
 
-# from IPython.display import Image, display
 
 # Max tries
 max_iterations = 3
@@ -59,12 +45,7 @@ def generate(state: GraphState):
     else:
         question = state['messages'][-1].content
 
-    docs = retriever.get_relevant_documents(question)
-    context = "\n".join([doc.page_content for doc in docs])
-    # print("context", context)
-    code_solution = code_generator.invoke(
-        {"context": context, "messages": messages}
-    )
+    code_solution = generatorTool(messages, question)
     
     messages = [
         (
@@ -155,7 +136,8 @@ def router(state: GraphState):
     """
     """
     # state
-    question = state['messages'][-1][1]
+    
+    question = state['messages'][-1].content
 
     query = {'query':question}
     answer = routerTool(query)
@@ -171,7 +153,7 @@ def general_info(state: GraphState):
 
     answer = generalInfoTool(conversation)
 
-    conversation += [ (
+    conversation = [(
             "assistant",
             f"{answer.content}",
         )]
