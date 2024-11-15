@@ -1,11 +1,9 @@
 import os
 from typing import List, TypedDict, Any
 from langgraph.graph import END, StateGraph, START
-import dspy
-from utils import execute_generated_code, routerStruct, generalInfoStruct
 
-turbo = dspy.OpenAI(model='gpt-4o')
-dspy.settings.configure(lm=turbo)
+from utils import execute_generated_code
+from tools import routerTool, generalInfoTool
 
 # Max tries
 max_iterations = 3
@@ -134,7 +132,7 @@ def decide_to_finish(state: GraphState):
 
 def router_call(state: GraphState):
     next = state['next']
-
+    
     if next == 'no':
         return 'general_info'
     else:
@@ -145,29 +143,29 @@ def router(state: GraphState):
     """
     # state
     question = state['messages'][-1][1]
-    decider = dspy.ChainOfThought(routerStruct)
-    pred = decider(question=question)
-    answer = pred.answer 
+
+    query = {'query':question}
+    answer = routerTool(query)
+
     return {
-        "next": answer.lower()
+        "next": answer.content.lower()
     }
 
 def general_info(state: GraphState):
     """
     """
-    question = state['messages'][-1][1]
-    decider = dspy.ChainOfThought(generalInfoStruct)
+    conversation = state['messages']
 
-    pred = decider(question=question)
-    answer = pred.answer
-    messages = state['messages']
-    messages += [ (
+    answer = generalInfoTool(conversation)
+
+    conversation += [ (
             "assistant",
-            f"{answer}",
+            f"{answer.content}",
         )]
     return {
-        "result": answer,
-        "error":None
+        "result": answer.content,
+        "error":None,
+        "messages": conversation
     }
 
 def create_graph():
