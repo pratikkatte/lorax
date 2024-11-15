@@ -1,8 +1,14 @@
-
 from utils import code, check_claude_output, insert_errors, parse_output
 
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
+
+from langchain_core.prompts import PromptTemplate
+from dotenv import load_dotenv
+
+load_dotenv()
+
+general_llm = ChatOpenAI(model_name='gpt-4o')
 
 def generator_tool():
     # understnad, how this format of prompt engineering helps the LLM to get good results. 
@@ -21,11 +27,8 @@ def generator_tool():
             ]
         )
 
-    expt_llm = "gpt-4o-mini"
 
-    code_llm = ChatOpenAI(temperature=0, model=expt_llm)
-
-    structured_code_llm = code_llm.with_structured_output(code, include_raw=True)
+    structured_code_llm = general_llm.with_structured_output(code, include_raw=True)
 
     # Chain with output check
     code_chain_raw = (
@@ -42,4 +45,34 @@ def generator_tool():
 
     return code_gen_chain
 
+def routerTool(query):
+    """
+    """
+    prompt_template = """
+    Provide answer in 1 word (yes/no).
+    If the question requires generating a code and using the given tressequence and tskit library in order to provide the answer, then respond with 'yes' else respond with 'no' 
+    Respond appropriately based on the user's query: {query}
+    """
+    prompt = PromptTemplate(
+    input_variables=['quert'], template=prompt_template
+    )
+    chain = prompt | general_llm
 
+    answer = chain.invoke(query)
+    return answer
+
+def generalInfoTool(conversation):
+    """
+    """
+    prompt_template = """
+    Here's the conversation as context: {conversation}
+    Respond appropriately based on the user's last message: {question}
+    """
+    prompt = PromptTemplate(
+    input_variables=["conversation", 'question'], template=prompt_template
+    )
+    chain = prompt | general_llm
+    query = {"conversation":conversation[:-1], "question":conversation[-1]}
+    answer = chain.invoke(query)
+
+    return answer
