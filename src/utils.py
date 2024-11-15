@@ -4,6 +4,7 @@ from types import ModuleType
 import sys
 import inspect
 
+
 # Optional: Check for errors in case tool use is flaky
 def check_claude_output(tool_output):
     """Check for parse error or failure to call the tool"""
@@ -46,13 +47,6 @@ def parse_output(solution):
     """When we add 'include_raw=True' to structured output,
     it will return a dict w 'raw', 'parsed', 'parsing_error'."""
     return solution["parsed"]
-
-# class routerStruct(dspy.Signature):
-#     """Answer questions with 'yes' or 'no'. 
-#     If the question requires generating a code and using the given tressequence and tskit library in order to provide the answer, then respond with 'yes' else respond with 'no' 
-#     """
-#     question = dspy.InputField()
-#     answer = dspy.OutputField(desc="in 1 word")
 
 class code(BaseModel):
     """
