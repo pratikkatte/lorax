@@ -1,9 +1,15 @@
-import os
-from typing import List, TypedDict, Any
-from langgraph.graph import END, StateGraph, START
 
+import os
+from typing import Annotated, List
+from langgraph.graph import END, StateGraph, START
+from langgraph.graph.message import add_messages
+from typing_extensions import TypedDict
+from tools import routerTool, generalInfoTool, generatorTool
 from utils import execute_generated_code
-from tools import routerTool, generalInfoTool
+
+
+from langgraph.checkpoint.memory import MemorySaver
+
 
 # Max tries
 max_iterations = 3
@@ -12,11 +18,9 @@ class GraphState(TypedDict):
     """
     """
     error: str
-    messages: List
+    messages: Annotated[List, add_messages]
     generation: str
     iterations: int
-    code_generator: Any
-    retriever: Any
     result: str
     input_files: str
     next: str
@@ -30,27 +34,20 @@ def generate(state: GraphState):
     messages = state["messages"]
     iterations = state['iterations']
     error = state["error"]
-    code_generator = state['code_generator']
-    retriever = state['retriever']
 
     if error != "no":
-        question = messages[-1][1] + "\n" + error + "\n" + "Now, try again. Invoke the code tool to structure the output with a prefix, imports, and code block:"
+        question = state['messages'][-1].content + "\n" + error + "\n" + "Now, try again. Invoke the code tool to structure the output with a prefix, imports, and code block:"
 
-        messages += [(
+        messages = [(
             "user",
             question
         )]
     else:
-        question = messages[-1][1]
+        question = state['messages'][-1].content
 
-    docs = retriever.get_relevant_documents(question)
-    context = "\n".join([doc.page_content for doc in docs])
-    # print("context", context)
-    code_solution = code_generator.invoke(
-        {"context": context, "messages": messages}
-    )
+    code_solution = generatorTool(messages, question)
     
-    messages += [
+    messages = [
         (
             "assistant",
             f"{code_solution.prefix} \n Imports: {code_solution.imports} \n Code: {code_solution.code}",
@@ -61,8 +58,6 @@ def generate(state: GraphState):
     return {"generation": code_solution, 
             "messages": messages, 
             "iterations": iterations,
-            "code_generator":code_generator,
-            "retriever":retriever
             }
 
 def execute_code(state: GraphState):
@@ -71,8 +66,6 @@ def execute_code(state: GraphState):
     messages = state['messages']
     iterations = state['iterations']
     code_solution = state['generation']
-    code_generator = state['code_generator']
-    retriever = state['retriever']
     input_files = state['input_files']
     generation = state['generation']
     error = state['error']
@@ -98,13 +91,14 @@ def execute_code(state: GraphState):
     # Log the result in messages
     result = f"Result: {result}"
 
+    # Append result to messages (context)
+    messages[-1].content += f"\nCode executed successfully. {result}"
+
     return {
         "generation": code_solution,
         "messages": messages,
         "error": None,
         "iterations": iterations,
-        "code_generator":code_generator,
-        "retriever":retriever,
         "result" : result
     }
 
@@ -142,7 +136,8 @@ def router(state: GraphState):
     """
     """
     # state
-    question = state['messages'][-1][1]
+    
+    question = state['messages'][-1].content
 
     query = {'query':question}
     answer = routerTool(query)
@@ -158,7 +153,7 @@ def general_info(state: GraphState):
 
     answer = generalInfoTool(conversation)
 
-    conversation += [ (
+    conversation = [(
             "assistant",
             f"{answer.content}",
         )]
@@ -199,5 +194,7 @@ def create_graph():
             "general_info":"general_info"
         }
     )
-    app = workflow.compile()
+
+    memory = MemorySaver()
+    app = workflow.compile(checkpointer=memory)
     return app

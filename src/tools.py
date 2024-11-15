@@ -2,7 +2,7 @@ from utils import code, check_claude_output, insert_errors, parse_output
 
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
-
+from faiss_vector import getRetriever
 from langchain_core.prompts import PromptTemplate
 from dotenv import load_dotenv
 
@@ -10,7 +10,11 @@ load_dotenv()
 
 general_llm = ChatOpenAI(model_name='gpt-4o')
 
-def generator_tool():
+retriever = getRetriever()
+
+
+
+def generatorTool(messages, question):
     # understnad, how this format of prompt engineering helps the LLM to get good results. 
 
     code_gen_prompt = ChatPromptTemplate.from_messages(
@@ -43,7 +47,17 @@ def generator_tool():
     )
     code_gen_chain = code_gen_chain_re_try | parse_output
 
-    return code_gen_chain
+
+    # Retriever model
+    docs = retriever.get_relevant_documents(question)
+    context = "\n".join([doc.page_content for doc in docs])
+
+
+    # infer
+    code_solution = code_gen_chain.invoke(
+        {"context": context, "messages": messages}
+    )
+    return code_solution
 
 def routerTool(query):
     """

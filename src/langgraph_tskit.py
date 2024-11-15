@@ -1,7 +1,5 @@
 import os
 import sys
-from faiss_vector import get_vector_store
-from tools import generator_tool
 from graph import create_graph
 from dotenv import load_dotenv
 
@@ -9,14 +7,8 @@ load_dotenv()
 
 assert os.path.exists("data/"), "Ensure that a treesequence file is stored in the src/data folder. A link to an example treesequence file is in src/README.md"
 
-vector_store = get_vector_store()
-retriever = vector_store.as_retriever(
-    search_type="similarity",  # Also test "similarity", "mmr"
-    search_kwargs={"k": 5})
-
-code_generator = generator_tool()
-
 question = "Calculate the diversity of the given treesequence."
+app = create_graph()
 
 def chat_interface():
     print("Tree-sequence analysis")
@@ -29,8 +21,10 @@ def chat_interface():
             print("Goodbye!")
             sys.exit()
         
-        app = create_graph()
-        solution = app.invoke({"messages": [("user", user_input)], "iterations": 0, "error": "", "code_generator":code_generator,"retriever": retriever, "input_files": "./data/sample.trees"})
+        config = {"configurable": {"thread_id": "5"}}
+        message = {"messages": [("user", user_input)], "iterations": 0, "error": "", "input_files": "./data/sample.trees", "next": None, "generation": None, "result": None}
+
+        solution = app.invoke(message, config)
         llm_output = parseSolution(solution)
         print(llm_output)
 
@@ -39,7 +33,7 @@ def parseSolution(input_solution):
         print("error", input_solution['error'])
         llm_output = f"Error: {input_solution['error']}\n\nGenerated Code:\n{input_solution['generation'].imports}\n{input_solution['generation'].code}"
     else:
-        if 'generation' in input_solution.keys():
+        if 'generation' in input_solution.keys() and input_solution['generation'] != None:
             prefix = input_solution['generation'].prefix
             code = f"{input_solution['generation'].imports} \n\n {input_solution['generation'].code}"
             result = input_solution['result']
@@ -51,10 +45,10 @@ def parseSolution(input_solution):
     return llm_output
 
 def api_interface(user_input):
-    
-    app = create_graph()
 
-    solution = app.invoke({"messages": [("user", user_input)], "iterations": 0, "error": "", "code_generator":code_generator,"retriever": retriever, "input_files": "./data/sample.trees"})
+    config = {"configurable": {"thread_id": "5"}}
+    message = {"messages": [("user", user_input)], "iterations": 0, "error": "", "input_files": "./data/sample.trees", "next": None, "generation": None, "result": None}
+    solution = app.invoke(message, config)
 
     llm_output = parseSolution(solution)
 
