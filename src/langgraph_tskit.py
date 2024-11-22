@@ -2,6 +2,8 @@ import os
 import sys
 from graph import create_graph
 from dotenv import load_dotenv
+import pickle
+import uuid
 
 load_dotenv()
 
@@ -10,9 +12,46 @@ assert os.path.exists("data/"), "Ensure that a treesequence file is stored in th
 question = "Calculate the diversity of the given treesequence."
 app = create_graph()
 
+def generate_thread_id():
+    return str(uuid.uuid4())
+
+def load_data(filename='user_threads.pkl'):
+    try:
+        with open(filename, 'rb') as f:
+            data = pickle.load(f)
+    except FileNotFoundError:
+        data = {}  # Initialize an empty dictionary if file does not exist
+    return data
+
+def save_data(data, filename='user_threads.pkl'):
+    with open(filename, 'wb') as f:
+        pickle.dump(data, f)
+
+def add_thread(user_id, thread_id=None, filename='user_threads.pkl'):
+    data = load_data(filename)
+    
+    # Generate a random thread ID if none is provided
+    if thread_id is None:
+        thread_id = generate_thread_id()
+    
+    # Check if user ID already has a list of thread IDs; if not, initialize one
+    if user_id not in data:
+        data[user_id] = []
+    
+    # Append the thread ID to the user's list if it isn't already there
+    if thread_id not in data[user_id]:
+        data[user_id].append(thread_id)
+    
+    save_data(data, filename)
+    return thread_id  # Return the thread ID for reference
+
 def chat_interface():
     print("Tree-sequence analysis")
     print("Type 'exit' to end the conversation.")
+
+    user_id = input("Enter your user ID: ").strip()
+    thread_id = add_thread(user_id)
+    print("Generated and added Thread ID:", thread_id)
     
     while True:
         user_input = input("You: ").strip()
@@ -21,7 +60,7 @@ def chat_interface():
             print("Goodbye!")
             sys.exit()
         
-        config = {"configurable": {"thread_id": "5"}}
+        config = {"configurable": {"thread_id": thread_id}}
         message = {"messages": [("user", user_input)], "iterations": 0, "error": "", "input_files": "./data/sample.trees", "next": None, "generation": None, "result": None}
 
         solution = app.invoke(message, config)
