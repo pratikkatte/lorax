@@ -1,7 +1,9 @@
 from flask import Flask, request, jsonify
 from langgraph_tskit import api_interface
+from flask_cors import CORS
 
 app = Flask(__name__)
+CORS(app)
 
 # Test GET endpoint
 @app.route('/', methods=['GET'])
