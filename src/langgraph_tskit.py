@@ -83,9 +83,9 @@ def parseSolution(input_solution):
 
     return llm_output
 
-def api_interface(user_input):
+def api_interface(user_input, thread_id):
 
-    config = {"configurable": {"thread_id": "5"}}
+    config = {"configurable": {"thread_id": thread_id}}
     message = {"messages": [("user", user_input)], "iterations": 0, "error": "", "input_files": "./data/sample.trees", "next": None, "generation": None, "result": None}
     solution = app.invoke(message, config)
 
