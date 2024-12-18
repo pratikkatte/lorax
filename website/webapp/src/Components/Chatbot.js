@@ -139,12 +139,12 @@ function Chatbot(props) {
       {/* Attach the ref to the chat content */}
       <div ref={chatContentRef} className="chat-content">
         {conversation.map((message, index) => (
-          <div
+          <div 
             key={index}
             className={`chat-bubble ${
               message.role === "user" ? "user-bubble" : "assistant-bubble"
             }`}
-            style={{ opacity: message.hidden ? 0 : 1 }} 
+            style={{ opacity: message.hidden ? 0 : 1 , whiteSpace: "pre-wrap"}} 
           >
             {message.role === "user" && (
               <div className="message-label">User</div>

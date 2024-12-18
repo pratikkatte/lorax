@@ -17,7 +17,6 @@ def chat():
     data = request.get_json()  # Get the JSON data from the request
     message = data.get('message')
 
-
     llm_output = api_interface(message)
 
     # Process the incoming message here (for now, we simply return it)

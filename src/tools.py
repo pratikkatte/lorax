@@ -13,7 +13,6 @@ general_llm = ChatOpenAI(model_name='gpt-4o')
 retriever = getRetriever()
 
 
-
 def generatorTool(messages, question):
     # understnad, how this format of prompt engineering helps the LLM to get good results. 
 
@@ -31,7 +30,6 @@ def generatorTool(messages, question):
             ]
         )
 
-
     structured_code_llm = general_llm.with_structured_output(code, include_raw=True)
 
     # Chain with output check
@@ -47,11 +45,9 @@ def generatorTool(messages, question):
     )
     code_gen_chain = code_gen_chain_re_try | parse_output
 
-
     # Retriever model
     docs = retriever.get_relevant_documents(question)
     context = "\n".join([doc.page_content for doc in docs])
-
 
     # infer
     code_solution = code_gen_chain.invoke(

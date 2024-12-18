@@ -13,7 +13,7 @@ def repo_to_text(path, output_file):
     with open(output_file, 'w', encoding='utf-8') as file:
         for root, dirs, files in os.walk(path):
             for filename in files:
-                if filename.endswith((".py", ".md", ".rst", ".c")):
+                if filename.endswith((".py", ".md")):
                     filepath = os.path.join(root, filename)
                     file.write(f"\n\n--- {filepath} ---\n\n")
                     with open(filepath, 'r') as f:
@@ -41,7 +41,7 @@ def getRetriever():
     if os.path.exists('tskit-vector'):
         vector_store = FAISS.load_local("tskit-vector", embeddings, allow_dangerous_deserialization=True)
     else:
-        data, _ = read_document('data.text')
+        data, _ = read_document('data-new.txt')
         python_splitter = character.RecursiveCharacterTextSplitter.from_language(
             language=base.Language.PYTHON
             )
