@@ -45,13 +45,34 @@ def add_thread(user_id, thread_id=None, filename='user_threads.pkl'):
     save_data(data, filename)
     return thread_id  # Return the thread ID for reference
 
+def validate_thread_id(user_id, thread_id, filename='user_threads.pkl'):
+    data = load_data(filename)
+
+    if user_id in data and thread_id in data[user_id]:
+        return True
+    else:
+        return False
+
 def chat_interface():
     print("Tree-sequence analysis")
     print("Type 'exit' to end the conversation.")
 
     user_id = input("Enter your user ID: ").strip()
-    thread_id = add_thread(user_id)
-    print("Generated and added Thread ID:", thread_id)
+
+    thread_id_exists = input("Do you have an existing thread ID? (y/n): ").strip().lower()
+    if thread_id_exists == 'y' or thread_id_exists == 'yes':
+        thread_id = input("Enter your thread ID: ").strip()
+
+        valid_thread_id = validate_thread_id(user_id, thread_id)
+        if valid_thread_id:
+            print("Using Thread ID:", thread_id)
+            
+        else: 
+            print("Invalid Thread ID. Please try again.")
+            sys.exit()
+    else:
+        thread_id = add_thread(user_id)
+        print("Generated and added Thread ID:", thread_id)
     
     while True:
         user_input = input("You: ").strip()
