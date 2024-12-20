@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify
+
 from flask_cors import CORS
 from langgraph_tskit import api_interface, add_thread, load_data, save_data, generate_thread_id
 from datetime import timedelta
@@ -20,6 +21,7 @@ def clear_chat():
     user_cookie = {}
     return "Session Cleared"
 
+
 # Test GET endpoint
 @app.route('/', methods=['GET'])
 def status():
@@ -29,6 +31,7 @@ def status():
 # Define the /api/chat endpoint
 @app.route('/api/chat', methods=['POST'])
 def chat():
+
     try:
         data = request.get_json()  # Get the JSON data from the request
         if not data or 'message' not in data:
@@ -55,6 +58,7 @@ def chat():
     except Exception as e:
         print(f"Error occurred: {e}")
         return jsonify({"error": "An error occurred while processing the request"}), 500
+
 
 
 if __name__ == '__main__':
