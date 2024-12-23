@@ -1,0 +1,186 @@
+/* ./your-css-folder/styles.css */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+.tx-button:focus-visible {
+  @apply outline-none ring-offset-0 ring-1 ring-gray-800 border-gray-800;
+}
+
+/* JBrowse customization */
+.MuiPaper-root.MuiPaper-rounded.MuiPaper-elevation {
+  box-shadow: none !important;
+  padding: 0px !important;
+  margin: 0px !important;
+}
+
+#view-browser-axis > div > span > div > div > div > div:nth-child(1) {
+  display: none !important;
+}
+
+.jss2 {
+  margin: 0px !important;
+}
+
+p[data-testid="refLabel-NC_045512v2"] {
+  display: none !important;
+}
+
+[class*="PrivateSwitchBase-input-"] + svg {
+  color: "#2463eb" !important;
+}
+
+.sidebar-toggle {
+  border: 2px solid rgb(136, 135, 135) !important;
+  border-radius: 3px;
+  margin: 10px;
+}
+
+.sidebar-open {
+  transition: right 0.3s ease-in-out !important;
+}
+
+.sidebar-closed {
+  transition: right 0.3s ease-in-out !important;
+
+  position: absolute;
+  width: 60px;
+  right: 0px;
+}
+
+.search-panel {
+  width: 100% !important;
+}
+
+select,
+input {
+  border-color: #c7ccd8 !important;
+}
+
+.infoTooltip {
+  max-width: 200px;
+  font-size: 12pt !important;
+  pointer-events: auto !important;
+}
+.infoTooltip :hover {
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+.tooltipLink {
+  color: #2563eb;
+  text-decoration: underline;
+}
+
+button[data-testid="addTrackNextButton"] {
+  background-color: #858585;
+}
+
+.MuiDialog-container > div > div > .MuiScopedCssBaseline-root {
+  padding: 15px;
+}
+
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  background: #f8f9fa; /* Light background for the entire app */
+}
+
+.app-container {
+  display: flex;
+  min-height: 100vh;
+  background: linear-gradient(to bottom, rgb(8, 120, 135), rgba(10, 10, 10, 0));
+  overflow: hidden;
+}
+
+.left-container {
+  width: 70%; /* Half the screen width */
+  height: 100vh; /* Full screen height */
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: hidden;
+  z-index: 1;
+  transition: transform 0.3s ease-in-out, box-shadow 0.3s ease-in-out;
+}
+
+.left-form-container {
+  display: flex;
+  height: 350px;
+  width: 250px;
+  justify-content: center;
+  align-items: flex-start;
+  flex-direction: column;
+  position: relative;
+  padding: 20px;
+  margin-top: 150px;
+  background-color: #ffffff;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+  border-radius: 0 20px 20px 0;
+  animation: slideIn 0.5s ease-out;
+}
+
+.right-container {
+  width: 30%;
+  height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 2;
+  transition: transform 0.3s ease-in-out, box-shadow 0.3s ease-in-out;
+  position: absolute;
+  top: 0;
+  right: 0;
+  overflow: hidden;
+}
+
+.right-container.opened {
+  transform: translateX(-300px); /* Slide effect */
+  box-shadow: 0px 0px 20px rgba(0, 0, 0, 0.3);
+}
+
+.not-supported-message {
+  display: none;
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background-color: #fff;
+  padding: 20px;
+  border-radius: 10px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+  text-align: center;
+}
+
+.not-supported-message p {
+  margin: 0;
+  font-size: 16px;
+  color: #444;
+}
+
+@media only screen and (max-width: 600px) {
+  .left-container,
+  .left-form-container,
+  .right-container {
+    display: none;
+  }
+
+  .not-supported-message {
+    display: block;
+  }
+}
+
+/* Animations */
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-50px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
