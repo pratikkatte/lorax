@@ -1,0 +1,1 @@
+recursive-include lorax/website/treeseq-viz/dist/ *
