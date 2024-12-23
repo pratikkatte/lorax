@@ -9,26 +9,28 @@ import json
 from threading import Timer
 import webbrowser
 
-DEBUG = True
+DEBUG = False
 
 if not DEBUG:
 
     from pkg_resources import resource_filename
 
-    fronted_path =  resource_filename(__name__, 'website/treeseq-viz/dist/')
-    print("fronted_path", fronted_path)
+    fronted_path =  resource_filename(__name__, 'website/taxonium_component/dist/')
+    
 
     app = Flask(__name__, static_folder=fronted_path)
-
+    CORS(app)
     # Serve static files (e.g., JS, CSS)
     @app.route('/assets/<path:filename>')
     def static_files(filename):
+
         return send_from_directory(os.path.join(app.static_folder, 'assets'), filename)
     
     # Serve the React app
     @app.route('/', defaults={'path': ''})
     @app.route('/<path:path>')
     def serve(path):
+
         if path != "" and os.path.exists(os.path.join(app.static_folder, path)):
             return send_from_directory(app.static_folder, path)
         return send_from_directory(app.static_folder, 'index.html')

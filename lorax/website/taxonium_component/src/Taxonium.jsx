@@ -157,7 +157,7 @@ function Taxonium({
     settings,
   });
 
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const toggleSidebar = () => {
     setSidebarOpen(!sidebarOpen);
     setTimeout(() => {
@@ -210,17 +210,6 @@ function Taxonium({
             jbrowseRef={jbrowseRef}
             setAdditionalColorMapping={setAdditionalColorMapping}
           />
-        </div>
-
-        <div
-          className={
-            sidebarOpen
-              ? "flex-grow min-h-0 h-1/2 md:h-full 2xl:w-1/4 bg-white shadow-xl border-t md:border-0 overflow-y-auto md:overflow-hidden" +
-                (settings.treenomeEnabled ? " md:w-1/4" : " md:w-1/3")
-              : "bg-white shadow-xl"
-          }
-        >
-        
         </div>
       </div>
     </div>
