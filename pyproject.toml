@@ -30,11 +30,11 @@ dependencies = {file = "lorax/requirements.txt"}
 include-package-data = true
 
 [tool.setuptools.packages.find]
-include = ["lorax", "lorax.website"]
+include = ["lorax"]
 
 
 [build-system]
-requires = ["setuptools>=68", "setuptools_scm[toml]>=8"]
+requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.codespell]

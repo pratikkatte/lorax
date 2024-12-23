@@ -6,8 +6,16 @@ from lorax.langgraph_tskit import api_interface
 from flask_cors import CORS
 import os
 import json
-from threading import Timer
-import webbrowser
+
+import logging
+
+log = logging.getLogger('werkzeug')
+log.setLevel(logging.ERROR)
+log.disabled = True
+
+
+from flask import cli
+cli.show_server_banner = lambda *_: None
 
 DEBUG = False
 
@@ -43,6 +51,8 @@ else:
     def status():
         print("Status endpoint accessed")
         return "Success 200!"
+
+
 
 class DataStreamer:
     def __init__(self):
@@ -81,12 +91,16 @@ def chat():
     # Respond with a simple JSON response
     return jsonify({"response": f"{llm_output}"})
 
-def open_browser():
-    webbrowser.open_new("http://localhost:5001")
 
 def main():
-    # hostname = "lorax.localhost"
-    # socket.getaddrinfo(hostname, 5001)  # Ensures the hostname resolves to 127.0.0.1
-    Timer(1, open_browser).start()
 
-    app.run(host='0.0.0.0', port=5001, debug=DEBUG)
+    
+    print("\nstart local server....")
+    print()
+    print("Access the interface at http://localhost:5001/")
+    print()
+    print("Press CTRL+C to quit")
+
+
+    app.run(port=5001, debug=DEBUG)
+

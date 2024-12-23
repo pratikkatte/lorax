@@ -7,6 +7,8 @@ from pkg_resources import resource_filename
 load_dotenv()
 
 data_file_path =  resource_filename(__name__, 'data')
+print(data_file_path)
+
 assert os.path.exists(data_file_path), "Ensure that a treesequence file is stored in the src/data folder. A link to an example treesequence file is in src/README.md"
 
 question = "Calculate the diversity of the given treesequence."
