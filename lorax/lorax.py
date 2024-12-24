@@ -17,6 +17,13 @@ log.disabled = True
 from flask import cli
 cli.show_server_banner = lambda *_: None
 
+import argparse
+
+
+
+
+
+
 DEBUG = False
 
 if not DEBUG:
@@ -31,7 +38,6 @@ if not DEBUG:
     # Serve static files (e.g., JS, CSS)
     @app.route('/assets/<path:filename>')
     def static_files(filename):
-
         return send_from_directory(os.path.join(app.static_folder, 'assets'), filename)
     
     # Serve the React app
@@ -92,7 +98,34 @@ def chat():
     return jsonify({"response": f"{llm_output}"})
 
 
+def args_parser():
+
+    input_vals = {
+     'model':'openai',
+     'api':''
+    }
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--openai-api-key", help="OpenAI API Key")
+    args = parser.parse_args()
+
+    api_key = os.getenv("OPENAI_API_KEY")
+
+    if api_key is None and args.openai_api_key is None:
+        print("Exception: Provide openai-api-key")
+        return None
+    else:
+        input_vals['api'] = api_key
+
+    
+    return input_vals
+
 def main():
+    """
+    """
+    input_vals = args_parser()
+    if not input_vals:
+        return
+
 
     
     print("\nstart local server....")
