@@ -1,9 +1,9 @@
 
 import './App.css'
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 
-import Chatbot from "./components/Chatbot";
-import Visualization from './components/visualization';
+import Chatbot from "./components/chatbot/Chatbot";
+import Visualization from './components/chatbot/visualization';
 
 function App() {
 

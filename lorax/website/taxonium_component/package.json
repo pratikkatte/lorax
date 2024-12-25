@@ -6,6 +6,8 @@
     "phylogenetics",
     "newick"
   ],
+  "proxy": "http://localhost:5001",
+  
   "type": "module",
   "main": "dist/taxonium-component.umd.js",
   "files": [
@@ -30,7 +32,8 @@
     "@fortawesome/react-fontawesome": "^0.2.2",
     "mobx": "^6.13.5",
     "mobx-react": "^9.2.0",
-    "mobx-state-tree": "^7.0.1"
+    "mobx-state-tree": "^7.0.1",
+    "socket.io-client": "^4.8.1"
   },
   "devDependencies": {
     "@fontsource/roboto": "^5.0.1",

@@ -25,53 +25,64 @@ def visualizationTool(question):
     return newick_string
 
 def generatorTool(question):
-    # understnad, how this format of prompt engineering helps the LLM to get good results. 
-    input_file_path =  resource_filename(__name__, './data/sample.trees')
+    try:
 
-    code_gen_prompt = ChatPromptTemplate.from_messages(
-        [
-            (
-                "system",
-                """You are a coding generator with expertise in using ts-kit toolkit for analysing tree-sequences. \n 
-                Here is a relevant set of tskit documentation:  \n ------- \n  {context} \n ------- \n Answer the user 
-                question based on the above provided documentation. Ensure any code you provide should be a callable function and can be executed \n 
-                with all required imports and variables defined. Structure your answer with a description of the code solution. \n
-                Then list the imports. And finally list the functioning code block. The function should return a string providing the answer. Here is the user question:""",
-                ), 
-                ("placeholder", "{messages}"), 
-            ]
+        # understnad, how this format of prompt engineering helps the LLM to get good results. 
+        input_file_path =  resource_filename(__name__, './data/sample.trees')
+
+        code_gen_prompt = ChatPromptTemplate.from_messages(
+            [
+                (
+                    "system",
+                    """You are a coding generator with expertise in using ts-kit toolkit for analysing tree-sequences. \n 
+                    Here is a relevant set of tskit documentation:  \n ------- \n  {context} \n ------- \n Answer the user 
+                    question based on the above provided documentation. Ensure any code you provide should be a callable function and can be executed \n 
+                    with all required imports and variables defined. Structure your answer with a description of the code solution. \n
+                    Then list the imports. And finally list the functioning code block. The function should return a string providing the answer. Here is the user question:""",
+                    ), 
+                    ("placeholder", "{messages}"), 
+                ]
+            )
+
+
+        lm = ChatOpenAI(
+            model="gpt-4o", temperature=0)
+        
+        structured_code_llm = lm.with_structured_output(code, include_raw=True)
+
+        # Chain with output check
+        code_chain_raw = (
+            code_gen_prompt | structured_code_llm
         )
 
-    structured_code_llm = general_llm.with_structured_output(code, include_raw=True)
+        # This will be run as a fallback chain
+        fallback_chain = insert_errors | code_chain_raw
+        N = 3  # Max re-tries
+        code_gen_chain_re_try = code_chain_raw.with_fallbacks(
+            fallbacks=[fallback_chain] * N, exception_key="error"
+        )
+        code_gen_chain = code_gen_chain_re_try | parse_output
+        try:
 
-    # Chain with output check
-    code_chain_raw = (
-        code_gen_prompt | structured_code_llm | check_claude_output
-    )
+            # Retriever model
+            docs = retriever.invoke(question)
 
-    # This will be run as a fallback chain
-    fallback_chain = insert_errors | code_chain_raw
-    N = 3  # Max re-tries
-    code_gen_chain_re_try = code_chain_raw.with_fallbacks(
-        fallbacks=[fallback_chain] * N, exception_key="error"
-    )
-    code_gen_chain = code_gen_chain_re_try | parse_output
+            # docs = retriever.get_relevant_documents(question)
+            context = "\n".join([doc.page_content for doc in docs])
 
-    # Retriever model
-    docs = retriever.get_relevant_documents(question)
-    context = "\n".join([doc.page_content for doc in docs])
+            # infer
+        except Exception as e:
+            print("context Error:", e)
 
-    # infer
+        code_solution = code_gen_chain.invoke(
+            {"context": context, "messages": [question]}
+        )
+        result = execute_generated_code(code_solution, input_file_path)
 
-    code_solution = code_gen_chain.invoke(
-        {"context": context, "messages": [question]}
-    )
-    print("code solution", code_solution)
-    
-    result = execute_generated_code(code_solution, input_file_path)
-
-
-    return code_solution, result
+        return code_solution, result
+    except Exception as e:
+        print("Error:", e)
+        return f"Found Error, {e}", None
 
 def routerTool(query):
     """
@@ -84,6 +95,7 @@ def routerTool(query):
     prompt = PromptTemplate(
     input_variables=['quert'], template=prompt_template
     )
+    
     chain = prompt | general_llm
 
     answer = chain.invoke(query)
@@ -97,11 +109,23 @@ def generalInfoTool(question):
     if the questions are not related to your experties then kindly remind them to ask questions in your domain of experties. 
     Respond the users in brief based on this query or message: {question}
     """
-    prompt = PromptTemplate(
-    input_variables=['question'], template=prompt_template
-    )
-    chain = prompt | general_llm
-    query = {"question":question}
-    answer = chain.invoke(query)
+    try:
+
+        prompt = PromptTemplate(
+        input_variables=['question'], template=prompt_template
+        )
+
+        lm = ChatOpenAI(
+        model="gpt-4o", temperature=0)
+        chain = prompt | lm
+        query = {"question":question}
+        answer = chain.invoke(query)
+        
+        return answer.content
     
-    return answer.content
+    except Exception as e:
+        print("Error:", e)
+        return f"Found Error, {e}"
+        
+
+    

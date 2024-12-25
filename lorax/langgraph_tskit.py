@@ -7,7 +7,6 @@ from pkg_resources import resource_filename
 load_dotenv()
 
 data_file_path =  resource_filename(__name__, 'data')
-print(data_file_path)
 
 assert os.path.exists(data_file_path), "Ensure that a treesequence file is stored in the src/data folder. A link to an example treesequence file is in src/README.md"
 
@@ -29,6 +28,8 @@ def chat_interface():
         # message = {"messages": [("user", user_input)], "iterations": 0, "error": "", "input_files": "./data/sample.trees", "next": None, "generation": None, "result": None}
         message = {'question':user_input, "attributes":{"file_path":"data/sample.trees"}}
         solution = app.invoke(message, config)
+        
+        
         llm_output, _ = parseSolution(solution)
         print()
         print(llm_output)
@@ -40,9 +41,10 @@ def parseSolution(input_solution):
 
 def api_interface(user_input):
 
-    config = {"configurable": {"thread_id": "5"}}
+    config = {"configurable": {"thread_id": "7"}}
     # message = {"messages": [("user", user_input)], "iterations": 0, "error": "", "input_files": "./data/sample.trees", "next": None, "generation": None, "result": None}
     message = {'question':user_input, "attributes":{"file_path":"data/sample.trees"}}
+
     solution = app.invoke(message, config)
 
     llm_output = parseSolution(solution)
