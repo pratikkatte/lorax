@@ -56,10 +56,49 @@ class code(BaseModel):
     imports: str = Field(description="Code block import statements")
     code: str = Field(description="Code block should contain function that can be called. It should have input file_path to tree_sequence. It should not include import statements")
 
+def validate_import(import_white_list, full_name: str):
+    tmp_name = ""
+    found_name = False
+    for name in full_name.split("."):
+        tmp_name += name if tmp_name == "" else f".{name}"
+        if tmp_name in import_white_list:
+            found_name = True
+            return
+
+    if not found_name:
+        raise ValueError(f"It is not permitted to import modules "
+                                f"than module white list (try to import "
+                                f"{full_name}).")
+    
+    if not importlib.util.find_spec(full_name):
+        raise ValueError(f"Module '{full_name}' is not installed in the environment.")
 
 def execute_generated_code(structured_output, *args, **kwargs):
     # Combine imports and code
     full_code = structured_output.imports + "\n\n" + structured_output.code
+    
+    import_white_list = {
+        "math", "random", "datetime", "time", "string", "collections", "sys", "re"
+        "itertools", "functools", "typing", "enum", "json", "ast", "numpy", "tskit", "msprime", "IPython.display"
+    }
+
+    try:
+        expression = ast.parse(full_code)
+    except SyntaxError as e:
+        error_line = code.splitlines()[e.lineno - 1]
+        raise ValueError(f"Syntax error in code at line {e.lineno}: {error_line}\nError: {e}")
+
+        # Validate the imports
+    for idx, node in enumerate(expression.body):
+        try:
+            if isinstance(node, ast.Import) or isinstance(node, ast.ImportFrom):
+                import_module = node
+
+                for module in import_module.names:
+                    validate_import(import_white_list, module.name)
+
+        except ValueError as e:
+            raise ValueError(f"Could not validate import: {e}")
     
     # Create a new module to execute the code
     mod = ModuleType("dynamic_module")
