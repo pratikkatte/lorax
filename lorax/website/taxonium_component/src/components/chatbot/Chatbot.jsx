@@ -4,15 +4,13 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faPaperclip } from '@fortawesome/free-solid-svg-icons';
 import "./Chatbot.css"; 
 
-const API_BASE_URL = "http://127.0.0.1:5001";
+const API_BASE_URL = "http://localhost:5001";
 
 
 function Chatbot(props) {
   const [userInput, setUserInput] = useState("");
   const [conversation, setConversation] = useState([]);
   const [selectedFileName, setSelectedFileName] = useState("");
-  const [selectedFile, setSelectedFile] = useState(null);
-
 
 
   const chatContentRef = useRef(null);
@@ -86,7 +84,6 @@ function Chatbot(props) {
   }, [conversation]);
 
   useEffect(() => {
-  
     setConversation([
       ...conversation,
       {
@@ -101,12 +98,12 @@ function Chatbot(props) {
   const handleFileChange = async (event) => {
     const file = event.target.files[0];
     if (file) {
-        setSelectedFile(file);
+
         const formData = new FormData();
         formData.append('file', file);
 
         try {
-            const response = await axios.post(`${API_BASE_URL}/upload`, formData, {
+            const response = await axios.post(`${API_BASE_URL}/api/upload`, formData, {
                 headers: {
                     'Content-Type': 'multipart/form-data'
                 }
@@ -115,7 +112,6 @@ function Chatbot(props) {
         } catch (error) {
             console.error('Error uploading file:', error);
         }
-
         setSelectedFileName(file.name);
         console.log('Selected file:', file.name);
 
@@ -126,6 +122,8 @@ function Chatbot(props) {
     console.log("remove file")
     setSelectedFileName("");
   }
+
+
 
   return (
     <div className="chat-container">

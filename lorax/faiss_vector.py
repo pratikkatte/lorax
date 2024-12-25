@@ -41,14 +41,10 @@ def getRetriever():
     """
     """
     embeddings = OpenAIEmbeddings()
-    print(os.path.abspath("."))
 
     data_file_path = resource_filename(__name__, 'data-new.txt')
-    
-
     tskit_file_path =  resource_filename(__name__, 'tskit-vector')
 
-    print(data_file_path, tskit_file_path)
 
     if os.path.exists(tskit_file_path):
         vector_store = FAISS.load_local(tskit_file_path, embeddings, allow_dangerous_deserialization=True)

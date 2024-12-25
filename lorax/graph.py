@@ -103,8 +103,6 @@ def query_planner(state):
     plan = planner.invoke({"question":state['question']})
     state['Tasks'] = plan
 
-    # print("\n \
-    #       plan:", plan)
     return state
 
 
