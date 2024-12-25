@@ -82,7 +82,7 @@ def generatorTool(question):
         return code_solution, result
     except Exception as e:
         print("Error:", e)
-        return f"Found Error, {e}", None
+        return f"Found Error while processing your query", None
 
 def routerTool(query):
     """
