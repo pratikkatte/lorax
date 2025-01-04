@@ -19,10 +19,21 @@ general_llm = ChatOpenAI(model_name='gpt-4o')
 retriever = getRetriever()
 
 def visualizationTool(question):
-    question = "the genereated code should only return newick string. Here is the question: " + question 
-    _ , newick_string = generatorTool(question)
+    question = """
+    The generated code should return two outputs in the following specific order:
+        1. Only a Newick string representation of the tree.
+        2. A sentence describing the genome position of the tree.
+        Here is the question: """ + question 
 
-    return newick_string
+    
+    _ , newick_string_genome_position = generatorTool(question)
+
+    if type(newick_string_genome_position) == tuple:
+        nwk_string, genomic_position = newick_string_genome_position
+    else:
+        nwk_string, genomic_position = newick_string_genome_position.split("\n")
+
+    return nwk_string, genomic_position
 
 def generatorTool(question):
     try:
@@ -40,7 +51,7 @@ def generatorTool(question):
                     with all required imports and variables defined. Structure your answer with a description of the code solution. \n
                     Then list the imports. And finally list the functioning code block. The function should return a string providing the answer. Here is the user question:""",
                     ), 
-                    ("placeholder", "{messages}"), 
+                    ("placeholder", "{messages}"),
                 ]
             )
 

@@ -56,6 +56,7 @@ class code(BaseModel):
     imports: str = Field(description="Code block import statements")
     code: str = Field(description="Code block should contain function that can be called. It should have input file_path to tree_sequence. It should not include import statements")
 
+
 def validate_import(import_white_list, full_name: str):
     tmp_name = ""
     found_name = False

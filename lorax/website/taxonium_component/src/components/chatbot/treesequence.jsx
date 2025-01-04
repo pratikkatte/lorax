@@ -6,7 +6,6 @@ export const ViewModel = types
   })
   .actions((self) => ({
     updateNewick(newNewickString) {
-      console.log("updateNewick", newNewickString)
       self.newick = newNewickString;
     },
   }));
