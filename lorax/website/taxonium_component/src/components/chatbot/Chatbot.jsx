@@ -4,7 +4,7 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faPaperclip } from '@fortawesome/free-solid-svg-icons';
 import "./Chatbot.css"; 
 
-const API_BASE_URL = "http://localhost:5001";
+const API_BASE_URL = "http://localhost:8000";
 
 
 function Chatbot(props) {

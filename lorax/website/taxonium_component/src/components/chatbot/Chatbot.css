@@ -71,6 +71,7 @@
   color: #ffffff;
   border-radius: 15px 15px 0 15px;
   margin-left: 30%;
+  margin-bottom: 1%;
 }
 
 
@@ -80,6 +81,8 @@
   color: #333333;
   border-radius: 15px 15px 15px 0;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  margin-bottom: 1%;
+  margin-right: 30%;
 }
 
 .chat-input-container {

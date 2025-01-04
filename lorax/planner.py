@@ -41,10 +41,13 @@ def generate_response(*args, tool):
 class Tools(BaseModel):
     @staticmethod
     def visualization(query: str) -> str:
-        nwk_string = visualizationTool(query)
-        # with open('file.txt', 'w') as file:
-        #     file.write(result)
-        result = f'The tree is shown in the visualization board!'
+        nwk_string, genome_position = visualizationTool(query) 
+
+        if str(genome_position):
+            
+            result = f'{genome_position}.\n The tree is shown in the visualization board!'
+        else:
+            result = f'The tree is shown in the visualization board!'
         
         result = generate_response(nwk_string, result, tool='visual')
         

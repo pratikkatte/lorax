@@ -7,11 +7,6 @@ import { onSnapshot } from "mobx-state-tree";
 
 import Taxonium from '../../Taxonium.jsx'
 
-import io from 'socket.io-client';
-
-
-const socket = io('http://localhost:5001'); // Flask WebSocket server URL
-
 
 // const nwk = `((A:0.1,B:0.2):0.3,(C:0.4,D:0.5):0.6);`;
 
@@ -20,6 +15,8 @@ const config = ConfigModel.create({
 });
 
 const Sidebar = observer(({ viewModel }) => {
+
+  
   if (!viewModel.newick) {
 
     return null; // Return null if newick is empty
@@ -32,8 +29,10 @@ const Sidebar = observer(({ viewModel }) => {
     filetype: "nwk",
     mutationtypeEnabled: true,
   };
-  console.log("in sidebar")
-  return <Taxonium sourceData={sourceData} />;
+
+  const timestamp = Date.now();
+
+  return <Taxonium key={timestamp} sourceData={sourceData} />;
 });
 
 
@@ -41,23 +40,31 @@ function Visualization() {
 
     useEffect(() => {
 
+      const ws = new WebSocket("ws://localhost:8000/ws/newick");
       try {
-      socket.on('newick', (newick) => {
-        console.log("reveived new data", newick, newick.data)
 
-        if (newick?.data && newick.data !== config.view.newick) {
-          
-          config.view.updateNewick(newick.data);
+        ws.onmessage = (event) => {
+          const message = JSON.parse(event.data);
 
+          if (message && message !== config.view.newick) {
+            config.view.updateNewick(message.data);
+          };
+
+          // Handle WebSocket errors
+          ws.onerror = (error) => {
+            console.error("WebSocket error:", error);
+          };
+        
         }
-      });
-    } catch (err) {
-      console.error("Failed to parse event data:", err);
-    }
+      } catch (err) {
+        console.error("Failed to parse event data:", err);
+      }
+      
+      // Clean up the WebSocket connection on unmount
       return () => {
-        console.log("Cleaning up WebSocket listeners");
-        socket.off('newick');
+        ws.close();
       };
+
     }, []);
 
     return (

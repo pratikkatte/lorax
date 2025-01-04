@@ -1,128 +1,97 @@
 import os
 import time
 import argparse
-import json
 import logging
-from flask import Flask, request, jsonify, Response, send_from_directory, cli
-from flask_cors import CORS
-from flask_socketio import SocketIO, emit
+import asyncio
+from fastapi import FastAPI, Request, UploadFile, File, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 from threading import Thread
-from werkzeug.utils import secure_filename
 from lorax.langgraph_tskit import api_interface
+from werkzeug.utils import secure_filename
+from fastapi.staticfiles import StaticFiles
 
-# Disable flask logging
-log = logging.getLogger('werkzeug')
-
-log.setLevel(logging.ERROR)
-log.disabled = True
-cli.show_server_banner = lambda *_: None
-
-# Allowed Extensions
-ALLOWED_EXTENSIONS = {'trees'}
-
-# Production/development mode
-DEBUG = True
-
-if not DEBUG:
-    from pkg_resources import resource_filename
-
-    frontend_path = resource_filename(__name__, 'website/taxonium_component/dist/')
-    app = Flask(__name__, static_folder=frontend_path)
-    CORS(app)
-
-    # Serve static files (e.g., JS, CSS)
-    @app.route('/assets/<path:filename>')
-    def static_files(filename):
-        return send_from_directory(os.path.join(app.static_folder, 'assets'), filename)
-
-    # Serve the React app
-    @app.route('/', defaults={'path': ''})
-    @app.route('/<path:path>')
-    def serve(path):
-        if path != "" and os.path.exists(os.path.join(app.static_folder, path)):
-            return send_from_directory(app.static_folder, path)
-        return send_from_directory(app.static_folder, 'index.html')
-
-else:
-    app = Flask(__name__)
-    CORS(app, resources={r"/*": {"origins": "*"}})
-
-    @app.route('/', methods=['GET'])
-    def status():
-        print("Status endpoint accessed")
-        return "Success 200!"
-
-UPLOAD_FOLDER = os.path.abspath(os.path.dirname(__file__)) + '/data'
-app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
-
-app.config['ALLOWED_EXTENSIONS'] = {'trees'}
 
 newick_data = "initial data"
 
-# WebSocket
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
+# Logger configuration
+log = logging.getLogger("uvicorn")
+log.setLevel(logging.ERROR)
+
+# Initialize FastAPI application
+app = FastAPI()
+
+# CORS setup
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Path to React build directory
+build_path = os.path.join(os.path.dirname(__file__), "website/taxonium_component", "dist")
+
+# Serve static files (JS, CSS, images, etc.)
+app.mount("/assets", StaticFiles(directory=os.path.join(build_path, "assets")), name="assets")
+
+# Allowed Extensions
+ALLOWED_EXTENSIONS = {"trees"}
+UPLOAD_FOLDER = os.path.abspath(os.path.dirname(__file__)) + "/data"
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # Function to check allowed file extensions
 def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
+    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
-@socketio.on("newick")
-def send_newick():
-    global newick_data
-    while True:
-        time.sleep(5)  # Wait for 5 seconds before sending an update
-        socketio.emit('newick', {'data': newick_data})
+# # Serve the React app's index.html for the root path
+@app.get("/")
+def serve_react_app():
+    return FileResponse(os.path.join(build_path, "index.html"))
 
-def allowedFile(filename):
-    """Check if the file is of an allowed type."""
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-
-@app.route('/api/upload', methods=['POST'])
-def upload():
+@app.post("/api/upload")
+async def upload(files: list[UploadFile]):
     """Endpoint to handle file uploads."""
-    if request.method == 'POST':
-        
-        files = request.files.getlist('file')
-        for f in files:
-            filename = secure_filename(f.filename)
-            
-            if allowedFile(filename):
-                file_save_path = os.path.join(UPLOAD_FOLDER, filename)
-                f.save(file_save_path)
-                
-            print("file saved")
-            
-        return jsonify({"status": "success"})
-    
-    return jsonify({"status": "failed"})
+    for file in files:
+        filename = secure_filename(file.filename)
+        if not allowed_file(filename):
+            raise HTTPException(status_code=400, detail="Unsupported file type")
+        file_save_path = os.path.join(UPLOAD_FOLDER, filename)
+        with open(file_save_path, "wb") as f:
+            f.write(await file.read())
+    return {"status": "success"}
 
-# Define the /api/chat endpoint
-@app.route('/api/chat', methods=['POST'])
-def chat():
+# # Define the /api/chat endpoint
+@app.post("/api/chat")
+async def chat(request: Request):
+    """Handle chat messages."""
     global newick_data
-    data = request.get_json()  # Get the JSON data from the request
-    message = data.get('message')
+    data = await request.json()
+    message = data.get("message")
     llm_output, llm_visual = api_interface(message)
-
     newick_data = llm_visual
+    return {"response": llm_output}
 
-    # Process the incoming message here (for now, we simply return it)
-    print(f"Response message: {llm_output}")
+@app.websocket("/ws/newick")
+async def websocket_endpoint(websocket: WebSocket):
+    """WebSocket endpoint for sending newick data."""
+    await websocket.accept()
+    try:
+        while True:
+            await websocket.send_json({"data": newick_data})
+            await asyncio.sleep(5)
+    except WebSocketDisconnect:
+        print("disconnected")
+        log.info("WebSocket disconnected")
 
-    # Respond with a simple JSON response
-    return jsonify({"response": f"{llm_output}"})
-
-# Start the background thread that sends data updates
-def start_background_task():
-    thread = Thread(target=send_newick)
-    thread.daemon = True
-    thread.start()
-
+# Command-line argument parser
 def args_parser():
     input_vals = {
-        'model': 'openai',
-        'api': ''
+        "model": "openai",
+        "api": ""
     }
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--openai-api-key", help="OpenAI API Key")
     args = parser.parse_args()
@@ -133,22 +102,21 @@ def args_parser():
         print("Exception: Provide openai-api-key")
         return None
     else:
-        input_vals['api'] = api_key
-
+        input_vals["api"] = api_key
     return input_vals
 
+# Main entry point
 def main():
-    """
-    """
     input_vals = args_parser()
     if not input_vals:
         return
 
     print("\nstart local server....")
-    print()
-    print("Access the interface at http://localhost:5001/")
-    print()
+    print("Access the interface at http://localhost:8000/")
     print("Press CTRL+C to quit")
 
-    start_background_task()
-    socketio.run(app, port=5001, debug=DEBUG, use_reloader=False, log_output=False)
+    import uvicorn
+    uvicorn.run("lorax.interface:app", host="0.0.0.0", port=8000, log_level="info", reload=True)
+
+if __name__ == "__main__":
+    main()

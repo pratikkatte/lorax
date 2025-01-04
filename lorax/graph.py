@@ -23,7 +23,6 @@ max_iterations = 3
 def generate_answer(state):
     """
     """
-
     responses = ""
     visual = None
 
@@ -34,12 +33,9 @@ def generate_answer(state):
 
         if r.response['visual'] is not None:
             visual = r.response['visual'] 
-
         # responses = "\n".join([r.response['text'] for r in state['Tasks']])
     state["response"] = responses
-    
     state['visual'] = visual
-
     state['messages'] = [("assistant", responses)]
 
     return state
@@ -102,7 +98,6 @@ def query_planner(state):
 
     plan = planner.invoke({"question":state['question']})
     state['Tasks'] = plan
-
     return state
 
 
