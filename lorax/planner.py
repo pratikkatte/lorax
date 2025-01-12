@@ -28,11 +28,20 @@ def generate_response(*args, tool):
 
     if tool == 'general':
         response = args
-        print('result', response)
+
         return {
             'text': response,
             'visual': None
-        }    
+        }   
+    
+    if tool == 'error':
+        response = args
+
+        return {
+            'text': response,
+            'visual': None
+        }
+     
     return {
         'text': None,
         'visual':None
@@ -40,31 +49,40 @@ def generate_response(*args, tool):
 
 class Tools(BaseModel):
     @staticmethod
-    def visualization(query: str) -> str:
-        nwk_string, genome_position = visualizationTool(query) 
+    def visualization(query: str, attributes=None) -> str:
 
-        if str(genome_position):
+        if attributes['file_path']:
             
-            result = f'{genome_position}.\n The tree is shown in the visualization board!'
-        else:
-            result = f'The tree is shown in the visualization board!'
+            nwk_string, genome_position = visualizationTool(query, attributes) 
+
+            if str(genome_position):
+                
+                result = f'{genome_position}.\n The tree is shown in the visualization board!'
+            else:
+                result = f'The tree is shown in the visualization board!'
         
-        result = generate_response(nwk_string, result, tool='visual')
+            result = generate_response(nwk_string, result, tool='visual')
+        else:
+            result="File Not Provided!"
+            return {
+                'text': result,
+                'visual': None
+                }
         
         return result
  
     @staticmethod
-    def code_generation(query: str) -> str:
-        code_solution, result = generatorTool(query)
+    def code_generation(query: str, attributes=None) -> str:
+        code_solution, result = generatorTool(query, attributes['file_path'])
         # return response
         result = generate_response(code_solution, result, tool='code')
 
         return result
     
     @staticmethod
-    def general_answer(query:str) -> str:
+    def general_answer(query:str, attributes=None) -> str:
         # response = TreeSequenceTool.generalInfoTool(query)
-        response = generalInfoTool(query)
+        response = generalInfoTool(query, attributes)
 
         return {
             'text': response,
@@ -72,7 +90,7 @@ class Tools(BaseModel):
         }
     
     @staticmethod
-    def fetch_file(query: str) -> str:
+    def fetch_file(query: str, attributes=None) -> str:
         return f"fetching file"
     
 class ToolType(str, enum.Enum):
@@ -95,17 +113,17 @@ class ComputeQuery(BaseModel):
     done: bool = False
 
 
-    def execute(self):
+    def execute(self, attributes):
         """
         """
         if self.tool == ToolType.VISUALIZATION:
-            self.response = Tools.visualization(self.query)
+            self.response = Tools.visualization(self.query, attributes)
         elif self.tool == ToolType.CODE_GENERATE:
-            self.response = Tools.code_generation(self.query)
+            self.response = Tools.code_generation(self.query, attributes)
         elif self.tool == ToolType.GENERAL_ANSWER:
-            self.response = Tools.general_answer(self.query)
+            self.response = Tools.general_answer(self.query, attributes)
         else:
-            self.response = Tools.fetch_file(self.query)
+            self.response = Tools.fetch_file(self.query, attributes)
 
         if self.response:
             self.done = True
@@ -119,7 +137,7 @@ class MergedResponses(BaseModel):
     query: str = '...'
     tool: object
 
-    def execute(self):
+    def execute(self, attributes):
         """
         """
         prompt = ""
@@ -129,7 +147,7 @@ class MergedResponses(BaseModel):
                     These are the list of questions and its' responses. {prompt} Based on this, answer this {self.query}
                                          """
         merger_query = ComputeQuery(query=self.query, tool=self.tool)
-        merger_query.execute()
+        merger_query.execute(attributes)
 
         return merger_query
 
@@ -166,7 +184,7 @@ class Query(BaseModel):
         description="decide tool that can be used to resolve."
     )
 
-    def execute(self, dependency_func, completed, result, dependency_call):
+    def execute(self, dependency_func, completed, result, dependency_call, attributes):
         """
         """ 
         if self.id in completed:
@@ -182,7 +200,7 @@ class Query(BaseModel):
 
             # ComputeQuery(self.query)
             compute_query = ComputeQuery(query=self.question, tool=self.tool_type)
-            compute_query.execute()
+            compute_query.execute(attributes)
 
             result[self.id] = compute_query
             return result[self.id]
@@ -192,12 +210,12 @@ class Query(BaseModel):
             #     *[q.execute(dependency_func=dependency_func,completed=completed, result=result) for q in sub_queries]
             #     )
 
-            computed_queries = [q.execute(dependency_func, completed=completed, result=result, dependency_call=True) for q in sub_queries]
+            computed_queries = [q.execute(dependency_func, completed=completed, result=result, dependency_call=True, attributes=attributes) for q in sub_queries]
             completed.add(self.id)
 
             merge_responses = MergedResponses(query=self.question, dependent_queries=computed_queries, tool=self.tool_type)
             
-            result[self.id] = merge_responses.execute()
+            result[self.id] = merge_responses.execute(attributes)
             return result[self.id]
         
 
@@ -216,7 +234,7 @@ class QueryPlan(BaseModel):
         """
         return [q for q in self.query_graph if q.id in idz]
 
-    def execute(self):
+    def execute(self, attributes):
         # this should be done with a topological sort, but this is easier to understand
         # start = 0
         completed = set()
@@ -227,7 +245,8 @@ class QueryPlan(BaseModel):
                 dependency_func=self.dependencies,
                 completed=completed,
                 result=result,
-                dependency_call=False
+                dependency_call=False,
+                attributes=attributes
             )
             if res is not None:
                 response.append(res)

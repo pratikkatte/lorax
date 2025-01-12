@@ -1,9 +1,7 @@
-recursive-exclude lorax/website/taxonium_component/ *
-recursive-exclude lorax/website/taxonium_data_handling/ *
+recursive-include lorax/website/taxonium_component/dist *
+recursive-include lorax/tskit-vector *
+recursive-include lorax/data *
 
-recursive-include lorax/website/taxonium_component/dist/ *
-recursive-include lorax/tskit-vector/ *
-recursive-include lorax/data/ *
-recursive-include lorax/data-new.txt
+include lorax/data-new.txt
 
-
+recursive-exclude lorax/website/taxonium_data_handling *
