@@ -45,7 +45,7 @@ def executer(state):
     """
     tasks = state['Tasks']
 
-    response = tasks.execute()
+    response = tasks.execute(state['attributes'])
     # print([r.response for r in response])
 
     state['Tasks'] = response

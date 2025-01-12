@@ -18,15 +18,14 @@ general_llm = ChatOpenAI(model_name='gpt-4o')
 
 retriever = getRetriever()
 
-def visualizationTool(question):
+def visualizationTool(question, attributes=None):
     question = """
     The generated code should return two outputs in the following specific order:
         1. Only a Newick string representation of the tree.
         2. A sentence describing the genome position of the tree.
         Here is the question: """ + question 
 
-    
-    _ , newick_string_genome_position = generatorTool(question)
+    _ , newick_string_genome_position = generatorTool(question, attributes['file_path'])
 
     if type(newick_string_genome_position) == tuple:
         nwk_string, genomic_position = newick_string_genome_position
@@ -35,11 +34,11 @@ def visualizationTool(question):
 
     return nwk_string, genomic_position
 
-def generatorTool(question):
+def generatorTool(question, input_file_path=None):
     try:
 
         # understnad, how this format of prompt engineering helps the LLM to get good results. 
-        input_file_path =  resource_filename(__name__, './data/sample.trees')
+        # input_file_path =  resource_filename(__name__, './data/sample.trees')
 
         code_gen_prompt = ChatPromptTemplate.from_messages(
             [
@@ -54,8 +53,6 @@ def generatorTool(question):
                     ("placeholder", "{messages}"),
                 ]
             )
-
-
         lm = ChatOpenAI(
             model="gpt-4o", temperature=0)
         
@@ -88,7 +85,11 @@ def generatorTool(question):
         code_solution = code_gen_chain.invoke(
             {"context": context, "messages": [question]}
         )
-        result = execute_generated_code(code_solution, input_file_path)
+
+        if input_file_path:
+            result = execute_generated_code(code_solution, input_file_path)
+        else:
+            result = "Couldn't execute the generated code. File Not Provided!"
 
         return code_solution, result
     except Exception as e:
@@ -106,13 +107,11 @@ def routerTool(query):
     prompt = PromptTemplate(
     input_variables=['quert'], template=prompt_template
     )
-    
     chain = prompt | general_llm
-
     answer = chain.invoke(query)
     return answer
 
-def generalInfoTool(question):
+def generalInfoTool(question, attributes=None):
     """
     """
     prompt_template = """
@@ -121,21 +120,17 @@ def generalInfoTool(question):
     Respond the users in brief based on this query or message: {question}
     """
     try:
-
         prompt = PromptTemplate(
         input_variables=['question'], template=prompt_template
         )
-
         lm = ChatOpenAI(
         model="gpt-4o", temperature=0)
         chain = prompt | lm
         query = {"question":question}
-        answer = chain.invoke(query)
-        
+        answer = chain.invoke(query)        
         return answer.content
-    
+
     except Exception as e:
-        print("Error:", e)
         return f"Found Error, {e}"
         
 
