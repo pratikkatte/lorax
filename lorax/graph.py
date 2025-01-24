@@ -1,4 +1,3 @@
-
 import os
 from typing import Annotated, List
 from langgraph.graph import END, StateGraph, START
@@ -25,15 +24,16 @@ def generate_answer(state):
     """
     responses = ""
     visual = None
+    
+    # print("state", state["Tasks"])
 
     for r in state["Tasks"]:
-
         if r.response['text'] is not None:
             responses +=  r.response['text'] + "\n" 
 
         if r.response['visual'] is not None:
             visual = r.response['visual'] 
-        # responses = "\n".join([r.response['text'] for r in state['Tasks']])
+        
     state["response"] = responses
     state['visual'] = visual
     state['messages'] = [("assistant", responses)]
@@ -72,22 +72,37 @@ def query_planner(state):
             (
                 "system",
                 """
-                You are a world class query planning algorithm capable of breaking apart questions into its depenencies queries such that the answers can be used to inform the parent question. \
-                    Do not answer the questions, simply provide correct compute graph with good specific questions to ask and relevant dependencies. \
-                    Before you call the function, think step by step to get a better understanding the problem. \
-                    And also consider the following descriptions of tool types: 
-                    - VISUALIZATION: if the query asks to display any part of the treesequences.
-                    - CODE_GENERATE: If the query requires to use tskit to generate code in python in order to answer.
-                    - GENERAL_ANSWER: If the query requires a simple text-based answer inorder to answer.
-                    - FETCH FILE: If the query requires to fetch tree-sequence file from the user. 
+                You are an advanced query-planning algorithm. Your task is to decompose complex questions into smaller, dependent subqueries that collectively lead to a complete answer. Follow these guidelines:
 
-                    Classify the tool type as one of: VISUALIZATION, CODE_GENERATE, GENERAL_ANSWER, FETCH_FILE
+                Purpose:
+
+                Do not directly answer the question.
+                Instead, create a compute graph that specifies:
+                Relevant subqueries.
+                How their answers feed into the parent question.
+                Reasoning:
+
+                Think step-by-step to analyze and understand the problem fully before constructing the query plan.
+                Tool Types:
+                Classify the tools required for each subquery. Use one of the following:
+
+                VISUALIZATION: For queries requiring visual representation of tree sequences.
+                CODE_GENERATE: For queries requiring Python code generation using the tskit library.
+                GENERAL_ANSWER: For queries requiring a text-based answer.
+                FETCH_FILE: For queries requiring the user to provide a tree sequence file.
+                Query Types:
+
+                SINGLE_QUESTION: When the query has no dependencies on other subqueries.
+                MULTI_DEPENDENCY: When the query relies on answers from dependent subqueries.
                 """,
             ),
             (
                 "user",
-                "Consider: {question}\nGenerate the correct query plan. \
-                    If the query has NO dependency of other subqueries, then it is SINGLE_QUESTION query_type, else it is MULTI_DEPENDENCY.",
+                """
+                Given the question: {question}  
+                Generate the correct query plan based on its complexity.
+                Specify if the query is SINGLE_QUESTION or MULTI_DEPENDENCY.
+                """
             ),
         ]
     )
@@ -99,7 +114,6 @@ def query_planner(state):
     plan = planner.invoke({"question":state['question']})
     state['Tasks'] = plan
     return state
-
 
 def generate(state: GraphState):
     """
@@ -243,43 +257,18 @@ def create_graph():
     workflow = StateGraph(GraphState)
 
     # Define the nodes
-
-    workflow.add_node("planner", query_planner)
-    workflow.add_node("executer", executer)
-    workflow.add_node("generate", generate_answer)
-
-    # workflow.add_node("router", router)
-    # workflow.add_node("generate", generate) # generation solution
-    # workflow.add_node("execute_code", execute_code)  # execute code
-    # workflow.add_node("general_info", general_info)
+    try:
+        workflow.add_node("planner", query_planner)
+        workflow.add_node("executer", executer)
+        workflow.add_node("generate", generate_answer)
+    except Exception as e: 
+        print(f"Failed to add node 'planner': {e}")
 
     # Build graph
-
     workflow.add_edge(START, 'planner')
     workflow.add_edge('planner', 'executer')
     workflow.add_edge("executer", 'generate')
     workflow.add_edge("generate", END)
-
-    # workflow.add_edge(START, "router")
-    # workflow.add_edge("generate", "execute_code")    
-    # workflow.add_edge("general_info", END)
-    
-    # workflow.add_conditional_edges(
-    #     "execute_code", 
-    #     decide_to_finish,
-    #     {
-    #         "end": END,
-    #         "generate": "generate",
-    #     },
-    # )
-    # workflow.add_conditional_edges(
-    #     'router',
-    #     router_call,
-    #     {
-    #         'generate':"generate",
-    #         "general_info":"general_info"
-    #     }
-    # )
 
     memory = MemorySaver()
     app = workflow.compile(checkpointer=memory)
