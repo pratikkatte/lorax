@@ -7,8 +7,6 @@ from langchain_core.prompts import PromptTemplate
 from dotenv import load_dotenv
 from pkg_resources import resource_filename
 
-
-
 from lorax.utils import code, check_claude_output, insert_errors, parse_output, execute_generated_code
 from lorax.faiss_vector import getRetriever
 
@@ -93,7 +91,7 @@ def generatorTool(question, input_file_path=None):
 
         return code_solution, result
     except Exception as e:
-        print("Error:", e)
+        print("Tools Error:", e)
         return f"Found Error while processing your query", None
 
 def routerTool(query):
