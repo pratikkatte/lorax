@@ -4,9 +4,9 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 
 from langchain_core.prompts import PromptTemplate
+from langchain.chains import ConversationChain
 from dotenv import load_dotenv
 from pkg_resources import resource_filename
-
 
 
 from lorax.utils import code, check_claude_output, insert_errors, parse_output, execute_generated_code
@@ -96,7 +96,7 @@ def generatorTool(question, input_file_path=None):
         print("Error:", e)
         return f"Found Error while processing your query", None
 
-def routerTool(query):
+def routerTool(query, attributes=None):
     """
     """
     prompt_template = """
@@ -105,10 +105,17 @@ def routerTool(query):
     Respond appropriately based on the user's query: {query}
     """
     prompt = PromptTemplate(
-    input_variables=['quert'], template=prompt_template
+        input_variables=['quert'], template=prompt_template
     )
     chain = prompt | general_llm
-    answer = chain.invoke(query)
+
+    router_conversation = ConversationChain(
+        llm=chain, 
+        memory=attributes["memory"]
+    )
+    
+    answer = router_conversation.run(query)
+
     return answer
 
 def generalInfoTool(question, attributes=None):
@@ -121,14 +128,18 @@ def generalInfoTool(question, attributes=None):
     """
     try:
         prompt = PromptTemplate(
-        input_variables=['question'], template=prompt_template
+            input_variables=['question'], template=prompt_template
         )
-        lm = ChatOpenAI(
-        model="gpt-4o", temperature=0)
+        lm = ChatOpenAI(model="gpt-4o", temperature=0)
         chain = prompt | lm
-        query = {"question":question}
-        answer = chain.invoke(query)        
-        return answer.content
+        
+        general_info_conversation = ConversationChain(
+            llm=chain, 
+            memory=attributes["memory"]
+        )
+     
+        answer = general_info_conversation.run(question)   
+        return answer
 
     except Exception as e:
         return f"Found Error, {e}"
