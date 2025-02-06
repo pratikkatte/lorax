@@ -3,15 +3,19 @@ import sys
 from lorax.graph import create_graph
 from dotenv import load_dotenv
 from pkg_resources import resource_filename
+from langchain.chains.conversation.memory import ConversationBufferMemory
 
 load_dotenv()
 
+memory = ConversationBufferMemory(return_messages=True)
 
 
 question = "Calculate the diversity of the given treesequence."
-app = create_graph()
+workflow = create_graph()
 
 def chat_interface():
+    app = create_graph()
+    
     data_file_path =  resource_filename(__name__, 'data')
 
     assert os.path.exists(data_file_path), "Ensure that a treesequence file is stored in the src/data folder. A link to an example treesequence file is in src/README.md"
@@ -25,11 +29,10 @@ def chat_interface():
         if user_input.lower() == 'exit':
             print("Goodbye!")
             sys.exit()
-        
-        config = {"configurable": {"thread_id": "5"}}
-        # message = {"messages": [("user", user_input)], "iterations": 0, "error": "", "input_files": "./data/sample.trees", "next": None, "generation": None, "result": None}
-        message = {'question':user_input, "attributes":{"file_path":"data/sample.trees"}}
-        solution = app.invoke(message, config)
+
+        app = workflow.compile()
+        message = {'question':user_input, "attributes":{"file_path":"data/sample.trees", "memory": memory}}
+        solution = app.invoke(message)
         
         
         llm_output, _ = parseSolution(solution)
@@ -43,12 +46,9 @@ def parseSolution(input_solution):
 
 def api_interface(user_input, file_path):
 
-    config = {"configurable": {"thread_id": "7"}}
-    # message = {"messages": [("user", user_input)], "iterations": 0, "error": "", "input_files": "./data/sample.trees", "next": None, "generation": None, "result": None}
-    message = {'question':user_input, "attributes":{"file_path":file_path}}
-
-    print("message", message)
-    solution = app.invoke(message, config)
+    app = workflow.compile()
+    message = {'question':user_input, "attributes":{"file_path":file_path, "memory": memory}}
+    solution = app.invoke(message)
 
     llm_output = parseSolution(solution)
 

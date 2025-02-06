@@ -6,7 +6,6 @@ from langgraph.graph.message import add_messages
 from typing_extensions import TypedDict
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
-from langgraph.checkpoint.memory import MemorySaver
 
 
 from lorax.tools import routerTool, generalInfoTool, generatorTool
@@ -15,7 +14,6 @@ from lorax.planner import QueryPlan
 
 import tracemalloc
 tracemalloc.start()
-
 
 # Max tries
 max_iterations = 3
@@ -37,6 +35,7 @@ def generate_answer(state):
     state["response"] = responses
     state['visual'] = visual
     state['messages'] = [("assistant", responses)]
+    state['attributes']["memory"].chat_memory.add_ai_message(responses)
 
     return state
 
@@ -66,38 +65,52 @@ def query_planner(state):
     """
     """
     state['messages'] = [("user", state['question'])]
- 
-    planner_prompt = ChatPromptTemplate.from_messages(
-        [
-            (
-                "system",
-                """
-                You are a world class query planning algorithm capable of breaking apart questions into its depenencies queries such that the answers can be used to inform the parent question. \
-                    Do not answer the questions, simply provide correct compute graph with good specific questions to ask and relevant dependencies. \
-                    Before you call the function, think step by step to get a better understanding the problem. \
-                    And also consider the following descriptions of tool types: 
-                    - VISUALIZATION: if the query asks to display any part of the treesequences.
-                    - CODE_GENERATE: If the query requires to use tskit to generate code in python in order to answer.
-                    - GENERAL_ANSWER: If the query requires a simple text-based answer inorder to answer.
-                    - FETCH FILE: If the query requires to fetch tree-sequence file from the user. 
 
-                    Classify the tool type as one of: VISUALIZATION, CODE_GENERATE, GENERAL_ANSWER, FETCH_FILE
-                """,
-            ),
-            (
-                "user",
-                "Consider: {question}\nGenerate the correct query plan. \
-                    If the query has NO dependency of other subqueries, then it is SINGLE_QUESTION query_type, else it is MULTI_DEPENDENCY.",
-            ),
-        ]
-    )
+    # Add the new question to the chat history
+    state['attributes']["memory"].chat_memory.add_user_message(state['question'])
+    history = state['attributes']["memory"]
+
+
+    prompt_messages = [
+    (
+        "system",
+        (
+            "You are a world class query planning algorithm capable of breaking apart questions into its dependency queries "
+            "such that the answers can be used to inform the parent question. Do not answer the questions, simply provide a correct "
+            "compute graph with specific subquestions and their dependencies. Before calling any function, think step by step to understand "
+            "the problem. Also consider the following tool types: \n"
+            "- VISUALIZATION: if the query asks to display any part of the treesequences.\n"
+            "- CODE_GENERATE: if the query requires using tskit to generate code in Python in order to answer.\n"
+            "- GENERAL_ANSWER: if the query requires a simple text-based answer.\n"
+            "- FETCH_FILE: if the query requires fetching a tree-sequence file from the user.\n\n"
+            "Classify the tool type as one of: VISUALIZATION, CODE_GENERATE, GENERAL_ANSWER, FETCH_FILE."
+        ),
+    ),
+    (
+        "user",
+        (
+            "Here is the conversation so far:\n{history}\n\n"
+            "Now, based on the above conversation and considering the latest question: {question}" 
+            "generate the correct query plan. If the query has NO dependencies on other subqueries, then it is a SINGLE_QUESTION query_type; "
+            "otherwise, it is MULTI_DEPENDENCY."
+        ),
+    ),
+]
+
+
+
+    # Create a ChatPromptTemplate using these messages.
+    planner_prompt = ChatPromptTemplate.from_messages(prompt_messages)
 
     planner = planner_prompt | ChatOpenAI(
         model="gpt-4o", temperature=0
     ).with_structured_output(QueryPlan)
 
-    plan = planner.invoke({"question":state['question']})
+    plan = planner.invoke({"question":state['question'], "history": history})
     state['Tasks'] = plan
+
+    state['attributes']["memory"].chat_memory.add_ai_message(str(plan))
+
     return state
 
 
@@ -130,6 +143,8 @@ def generate(state: GraphState):
         )
     ]
     iterations = iterations + 1
+
+    state['attributes']["memory"].chat_memory.add_ai_message(messages[1])
 
     return {"generation": code_solution, 
             "messages": messages, 
@@ -169,6 +184,8 @@ def execute_code(state: GraphState):
 
     # Append result to messages (context)
     messages[-1].content += f"\nCode executed successfully. {result}"
+
+    state['attributes']["memory"].chat_memory.add_ai_message(f"Code executed successfully. {result}")
 
     return {
         "generation": code_solution,
@@ -232,6 +249,10 @@ def general_info(state: GraphState):
             "assistant",
             f"{answer.content}",
         )]
+    
+    state['attributes']["memory"].chat_memory.add_ai_message(answer.content)
+    
+
     return {
         "result": answer.content,
         "error":None,
@@ -243,44 +264,14 @@ def create_graph():
     workflow = StateGraph(GraphState)
 
     # Define the nodes
-
     workflow.add_node("planner", query_planner)
     workflow.add_node("executer", executer)
     workflow.add_node("generate", generate_answer)
 
-    # workflow.add_node("router", router)
-    # workflow.add_node("generate", generate) # generation solution
-    # workflow.add_node("execute_code", execute_code)  # execute code
-    # workflow.add_node("general_info", general_info)
-
     # Build graph
-
     workflow.add_edge(START, 'planner')
     workflow.add_edge('planner', 'executer')
     workflow.add_edge("executer", 'generate')
     workflow.add_edge("generate", END)
-
-    # workflow.add_edge(START, "router")
-    # workflow.add_edge("generate", "execute_code")    
-    # workflow.add_edge("general_info", END)
-    
-    # workflow.add_conditional_edges(
-    #     "execute_code", 
-    #     decide_to_finish,
-    #     {
-    #         "end": END,
-    #         "generate": "generate",
-    #     },
-    # )
-    # workflow.add_conditional_edges(
-    #     'router',
-    #     router_call,
-    #     {
-    #         'generate':"generate",
-    #         "general_info":"general_info"
-    #     }
-    # )
-
-    memory = MemorySaver()
-    app = workflow.compile(checkpointer=memory)
-    return app
+   
+    return workflow
