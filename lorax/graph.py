@@ -1,4 +1,3 @@
-
 import os
 from typing import Annotated, List
 from langgraph.graph import END, StateGraph, START
@@ -23,15 +22,16 @@ def generate_answer(state):
     """
     responses = ""
     visual = None
+    
+    # print("state", state["Tasks"])
 
     for r in state["Tasks"]:
-
         if r.response['text'] is not None:
             responses +=  r.response['text'] + "\n" 
 
         if r.response['visual'] is not None:
             visual = r.response['visual'] 
-        # responses = "\n".join([r.response['text'] for r in state['Tasks']])
+        
     state["response"] = responses
     state['visual'] = visual
     state['messages'] = [("assistant", responses)]
@@ -112,7 +112,6 @@ def query_planner(state):
     state['attributes']["memory"].chat_memory.add_ai_message(str(plan))
 
     return state
-
 
 def generate(state: GraphState):
     """
@@ -264,9 +263,12 @@ def create_graph():
     workflow = StateGraph(GraphState)
 
     # Define the nodes
-    workflow.add_node("planner", query_planner)
-    workflow.add_node("executer", executer)
-    workflow.add_node("generate", generate_answer)
+    try:
+        workflow.add_node("planner", query_planner)
+        workflow.add_node("executer", executer)
+        workflow.add_node("generate", generate_answer)
+    except Exception as e: 
+        print(f"Failed to add node 'planner': {e}")
 
     # Build graph
     workflow.add_edge(START, 'planner')

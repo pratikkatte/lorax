@@ -9,7 +9,6 @@ def generate_response(*args, tool):
     """
     if tool=='code':
         code_solution, result = args
-     
         response = "\n".join([
             code_solution.prefix,
             code_solution.imports,
@@ -76,7 +75,9 @@ class Tools(BaseModel):
  
     @staticmethod
     def code_generation(query: str, attributes=None) -> str:
+
         code_solution, result = generatorTool(query, input_file_path=attributes['file_path'])
+
         # return response
         result = generate_response(code_solution, result, tool='code')
 
@@ -97,7 +98,10 @@ class Tools(BaseModel):
     
     @staticmethod
     def fetch_file(query: str, attributes=None) -> str:
-        return f"fetching file"
+        return {
+            'text': f"",
+            'visual': None
+        }
     
 class ToolType(str, enum.Enum):
     """
@@ -117,7 +121,6 @@ class ComputeQuery(BaseModel):
     response: dict = {}
     tool : object
     done: bool = False
-
 
     def execute(self, attributes):
         """
@@ -201,7 +204,6 @@ class Query(BaseModel):
             
         
         if self.query_type == QueryType.SINGLE_QUESTION:
-            # print("question", self.query_type, self.question, self.id)
             completed.add(self.id)
 
             # ComputeQuery(self.query)
