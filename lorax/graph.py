@@ -5,7 +5,6 @@ from langgraph.graph.message import add_messages
 from typing_extensions import TypedDict
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
-from langgraph.checkpoint.memory import MemorySaver
 
 
 from lorax.tools import routerTool, generalInfoTool, generatorTool
@@ -14,7 +13,6 @@ from lorax.planner import QueryPlan
 
 import tracemalloc
 tracemalloc.start()
-
 
 # Max tries
 max_iterations = 3
@@ -37,6 +35,7 @@ def generate_answer(state):
     state["response"] = responses
     state['visual'] = visual
     state['messages'] = [("assistant", responses)]
+    state['attributes']["memory"].chat_memory.add_ai_message(responses)
 
     return state
 
@@ -66,53 +65,52 @@ def query_planner(state):
     """
     """
     state['messages'] = [("user", state['question'])]
- 
-    planner_prompt = ChatPromptTemplate.from_messages(
-        [
-            (
-                "system",
-                """
-                You are an advanced query-planning algorithm. Your task is to decompose complex questions into smaller, dependent subqueries that collectively lead to a complete answer. Follow these guidelines:
 
-                Purpose:
+    # Add the new question to the chat history
+    state['attributes']["memory"].chat_memory.add_user_message(state['question'])
+    history = state['attributes']["memory"]
 
-                Do not directly answer the question.
-                Instead, create a compute graph that specifies:
-                Relevant subqueries.
-                How their answers feed into the parent question.
-                Reasoning:
 
-                Think step-by-step to analyze and understand the problem fully before constructing the query plan.
-                Tool Types:
-                Classify the tools required for each subquery. Use one of the following:
+    prompt_messages = [
+    (
+        "system",
+        (
+            "You are a world class query planning algorithm capable of breaking apart questions into its dependency queries "
+            "such that the answers can be used to inform the parent question. Do not answer the questions, simply provide a correct "
+            "compute graph with specific subquestions and their dependencies. Before calling any function, think step by step to understand "
+            "the problem. Also consider the following tool types: \n"
+            "- VISUALIZATION: if the query asks to display any part of the treesequences.\n"
+            "- CODE_GENERATE: if the query requires using tskit to generate code in Python in order to answer.\n"
+            "- GENERAL_ANSWER: if the query requires a simple text-based answer.\n"
+            "- FETCH_FILE: if the query requires fetching a tree-sequence file from the user.\n\n"
+            "Classify the tool type as one of: VISUALIZATION, CODE_GENERATE, GENERAL_ANSWER, FETCH_FILE."
+        ),
+    ),
+    (
+        "user",
+        (
+            "Here is the conversation so far:\n{history}\n\n"
+            "Now, based on the above conversation and considering the latest question: {question}" 
+            "generate the correct query plan. If the query has NO dependencies on other subqueries, then it is a SINGLE_QUESTION query_type; "
+            "otherwise, it is MULTI_DEPENDENCY."
+        ),
+    ),
+]
 
-                VISUALIZATION: For queries requiring visual representation of tree sequences.
-                CODE_GENERATE: For queries requiring Python code generation using the tskit library.
-                GENERAL_ANSWER: For queries requiring a text-based answer.
-                FETCH_FILE: For queries requiring the user to provide a tree sequence file.
-                Query Types:
 
-                SINGLE_QUESTION: When the query has no dependencies on other subqueries.
-                MULTI_DEPENDENCY: When the query relies on answers from dependent subqueries.
-                """,
-            ),
-            (
-                "user",
-                """
-                Given the question: {question}  
-                Generate the correct query plan based on its complexity.
-                Specify if the query is SINGLE_QUESTION or MULTI_DEPENDENCY.
-                """
-            ),
-        ]
-    )
+
+    # Create a ChatPromptTemplate using these messages.
+    planner_prompt = ChatPromptTemplate.from_messages(prompt_messages)
 
     planner = planner_prompt | ChatOpenAI(
         model="gpt-4o", temperature=0
     ).with_structured_output(QueryPlan)
 
-    plan = planner.invoke({"question":state['question']})
+    plan = planner.invoke({"question":state['question'], "history": history})
     state['Tasks'] = plan
+
+    state['attributes']["memory"].chat_memory.add_ai_message(str(plan))
+
     return state
 
 def generate(state: GraphState):
@@ -144,6 +142,8 @@ def generate(state: GraphState):
         )
     ]
     iterations = iterations + 1
+
+    state['attributes']["memory"].chat_memory.add_ai_message(messages[1])
 
     return {"generation": code_solution, 
             "messages": messages, 
@@ -183,6 +183,8 @@ def execute_code(state: GraphState):
 
     # Append result to messages (context)
     messages[-1].content += f"\nCode executed successfully. {result}"
+
+    state['attributes']["memory"].chat_memory.add_ai_message(f"Code executed successfully. {result}")
 
     return {
         "generation": code_solution,
@@ -246,6 +248,10 @@ def general_info(state: GraphState):
             "assistant",
             f"{answer.content}",
         )]
+    
+    state['attributes']["memory"].chat_memory.add_ai_message(answer.content)
+    
+
     return {
         "result": answer.content,
         "error":None,
@@ -269,7 +275,5 @@ def create_graph():
     workflow.add_edge('planner', 'executer')
     workflow.add_edge("executer", 'generate')
     workflow.add_edge("generate", END)
-
-    memory = MemorySaver()
-    app = workflow.compile(checkpointer=memory)
-    return app
+   
+    return workflow
