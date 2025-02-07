@@ -68,14 +68,21 @@ class Tools(BaseModel):
                 'visual': None
                 }
         
+        # Manually adding visualization result to memory
+        attributes['memory'].chat_memory.add_ai_message(str(result))
+        
         return result
  
     @staticmethod
     def code_generation(query: str, attributes=None) -> str:
-        code_solution, result = generatorTool(query, attributes['file_path'])
-        
+
+        code_solution, result = generatorTool(query, input_file_path=attributes['file_path'])
+
         # return response
         result = generate_response(code_solution, result, tool='code')
+
+        # Manually adding code solution to memory
+        attributes['memory'].chat_memory.add_ai_message(str(result))
 
         return result
     
