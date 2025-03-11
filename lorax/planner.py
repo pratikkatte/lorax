@@ -8,6 +8,7 @@ def generate_response(*args, tool):
     """
     """
     if tool=='code':
+        print(args)
         code_solution, result = args
         response = "\n".join([
             code_solution.prefix,
@@ -77,9 +78,10 @@ class Tools(BaseModel):
     def code_generation(query: str, attributes=None) -> str:
 
         code_solution, result = generatorTool(query, input_file_path=attributes['file_path'])
-
+        print("Code Solution", code_solution)
         # return response
         result = generate_response(code_solution, result, tool='code')
+
 
         # Manually adding code solution to memory
         attributes['memory'].chat_memory.add_ai_message(str(result))

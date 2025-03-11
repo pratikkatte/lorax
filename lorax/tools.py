@@ -1,5 +1,3 @@
-
-
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 
@@ -7,13 +5,26 @@ from langchain_core.prompts import PromptTemplate
 from langchain.chains import ConversationChain
 from dotenv import load_dotenv
 from pkg_resources import resource_filename
-
+from lorax.config import LLM_TYPE, MODEL_NAME
 from lorax.utils import code, check_claude_output, insert_errors, parse_output, execute_generated_code
 from lorax.faiss_vector import getRetriever
+from langchain_ollama.llms import OllamaLLM
+from langchain_ollama import ChatOllama
+# from ollama_functions import OllamaFunctions
+from langchain_experimental.llms.ollama_functions import OllamaFunctions
+
+
+
 
 load_dotenv()
 
-general_llm = ChatOpenAI(model_name='gpt-4o')
+if LLM_TYPE == "OPENAI":
+    print("Using OpenAI LLM")
+    general_llm = ChatOpenAI(model_name=MODEL_NAME)
+else:
+    print("Using Ollama LLM")
+    general_llm = ChatOllama(model="llama3.2", temperature=0)
+
 
 retriever = getRetriever()
 
@@ -52,10 +63,10 @@ def generatorTool(question, input_file_path=None):
                     ("placeholder", "{messages}"),
                 ]
             )
-        lm = ChatOpenAI(
-            model="gpt-4o", temperature=0)
+        # lm = ChatOpenAI(
+        #     model="gpt-4o", temperature=0)
         
-        structured_code_llm = lm.with_structured_output(code, include_raw=True)
+        structured_code_llm = general_llm.with_structured_output(code, include_raw=True)
 
         # Chain with output check
         code_chain_raw = (
@@ -129,8 +140,8 @@ def generalInfoTool(question, attributes=None):
         prompt = PromptTemplate(
             input_variables=['question'], template=prompt_template
         )
-        lm = ChatOpenAI(model="gpt-4o", temperature=0)
-        chain = prompt | lm
+        # lm = ChatOpenAI(model="gpt-4o", temperature=0)
+        chain = prompt | general_llm
         
         general_info_conversation = ConversationChain(
             llm=chain, 
