@@ -10,10 +10,11 @@ from lorax.utils import code, check_claude_output, insert_errors, parse_output, 
 from lorax.faiss_vector import getRetriever
 from langchain_ollama.llms import OllamaLLM
 from langchain_ollama import ChatOllama
+from langchain_core.runnables import RunnablePassthrough
+from langchain_core.output_parsers import StrOutputParser
+
 # from ollama_functions import OllamaFunctions
 from langchain_experimental.llms.ollama_functions import OllamaFunctions
-
-
 
 
 load_dotenv()
@@ -45,66 +46,89 @@ def visualizationTool(question, attributes=None):
     return nwk_string, genomic_position
 
 def generatorTool(question, input_file_path=None):
-    try:
 
-        # understnad, how this format of prompt engineering helps the LLM to get good results. 
-        # input_file_path =  resource_filename(__name__, './data/sample.trees')
+    # understnad, how this format of prompt engineering helps the LLM to get good results. 
+    # input_file_path =  resource_filename(__name__, './data/sample.trees')
 
-        code_gen_prompt = ChatPromptTemplate.from_messages(
-            [
-                (
-                    "system",
-                    """You are a coding generator with expertise in using ts-kit toolkit for analysing tree-sequences. \n 
-                    Here is a relevant set of tskit documentation:  \n ------- \n  {context} \n ------- \n Answer the user 
-                    question based on the above provided documentation. Ensure any code you provide should be a callable function and can be executed \n 
-                    with all required imports and variables defined. Structure your answer with a description of the code solution. \n
-                    Then list the imports. And finally list the functioning code block. The function should return a string providing the answer. Here is the user question:""",
-                    ), 
-                    ("placeholder", "{messages}"),
-                ]
-            )
-        # lm = ChatOpenAI(
-        #     model="gpt-4o", temperature=0)
-        
-        structured_code_llm = general_llm.with_structured_output(code, include_raw=True)
+    # code_gen_prompt = ChatPromptTemplate.from_messages(
+    #     [
+    #         (
+    #             "system",
+    #             """You are a coding generator with expertise in using tskit toolkit for analysing tree-sequences. \n 
+    #             Here is a relevant set of tskit documentation:  \n ------- \n  {context} \n ------- \n Use the tskit module to answer the user 
+    #             question based on the above provided documentation. Ensure any code you provide should be a callable function and can be executed \n 
+    #             with all required imports and variables defined. The input should be a tree sequence file. Structure your answer with a description of the code solution. \n
+    #             Then list the imports. And finally list the functioning code block. Maintain this order. The function should return a string providing the answer. Here is the user question: {question}"""
+    #             ), 
+    #             ("placeholder", "{messages}"),
+    #         ]
+    #     )
+    # lm = ChatOpenAI(
+    #     model="gpt-4o", temperature=0)
 
-        # Chain with output check
-        code_chain_raw = (
-            code_gen_prompt | structured_code_llm
-        )
+    template = """You are a coding generator with expertise in using tskit toolkit for analysing tree-sequences. \n 
+                Here is a relevant set of tskit documentation:  \n ------- \n  {context} \n ------- \n Use the tskit module to answer the user 
+                question based on the above provided documentation. Ensure any code you provide should be a callable function and can be executed \n 
+                with all required imports and variables defined. Structure your answer with a description of the code solution. \n
+                Do not give example usage, simply create a function that is callable with a tree file as an input. \n
+                Then list the imports. And finally list the functioning code block. Maintain this order. The function should return a string providing the answer. Here is the user question: {question}"""
 
-        # This will be run as a fallback chain
-        fallback_chain = insert_errors | code_chain_raw
-        N = 3  # Max re-tries
-        code_gen_chain_re_try = code_chain_raw.with_fallbacks(
-            fallbacks=[fallback_chain] * N, exception_key="error"
-        )
-        code_gen_chain = code_gen_chain_re_try | parse_output
-        try:
+    code_gen_prompt = ChatPromptTemplate.from_template(template)
+    
+    llm = ChatOllama(model="llama3.2")
+    structured_code_llm = llm.with_structured_output(code, include_raw=True)
+    
+    print("before making code chain")
+    print("retriever", retriever)
+    
+    # Format the retrieved documents
+    def format_docs(docs):
+        return "\n\n".join([d.page_content for d in docs])
 
-            # Retriever model
-            docs = retriever.invoke(question)
+    # Chain with output check
+    code_chain = (
+        {"context": retriever | format_docs, "question": RunnablePassthrough()} 
+        | code_gen_prompt 
+        | llm
+        | StrOutputParser()
+    )
+    print("after making code chain")
+    print("question", question)
 
-            # docs = retriever.get_relevant_documents(question)
-            context = "\n".join([doc.page_content for doc in docs])
+    # # This will be run as a fallback chain
+    # fallback_chain = insert_errors | code_chain_raw
+    # N = 3  # Max re-tries
+    # code_gen_chain_re_try = code_chain_raw.with_fallbacks(
+    #     fallbacks=[fallback_chain] * N, exception_key="error"
+    # )
+    # code_gen_chain = code_gen_chain_re_try | parse_output
+    # context = "No context found!"
+    # print("need to retrieve!")
+    # try:
 
-            # infer
-        except Exception as e:
-            print("context Error:", e)
+    #     # Retriever model
+    #     docs = retriever.invoke(question)
+    #     print("docs", docs)
 
-        code_solution = code_gen_chain.invoke(
-            {"context": context, "messages": [question]}
-        )
+    #     # docs = retriever.get_relevant_documents(question)
+    #     context = "\n".join([doc.page_content for doc in docs])
+    #     # infer
+    # except Exception as e:
+    #     print("context Error:", e)
 
-        if input_file_path:
-            result = execute_generated_code(code_solution, input_file_path)
-        else:
-            result = "Couldn't execute the generated code. File Not Provided!"
+    code_solution = code_chain.invoke(question)
 
-        return code_solution, result
-    except Exception as e:
-        print("Tools Error:", e)
-        return f"Found Error while processing your query", None
+    print("code_solution", code_solution)
+
+    if input_file_path:
+        result = execute_generated_code(code_solution, input_file_path)
+    else:
+        result = "Couldn't execute the generated code. File Not Provided!"
+
+    return code_solution, result
+    # except Exception as e:
+    #     print("Tools Error:", e)
+    #     return f"Found Error while processing your query", None
 
 def routerTool(query, attributes=None):
     """
@@ -132,9 +156,10 @@ def generalInfoTool(question, attributes=None):
     """
     """
     prompt_template = """
-    You are an  expert in treesequences and population genetics and you help in answering queries related to it in general.
-    if the questions are not related to your experties then kindly remind them to ask questions in your domain of experties. 
-    Respond the users in brief based on this query or message: {question}
+    You are an expert in treesequences and population genetics and you help in answering queries related to it in general.
+    if the questions are not related to your expertise then kindly remind them to ask questions in your domain of experties. 
+    Respond the users in brief based on this query or message: {question} \n\n
+    Please respond in a clear and concise manner as a plain string only.
     """
     try:
         prompt = PromptTemplate(
@@ -149,6 +174,7 @@ def generalInfoTool(question, attributes=None):
         )
      
         answer = general_info_conversation.run(question)   
+        print("answer", answer)
         return answer
 
     except Exception as e:

@@ -5,14 +5,24 @@ from langgraph.graph.message import add_messages
 from typing_extensions import TypedDict
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
-
-
+from lorax.config import LLM_TYPE, MODEL_NAME
+from langchain_ollama.llms import OllamaLLM
+from langchain_ollama import ChatOllama
+# from ollama_functions import OllamaFunctions
+from langchain_experimental.llms.ollama_functions import OllamaFunctions
 from lorax.tools import routerTool, generalInfoTool, generatorTool
 from lorax.utils import execute_generated_code
 from lorax.planner import QueryPlan
 
 import tracemalloc
 tracemalloc.start()
+
+if LLM_TYPE == "OPENAI":
+    print("Planner using OpenAI LLM")
+    planner_llm = ChatOpenAI(model_name=MODEL_NAME)
+else:
+    print("Planner using Ollama LLM")
+    planner_llm = ChatOllama(model="llama3.2", temperature=0)
 
 # Max tries
 max_iterations = 3
@@ -84,13 +94,15 @@ def query_planner(state):
             "- GENERAL_ANSWER: if the query requires a simple text-based answer.\n"
             "- FETCH_FILE: if the query requires fetching a tree-sequence file from the user.\n\n"
             "Classify the tool type as one of: VISUALIZATION, CODE_GENERATE, GENERAL_ANSWER, FETCH_FILE."
+
+            "For every query node, ensure to include the fields: id (unique integer), question (string), and tool_type (one of: VISUALIZATION, CODE_GENERATE, GENERAL_ANSWER, FETCH_FILE). Use JSON format"
         ),
     ),
     (
         "user",
         (
             "Here is the conversation so far:\n{history}\n\n"
-            "Now, based on the above conversation and considering the latest question: {question}" 
+            "Now, based on the above conversation and considering the latest question: '{question}, " 
             "generate the correct query plan. If the query has NO dependencies on other subqueries, then it is a SINGLE_QUESTION query_type; "
             "otherwise, it is MULTI_DEPENDENCY."
         ),
@@ -102,14 +114,20 @@ def query_planner(state):
     # Create a ChatPromptTemplate using these messages.
     planner_prompt = ChatPromptTemplate.from_messages(prompt_messages)
 
-    planner = planner_prompt | ChatOpenAI(
-        model="gpt-4o", temperature=0
-    ).with_structured_output(QueryPlan)
+    planner = planner_prompt | planner_llm.with_structured_output(QueryPlan)
+    # planner = planner_prompt | ChatOpenAI(
+    #     model="gpt-4o", temperature=0
+    # ).with_structured_output(QueryPlan)
+
+    # print("planner: ", planner)
 
     plan = planner.invoke({"question":state['question'], "history": history})
+
+    print("plan: ", plan)
+        
     state['Tasks'] = plan
 
-    state['attributes']["memory"].chat_memory.add_ai_message(str(plan))
+    # state['attributes']["memory"].chat_memory.add_ai_message(str(plan))
 
     return state
 
@@ -143,9 +161,10 @@ def generate(state: GraphState):
     ]
     iterations = iterations + 1
 
-    state['attributes']["memory"].chat_memory.add_ai_message(messages[1])
+    state['attributes']["memory"].chat_memory.add_ai_message(messages)
 
-    return {"generation": code_solution, 
+    return {
+            "generation": code_solution, 
             "messages": messages, 
             "iterations": iterations,
             }

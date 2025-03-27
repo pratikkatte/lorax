@@ -10,11 +10,15 @@ def generate_response(*args, tool):
     if tool=='code':
         print(args)
         code_solution, result = args
+        # response = "\n".join([
+        #     code_solution.prefix,
+        #     code_solution.imports,
+        #     code_solution.code,
+        #     str(result)
+        # ])
         response = "\n".join([
-            code_solution.prefix,
-            code_solution.imports,
-            code_solution.code,
-            result
+            code_solution,
+            str(result)
         ])
         return {'text': response, 'visual': None}
     
@@ -78,9 +82,11 @@ class Tools(BaseModel):
     def code_generation(query: str, attributes=None) -> str:
 
         code_solution, result = generatorTool(query, input_file_path=attributes['file_path'])
-        print("Code Solution", code_solution)
+
         # return response
         result = generate_response(code_solution, result, tool='code')
+
+        print(result)
 
 
         # Manually adding code solution to memory
@@ -168,7 +174,7 @@ class QueryType(str, enum.Enum):
     Enumeration representing the types of queries that can be asked to a question answer system.
     """
     # When i call it anything beyond 'merge multiple responses' the accuracy drops significantly.
-    SINGLE_QUESTION = "SINGLE"
+    SINGLE_QUESTION = "SINGLE_QUESTION"
     MULTI_DEPENDENCY = "MULTI_DEPENDENCY"
 
 class Query(BaseModel):
