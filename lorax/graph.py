@@ -13,6 +13,7 @@ from langchain_experimental.llms.ollama_functions import OllamaFunctions
 from lorax.tools import routerTool, generalInfoTool, generatorTool
 from lorax.utils import execute_generated_code
 from lorax.planner import QueryPlan
+from ollama import chat
 
 import tracemalloc
 tracemalloc.start()
@@ -22,7 +23,9 @@ if LLM_TYPE == "OPENAI":
     planner_llm = ChatOpenAI(model_name=MODEL_NAME)
 else:
     print("Planner using Ollama LLM")
-    planner_llm = ChatOllama(model="llama3.2", temperature=0)
+    planner_llm = ChatOllama(model="llama3.1", temperature=0)
+# planner_llm = ChatOpenAI(model_name=MODEL_NAME)
+
 
 # Max tries
 max_iterations = 3
@@ -85,17 +88,32 @@ def query_planner(state):
     (
         "system",
         (
-            "You are a world class query planning algorithm capable of breaking apart questions into its dependency queries "
-            "such that the answers can be used to inform the parent question. Do not answer the questions, simply provide a correct "
-            "compute graph with specific subquestions and their dependencies. Before calling any function, think step by step to understand "
-            "the problem. Also consider the following tool types: \n"
-            "- VISUALIZATION: if the query asks to display any part of the treesequences.\n"
-            "- CODE_GENERATE: if the query requires using tskit to generate code in Python in order to answer.\n"
-            "- GENERAL_ANSWER: if the query requires a simple text-based answer.\n"
-            "- FETCH_FILE: if the query requires fetching a tree-sequence file from the user.\n\n"
-            "Classify the tool type as one of: VISUALIZATION, CODE_GENERATE, GENERAL_ANSWER, FETCH_FILE."
+            """
+                You are a specialized query planner for phylogenetics and tree-sequence analysis using tskit in Python.
 
-            "For every query node, ensure to include the fields: id (unique integer), question (string), and tool_type (one of: VISUALIZATION, CODE_GENERATE, GENERAL_ANSWER, FETCH_FILE). Use JSON format"
+                Your job is to break down user questions about genetic trees, population structure, or tree-sequence files into a set of sub-questions that can be answered using tools such as code generation, visualizations, or file access.
+
+                Each subquestion must include:
+                - id: an integer
+                - question: the subquestion
+                - tool_type: one of ["VISUALIZATION", "CODE_GENERATE", "GENERAL_ANSWER", "FETCH_FILE"]
+                - dependancies: (optional) list of query ids that this subquestion depends on
+
+                **Examples of questions you can handle include**:
+                - Calculating tree diversity from a tree sequence
+                - Drawing trees at specific genome positions
+                - Getting the number of samples or individuals in a sequence
+                - Calculating allele frequencies or Fst
+                - Any question that involves analyzing a `.trees` file using `tskit`
+
+                **RULES**:
+                - If the question can be answered in one step, generate a single query (query_type = SINGLE_QUESTION).
+                - Only create multiple steps if intermediate subquestions are needed (query_type = MULTI_DEPENDENCY).
+                - Do not generate irrelevant questions about humans or general knowledge.
+                - Always assume the data comes from a `.trees` file loaded using `tskit`.
+
+                Only output the structured query graph in JSON. Do not include commentary, explanations, or formatting instructions.
+            """
         ),
     ),
     (
@@ -108,26 +126,24 @@ def query_planner(state):
         ),
     ),
 ]
+    print("prompt_messages", prompt_messages)
 
+    response = chat(
+        messages=[
+                {
+                'role': 'user',
+                'content': str(prompt_messages),
+                }
+            ],
+            model='llama3.1',
+            format=QueryPlan.model_json_schema(),
+    )
 
+    plan = QueryPlan.model_validate_json(response.message.content)
 
-    # Create a ChatPromptTemplate using these messages.
-    planner_prompt = ChatPromptTemplate.from_messages(prompt_messages)
-
-    planner = planner_prompt | planner_llm.with_structured_output(QueryPlan)
-    # planner = planner_prompt | ChatOpenAI(
-    #     model="gpt-4o", temperature=0
-    # ).with_structured_output(QueryPlan)
-
-    # print("planner: ", planner)
-
-    plan = planner.invoke({"question":state['question'], "history": history})
-
-    print("plan: ", plan)
+    print("Planner Response:", plan)
         
     state['Tasks'] = plan
-
-    # state['attributes']["memory"].chat_memory.add_ai_message(str(plan))
 
     return state
 
