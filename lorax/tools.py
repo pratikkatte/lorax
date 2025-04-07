@@ -1,3 +1,4 @@
+# OLLAMA VERSION
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 
@@ -12,6 +13,8 @@ from langchain_ollama.llms import OllamaLLM
 from langchain_ollama import ChatOllama
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
+from ollama import chat
+
 
 # from ollama_functions import OllamaFunctions
 from langchain_experimental.llms.ollama_functions import OllamaFunctions
@@ -47,78 +50,57 @@ def visualizationTool(question, attributes=None):
 
 def generatorTool(question, input_file_path=None):
 
-    # understnad, how this format of prompt engineering helps the LLM to get good results. 
-    # input_file_path =  resource_filename(__name__, './data/sample.trees')
+    # Retriever model
+    docs = retriever.invoke(question)
 
-    # code_gen_prompt = ChatPromptTemplate.from_messages(
-    #     [
-    #         (
-    #             "system",
-    #             """You are a coding generator with expertise in using tskit toolkit for analysing tree-sequences. \n 
-    #             Here is a relevant set of tskit documentation:  \n ------- \n  {context} \n ------- \n Use the tskit module to answer the user 
-    #             question based on the above provided documentation. Ensure any code you provide should be a callable function and can be executed \n 
-    #             with all required imports and variables defined. The input should be a tree sequence file. Structure your answer with a description of the code solution. \n
-    #             Then list the imports. And finally list the functioning code block. Maintain this order. The function should return a string providing the answer. Here is the user question: {question}"""
-    #             ), 
-    #             ("placeholder", "{messages}"),
-    #         ]
-    #     )
-    # lm = ChatOpenAI(
-    #     model="gpt-4o", temperature=0)
+    # docs = retriever.get_relevant_documents(question)
+    context = "\n".join([doc.page_content for doc in docs])
 
-    template = """You are a coding generator with expertise in using tskit toolkit for analysing tree-sequences. \n 
-                Here is a relevant set of tskit documentation:  \n ------- \n  {context} \n ------- \n Use the tskit module to answer the user 
-                question based on the above provided documentation. Ensure any code you provide should be a callable function and can be executed \n 
-                with all required imports and variables defined. Structure your answer with a description of the code solution. \n
-                Do not give example usage, simply create a function that is callable with a tree file as an input. \n
-                Then list the imports. And finally list the functioning code block. Maintain this order. The function should return a string providing the answer. Here is the user question: {question}"""
+    # Set up template
+    template = """You are a Python coding generator with expertise in using tskit toolkit for analysing tree-sequences. \n 
+        Here is a relevant set of tskit documentation:  \n ------- \n  {context} \n ------- \n Use the tskit module to answer the user 
+        question based on the above provided documentation. Ensure any code you provide should be a callable function and can be executed \n 
+        with all required imports and variables defined. Structure your answer with a description of the code solution. \n
+        Do not give example usage, simply create a function that is callable with a tree file as an input. \n
+        Then list the imports. And finally list the functioning code block. The function should return a string providing the answer. Maintain this order which is: \n
+        1. Prefix (code description and helpful information about the tree sequence)\n
+        2. Imports (required code imports like tskit, to run the code in Python, write them as import statements)\n
+        3. Code (code block which is a callable function with a tree sequence file as an input parameter, does not include import statements)\n
+        Here is the user question: {question}"""
 
     code_gen_prompt = ChatPromptTemplate.from_template(template)
-    
-    llm = ChatOllama(model="llama3.2")
-    structured_code_llm = llm.with_structured_output(code, include_raw=True)
-    
-    print("before making code chain")
-    print("retriever", retriever)
-    
-    # Format the retrieved documents
-    def format_docs(docs):
-        return "\n\n".join([d.page_content for d in docs])
+    filled_prompt = code_gen_prompt.format(context=context, question=question)
+
 
     # Chain with output check
-    code_chain = (
-        {"context": retriever | format_docs, "question": RunnablePassthrough()} 
-        | code_gen_prompt 
-        | llm
-        | StrOutputParser()
-    )
-    print("after making code chain")
-    print("question", question)
-
-    # # This will be run as a fallback chain
-    # fallback_chain = insert_errors | code_chain_raw
-    # N = 3  # Max re-tries
-    # code_gen_chain_re_try = code_chain_raw.with_fallbacks(
-    #     fallbacks=[fallback_chain] * N, exception_key="error"
+    # code_chain = (
+    #     code_gen_prompt
+    #     | general_llm
     # )
-    # code_gen_chain = code_gen_chain_re_try | parse_output
-    # context = "No context found!"
-    # print("need to retrieve!")
-    # try:
 
-    #     # Retriever model
-    #     docs = retriever.invoke(question)
-    #     print("docs", docs)
+    response = chat(
+        messages=[
+                {
+                'role': 'user',
+                'content': filled_prompt,
+                }
+            ],
+            model='llama3.1',
+            format=code.model_json_schema(),
+            options={'temperature': 0}
+    )
 
-    #     # docs = retriever.get_relevant_documents(question)
-    #     context = "\n".join([doc.page_content for doc in docs])
-    #     # infer
-    # except Exception as e:
-    #     print("context Error:", e)
-
-    code_solution = code_chain.invoke(question)
+    code_solution = code.model_validate_json(response.message.content)
 
     print("code_solution", code_solution)
+    print("code solution type", type(code_solution))
+    print("code solution prefix", code_solution.prefix if hasattr(code_solution, 'prefix') else None)
+    print("code solution imports", code_solution.imports if hasattr(code_solution, 'imports') else None)
+    print("code solution code", code_solution.code if hasattr(code_solution, 'code') else None)
+
+    # # code_solution = code_chain.invoke(question)
+
+    # # print("code_solution", code_solution)
 
     if input_file_path:
         result = execute_generated_code(code_solution, input_file_path)
@@ -181,4 +163,3 @@ def generalInfoTool(question, attributes=None):
         return f"Found Error, {e}"
         
 
-    

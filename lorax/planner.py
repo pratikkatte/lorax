@@ -10,16 +10,13 @@ def generate_response(*args, tool):
     if tool=='code':
         print(args)
         code_solution, result = args
-        # response = "\n".join([
-        #     code_solution.prefix,
-        #     code_solution.imports,
-        #     code_solution.code,
-        #     str(result)
-        # ])
         response = "\n".join([
-            code_solution,
+            code_solution.prefix,
+            code_solution.imports,
+            code_solution.code,
             str(result)
         ])
+
         return {'text': response, 'visual': None}
     
     if tool=='visual':
