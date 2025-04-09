@@ -4,7 +4,6 @@ var compression = require("compression");
 var queue = require("express-queue");
 var app = express();
 const WebSocket = require('ws');
-const pythonSocket = new WebSocket(`ws://127.0.0.1:8000/stream`);
 
 var fs = require("fs");
 const path = require("node:path");
@@ -12,13 +11,15 @@ const os = require("node:os");
 var https = require("https");
 var xml2js = require("xml2js");
 var axios = require("axios");
-var pako = require("pako");
 const URL = require("url").URL;
-const ReadableWebToNodeStream = require("readable-web-to-node-stream");
 const { execSync } = require("child_process");
-const { Readable } = require("stream");
-var parser = require("stream-json").parser;
-var streamValues = require("stream-json/streamers/StreamValues").streamValues;
+
+const PythonWebSocketClient = require('./PythonWebSocketClient');
+const pythonClient = new PythonWebSocketClient();
+
+
+
+
 
 var importing;
 var filtering;
@@ -42,7 +43,7 @@ program.parse();
 
 const command_options = program.opts();
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "taxonium"));
-
+console.log("tmpDir", tmpDir)
 const in_cache = new Set();
 
 const cache_helper = {
@@ -107,20 +108,54 @@ waitForTheImports = async () => {
 
 var processedData = null;
 var cached_starting_values = null;
-
 let options;
 
 app.use(cors());
+const fileUpload = require('express-fileupload');
+app.use(fileUpload({
+  limits: { fileSize: 300 * 1024 * 1024 }, // 50MB limit
+  useTempFiles: true,
+  tempFileDir: tmpDir
+}));
+
+
 app.use(compression());
 
 app.use(queue({ activeLimit: 500000, queuedLimit: 500000 }));
 
 const logStatusMessage = (status_obj) => {
-  console.log("status", status_obj);
   if (process && process.send) {
     process.send(status_obj);
   }
 };
+
+
+// const WebSocket = require('ws');
+let reconnectTimeout;
+let pythonSocket;
+const RECONNECT_INTERVAL = 1000;
+const RESPONSE_TIMEOUT = 10000; // 10 seconds
+
+function connectToPythonWebSocket() {
+  pythonSocket = new WebSocket('ws://localhost:8765');
+
+  pythonSocket.on('open', () => {
+    console.log('Connected to Python WebSocket server');
+    clearTimeout(reconnectTimeout);
+  });
+
+  pythonSocket.on('close', () => {
+    console.log('Disconnected from Python WebSocket. Reconnecting...');
+    reconnectTimeout = setTimeout(connectToPythonWebSocket, RECONNECT_INTERVAL);
+  });
+
+  pythonSocket.on('error', (err) => {
+    console.error("WebSocket error:", err.message);
+  });
+}
+
+// Initial connection
+// connectToPythonWebSocket();
 
 function reduceMaxOrMin(array, accessFunction, maxOrMin) {
   if (maxOrMin === "max") {
@@ -137,7 +172,6 @@ function reduceMaxOrMin(array, accessFunction, maxOrMin) {
     );
   }
 }
-
 
 function process_data(new_data){
   const scale_y =
@@ -190,62 +224,42 @@ function process_data(new_data){
     rootId: root.node_id,
     overwrite_config,
   };
-
   return output
-
 }
 
 const roundToDp = (number, dp) => {
   return Math.round(number * Math.pow(10, dp)) / Math.pow(10, dp);
 };
 
-function sendPositionToPythonSocket(start_position, end_position) {
+async function sendPositionToPythonSocket(start, end) {
+  console.log("here sendPositionToPythonSocket")
   return new Promise((resolve, reject) => {
-    console.log("sendPositionToPythonSocket", start_position, end_position);
-
-    function sendPosition() {
-      if (pythonSocket.readyState === WebSocket.OPEN) {
-        console.log("WebSocket already open");
-        pythonSocket.send(JSON.stringify({ start: start_position, end: end_position }));
-      } else {
-        console.log("WebSocket opening");
-        pythonSocket.addEventListener("open", () => {
-          pythonSocket.send(JSON.stringify({ start: start_position, end: end_position }));
-        });
-      }
+    if (!pythonSocket || pythonSocket.readyState !== WebSocket.OPEN) {
+      return reject(new Error("WebSocket not connected"));
     }
 
-    pythonSocket.addEventListener("message", (event) => {
-      processedData = null;
-      
-      const data = JSON.parse(event.data);
-      processedData = process_data(JSON.parse(data.file))
-      console.log("message data");
-      importing.generateConfig(config, processedData);
-      // if (config.no_file) {
-      //   importing.generateConfig(config, processedData);
-      // }
+    const timeout = setTimeout(() => {
+      pythonSocket.removeAllListeners('message');
+      reject(new Error("Python WebSocket timeout"));
+    }, RESPONSE_TIMEOUT);
 
-      processedData.genes = new Set(
-        processedData.mutations.map((mutation) => mutation.gene)
-      );
-      // as array
-      processedData.genes = Array.from(processedData.genes);
+    pythonSocket.once('message', (data) => {
+      clearTimeout(timeout);
+      try {
+        const parsed = JSON.parse(data);
+        if (parsed.status === "success") {
+          resolve(parsed.data);
+        } else {
+          reject(new Error(parsed.message || "Python processing error"));
+        }
+      } catch (err) {
+        reject(new Error("Invalid response from Python"));
+      }
+    });
 
-
-      resolve(processedData);
-    });
-    pythonSocket.addEventListener("close", (event) => {
-      console.log("WebSocket closed", event);
-    });
-    pythonSocket.addEventListener("error", (err) => {
-      console.error("WebSocket error", err);
-      reject(err);
-    });
-    sendPosition();
+    pythonSocket.send(JSON.stringify({ start, end }));
   });
 }
-
 
 // app.get("/position", function (req, res) {
 //   const start_position = 1;
@@ -296,6 +310,70 @@ function sendPositionToPythonSocket(start_position, end_position) {
 // });
 
 // });
+
+
+app.post('/upload', async (req, res) => {
+  try {
+      if (!req.files || !req.files.treesFile) {
+          return res.status(400).json({ error: 'No file uploaded' });
+      }
+      const file = req.files.treesFile;
+
+      const tempFileName = `sample.trees`;
+      const tempFilePath = path.join(tmpDir, tempFileName);
+
+        // Move uploaded file to shared temp dir
+      fs.renameSync(file.tempFilePath, tempFilePath);
+      // Send path to Python via WebSocket
+      const response = await pythonClient.sendRequest({
+        action: 'load_file',
+        path: tempFilePath
+      });
+
+      processedData = process_data(JSON.parse(response.data))
+      let treeposition = []
+
+      if (config.no_file) {
+        importing.generateConfig(config, processedData);
+      }
+
+      processedData.genes = new Set(
+        processedData.mutations.map((mutation) => mutation.gene)
+      );
+
+      // as array
+      processedData.genes = Array.from(processedData.genes);
+
+      let result = filtering.getNodes(
+          processedData.nodes,
+          processedData.y_positions,
+          processedData.overallMinY,
+          processedData.overallMaxY,
+          processedData.overallMinX,
+          processedData.overallMaxX,
+          "x_dist",
+          config.useHydratedMutations,
+          processedData.mutations,
+          treeposition || []
+        );
+      
+      cached_starting_values = result;
+
+      // Clean up temp file
+      fs.unlinkSync(tempFilePath);
+
+      // Here you would typically save the file
+      // For demo, we'll just return the filename
+      res.status(201).json({
+        status: "success",
+          message: 'File uploaded successfully',
+          filename: file.name
+      });
+  } catch (error) {
+      console.log("upload error", error);
+      res.status(500).json({ status:"error", error: 'Upload failed' });
+  }
+});
 
 
 app.get("/", function (req, res) {
@@ -473,23 +551,17 @@ app.get("/nodes/", async function (req, res) {
   
   console.log("req", req.query);
 
-  processedData = await sendPositionToPythonSocket(req.query.start_pos, req.query.end_pos);
-  const treeposition = []
-  let result;
-  result = filtering.getNodes(
-    processedData.nodes,
-    processedData.y_positions,
-    processedData.overallMinY,
-    processedData.overallMaxY,
-    processedData.overallMinX,
-    processedData.overallMaxX,
-    "x_dist",
-    config.useHydratedMutations,
-    processedData.mutations,
-    treeposition || []
-  );
-
-  cached_starting_values = result;
+  const response = await pythonClient.sendRequest({
+    action: "genome_position",
+    start: req.query.start_pos,
+    end: req.query.end_pos
+  })
+  // const response = await sendPositionToPythonSocket(req.query.start_pos, req.query.end_pos);
+  console.log("response")
+  // processedData = response.data;
+  // console.log("processedData", processedData)
+  
+  // cached_starting_values = result;
 
   let min_y =
     req.query.min_y !== undefined ? req.query.min_y : processedData.overallMinY;
@@ -671,8 +743,24 @@ const loadData = async () => {
   //   supplied_object = { status: "url_supplied", filename: url };
   // }
 
+  // try {
+  //   const result = await pythonClient.sendRequest({
+  //     start: 227217,
+  //     end: 227326
+  //   });
+  //   // console.log("result", result)
 
-  processedData = await sendPositionToPythonSocket(227217, 227326)
+  //   processedData = process_data(JSON.parse(result.data))
+    
+  //   logStatusMessage({
+  //     status: "finalising",
+  //   });
+
+  // } catch(error){
+  //   console.error("Request failed:", error.message);
+  // }
+  // processedData = await sendPositionToPythonSocket(227217, 227326)
+  // console.log("processedData", processedData)
 
   // processedData = await importing.processJsonl(
   //   supplied_object,
@@ -682,9 +770,7 @@ const loadData = async () => {
   //   streamValues
   // );
 
-  logStatusMessage({
-    status: "finalising",
-  });
+
 
   // if (config.no_file) {
   //   importing.generateConfig(config, processedData);
@@ -697,23 +783,23 @@ const loadData = async () => {
   // // as array
   // processedData.genes = Array.from(processedData.genes);
 
-  let treeposition = []
+  // let treeposition = []
   
-  let result = filtering.getNodes(
-    processedData.nodes,
-    processedData.y_positions,
-    processedData.overallMinY,
-    processedData.overallMaxY,
-    processedData.overallMinX,
-    processedData.overallMaxX,
-    "x_dist",
-    config.useHydratedMutations,
-    processedData.mutations,
-    treeposition || []
-  );
+  // let result = filtering.getNodes(
+  //   processedData.nodes,
+  //   processedData.y_positions,
+  //   processedData.overallMinY,
+  //   processedData.overallMaxY,
+  //   processedData.overallMinX,
+  //   processedData.overallMaxX,
+  //   "x_dist",
+  //   config.useHydratedMutations,
+  //   processedData.mutations,
+  //   treeposition || []
+  // );
 
-  cached_starting_values = result;
-  console.log("Saved cached starting vals");
+  // cached_starting_values = result;
+  // console.log("Saved cached starting vals");
   // set a timeout to start listening
 
   setTimeout(() => {

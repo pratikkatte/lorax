@@ -6,9 +6,25 @@ import Chatbot from "./components/chatbot/Chatbot";
 import Visualization from './components/chatbot/visualization';
 
 import Taxonium from './Taxonium'
+import TreeSequenceUploader from './components/TreeSequenceUploader'
 
 
 function App() {
+
+
+  const [fileUpload, setFileUpload] = useState(false)
+
+  const handleUploadSuccess = (result) => {
+    if(result.status == 201){
+      setFileUpload(true)
+    }
+    // Handle the uploaded data (e.g., pass to visualization component)
+  };
+
+  const handleUploadError = (error) => {
+    console.error('Upload error:', error);
+  };
+
 
   const nwk = `((A:0.1,B:0.2):0.3,(C:0.4,D:0.5):0.6);`;
   // const nwk = `((A:0.1,B:0.2):0.3,(C:0.4,D:0.5):0.6);((A:0.1,B:0.50):0.3,(C:0.4,D:0.5):0.6);`;
@@ -28,28 +44,17 @@ function App() {
   const [userName, setUserName] = useState("");
 
   return (
-    <>
-    
-      {/* <div className="app-container">
-        <div className="not-supported-message">
-          <p>This view is not supported on mobile devices. Please enable desktop mode.</p>
-        </div>
-        <div className="right-container">
-          <Chatbot userName={userName} />
-        </div>
-        <div className="left-container">
-            <Visualization/>
-        </div>  
-      </div> */}
-      <Taxonium backendUrl="http://localhost:8080" />
-      {/* <Taxonium backendUrl="https://api.cov2tree.org" />; */}
+  <>
 
-      {/* <Taxonium 
-      key={timestamp} 
-      // sourceData={sourceData}
-      backendUrl={`http://localhost:8080/`}
-      />; */}
-    </>
+    {/*  */}
+
+    {!fileUpload ? <TreeSequenceUploader
+      onUploadSuccess={handleUploadSuccess}
+      onUploadError={handleUploadError}
+    /> : <Taxonium backendUrl="http://localhost:8080" /> 
+    }
+
+  </>
   );
 }
 
