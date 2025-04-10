@@ -147,6 +147,8 @@ def generalInfoTool(question, attributes=None):
     # """
 
     prompt_template = """Answer the following questions as best you can. 
+        The general topic of this conversation is treesequences and population genetics.
+        Include citations. 
         You have access to the following tools:
 
         {tools}
@@ -160,7 +162,7 @@ def generalInfoTool(question, attributes=None):
         Observation: the result of the action
         ... (this Thought/Action/Action Input/Observation can repeat N times until you decide to "Finish")
         Thought: I now know the final answer
-        Final Answer: the final answer to the original input question
+        Final Answer: the final detailed answer to the original input question (with reference links)
 
         Begin!
 
