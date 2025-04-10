@@ -13,6 +13,10 @@ from lorax.faiss_vector import getRetriever
 
 from langchain_tavily import TavilySearch
 
+from langchain.agents import AgentExecutor, create_react_agent, load_tools
+from langchain_openai import ChatOpenAI
+
+
 load_dotenv()
 
 general_llm = ChatOpenAI(model_name='gpt-4o')
@@ -135,24 +139,55 @@ def routerTool(query, attributes=None):
 def generalInfoTool(question, attributes=None):
     """
     """
-    prompt_template = """
+    # prompt_template = """
+    #     You are an expert in treesequences and population genetics and you help in answering queries related to it in general.
+    #     If the questions are not related to your expertise then kindly remind them to ask questions in your domain of expertise. 
+    #     Respond to the user based on this query or message: {question}
+    # """
+
+    prompt_template = """Answer the following questions as best you can. 
         You are an expert in treesequences and population genetics and you help in answering queries related to it in general.
-        If the questions are not related to your expertise then kindly remind them to ask questions in your domain of expertise. 
-        Here is some relevant information: {context}
-        Respond to the user based on this query or message: {question}
-    """
+        If the questions are not related to your expertise then kindly remind them to ask questions in your domain of expertise.
+        You have access to the following tools:
+
+        {tools}
+
+        Use the following format:
+
+        Question: the input question you must answer
+        Thought: you should always think about what to do
+        Action: the action to take, should be one of [{tool_names}]
+        Action Input: the input to the action
+        Observation: the result of the action
+        ... (this Thought/Action/Action Input/Observation can repeat N times)
+        Thought: I now know the final answer
+        Final Answer: the final answer to the original input question
+
+        Begin!
+
+        Question: {input}
+        Thought:{agent_scratchpad}"""
+
     try:
         prompt = PromptTemplate(
-            input_variables=['question', 'context'], template=prompt_template
+            input_variables=['question'], template=prompt_template
         )
         lm = ChatOpenAI(model="gpt-4o", temperature=0)
-        chain = prompt | lm
+        # chain = prompt | lm
+
+        tools = load_tools(
+            ["arxiv"],
+            ["tavily_tool"]
+    )
         
-        context = tavily_tool.invoke({"query": question})
+        # context = tavily_tool.invoke({"query": question})
 
-        answer = chain.invoke({"question": question, "context": context})
+        agent = create_react_agent(lm, tools, prompt)
+        agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True, handle_parsing_errors=True)
 
-        return answer.content
+        answer = agent_executor.invoke({"input": question})
+
+        return answer["output"]
 
     except Exception as e:
         return f"Found Error, {e}"
