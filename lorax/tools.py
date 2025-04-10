@@ -147,8 +147,6 @@ def generalInfoTool(question, attributes=None):
     # """
 
     prompt_template = """Answer the following questions as best you can. 
-        You are an expert in treesequences and population genetics and you help in answering queries related to it in general.
-        If the questions are not related to your expertise then kindly remind them to ask questions in your domain of expertise.
         You have access to the following tools:
 
         {tools}
@@ -157,33 +155,40 @@ def generalInfoTool(question, attributes=None):
 
         Question: the input question you must answer
         Thought: you should always think about what to do
-        Action: the action to take, should be one of [{tool_names}]
+        Action: the action to take, should be one of [{tool_names}] or "Finish"
         Action Input: the input to the action
         Observation: the result of the action
-        ... (this Thought/Action/Action Input/Observation can repeat N times)
+        ... (this Thought/Action/Action Input/Observation can repeat N times until you decide to "Finish")
         Thought: I now know the final answer
         Final Answer: the final answer to the original input question
 
         Begin!
 
+        Context: {context}
         Question: {input}
         Thought:{agent_scratchpad}"""
 
     try:
         prompt = PromptTemplate(
-            input_variables=['question'], template=prompt_template
+            input_variables=['input', 'context'], template=prompt_template
         )
         lm = ChatOpenAI(model="gpt-4o", temperature=0)
 
-        tools = load_tools(
-            ["arxiv"],
-            ["tavily_tool"]
-        )
+        tools = [
+            *load_tools(["arxiv"]),
+            TavilySearch(
+                max_results=5,
+                topic="general",
+                search_depth="advanced"
+            )
+        ]
 
         agent = create_react_agent(lm, tools, prompt)
         agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True, handle_parsing_errors=True)
 
-        answer = agent_executor.invoke({"input": question})
+        answer = agent_executor.invoke({"input": question, "context": attributes["memory"]})
+
+        # print("Answer:", answer["output"])
 
         return answer["output"]
 
