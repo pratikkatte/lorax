@@ -11,11 +11,26 @@ from pkg_resources import resource_filename
 from lorax.utils import code, check_claude_output, insert_errors, parse_output, execute_generated_code
 from lorax.faiss_vector import getRetriever
 
+from langchain_tavily import TavilySearch
+
 load_dotenv()
 
 general_llm = ChatOpenAI(model_name='gpt-4o')
 
 retriever = getRetriever()
+
+tavily_tool = TavilySearch(
+    max_results=5,
+    topic="general",
+    # include_answer=False,
+    # include_raw_content=False,
+    # include_images=False,
+    # include_image_descriptions=False,
+    search_depth="advanced",
+    # time_range="day",
+    # include_domains=None,
+    # exclude_domains=None
+)
 
 def visualizationTool(question, attributes=None):
     question = """
@@ -121,24 +136,23 @@ def generalInfoTool(question, attributes=None):
     """
     """
     prompt_template = """
-    You are an  expert in treesequences and population genetics and you help in answering queries related to it in general.
-    if the questions are not related to your experties then kindly remind them to ask questions in your domain of experties. 
-    Respond the users in brief based on this query or message: {question}
+        You are an expert in treesequences and population genetics and you help in answering queries related to it in general.
+        If the questions are not related to your expertise then kindly remind them to ask questions in your domain of expertise. 
+        Here is some relevant information: {context}
+        Respond to the user based on this query or message: {question}
     """
     try:
         prompt = PromptTemplate(
-            input_variables=['question'], template=prompt_template
+            input_variables=['question', 'context'], template=prompt_template
         )
         lm = ChatOpenAI(model="gpt-4o", temperature=0)
         chain = prompt | lm
         
-        general_info_conversation = ConversationChain(
-            llm=chain, 
-            memory=attributes["memory"]
-        )
-     
-        answer = general_info_conversation.run(question)   
-        return answer
+        context = tavily_tool.invoke({"query": question})
+
+        answer = chain.invoke({"question": question, "context": context})
+
+        return answer.content
 
     except Exception as e:
         return f"Found Error, {e}"
