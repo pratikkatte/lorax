@@ -15,6 +15,7 @@ from langchain_tavily import TavilySearch
 
 from langchain.agents import AgentExecutor, create_react_agent, load_tools
 from langchain_openai import ChatOpenAI
+from langchain_ollama import ChatOllama
 
 
 load_dotenv()
@@ -152,7 +153,7 @@ def generalInfoTool(question, attributes=None):
 
         {tools}
 
-        Use the following format:
+        Use the following format and stick to it:
 
         Question: the input question you must answer
         Thought: you should always think about what to do
@@ -173,14 +174,11 @@ def generalInfoTool(question, attributes=None):
             input_variables=['question'], template=prompt_template
         )
         lm = ChatOpenAI(model="gpt-4o", temperature=0)
-        # chain = prompt | lm
 
         tools = load_tools(
             ["arxiv"],
             ["tavily_tool"]
-    )
-        
-        # context = tavily_tool.invoke({"query": question})
+        )
 
         agent = create_react_agent(lm, tools, prompt)
         agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True, handle_parsing_errors=True)
