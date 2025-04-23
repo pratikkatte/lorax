@@ -89,38 +89,80 @@ async def handle_connection(websocket):
     # ts = tskit.load("./sample.trees")  # Load tree sequence once
     ts = None
     try:
-        async for message in websocket:
-            data = orjson.loads(message)
-            action = data.get("action")
-            if action == 'load_file':
-                
-                path = data.get("path")
 
-                ts = tskit.load(path)
-                start = 227217
-                end = 227326
-            else:
-                start = data.get("start")
-                end = data.get("end")
-
-
-            output, new_data = start_end(start, end, ts)
-
-            output = json.dumps(new_data)
+        while True:
             
-            # Your processing logic here
-            # output = {"nodes": "processed_data", "start": start, "end": end}
-           
-            await websocket.send(orjson.dumps({"status": "success", "data": output}))
+            # metadata_msg = await websocket.recv()
+            metadata_msg = await websocket.recv()
+            metadata_msg = json.loads(metadata_msg)
 
-            # await websocket.send(orjson.dumps({"status": "success", "data": output}))
+            if metadata_msg['action']=='load_file':
+                try:
+                    metadata = json.loads(metadata_msg['meta'])
+                    print("metadata", metadata)
+                except Exception as e:
+                    await websocket.send(json.dumps({"status": "error", "message": "Invalid metadata JSON"}))
+                    continue
+            
+
+                if metadata.get("type") == 'fileUpload':
+                    filename = metadata["filename"]
+                    size = metadata["size"]
+
+                    print(f"Expecting file: {filename}, size: {size} bytes")
+
+                    print("before receiving here")
+                    binary_data = await websocket.recv()  # This should be raw bytes
+                    print("after receivign to receive")
+
+                    
+                    if not isinstance(binary_data, (bytes, bytearray)):
+                        print("about to receive")
+                        await websocket.send(json.dumps({"status": "error", "message": "Expected binary data"}))
+                        continue
+                    
+                    path = f"/tmp/{filename}"
+                    with open(path, "wb") as f:
+                        f.write(binary_data)
+                    print(f"Saved file to: {path}")
+
+                    start = 227241
+                    end = 227290
+                    # end = 3022856
+
+                    try:
+                        if ts==None:
+                            ts = tskit.load(path)
+                        
+                        nwk_string = start_end(start, end, ts)
+                        # nwk_string = "((A:0.1,B:0.2):0.3,C:0.4)"
+
+                        # tree = ts.at_index(3)
+                        # nwk = tree.newick()
+
+                        await websocket.send(json.dumps({"status": "file_received", "nwk":nwk_string, "filename": filename}))
+                    except Exception as e:
+                        print("eerror", e)
+                        await websocket.send(json.dumps({"status": "error", "message": f"Failed to load .trees: {str(e)}"}))
+
+            elif metadata_msg['action']=='query_trees':
+                try:
+                    values = metadata_msg['values']
+                    print("values", values)
+                    nwk_string = start_end(values[0], values[1], ts)
+                    await websocket.send(json.dumps({"status": 200, "nwk":nwk_string}))
+                except Exception as e:
+                    print("query_trees, error", e)
+                    await websocket.send(json.dumps({"status": "error", "message": f"Failed to query trees: {str(e)}"}))
+
     except Exception as e:
-        await websocket.send(orjson.dumps({"status": "error", "message": str(e)}))
         print("Error:", e)
+        await websocket.send(json.dumps({"status": "error", "message": str(e)}))
+        
 
 # Create and run the event loop explicitly
 async def main():
-    async with websockets.serve(handle_connection, "localhost", 8765):
+    async with websockets.serve(handle_connection, "localhost", 8765, max_size=None, ping_interval=1, ping_timeout=300):
         print("WebSocket server started on ws://localhost:8765")
         await asyncio.Future()  # Run forever
 

@@ -14,7 +14,7 @@ from tqdm import tqdm
 def process_tree(tree_seq, idx):
  
     tree_data = {}
-    tree_data['newick'] = tree_seq.at_index(idx).newick()[:-1]
+    tree_data['newick'] = tree_seq.at_index(idx).newick()
     tree_data['interval'] = tree_seq.at_index(idx).interval
     return idx, tree_data 
 
@@ -132,22 +132,35 @@ def return_data(node_objects, total_nodes, global_mutation, all_content_position
 # the start and end will be user given input. 
 
 def start_end(start, end, ts):
-    start_tree = start
-    end_tree = end
-    print("inside start_end")
     
-    tree_min_max = {'start': int(ts.at_index(1).interval.left), 'end': int(ts.at_index(ts.num_trees - 1).interval.right)}
+    # tree_min_max = {'start': int(ts.at_index(1).interval.left), 'end': int(ts.at_index(ts.num_trees - 1).interval.right)}
     
     sub_ts = ts.keep_intervals([[start, end]], simplify=False)
 
-    tree_indexs = list(range(1, sub_ts.num_trees))[:-1]
+    print('got sub ts')
+    nwk_list = []
+    for tree in sub_ts.trees():
+         if len(nwk_list)==3:
+             break
+         if tree.num_roots == 1:
+            nwk_list.append(tree.newick())
 
-    # tree_indexs = list(np.arange(start_tree, end_tree)) # global variable.
-    results, all_content_positions, genomic_position_minmax = process_trees_with_progress(sub_ts, tree_indexs)
-    print("all_content_positions", all_content_positions)
-    node_objects, total_nodes, global_mutation, total_tips = consolidate_data(sub_ts, results)
-    json_output, new_data = return_data(node_objects, total_nodes, global_mutation, all_content_positions, genomic_position_minmax, total_tips, tree_min_max)
-    return json_output, new_data
+    nwk_string = ''.join(nwk_list)
+    print('got nwk string')
+    # tree_indexs = list(range(1, sub_ts.num_trees))[:-1]
+    # nwk_string = ''
+    # print(len(tree_indexs))
+    # with Pool(processes=cpu_count()) as pool:
+    #     for idx, tree_data in tqdm(pool.starmap(process_tree, [(ts, idx) for idx in tree_indexs]), total=len(tree_indexs), desc="Processing Trees"):
+    #         nwk_string = nwk_string + tree_data['newick']
+
+    # tree_indexs = list(np.arange(start, end)) # global variable.
+    # results, all_content_positions, genomic_position_minmax = process_trees_with_progress(sub_ts, tree_indexs)
+    # print("all_content_positions", all_content_positions)
+    # node_objects, total_nodes, global_mutation, total_tips = consolidate_data(sub_ts, results)
+    # json_output, new_data = return_data(node_objects, total_nodes, global_mutation, all_content_positions, genomic_position_minmax, total_tips, tree_min_max)
+    # return json_output, new_data
+    return nwk_string[:-1]
 
     
 # # trees = []
