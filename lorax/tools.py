@@ -13,7 +13,8 @@ from lorax.faiss_vector import getRetriever
 
 from langchain_tavily import TavilySearch
 
-from langchain.agents import AgentExecutor, create_react_agent, load_tools
+from langchain.agents import AgentExecutor, create_react_agent
+from langchain_community.agent_toolkits.load_tools import load_tools
 from langchain_openai import ChatOpenAI
 from langchain_ollama import ChatOllama
 
@@ -147,8 +148,8 @@ def generalInfoTool(question, attributes=None):
     # """
 
     prompt_template = """Answer the following questions as best you can. 
-        The general topic of this conversation is treesequences and population genetics.
-        Include citations. 
+        The general topic of this conversation is treesequences and population genetics but don't include this in your search, just keep that in mind.
+        Include citations or reference links where applicable. 
         You have access to the following tools:
 
         {tools}
@@ -162,7 +163,7 @@ def generalInfoTool(question, attributes=None):
         Observation: the result of the action
         ... (this Thought/Action/Action Input/Observation can repeat N times until you decide to "Finish")
         Thought: I now know the final answer
-        Final Answer: the final detailed answer to the original input question (with reference links)
+        Final Answer: the final detailed answer to the original input question (with reference links if applicable)
 
         Begin!
 
@@ -174,8 +175,16 @@ def generalInfoTool(question, attributes=None):
         prompt = PromptTemplate(
             input_variables=['input', 'context'], template=prompt_template
         )
-        lm = ChatOpenAI(model="gpt-4o", temperature=0)
-
+        # lm = ChatOpenAI(model="gpt-4o", temperature=0)
+        print("before lm")
+        lm = ChatOllama(
+            base_url="https://uwx72r685xxxb8-11434.proxy.runpod.net/",
+            model="llama3.2",  # or "llama3:latest" depending on what you pulled
+            temperature=0
+        )
+        print("after lm")
+        # lm = ChatOllama(model="llama3.2", temperature=0, api_key="76c6d00e-b785-45b4-a552-e3cb52304e29")
+        
         tools = [
             *load_tools(["arxiv"]),
             TavilySearch(
@@ -188,8 +197,9 @@ def generalInfoTool(question, attributes=None):
         agent = create_react_agent(lm, tools, prompt)
         agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True, handle_parsing_errors=True)
 
+        print("before answer")
         answer = agent_executor.invoke({"input": question, "context": attributes["memory"]})
-
+        print("after answer")
         # print("Answer:", answer["output"])
 
         return answer["output"]
