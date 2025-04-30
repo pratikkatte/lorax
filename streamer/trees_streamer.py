@@ -84,6 +84,15 @@ import orjson
 import json
 from trees_to_taxonium import start_end
 
+
+def extract_info(start, end, ts):
+    nwk_string, genome_positions = start_end(start, end, ts)
+    data = json.dumps({
+        "nwk": nwk_string,
+        "genome_positions": genome_positions
+        })
+    return data
+    
 async def handle_connection(websocket):
     print("Python WebSocket connected")
     # ts = tskit.load("./sample.trees")  # Load tree sequence once
@@ -133,14 +142,10 @@ async def handle_connection(websocket):
                     try:
                         if ts==None:
                             ts = tskit.load(path)
+                        data = extract_info(start, end, ts)
+
                         
-                        nwk_string = start_end(start, end, ts)
-                        # nwk_string = "((A:0.1,B:0.2):0.3,C:0.4)"
-
-                        # tree = ts.at_index(3)
-                        # nwk = tree.newick()
-
-                        await websocket.send(json.dumps({"status": "file_received", "nwk":nwk_string, "filename": filename}))
+                        await websocket.send(json.dumps({"status": "file_received",'data':data,"filename": filename}))
                     except Exception as e:
                         print("eerror", e)
                         await websocket.send(json.dumps({"status": "error", "message": f"Failed to load .trees: {str(e)}"}))
@@ -149,8 +154,8 @@ async def handle_connection(websocket):
                 try:
                     values = metadata_msg['values']
                     print("values", values)
-                    nwk_string = start_end(values[0], values[1], ts)
-                    await websocket.send(json.dumps({"status": 200, "nwk":nwk_string}))
+                    data = extract_info(values[0], values[1], ts)
+                    await websocket.send(json.dumps({"status": 200, 'data':data}))
                 except Exception as e:
                     print("query_trees, error", e)
                     await websocket.send(json.dumps({"status": "error", "message": f"Failed to query trees: {str(e)}"}))

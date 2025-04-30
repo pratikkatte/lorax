@@ -124,8 +124,9 @@ const useLayers = ({
       //       if (point[0] > maxX) maxX = point[0];
       //     });
       //   }
-      // });
-
+      // });  
+      // console.log("tree", tree)
+      const genome_position = data.data.genome_positions[i];
       let path_layer = new PathLayer({
         id: `main-layer-${i}`,
         data: tree.filter(d => d.path),
@@ -135,8 +136,8 @@ const useLayers = ({
         modelMatrix,
         pickable:false,
         widthUnits: 'pixels',
-        // zOffset: 0.1,
-        // viewId: 'ortho'
+        zOffset: 0.1,
+        viewId: 'ortho'
       })
 
       let nodes_layer = new ScatterplotLayer({
@@ -149,64 +150,90 @@ const useLayers = ({
         radiusUnits: 'pixels',
         pickable: false,
         zOffset: 0.1,
-        // viewId: 'ortho'
+        viewId: 'ortho'
       });
 
-      const genomicX = -0.5 // normalize to [0, 1]
-      const genomic_position_layer = new LineLayer({
-        id: `genome-position-line-${i}`,
-        data: [
-          { source: [genomicX, 0], target: [genomicX, 1] }
-        ],
-        getSourcePosition: d => d.source,
-        getTargetPosition: d => d.target,
-        getColor: [255, 0, 0],
-        getWidth: 2,
+      const lineLayer = new LineLayer({
+        id: `genome-positions-line-${i}`,
+        data: [{sourcePosition: [0, 0], targetPosition: [0, 1]}], // normalized
+        getSourcePosition: d => d.sourcePosition,
+        getTargetPosition: d => d.targetPosition,
+        getColor: [0, 0, 255],
+        getWidth: 4,
+        widthUnits: 'pixels',
         modelMatrix,
-        pickable: false,
-        // viewId: 'scalesY'
+        viewId: 'genome-positions'
       });
 
-      return [path_layer, nodes_layer]
+      var topLabelLayer = null
+      var bottomLabelLayer = null;
+      if(i===0){
+        topLabelLayer = new TextLayer({
+          id: `genome-positions-top-label-${i}`,
+          data: [{
+            position: [0, -0.01], // small offset above
+            text: String(genome_position.start)
+          }],
+          getPosition: d => d.position,
+          getText: d => d.text,
+          getColor: [0, 0, 0],
+          getSize: 10,
+          sizeUnits: 'pixels',
+          getAlignmentBaseline: 'bottom',
+          modelMatrix,
+          viewId: 'genome-positions'
+        });
+      }
+      
+        bottomLabelLayer = new TextLayer({
+          id: `genome-positions-bottom-label-${i}`,
+          data: [{
+            position: [0, 1 + 0.15], // small offset above
+            text: String(genome_position.end)
+          }],
+          getPosition: d => d.position,
+          getText: d => d.text,
+          getColor: [0, 0, 0],
+          getSize: 10,
+          sizeUnits: 'pixels',
+          getAlignmentBaseline: 'bottom',
+          modelMatrix,
+          viewId: 'genome-positions'
+        });
+      
+      
+
+
+      return [path_layer, nodes_layer, lineLayer, topLabelLayer, bottomLabelLayer]
   })
 }
 
 // Add the x-axis line separately outside the loop
 
-if(data.data && data.data.paths){
+
+// layers.push(lineLayer)
 
 
-const xAxisLineLayer = new LineLayer({
-  id: 'x-axis-line',
-  data: [
-    { source: [1, 1], target: [2, 1] } // Create a line from -1 to 1 horizontally at y = -1
-  ],
-  getSourcePosition: d => d.source,
-  getTargetPosition: d => d.target,
-  getColor: [0, 255, 0], // Green color for x-axis
-  getWidth: 2,
-  // Fix the x-axis line to stay at the bottom of the screen
-  modelMatrix: new Matrix4().translate([0, data.data.paths.length, 0]), // Position it at y = -1 in screen space
-  // pickable: false,
-  // coordinateSystem: COORDINATE_SYSTEM.IDENTITY, // Ensure it's in screen space
-  viewId: 'scalesX'
-});
+// const layerFilter = useCallback(
+//   ({ layer, viewport, renderPass }) => {
+//     const first_bit = (layer.id.startsWith("main") && viewport.id === "main") 
+//     return first_bit;
+//   },
+//   []
+// );
+
+  const layerFilter = useCallback(({ layer, viewport }) => {
+    const isortho = viewport.id === 'ortho';
+    const isXaxis = viewport.id === 'genome-positions';
+  
+    return (
+      (isortho && layer.id.startsWith('main')) ||
+      (isXaxis && layer.id.startsWith('genome-positions'))
+    )},[]);
 
 
-// layers.push(xAxisLineLayer)
-}
 
-const layerFilter = useCallback(
-  ({ layer, viewport, renderPass }) => {
-    const first_bit = (layer.id.startsWith("main") && viewport.id === "main") 
-    return first_bit;
-  },
-  []
-);
-
-
-    
-
+  
   return { layers: layers,layerFilter};
 };
 

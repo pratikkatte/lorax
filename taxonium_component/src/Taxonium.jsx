@@ -98,14 +98,13 @@ function Taxonium({uploadFile, query, updateQuery, }) {
 
   return (
     <>
-      <div className="top-0 left-0 right-0 flex justify-center items-start w-full bg-white z-10">
-      {treeposition && (
-        <PositionSlider genome_position={{'min':treeposition[0], 'max': treeposition[1]}} value={value} setValue={setValue} />
-      )}
-
+    <div className="flex flex-col w-full h-full">
+      <div className="flex justify-center items-start w-full bg-white">
+        {treeposition && (
+          <PositionSlider genome_position={{'min':treeposition[0], 'max': treeposition[1]}} value={value} setValue={setValue} />
+        )}
       </div>
-
-      <div className="w-full h-full">
+    <div className="">
 
       <Toaster />
       
@@ -133,6 +132,7 @@ function Taxonium({uploadFile, query, updateQuery, }) {
             // setAdditionalColorMapping={setAdditionalColorMapping}
           />
       </div>
+    </div>
     </>
   )
   // const [backupQuery, setBackupQuery] = useState(default_query);

@@ -19,7 +19,7 @@ function App() {
       const handleUploadError = (error) => {
         console.error('Upload error:', error);
       };
-
+      
   return (
     <>
     {!file ? <TreeSequenceUploader

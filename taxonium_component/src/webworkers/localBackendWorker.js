@@ -118,9 +118,9 @@ export const queryNodes = async (boundsForQueries, values) => {
   console.log("Worker query Nodes");
   await waitForProcessedData();
   let result;
-
+  var websocket_received_data;
   console.log("in webworker, querynode", values);
-  let nwk = null
+  var nwk = null
   await pythonClient.sendRequest({
     action: 'query_trees',
     // file: payload
@@ -128,17 +128,21 @@ export const queryNodes = async (boundsForQueries, values) => {
   }).then((response) => {
     sendStatusMessage({
       "status": response.status,
-    })
-    // console.log("response qyerty", response)
-    nwk = response.nwk;
+    })    
+    websocket_received_data = JSON.parse(response.data);
+      console.log("query response", websocket_received_data)
+      nwk = websocket_received_data.nwk;
+      // nwk = response.nwk;
+
   })
-  if(nwk){
-    console.log("nwk processed new data")
-    processedUploadedData = await processData(nwk, sendStatusMessage)
-  }
+  processedUploadedData = await processData(nwk, sendStatusMessage)
+  // if(nwk){
+    
+  // }
     
   result = {
     paths: processedUploadedData,
+    genome_positions: websocket_received_data.genome_positions
     // nodes: filtering.getNodes(
     //   nodes,
     //   y_positions,
@@ -338,9 +342,9 @@ onmessage = async (event) => {
         sendStatusMessage({
           "status": response.status,
         })
-        console.log("response", response)
-
-        nwk = response.nwk;
+        const websocket_received_data = JSON.parse(response.data);
+        console.log("response", websocket_received_data)
+        nwk = websocket_received_data.nwk;
         // nwk = "((A:1,B:1)AB:1,C:2);((A:3,B:3)AB:1,C:2);"
       });
         

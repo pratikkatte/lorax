@@ -139,28 +139,19 @@ def start_end(start, end, ts):
 
     print('got sub ts')
     nwk_list = []
+    positions = []
     for tree in sub_ts.trees():
+         intervals = tree.interval
+         
          if len(nwk_list)==3:
              break
          if tree.num_roots == 1:
             nwk_list.append(tree.newick())
+            positions.append({'start':intervals.left,'end':intervals.right })
 
     nwk_string = ''.join(nwk_list)
     print('got nwk string')
-    # tree_indexs = list(range(1, sub_ts.num_trees))[:-1]
-    # nwk_string = ''
-    # print(len(tree_indexs))
-    # with Pool(processes=cpu_count()) as pool:
-    #     for idx, tree_data in tqdm(pool.starmap(process_tree, [(ts, idx) for idx in tree_indexs]), total=len(tree_indexs), desc="Processing Trees"):
-    #         nwk_string = nwk_string + tree_data['newick']
-
-    # tree_indexs = list(np.arange(start, end)) # global variable.
-    # results, all_content_positions, genomic_position_minmax = process_trees_with_progress(sub_ts, tree_indexs)
-    # print("all_content_positions", all_content_positions)
-    # node_objects, total_nodes, global_mutation, total_tips = consolidate_data(sub_ts, results)
-    # json_output, new_data = return_data(node_objects, total_nodes, global_mutation, all_content_positions, genomic_position_minmax, total_tips, tree_min_max)
-    # return json_output, new_data
-    return nwk_string[:-1]
+    return nwk_string[:-1] if nwk_string else '', positions
 
     
 # # trees = []
