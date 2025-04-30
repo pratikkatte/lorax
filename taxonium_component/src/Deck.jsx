@@ -66,21 +66,8 @@ function Deck({
     console.log("statusMessage", statusMessage)
 
   },[statusMessage])
-  // const {
-  //   viewState,
-  //   onViewStateChange,
-  //   views,
-  //   zoomIncrement,
-
-  //   zoomAxis,
-  //   setZoomAxis,
-  //   xzoom,
-  // } = view;
   
   const defaultViewState = {
-    // zoom: 4,
-    // target: [0.5, 0.5],
-    // pitch: 0,
 
     ortho: {
       target: [0.5, 0.5],  // [x, y, z]
@@ -97,11 +84,9 @@ function Deck({
       zoom: 4,
       pitch:0
     }
-    // bearing:0
-    // minZoom: [5,5]
+
   }
 
-  // const [viewState, setViewState] = useState(defaultViewState)
   const [viewState, setViewState] = useState({
     target: [0.5, 0.5],
     zoom: 6,
@@ -136,23 +121,19 @@ function Deck({
     setHoverInfo,
     hoverInfo,
     xType,
-    // modelMatrix: view.modelMatrix,
-    // xzoom,
+
     hoveredKey,
   });
 
   const handleHover = useCallback((info, event) => {
-    // Check if the mouse is over the 'ortho' view (or specific layer if you need more specificity)
     console.log("handleOver",info, event)
-    // const isMouseOverOrtho = layer && layer.id === 'ortho';
-    // setIsMouseOnOrtho(isMouseOverOrtho);
+
   }, []);
 
 
 
   return (
-    // style={{ height: '500px' }}
-    //w-full h-full
+
     <div className="w-full h-full border-4 border-red-500 "
     > 
       {no_data ? (

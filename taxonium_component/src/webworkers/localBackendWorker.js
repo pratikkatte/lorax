@@ -136,8 +136,6 @@ export const queryNodes = async (boundsForQueries, values) => {
     console.log("nwk processed new data")
     processedUploadedData = await processData(nwk, sendStatusMessage)
   }
-  
-
     
   result = {
     paths: processedUploadedData,
