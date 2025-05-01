@@ -100,8 +100,10 @@ export async function cleanup(tree) {
   });
 
   tree.node = tree.node.map((node, i) => {
+    const node_name = node.name.replace(/'/g, "")
+
     const to_return = {
-      name: node.name.replace(/'/g, ""),
+      name: node_name,
       parent_id: node.parent ? node.parent.node_id : node.node_id,
       x_dist: node.x,
       mutations: emptyList,

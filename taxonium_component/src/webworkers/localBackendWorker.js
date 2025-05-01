@@ -17,7 +17,6 @@ import { kn_parse, kn_calxy } from "../jstree";
 
 import PythonWebSocketClient from './PythonWebSocketClient.js';
 const pythonClient = new PythonWebSocketClient();
-
 postMessage({ data: "Worker starting" });
 
 const the_cache = {};
@@ -44,7 +43,7 @@ function extractSquarePaths(node) {
   if (node.child.length>0) {
     node.child.forEach(child => {
       // Horizontal segment from parent to child x at parent y
-
+      // console.log("node", node)
       // Vertical drop to child's y
       segments.push({
         path: [
@@ -59,7 +58,11 @@ function extractSquarePaths(node) {
           [child.x, child.y]
         ]
       });
-
+      // if(child.mutations) {
+      //   segments.push({ mutations: child.mutations,
+      //     position: [node.x, child.y]
+      //   })
+      // }
       // Recurse into children
       segments.push(...extractSquarePaths(child));
     });
@@ -67,7 +70,12 @@ function extractSquarePaths(node) {
     segments.push({
       position: [node.x, node.y],
     })
+    
   }
+  if(node.mutations) {
+    segments.push({ mutations: node.mutations, position:[node.x, node.y]})
+  } 
+  
 
   return segments;
 }
@@ -121,6 +129,7 @@ export const queryNodes = async (boundsForQueries, values) => {
   var websocket_received_data;
   console.log("in webworker, querynode", values);
   var nwk = null
+  var mutations = null
   await pythonClient.sendRequest({
     action: 'query_trees',
     // file: payload
@@ -132,10 +141,11 @@ export const queryNodes = async (boundsForQueries, values) => {
     websocket_received_data = JSON.parse(response.data);
       console.log("query response", websocket_received_data)
       nwk = websocket_received_data.nwk;
-      // nwk = response.nwk;
-
+      mutations = websocket_received_data.mutations
+      console.log("mutations", mutations)
   })
-  processedUploadedData = await processData(nwk, sendStatusMessage)
+  // nwk = "((A:1,B:1):1,C:2);((A:3,B:3)AB:1,C:2);"
+  processedUploadedData = await processData(nwk, mutations, sendStatusMessage)
   // if(nwk){
     
   // }
@@ -236,8 +246,8 @@ const getDetails = async (node_id) => {
 };
 
 
-function processNewick(nwk_str) {
-  
+function processNewick(nwk_str, mutations) {
+    console.log("mutations", mutations)
   const tree = kn_parse(nwk_str)
 
   function assignNumTips(node) {
@@ -261,7 +271,20 @@ function processNewick(nwk_str) {
     });
   }
 
+  function assignMutations(node){
+    if (mutations && mutations.hasOwnProperty(node.name)) {
+      node.mutations = mutations[node.name]
+    }
+    if(node.child.length > 0){ 
+      node.child.forEach((child) => {
+        assignMutations(child);
+      })
+    }
+  }
+
   assignNumTips(tree.root);
+  assignMutations(tree.root);
+
   const total_tips = tree.root.num_tips;
 
   // if (data.ladderize) {
@@ -278,22 +301,21 @@ function processNewick(nwk_str) {
 
   return tree
 }
-async function processData(data, sendStatusMessage){
+async function processData(data, mutations, sendStatusMessage){
 
   const trees = data
   .split(';')
   .filter(Boolean)
-  .map(str => processNewick(str));
+  .map((str, index) => processNewick(str, mutations[index]));
 
   const paths = []
 
   trees.map((tree, i) => {
     console.log("layouttree", tree, i)
-    
-    const extent = getYExtent(tree.root);
-    console.log("extent", extent, i)
+    // const extent = getYExtent(tree.root);
     paths.push(extractSquarePaths(tree.root))
   })
+  console.log("paths", paths)
   return paths
 
 }
@@ -329,7 +351,7 @@ onmessage = async (event) => {
       }
       var websocket_data = {}
       var nwk = null
-    
+      var mutations = null
       console.log("sending data to pythonclient")
 
       sendStatusMessage({
@@ -345,10 +367,9 @@ onmessage = async (event) => {
         const websocket_received_data = JSON.parse(response.data);
         console.log("response", websocket_received_data)
         nwk = websocket_received_data.nwk;
-        // nwk = "((A:1,B:1)AB:1,C:2);((A:3,B:3)AB:1,C:2);"
+        mutations = websocket_received_data.mutations
       });
-        
-      processedUploadedData = await processData(nwk, sendStatusMessage)
+      processedUploadedData = await processData(nwk, mutations, sendStatusMessage)
       
       // console.log("processedUploadedData", processedUploadedData)
       sendStatusMessage({

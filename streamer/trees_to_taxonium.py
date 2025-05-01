@@ -140,18 +140,34 @@ def start_end(start, end, ts):
     print('got sub ts')
     nwk_list = []
     positions = []
-    for tree in sub_ts.trees():
+    
+    mutations = []
+    for index, tree in enumerate(sub_ts.trees()):
          intervals = tree.interval
          
          if len(nwk_list)==3:
              break
          if tree.num_roots == 1:
-            nwk_list.append(tree.newick())
+            labels = {
+                u: str(u) for u in tree.nodes()
+                }
+            nwk_list.append(tree.as_newick(node_labels=labels))
             positions.append({'start':intervals.left,'end':intervals.right })
+            temp_mut = {}
+            for site in tree.sites():
+                print(index, site)
+                for mut in site.mutations:
+                    mut_info = str(site.ancestral_state)+str(int(site.position))+str(mut.derived_state)
+                    if mut.node not in temp_mut:
+                        temp_mut[str(mut.node)] = [mut_info]
+                    else:
+                        temp_mut[str(mut.node)].append(mut_info)
+            mutations.append(temp_mut)
+
 
     nwk_string = ''.join(nwk_list)
     print('got nwk string')
-    return nwk_string[:-1] if nwk_string else '', positions
+    return nwk_string[:-1] if nwk_string else '', positions, mutations
 
     
 # # trees = []

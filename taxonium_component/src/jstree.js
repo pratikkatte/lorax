@@ -73,7 +73,7 @@
       meta: "",
       d: -1.0,
       hl: false,
-      hidden: false,
+      hidden: false
     };
   }
   

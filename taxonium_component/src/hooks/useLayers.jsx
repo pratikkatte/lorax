@@ -1,10 +1,9 @@
 import {
   LineLayer,
   ScatterplotLayer,
-  PolygonLayer,
   TextLayer,
-  SolidPolygonLayer,
-  PathLayer
+  PathLayer,
+  IconLayer
 } from "@deck.gl/layers";
 import {COORDINATE_SYSTEM} from "@deck.gl/core";
 import { Matrix4, } from '@math.gl/core';
@@ -13,77 +12,6 @@ import { kn_parse } from "../jstree";
 import { useMemo, useCallback, useEffect } from "react";
 import useTreenomeLayers from "./useTreenomeLayers";
 import getSVGfunction from "../utils/deckglToSvg";
-
-
-function layoutTree(node, yOffset = { value: 0 }, x = 0) {
-  node.x = x;
-node.mutation = ''
-  if (!node.d) node.d = 0;
-
-  if (!node.child || node.child.length === 0) {
-    node.y = yOffset.value++;
-  } else {
-    node.child.forEach(c =>
-      layoutTree(c, yOffset, x + c.d)
-    );
-    node.y = node.child.reduce((sum, c) => sum + c.y, 0) / node.child.length;
-  }
-}
-
-function extractSquarePaths(node) {
-  const segments = [];
-
-  if (node.child.length>0) {
-    node.child.forEach(child => {
-      // Horizontal segment from parent to child x at parent y
-
-      // Vertical drop to child's y
-      segments.push({
-        path: [
-          [node.x, node.y],
-          [node.x, child.y]
-        ],
-      });
-
-      segments.push({
-        path: [
-          [node.x, child.y],
-          [child.x, child.y]
-        ]
-      });
-
-
-      // Recurse into children
-      segments.push(...extractSquarePaths(child));
-    });
-  } else {
-    segments.push({
-      position: [node.x, node.y],
-    })
-  }
-
-  return segments;
-}
-
-
-
-const getKeyStuff = (getNodeColorField, colorByField, dataset, toRGB) => {
-  const counts = {};
-  for (const node of dataset.nodes) {
-    const value = getNodeColorField(node, dataset);
-    if (value in counts) {
-      counts[value]++;
-    } else {
-      counts[value] = 1;
-    }
-  }
-  const keys = Object.keys(counts);
-  const output = [];
-  for (const key of keys) {
-    output.push({ value: key, count: counts[key], color: toRGB(key) });
-  }
-  return output;
-};
 
 const useLayers = ({
   data,
@@ -111,21 +39,17 @@ const useLayers = ({
 
   var layers = [];
   if((data.data) && (data.data.paths)) {
+
+
+
     layers = data.data.paths.flatMap((tree, i) => {
+
+
+      const mutation_filteredData = tree.filter(d => 'mutations' in d);
 
       const zoomScale = 1 / Math.pow(2, viewState.zoom);
       const verticalOffset = i * (1.2); 
       const modelMatrix = new Matrix4().translate([0, verticalOffset , 0]); // stack vertically
-
-      // tree.forEach(d => {
-      //   if (d.path) {
-      //     d.path.forEach(point => {
-      //       if (point[0] < minX) minX = point[0];
-      //       if (point[0] > maxX) maxX = point[0];
-      //     });
-      //   }
-      // });  
-      // console.log("tree", tree)
       const genome_position = data.data.genome_positions[i];
       let path_layer = new PathLayer({
         id: `main-layer-${i}`,
@@ -200,11 +124,29 @@ const useLayers = ({
           modelMatrix,
           viewId: 'genome-positions'
         });
-      
-      
 
+        const mutationLayer = new IconLayer({
+          id: `main-mutations-marker-${i}`,
+          data: mutation_filteredData,
+          // data: [{
+          //   position:[0.5,0.5],
+          //   name: 'marker'
+          // }],
+          getPosition: d=> d.position,
+          getIcon:d=>'marker',
+          getSize:10,
+          sizeScale: 3,
+          iconAtlas: '/close.png',
+          iconMapping:{
+            marker: { x: 0, y: 0, width: 128, height: 128, anchorY: 128 }
+          },
+          modelMatrix,
+        pickable:true,
+        viewId: 'ortho',
+        getColor: [255, 0, 0]
+      })
 
-      return [path_layer, nodes_layer, lineLayer, topLabelLayer, bottomLabelLayer]
+      return [path_layer, nodes_layer, mutationLayer, lineLayer, topLabelLayer, bottomLabelLayer]
   })
 }
 
@@ -232,8 +174,8 @@ const useLayers = ({
     )},[]);
 
 
-
   
+  // console.log("layers", layers)
   return { layers: layers,layerFilter};
 };
 

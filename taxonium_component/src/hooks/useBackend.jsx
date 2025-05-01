@@ -2,7 +2,7 @@ import useServerBackend from "./useServerBackend";
 import useLocalBackend from "./useLocalBackend";
 
 function useBackend(uploaded_data, setChangeInProcess)  {
-  
+  console.log("asds")
   const localBackend = useLocalBackend(uploaded_data, setChangeInProcess);
 
   if (uploaded_data) {

@@ -17,7 +17,6 @@ export default class PythonWebSocketClient {
     }
 
     connect() {
-
         this.socket = new WebSocket(this.url);
 
         this.socket.onopen = () => {
@@ -28,11 +27,7 @@ export default class PythonWebSocketClient {
 
         this.socket.onmessage = (event) => {
             try {
-
                 const response = JSON.parse(event.data);
-
-                
-
                 if (this.responseQueue.length > 0) {
                     const { resolve } = this.responseQueue.shift();
                     resolve(response);
