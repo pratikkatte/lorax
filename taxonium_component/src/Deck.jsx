@@ -119,11 +119,9 @@ function Deck({
   const { layers, layerFilter } = useLayers({
     data,
     viewState,
-  
     setHoverInfo,
     hoverInfo,
     xType,
-
     hoveredKey,
   });
 

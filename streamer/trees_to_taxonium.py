@@ -137,7 +137,6 @@ def start_end(start, end, ts):
     
     sub_ts = ts.keep_intervals([[start, end]], simplify=False)
 
-    print('got sub ts')
     nwk_list = []
     positions = []
     
@@ -145,7 +144,7 @@ def start_end(start, end, ts):
     for index, tree in enumerate(sub_ts.trees()):
          intervals = tree.interval
          
-         if len(nwk_list)==3:
+         if len(nwk_list)==10:
              break
          if tree.num_roots == 1:
             labels = {

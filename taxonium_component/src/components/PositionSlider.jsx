@@ -73,9 +73,8 @@ export default function PositionSlider(props) {
     return (
       <>
       <div>
-        {value[0]}....{value[1]}
+        {value[0]}
       </div>
-      
         <div style={{  
           width: '100%',
           height: '8%', // Match the background height
