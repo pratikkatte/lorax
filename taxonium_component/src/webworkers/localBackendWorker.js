@@ -9,7 +9,7 @@ import { processNextstrain } from "../utils/processNextstrain.js";
 import { ReadableWebToNodeStream } from "readable-web-to-node-stream";
 import { parser } from "stream-json";
 import { streamValues } from "stream-json/streamers/StreamValues";
-import { kn_parse, kn_calxy } from "../jstree";
+import { kn_parse, kn_calxy,kn_expand_node, kn_global_calxy} from "../utils/jstree";
 
 // const WebSocket = require('ws');
 
@@ -58,25 +58,17 @@ function extractSquarePaths(node) {
           [child.x, child.y]
         ]
       });
-      // if(child.mutations) {
-      //   segments.push({ mutations: child.mutations,
-      //     position: [node.x, child.y]
-      //   })
-      // }
-      // Recurse into children
+
       segments.push(...extractSquarePaths(child));
     });
   } else {
     segments.push({
       position: [node.x, node.y],
     })
-    
   }
   if(node.mutations) {
     segments.push({ mutations: node.mutations, position:[node.x, node.y]})
   } 
-  
-
   return segments;
 }
 
@@ -130,6 +122,7 @@ export const queryNodes = async (boundsForQueries, values) => {
   console.log("in webworker, querynode", values);
   var nwk = null
   var mutations = null
+  var times = null
   await pythonClient.sendRequest({
     action: 'query_trees',
     // file: payload
@@ -142,10 +135,11 @@ export const queryNodes = async (boundsForQueries, values) => {
       console.log("query response", websocket_received_data)
       nwk = websocket_received_data.nwk;
       mutations = websocket_received_data.mutations
+      times = websocket_received_data.global_times
       console.log("mutations", mutations)
   })
   // nwk = "((A:1,B:1):1,C:2);((A:3,B:3)AB:1,C:2);"
-  processedUploadedData = await processData(nwk, mutations, sendStatusMessage)
+  processedUploadedData = await processData(nwk, mutations, times, sendStatusMessage)
   // if(nwk){
     
   // }
@@ -246,8 +240,19 @@ const getDetails = async (node_id) => {
 };
 
 
-function processNewick(nwk_str, mutations) {
-    console.log("mutations", mutations)
+function processNewick(nwk_str, mutations, globalMinTime, globalMaxTime, times) {
+  let ladderize = true;
+  // let globalMinTime = -324375.4523505669
+  // let globalMaxTime = 0.0
+  console.log("start", globalMinTime, globalMaxTime, times)
+  let start_time = times['end']
+  // if (index > 0){
+    
+  //   start_time = -99228.96210396479
+  // }else{
+  //   start_time = globalMinTime
+  // }
+  
   const tree = kn_parse(nwk_str)
 
   function assignNumTips(node) {
@@ -287,38 +292,95 @@ function processNewick(nwk_str, mutations) {
 
   const total_tips = tree.root.num_tips;
 
-  // if (data.ladderize) {
-  //   sortWithNumTips(tree.root);
-  //   tree.node = kn_expand_node(tree.root);
-  // }
+  if (ladderize) {
+    sortWithNumTips(tree.root);
+    tree.node = kn_expand_node(tree.root);
+  }
 
-  kn_calxy(tree, true);
-
+  // kn_calxy(tree, true);
+  kn_global_calxy(tree, true, globalMinTime, globalMaxTime, start_time)
   // sort on y:
   tree.node.sort((a, b) => a.y - b.y);
-
+  console.log("clieaning up")
   cleanup(tree);
 
   return tree
 }
-async function processData(data, mutations, sendStatusMessage){
+
+export async function globalCleanup(allTrees) {
+  const emptyList = []; // Define your default mutation list or placeholder
+
+  // Step 1: Assign node_id and collect all x/y values
+  let all_x = [];
+  let all_y = [];
+
+  for (const tree of allTrees) {
+    tree.node.forEach((node, i) => {
+      node.node_id = i;
+      all_x.push(node.x);
+      all_y.push(node.y);
+    });
+  }
+
+  // Step 2: Compute global scale factors
+  all_x.sort((a, b) => a - b);
+
+  const ref_x = all_x.length > 0 ? all_x[Math.floor(all_x.length * 0.99)] : 1;
+  const scale_x = 450 / ref_x;
+
+  const min_y = all_y.reduce((min, y) => Math.min(min, y), Infinity);
+  const max_y = all_y.reduce((max, y) => Math.max(max, y), -Infinity);
+  const scale_y =  1;
+
+  // Step 3: Normalize and flatten each tree safely
+  for (let t = 0; t < allTrees.length; t++) {
+    const tree = allTrees[t];
+    const x_offset = t * 500; // Optional horizontal spacing between trees
+
+    const originalNodes = tree.node; // Preserve reference to full objects
+
+    tree.node = originalNodes.map((node) => {
+      const node_name = node.name?.replace(/'/g, "") || "";
+
+      const to_return = {
+        name: node_name,
+        parent_id: node.parent ? node.parent.node_id : node.node_id,
+        x_dist: node.x * scale_x + x_offset,
+        y: (node.y - min_y) * scale_y,
+        mutations: emptyList,
+        num_tips: node.num_tips,
+        is_tip: node.child.length === 0,
+        node_id: node.node_id,
+      };
+
+      if (node.meta) {
+        parseNewickKeyValue(node.meta, to_return);
+      }
+
+      return to_return;
+    });
+  }
+}
+
+async function processData(data, mutations, times, sendStatusMessage){
 
   const trees = data
   .split(';')
   .filter(Boolean)
-  .map((str, index) => processNewick(str, mutations[index]));
+  .map((str, index) => {
+    return processNewick(str, mutations[index], times['min_time'], times['max_time'], times['times'][index]);
+  });
 
+  // globalCleanup(trees)
   const paths = []
-
   trees.map((tree, i) => {
-    console.log("layouttree", tree, i)
     // const extent = getYExtent(tree.root);
     paths.push(extractSquarePaths(tree.root))
   })
   console.log("paths", paths)
   return paths
-
 }
+
 const getList = async (node_id, att) => {
   console.log("Worker getList");
   await waitForProcessedData();
@@ -334,14 +396,12 @@ onmessage = async (event) => {
 
   if (data.type === "upload")
   {
-    console.log("inside local worker") 
     const {file} = data.data;
 
     if (file instanceof File){
       const arrayBuffer = await file.arrayBuffer();
       //Now you can send it via WebSocket
 
-    
     const payload = {
       filename: file.name,
       size: file.size,
@@ -352,6 +412,7 @@ onmessage = async (event) => {
       var websocket_data = {}
       var nwk = null
       var mutations = null
+      var times = null
       console.log("sending data to pythonclient")
 
       sendStatusMessage({
@@ -368,8 +429,9 @@ onmessage = async (event) => {
         console.log("response", websocket_received_data)
         nwk = websocket_received_data.nwk;
         mutations = websocket_received_data.mutations
+        times = websocket_received_data.global_times
       });
-      processedUploadedData = await processData(nwk, mutations, sendStatusMessage)
+      processedUploadedData = await processData(nwk, mutations,times, sendStatusMessage)
       
       // console.log("processedUploadedData", processedUploadedData)
       sendStatusMessage({
@@ -377,26 +439,20 @@ onmessage = async (event) => {
       });
       // console.log("asdas", processedUploadedData)
       }
-
-    console.log("processedUploadedData created");
   } else {
     if (data.type === "query") {
-      console.log("Worker query");
       const result = await queryNodes(data.bounds, data.value);
       postMessage({ type: "query", data: result });
     }
     if (data.type === "search") {
-      console.log("Worker search");
       // const result = await search(data.search, data.bounds);
       // postMessage({ type: "search", data: result });
     }
     if (data.type === "config") {
-      console.log("Worker config");
       // const result = await getConfig();
       // postMessage({ type: "config", data: result });
     }
     if (data.type === "details") {
-      console.log("Worker details");
       // const result = await getDetails(data.node_id);
       // postMessage({ type: "details", data: result });
     }

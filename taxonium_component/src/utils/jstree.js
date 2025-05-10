@@ -510,6 +510,82 @@ function kn_reorder_num_tips(root) {
  ***** Functions for plotting a tree *****
  *****************************************/
 
+ function kn_global_calxy(tree, is_real, globalMinTime = null, globalMaxTime = null, startTime = 0) {
+  let i, j, scale;
+
+  // --------- Y COORDINATES ---------
+  scale = tree.n_tips - 1;
+  for (i = j = 0; i < tree.node.length; ++i) {
+    const p = tree.node[i];
+    p.y = (p.child.length && !p.hidden)
+      ? (p.child[0].y + p.child[p.child.length - 1].y) / 2.0
+      : j++ / scale;
+
+    if (p.child.length === 0) {
+      p.miny = p.maxy = p.y;
+    } else {
+      p.miny = p.child[0].miny;
+      p.maxy = p.child[p.child.length - 1].maxy;
+    }
+  }
+
+  // --------- X COORDINATES (Time) ---------
+  if (is_real) {
+    const root = tree.node[tree.node.length - 1];
+    scale = root.x = root.d >= 0.0 ? root.d : 0.0;
+
+    for (i = tree.node.length - 2; i >= 0; --i) {
+      const p = tree.node[i];
+      p.x = p.parent.x + (p.d >= 0.0 ? p.d : 0.0);
+      if (p.x > scale) scale = p.x;
+    }
+
+    if (scale === 0.0) is_real = false;
+  }
+
+  if (!is_real) {
+    scale = tree.node[tree.node.length - 1].x = 1.0;
+
+    for (i = tree.node.length - 2; i >= 0; --i) {
+      const p = tree.node[i];
+      p.x = p.parent.x + 1.0;
+      if (p.x > scale) scale = p.x;
+    }
+
+    for (i = 0; i < tree.node.length - 1; ++i) {
+      if (tree.node[i].child.length === 0) {
+        tree.node[i].x = scale;
+      }
+    }
+  }
+  // // --------- ADD START TIME OFFSET ---------
+  // for (i = 0; i < tree.node.length; ++i) {
+  //   tree.node[i].x += startTime;
+  // }
+
+  // // --------- GLOBAL TIME NORMALIZATION ---------
+  // if (globalMinTime !== null && globalMaxTime !== null) {
+  //   const range = globalMaxTime - globalMinTime || 1;
+  //   for (i = 0; i < tree.node.length; ++i) {
+  //     tree.node[i].x = (tree.node[i].x - globalMinTime) / range;
+  //   }
+  // }
+  
+  const applyGlobalNormalization = globalMinTime !== null && globalMaxTime !== null;
+  const range = applyGlobalNormalization ? (globalMaxTime - globalMinTime || 1) : 1;
+
+  for (i = 0; i < tree.node.length; ++i) {
+    let x = tree.node[i].x + startTime;
+    if (applyGlobalNormalization) {
+      x = (x - globalMinTime) / range;
+    }
+    tree.node[i].x = x;
+  }
+
+  return is_real;
+}
+
+
 /* Calculate the coordinate of each node */
 function kn_calxy(tree, is_real) {
   var i, j, scale;
@@ -593,4 +669,4 @@ function kn_get_node(tree, conf, x, y) {
   return tree.node.length;
 }
 
-export { kn_expand_node, kn_reorder, kn_parse, kn_calxy, kn_reorder_num_tips };
+export { kn_expand_node, kn_reorder, kn_parse, kn_calxy, kn_reorder_num_tips, kn_global_calxy };

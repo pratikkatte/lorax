@@ -7,14 +7,19 @@ from trees_to_taxonium import start_end
 
 
 def extract_info(start, end, ts):
-    nwk_string, genome_positions, mutations = start_end(start, end, ts)
+    nwk_string, genome_positions, mutations, times = start_end(start, end, ts)
 
     data = json.dumps({
         "nwk": nwk_string,
         "genome_positions": genome_positions, 
-        "mutations": mutations
+        "mutations": mutations,
+        "global_times": {'min_time':times[0],
+                  'max_time': times[1],
+                  'times': times[2]
+                }
         })
     print("mutations", mutations)
+    print("times", times)
     return data
     
 async def handle_connection(websocket):

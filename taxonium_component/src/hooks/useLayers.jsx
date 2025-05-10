@@ -77,11 +77,10 @@ const useLayers = ({
         pickable: true,
         onHover: ({object}) => {
           if (object){
-            console.log("object", object, i)
             setHoverInfo(object ? { object,index:i} : null);
           }
           else{
-            console.log("nul object")
+            // console.log("nul object")
             setHoverInfo(null)
           }
       }
@@ -150,7 +149,7 @@ const useLayers = ({
         textLayer
       ].filter(Boolean);
     });
-  }, [data, viewState.zoom, setHoverInfo]);
+  }, [data, viewState.zoom, hoverInfo]);
 
   return { layers, layerFilter };
 };

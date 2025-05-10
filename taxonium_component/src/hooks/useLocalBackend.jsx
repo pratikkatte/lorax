@@ -67,7 +67,6 @@ worker.onmessage = (event) => {
 };
 
 function useLocalBackend(uploaded_data, setChangeInProcess) {
-  console.log("useLocalBackend")
   // processing status of uploaded data.
   const [statusMessage, setStatusMessage] = useState({ message: null });
   // const [hasUploaded, setHasUploaded] = useState(false);
