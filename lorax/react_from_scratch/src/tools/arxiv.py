@@ -1,11 +1,14 @@
 from typing import Optional
-from langchain_community.utilities.arxiv import ArxivAPIWrapper
+from langchain_community.retrievers import ArxivRetriever
 import json
+
+def format_docs(docs):
+    return "\n\n".join(doc.page_content for doc in docs)
 
 
 def search(query: str) -> Optional[str]:
     """
-    Fetch ArXiv information for a given search query using ArxivAPIWrapper and return as JSON.
+    Fetch ArXiv information for a given search query using ArxivRetriever and return as JSON.
 
     Args:
         query (str): The search query string.
@@ -14,26 +17,26 @@ def search(query: str) -> Optional[str]:
         Optional[str]: A JSON string containing the query, title, and summary, or None if no result is found.
     """
     
-    arxiv = ArxivAPIWrapper(
-        top_k_results = 3,
-        ARXIV_MAX_QUERY_LENGTH = 300,
-        load_max_docs = 3,
-        load_all_available_meta = False,
-        doc_content_chars_max = 40000,
-    )
     
 
     try:
         print(f"Searching Arxiv for: {query}")
-        page = arxiv.run(query)
+        
+        retriever = ArxivRetriever(
+            load_max_docs=3,
+            get_full_documents=True,
+        )
 
-        if page.exists():
+        docs = retriever.invoke(query)
+        docs = format_docs(docs)
+
+        if docs is not None:
             # Create a dictionary with query, title, and summary
             result = {
                 "query": query,
-                "summary": page
+                "articles": docs
             }
-            print(f"Successfully retrieved summary for: {query}")
+            print(f"Successfully retrieved articles for: {query}")
             return json.dumps(result, ensure_ascii=False, indent=2)
         else:
             print(f"No results found for query: {query}")

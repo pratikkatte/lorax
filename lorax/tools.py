@@ -164,9 +164,7 @@ def generalInfoTool(question, attributes=None):
     #     Thought:{agent_scratchpad}"""
 
     try:
-        print("Before generalInfoTool")
         answer = run(question)
-        print("After generalInfoTool")
     #     prompt = PromptTemplate(
     #         input_variables=['input', 'context'], template=prompt_template
     #     )

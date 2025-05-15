@@ -34,7 +34,7 @@ class Name(Enum):
     Enumeration for tool names available to the agent.
     """
     TSKIT = auto()
-    TAVILY = auto()
+    # TAVILY = auto()
     ARXIV = auto()
     NONE = auto()
 
@@ -277,7 +277,7 @@ def run(query: str) -> str:
 
     agent = Agent(model=openai)
     agent.register(Name.TSKIT, tskit_search)
-    agent.register(Name.TAVILY, tavily_search)
+    # agent.register(Name.TAVILY, tavily_search)
     agent.register(Name.ARXIV, arxiv_search)
 
     answer = agent.execute(query)
