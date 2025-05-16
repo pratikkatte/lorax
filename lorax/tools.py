@@ -1,3 +1,5 @@
+
+
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 
@@ -9,11 +11,21 @@ from pkg_resources import resource_filename
 from lorax.utils import code, check_claude_output, insert_errors, parse_output, execute_generated_code
 from lorax.faiss_vector import getRetriever
 
+from langchain_tavily import TavilySearch
+
+from langchain.agents import AgentExecutor, create_react_agent
+from langchain_community.agent_toolkits.load_tools import load_tools
+from langchain_openai import ChatOpenAI
+from langchain_ollama import ChatOllama
+from lorax.react_from_scratch.src.react.agent import run
+
+
 load_dotenv()
 
 general_llm = ChatOpenAI(model_name='gpt-4o')
 
 retriever = getRetriever()
+
 
 def visualizationTool(question, attributes=None):
     question = """
@@ -117,27 +129,73 @@ def routerTool(query, attributes=None):
 
 def generalInfoTool(question, attributes=None):
     """
+    This function is used to get the general information about the tskit and treesequence.
     """
-    prompt_template = """
-    You are an  expert in treesequences and population genetics and you help in answering queries related to it in general.
-    if the questions are not related to your experties then kindly remind them to ask questions in your domain of experties. 
-    Respond the users in brief based on this query or message: {question}
-    """
-    try:
-        prompt = PromptTemplate(
-            input_variables=['question'], template=prompt_template
-        )
-        lm = ChatOpenAI(model="gpt-4o", temperature=0)
-        chain = prompt | lm
-        
-        general_info_conversation = ConversationChain(
-            llm=chain, 
-            memory=attributes["memory"]
-        )
-     
-        answer = general_info_conversation.run(question)   
-        return answer
 
+    
+    # prompt_template = """
+    #     You are an expert in treesequences and population genetics and you help in answering queries related to it in general.
+    #     If the questions are not related to your expertise then kindly remind them to ask questions in your domain of expertise. 
+    #     Respond to the user based on this query or message: {question}
+    # """
+
+    # prompt_template = """Answer the following questions as best you can. 
+    #     The general topic of this conversation is treesequences and population genetics but don't include this in your search, just keep that in mind.
+    #     Include citations or reference links where applicable. 
+    #     You have access to the following tools:
+
+    #     {tools}
+
+    #     Use the following format and stick to it:
+
+    #     Question: the input question you must answer
+    #     Thought: you should always think about what to do
+    #     Action: the action to take, should be one of [{tool_names}] or "Finish"
+    #     Action Input: the input to the action
+    #     Observation: the result of the action
+    #     ... (this Thought/Action/Action Input/Observation can repeat N times until you decide to "Finish")
+    #     Thought: I now know the final answer
+    #     Final Answer: the final detailed answer to the original input question (with reference links if applicable)
+
+    #     Begin!
+
+    #     Context: {context}
+    #     Question: {input}
+    #     Thought:{agent_scratchpad}"""
+
+    try:
+        answer = run(question, attributes["memory"])
+    #     prompt = PromptTemplate(
+    #         input_variables=['input', 'context'], template=prompt_template
+    #     )
+    #     # lm = ChatOpenAI(model="gpt-4o", temperature=0)
+    #     print("before lm")
+    #     lm = ChatOllama(
+    #         base_url="https://uwx72r685xxxb8-11434.proxy.runpod.net/",
+    #         model="llama3.2",  # or "llama3:latest" depending on what you pulled
+    #         temperature=0
+    #     )
+    #     print("after lm")
+    #     # lm = ChatOllama(model="llama3.2", temperature=0, api_key="76c6d00e-b785-45b4-a552-e3cb52304e29")
+
+    #     tools = [
+    #         *load_tools(["arxiv"]),
+    #         TavilySearch(
+    #             max_results=5,
+    #             topic="general",
+    #             search_depth="advanced"
+    #         )
+    #     ]
+
+    #     agent = create_react_agent(lm, tools, prompt)
+    #     agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True, handle_parsing_errors=True)
+
+    #     print("before answer")
+    #     answer = agent_executor.invoke({"input": question, "context": attributes["memory"]})
+    #     print("after answer")
+    #     # print("Answer:", answer["output"])
+
+        return answer
     except Exception as e:
         return f"Found Error, {e}"
         

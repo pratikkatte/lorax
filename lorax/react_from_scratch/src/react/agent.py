@@ -235,7 +235,7 @@ class Agent:
             self.trace("system", f"Error: Tool {tool_name} not found")
             self.think()
 
-    def execute(self, query: str) -> str:
+    def execute(self, query: str, context) -> str:
         """
         Executes the agent's query-processing workflow.
 
@@ -246,6 +246,7 @@ class Agent:
             str: The final answer or last recorded message content.
         """
         self.query = query
+        self.trace(role="context", content=str(context))
         self.trace(role="user", content=query)
         self.think()
         return self.messages[-1].content
@@ -264,7 +265,7 @@ class Agent:
         response = generate(self.model, contents)
         return response.content if hasattr(response, "content") else str(response)
 
-def run(query: str) -> str:
+def run(query, context) -> str:
     """
     Sets up the agent, registers tools, and executes a query.
 
@@ -280,7 +281,7 @@ def run(query: str) -> str:
     # agent.register(Name.TAVILY, tavily_search)
     agent.register(Name.ARXIV, arxiv_search)
 
-    answer = agent.execute(query)
+    answer = agent.execute(query, context)
     return answer
 
 
