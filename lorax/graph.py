@@ -75,7 +75,7 @@ def query_planner(state):
     (
         "system",
         (
-            "You are a world class query planning algorithm capable of breaking apart questions into its dependency queries "
+            "You are a world class query planning algorithm capable of breaking apart questions into its dependency queries. Don't rewrite the queries, just break it down. If the user doesn't ask a question. responding politely."
             "such that the answers can be used to inform the parent question. Do not answer the questions, simply provide a correct "
             "compute graph with specific subquestions and their dependencies. Before calling any function, think step by step to understand "
             "the problem. Also consider the following tool types: \n"
