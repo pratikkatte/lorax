@@ -1,3 +1,12 @@
+# This Branch implements the new retriever appraoch. 
+
+- for this to-work,  install the libraries listed in code-chunker-req.txt (possibly create a new conda env)
+
+- To create faiss-vector indexing and creating documents, refer the code - in code-chunker/pg.ipynb
+- to test the new created faiss-vector index and documents, refer to the code in pg.ipynb
+
+
+----
 # Treesequence_LLM_Viz
 Query based Code Generation and Analysis of Tree-Sequence using LLM.
 
