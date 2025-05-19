@@ -165,7 +165,6 @@ class Agent:
             self.trace("assistant", "I'm sorry, but I couldn't find a satisfactory answer within the allowed number of iterations. Here's what I know so far: " + self.get_history())
             return
         
-        print("self.get_history()", self.get_history())
         prompt = self.template.format(
             query=self.query, 
             history=self.get_history(),
@@ -191,7 +190,6 @@ class Agent:
                 cleaned_response = cleaned_response[4:].strip()
             
             parsed_response = json.loads(cleaned_response)
-            print(response)
             
             if "action" in parsed_response:
                 action = parsed_response["action"]
@@ -203,7 +201,7 @@ class Agent:
                     self.trace("assistant", f"Action: Using {tool_name} tool")
                     self.act(tool_name, action.get("input", self.query))
             elif "answer" in parsed_response:
-                self.trace("assistant", f"Final Answer: {parsed_response['answer']}")
+                self.trace("assistant", f"{parsed_response['answer']}")
             else:
                 raise ValueError("Invalid response format")
         except json.JSONDecodeError as e:

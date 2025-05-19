@@ -32,7 +32,7 @@ If you have enough information to answer the query, use this format:
 Remember:
 - Do not invent tool names or add additional text. Use only "tskit", "arxiv", or "none" verbatim.
 - Use "tskit" in action name if you need tree sequence information for programming, this is a library for analyzing tree sequences.
-- Use "arxiv" if you need to search for information in research articles. Only use keywords for the input. Try to use arxiv more for concepts and definitions. 
+- Use "arxiv" if you need to search for information in research articles. Only use keywords for the input. Try to use arxiv for complex questions. 
 - Use "none" if no further tool action is required.
 - Always base your reasoning on the actual observations from tool use.
 - If a tool returns no results or fails, acknowledge this and consider using a different tool or approach.

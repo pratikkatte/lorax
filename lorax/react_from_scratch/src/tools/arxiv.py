@@ -17,7 +17,8 @@ def search(query: str) -> Optional[str]:
         Optional[str]: A JSON string containing the query, title, and summary, or None if no result is found.
     """
     
-    
+    import time
+    start = time.time()
 
     try:
         print(f"Searching Arxiv for: {query}")
@@ -37,6 +38,8 @@ def search(query: str) -> Optional[str]:
                 "articles": docs
             }
             print(f"Successfully retrieved articles for: {query}")
+            end = time.time()
+            print(f"Time taken for arxiv search: {end - start} seconds")
             return json.dumps(result, ensure_ascii=False, indent=2)
         else:
             print(f"No results found for query: {query}")

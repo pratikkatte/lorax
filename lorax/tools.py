@@ -20,6 +20,7 @@ from langchain_community.agent_toolkits.load_tools import load_tools
 from langchain_openai import ChatOpenAI
 from langchain_ollama import ChatOllama
 from lorax.react_from_scratch.src.react.agent import run
+import time
 
 
 load_dotenv()
@@ -28,9 +29,10 @@ MODEL_NAME = ("OPENAI", "gpt-4o")
 
 ollama_client = None
 
-general_llm = ChatOpenAI(model_name='gpt-4o')
+general_llm = ChatOpenAI(model_name='gpt-4o', temperature=0)
 
 retriever, reranker = getRetriever()
+
 
 
 def visualizationTool(question, attributes=None):
@@ -179,7 +181,12 @@ def generalInfoTool(question, attributes=None):
     #     Thought:{agent_scratchpad}"""
 
     try:
+        start = time.time()
         answer = run(question, attributes["memory"])
+
+        end = time.time()
+
+        print("Time taken to answer the question:", end-start)
     #     prompt = PromptTemplate(
     #         input_variables=['input', 'context'], template=prompt_template
     #     )
