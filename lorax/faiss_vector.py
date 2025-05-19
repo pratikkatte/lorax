@@ -56,7 +56,7 @@ def rerank_documents(query: str,reranker, documents: list, top_k: int = 3) -> li
     
     return ranked_docs[:top_k]
 
-def getRetriever():
+def getRetriever(bm25_weight=0.5, faiss_weight=0.5):
     """
     """
     # embeddings = OpenAIEmbeddings()
@@ -111,7 +111,7 @@ def getRetriever():
 
     ensemble_retriever = EnsembleRetriever(
         retrievers=[bm25_retriever, faiss_retriever],
-        weights=[0.5, 0.5]  # Adjust based on your use case
+        weights=[bm25_weight, faiss_weight]  # Adjust based on your use case
     )
 
     reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2") 
