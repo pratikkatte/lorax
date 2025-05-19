@@ -3,49 +3,38 @@ import ast
 from types import ModuleType
 import sys
 import inspect
+import re
+    
+import tiktoken
+import json
 
-# Optional: Check for errors in case tool use is flaky
-def check_claude_output(tool_output):
-    """Check for parse error or failure to call the tool"""
-    # Error with parsing
-    if tool_output["parsing_error"]:
-        # Report back output and parsing errors
-        print("Parsing error!")
-        raw_output = str(tool_output["raw"].content)
-        error = tool_output["parsing_error"]
-        raise ValueError(
-            f"Error parsing your output! Be sure to invoke the tool. Output: {raw_output}. \n Parse error: {error}"
-        )
-
-    # Tool was not invoked
-    elif not tool_output["parsed"]:
-        print("Failed to invoke tool!")
-        raise ValueError(
-            "You did not use the provided tool! Be sure to invoke the tool to structure the output."
-        )
-    return tool_output
-
-def insert_errors(inputs):
-    """Insert errors for tool parsing in the messages"""
-
-    # Get errors
-    error = inputs["error"]
-    messages = inputs["messages"]
-    messages += [
-        (
-            "assistant",
-            f"Retry. You are required to fix the parsing errors: {error} \n\n You must invoke the provided tool.",
-        )
-    ]
-    return {
-        "messages": messages,
-        "context": inputs["context"],
+def response_parser(text):
+    """
+    """
+    result = {
+        'prefix': '',
+        'imports': '',
+        'code': ''
     }
+    sections = re.split(r'\*\*([^\*]+)\*\*', text)
 
-def parse_output(solution):
-    """When we add 'include_raw=True' to structured output,
-    it will return a dict w 'raw', 'parsed', 'parsing_error'."""
-    return solution["parsed"]
+    for i in range(1, len(sections), 2):
+        header = sections[i].strip()
+        content = sections[i+1].strip()
+        if header == 'Prefix':
+            result['prefix'] = content
+        
+        elif header == 'Imports':
+            code_match = re.search(r'```python(.*?)```', content, re.DOTALL)
+            if code_match:
+                result['imports'] = code_match.group(1).strip()
+
+        elif header == 'Code':
+            code_match = re.search(r'```python(.*?)```', content, re.DOTALL)
+            if code_match:
+                result['code'] = code_match.group(1).strip()
+
+    return result
 
 class code(BaseModel):
     """
@@ -72,6 +61,11 @@ def validate_import(import_white_list, full_name: str):
     if not importlib.util.find_spec(full_name):
         raise ValueError(f"Module '{full_name}' is not installed in the environment.")
 
+def parse_output(solution):
+    """When we add 'include_raw=True' to structured output,
+    it will return a dict w 'raw', 'parsed', 'parsing_error'."""
+    return solution["parsed"]
+    
 def execute_generated_code(structured_output, *args, **kwargs):
     # Combine imports and code
 
@@ -145,3 +139,14 @@ def execute_generated_code(structured_output, *args, **kwargs):
     except Exception as e:
         print("Exception in code execution:", e)
         return "not worked"
+
+
+def count_tokens(string: str, encoding_name: str) -> int:
+    """Returns the number of tokens in a text string."""
+    encoding = tiktoken.encoding_for_model(encoding_name)
+    num_tokens = len(encoding.encode(string))
+    return num_tokens
+
+def load_json(json_file):
+    with open(json_file) as f:
+        return json.load(f)

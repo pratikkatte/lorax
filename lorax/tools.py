@@ -7,9 +7,11 @@ from langchain_core.prompts import PromptTemplate
 from langchain.chains import ConversationChain
 from dotenv import load_dotenv
 from pkg_resources import resource_filename
+import numpy as np
+import ollama
 
-from lorax.utils import code, check_claude_output, insert_errors, parse_output, execute_generated_code
-from lorax.faiss_vector import getRetriever
+from lorax.utils import code, execute_generated_code, response_parser, parse_output
+from lorax.faiss_vector import getRetriever, rerank_documents
 
 from langchain_tavily import TavilySearch
 
@@ -22,9 +24,13 @@ from lorax.react_from_scratch.src.react.agent import run
 
 load_dotenv()
 
+MODEL_NAME = ("OPENAI", "gpt-4o")
+
+ollama_client = None
+
 general_llm = ChatOpenAI(model_name='gpt-4o')
 
-retriever = getRetriever()
+retriever, reranker = getRetriever()
 
 
 def visualizationTool(question, attributes=None):
@@ -62,39 +68,48 @@ def generatorTool(question, input_file_path=None):
                     ("placeholder", "{messages}"),
                 ]
             )
-        lm = ChatOpenAI(
-            model="gpt-4o", temperature=0)
         
-        structured_code_llm = lm.with_structured_output(code, include_raw=True)
 
-        # Chain with output check
-        code_chain_raw = (
-            code_gen_prompt | structured_code_llm
-        )
-
-        # This will be run as a fallback chain
-        fallback_chain = insert_errors | code_chain_raw
-        N = 3  # Max re-tries
-        code_gen_chain_re_try = code_chain_raw.with_fallbacks(
-            fallbacks=[fallback_chain] * N, exception_key="error"
-        )
-        code_gen_chain = code_gen_chain_re_try | parse_output
         try:
-
             # Retriever model
             docs = retriever.invoke(question)
-
-            # docs = retriever.get_relevant_documents(question)
-            context = "\n".join([doc.page_content for doc in docs])
-
+            final_context = rerank_documents(question, reranker, docs, 3)
             # infer
         except Exception as e:
             print("context Error:", e)
 
-        code_solution = code_gen_chain.invoke(
-            {"context": context, "messages": [question]}
-        )
+        comp, model = MODEL_NAME
+        if comp=="OPENAI":
 
+            lm = ChatOpenAI(
+                model=model, temperature=0)
+        
+            structured_code_llm = lm.with_structured_output(code, include_raw=True)
+
+            # Chain with output check
+            code_chain_raw = (
+                code_gen_prompt | structured_code_llm | parse_output
+            )
+    
+            code_solution = code_chain_raw.invoke(
+                {"context": final_context, "messages": [question]}
+            )
+            
+        else:
+            client = ollama.Client(host=ollama_client)
+
+            filled_prompt = code_gen_prompt.format(context=final_context, question=question)
+            response = client.chat(
+                messages=[{
+                        'role': 'user',
+                        'content': filled_prompt,
+                        }],
+                        model=model,
+                    # format=code.model_json_schema(),
+                        options={'temperature': 0})
+            code_solution = response_parser(response.message.content)
+        
+        print(code_solution)
         if input_file_path:
             result = execute_generated_code(code_solution, input_file_path)
         else:
