@@ -5,7 +5,7 @@ from langgraph.graph.message import add_messages
 from typing_extensions import TypedDict
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
-
+from .callbacks import TrackingCallback
 
 from lorax.tools import routerTool, generalInfoTool, generatorTool
 from lorax.utils import execute_generated_code
@@ -103,7 +103,9 @@ def query_planner(state):
     planner_prompt = ChatPromptTemplate.from_messages(prompt_messages)
 
     planner = planner_prompt | ChatOpenAI(
-        model="gpt-4o", temperature=0
+        model_name='gpt-4o',
+        temperature=0,
+        callbacks=[TrackingCallback()]
     ).with_structured_output(QueryPlan)
 
     plan = planner.invoke({"question":state['question'], "history": history})
@@ -259,7 +261,6 @@ def general_info(state: GraphState):
     }
 
 def create_graph():
-
     workflow = StateGraph(GraphState)
 
     # Define the nodes

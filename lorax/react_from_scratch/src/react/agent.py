@@ -14,7 +14,7 @@ from enum import Enum
 from enum import auto
 import json
 from langchain_community.chat_models import ChatOllama
-from langchain_community.chat_models import ChatOpenAI
+from langchain_openai import ChatOpenAI
 import os
 
 openai = ChatOpenAI(model="gpt-4o", temperature=0)

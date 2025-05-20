@@ -1,7 +1,7 @@
-
-
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
+from langchain_core.callbacks.base import BaseCallbackHandler
+from .callbacks import TrackingCallback
 
 from langchain_core.prompts import PromptTemplate
 from langchain.chains import ConversationChain
@@ -22,14 +22,13 @@ from langchain_ollama import ChatOllama
 from lorax.react_from_scratch.src.react.agent import run
 import time
 
-
 load_dotenv()
 
 MODEL_NAME = ("OPENAI", "gpt-4o")
 
 ollama_client = None
 
-general_llm = ChatOpenAI(model_name='gpt-4o', temperature=0)
+general_llm = ChatOpenAI(model_name='gpt-4o', temperature=0, callbacks=[TrackingCallback()])
 
 retriever, reranker = getRetriever()
 
@@ -84,7 +83,7 @@ def generatorTool(question, input_file_path=None):
         if comp=="OPENAI":
 
             lm = ChatOpenAI(
-                model=model, temperature=0)
+                model=model, temperature=0, callbacks=[TrackingCallback()])
         
             structured_code_llm = lm.with_structured_output(code, include_raw=True)
 

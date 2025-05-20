@@ -4,12 +4,13 @@ from lorax.graph import create_graph
 from dotenv import load_dotenv
 from pkg_resources import resource_filename
 from langchain.chains.conversation.memory import ConversationBufferMemory
+from lorax.callbacks import TrackingCallback
 
 load_dotenv()
 
 memory = ConversationBufferMemory(return_messages=True)
 
-
+callback = TrackingCallback()
 question = "Calculate the diversity of the given treesequence."
 workflow = create_graph()
 
@@ -32,7 +33,7 @@ def chat_interface():
 
         app = workflow.compile()
         message = {'question':user_input, "attributes":{"file_path":"data/sample.trees", "memory": memory}}
-        solution = app.invoke(message)
+        solution = app.invoke(message, config={"callbacks": [callback]})
         
         
         llm_output, _ = parseSolution(solution)
@@ -48,7 +49,7 @@ def api_interface(user_input, file_path):
 
     app = workflow.compile()
     message = {'question':user_input, "attributes":{"file_path":file_path, "memory": memory}}
-    solution = app.invoke(message)
+    solution = app.invoke(message, config={"callbacks": [callback]})
 
     llm_output = parseSolution(solution)
 
