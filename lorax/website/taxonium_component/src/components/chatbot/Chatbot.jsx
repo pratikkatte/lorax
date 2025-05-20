@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faPaperclip } from '@fortawesome/free-solid-svg-icons';
+import { faPaperclip, faSpinner } from '@fortawesome/free-solid-svg-icons';
 import "./Chatbot.css"; 
 
 const API_BASE_URL = "http://localhost:8000";
@@ -11,6 +11,7 @@ function Chatbot(props) {
   const [userInput, setUserInput] = useState("");
   const [conversation, setConversation] = useState([]);
   const [selectedFileName, setSelectedFileName] = useState("");
+  const [isUploading, setIsUploading] = useState(false);
 
 
   const chatContentRef = useRef(null);
@@ -53,10 +54,8 @@ function Chatbot(props) {
   };
 
   const handleClearChat = async () => {
-
     try {
-      await axios.post(`${API_BASE_URL}/clear_chat`);
-      console.log("Chat cleared");
+      await axios.post(`${API_BASE_URL}/api/clear_chat`);
       setConversation([
         {
           role: "assistant",
@@ -64,6 +63,11 @@ function Chatbot(props) {
           hidden: true,
         },
       ]);
+      // Force a re-render of the visualization component
+      const visualizationContainer = document.querySelector('.visualization-container');
+      if (visualizationContainer) {
+        visualizationContainer.innerHTML = '';
+      }
     } catch (error) {
       console.error("Error clearing chat:", error);
     }
@@ -98,7 +102,7 @@ function Chatbot(props) {
   const handleFileChange = async (event) => {
     const file = event.target.files[0];
     if (file) {
-
+        setIsUploading(true);
         const formData = new FormData();
         formData.append('file', file);
 
@@ -109,13 +113,12 @@ function Chatbot(props) {
                 }
             });
             console.log('File uploaded successfully:', response.data);
+            setSelectedFileName(file.name);
         } catch (error) {
             console.error('Error uploading file:', error);
+        } finally {
+            setIsUploading(false);
         }
-        setSelectedFileName(file.name);
-        console.log('Selected file:', file.name);
-
-        // You can add further logic to handle the file upload here
     }
   };
   const handleFileRemove = (event) => {
@@ -169,9 +172,18 @@ function Chatbot(props) {
                     </button>
                 </div>
             ) : (
-                <button className="upload-file" type="button" onClick={() => document.getElementById('fileInput').click()}>
-                    <FontAwesomeIcon icon={faPaperclip} /> 
-                    Attach File
+                <button className="upload-file" type="button" onClick={() => document.getElementById('fileInput').click()} disabled={isUploading}>
+                    {isUploading ? (
+                        <>
+                            <FontAwesomeIcon icon={faSpinner} spin /> 
+                            <span style={{ marginLeft: '8px' }}>Uploading...</span>
+                        </>
+                    ) : (
+                        <>
+                            <FontAwesomeIcon icon={faPaperclip} />
+                            <span style={{ marginLeft: '8px' }}>Attach File</span>
+                        </>
+                    )}
                 </button>
             )}
             <input
@@ -179,6 +191,7 @@ function Chatbot(props) {
                 type="file"
                 style={{ display: 'none' }}
                 onChange={handleFileChange}
+                disabled={isUploading}
             />
         </div>
 

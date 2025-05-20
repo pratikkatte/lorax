@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from werkzeug.utils import secure_filename
 from fastapi.staticfiles import StaticFiles
 from lorax.langgraph_tskit import api_interface
+from langchain.chains.conversation.memory import ConversationBufferMemory
 
 class LoraxApp:
     def __init__(self):
@@ -15,6 +16,7 @@ class LoraxApp:
         self.build_path = os.path.join(os.path.dirname(__file__), "website/taxonium_component", "dist")
         self.ALLOWED_EXTENSIONS = {"trees"}
         self.file_path = ''
+        self.memory = ConversationBufferMemory(return_messages=True)
 
         self._configure_logging()
         self._setup_cors()
@@ -43,6 +45,7 @@ class LoraxApp:
         self.app.get("/")(self.serve_react_app)
         self.app.post("/api/upload")(self.upload)
         self.app.post("/api/chat")(self.chat)
+        self.app.post("/api/clear_chat")(self.clear_chat)
         self.app.websocket("/ws/newick")(self.websocket_endpoint)
 
     def serve_react_app(self):
@@ -63,11 +66,17 @@ class LoraxApp:
     def allowed_file(self, filename):
         return "." in filename and filename.rsplit(".", 1)[1].lower() in self.ALLOWED_EXTENSIONS
 
+    async def clear_chat(self):
+        """Reset the conversation memory and visualization."""
+        self.memory = ConversationBufferMemory(return_messages=True)
+        self.newick_data = "initial data"  # Reset visualization data
+        return {"status": "success"}
+
     async def chat(self, request: Request):
         """Handle chat messages."""
         data = await request.json()
         message = data.get("message")
-        llm_output, llm_visual = api_interface(message, self.file_path)
+        llm_output, llm_visual = api_interface(message, self.file_path, self.memory)
         self.newick_data = llm_visual
         return {"response": llm_output}
 

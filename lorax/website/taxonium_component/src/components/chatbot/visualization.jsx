@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 
 import './visualization.css'
 import { observer } from 'mobx-react'
@@ -37,6 +37,15 @@ const Sidebar = observer(({ viewModel }) => {
 
 
 function Visualization() {    
+    const containerRef = useRef(null);
+
+    useEffect(() => {
+        // Initialize visualization
+        const container = containerRef.current;
+        if (container) {
+            container.innerHTML = ''; // Clear any existing content
+        }
+    }, []);
 
     useEffect(() => {
 
