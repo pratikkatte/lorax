@@ -44,10 +44,12 @@ def parseSolution(input_solution):
 
     return input_solution['response'], input_solution['visual']
 
-def api_interface(user_input, file_path):
-
+def api_interface(user_input, file_path, memory=None):
+    if memory is None:
+        memory = ConversationBufferMemory(return_messages=True)
+        
     app = workflow.compile()
-    message = {'question':user_input, "attributes":{"file_path":file_path, "memory": memory}}
+    message = {'question': user_input, "attributes": {"file_path": file_path, "memory": memory}}
     solution = app.invoke(message)
 
     llm_output = parseSolution(solution)
