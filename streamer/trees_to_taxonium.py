@@ -8,9 +8,6 @@ import numpy as np
 from multiprocessing import Pool, cpu_count
 from tqdm import tqdm
 
-
-
-
 def process_tree(tree_seq, idx):
  
     tree_data = {}
@@ -186,63 +183,3 @@ def start_end(start, end, ts):
     nwk_string = ''.join(nwk_list)
     print('got nwk string')
     return nwk_string[:-1] if nwk_string else '', positions, mutations, (min_time, max_time,times)
-
-    
-# # trees = []
-# # nodes_sorted_by_y_s = []
-# # node_to_index_s = {}
-
-# # total_tips = 0
-# # y_spacing = 0
-# # node_indexing = 0
-# # total_nodes = 0
-# # remove_after_pipe = False
-# # node_objects = []
-# # all_mutations = []
-# # global_mutation = []
-# for tree_idx, tree_data in results.items():
-#     ts_tree = ts.at_index(tree_idx)
-#     mutations, global_mutation = extract_mutations(ts_tree, global_mutation)
-#     tree = treeswift.read_tree_newick(tree_data['newick'])
-#     tree.ladderize(ascending=False)
-#     for node in tree.traverse_postorder():
-#         if node.is_leaf():
-#             node.num_tips = 1
-#         else:
-#             node.num_tips = sum(child.num_tips for child in node.children)
-#     total_tips += tree.root.num_tips
-
-#     utils.set_x_coords(tree.root, chronumental_enabled=False)
-#     y_spacing = utils.set_terminal_y_coords(tree.root, y_spacing)
-#     y_spacing = y_spacing+500
-#     utils.set_internal_y_coords(tree.root)
-
-#     nodes_sorted_by_y = utils.sort_on_y(tree)
-#     total_nodes += len(nodes_sorted_by_y)
-#     node_to_index = {node: i for i, node in enumerate(nodes_sorted_by_y, start = node_indexing)}
-#     node_indexing += len(node_to_index.keys())
-
-#     # tree_pos_up = {'x':0, "y":nodes_sorted_by_y[0].y, "text":all_content_positions[tree_idx-1][0]}
-#     # tree_positions.append(tree_pos_up)
-#     # tree_pos_down = {"x":0, "y":nodes_sorted_by_y[-1].y, "text":all_content_positions[tree_idx-1][-1]}
-#     # tree_positions.append(tree_pos_down)
-    
-#     # write_jsonl(first_json)
-    
-#     for node in alive_it(nodes_sorted_by_y,
-#                          title="Converting each node, and writing out in JSON"):
-#         node_object = utils.get_node_object(node, node_to_index, {}, {}, [], chronumental_enabled=False, mutations=mutations, tree_idx = tree_idx)
-#         if remove_after_pipe and 'name' in node_object and node_object['name']:
-#             node_object['name'] = node_object['name'].split("|")[0]
-#         node_objects.append(node_object)
-        
-#     # node_to_index_s[tree_idx] = node_to_index
-#     # trees.append(tree)
-#     output_data = []
-#     first_json = get_config(total_tips, all_content_positions, total_nodes, genomic_position_minmax, global_mutation)
-#     output_data.append(first_json)
-#     for node_object in node_objects:
-#         output_data.append(node_object)
-
-#     # Convert the list of dictionaries to a JSON string
-#     json_output = orjson.dumps(output_data).decode('utf-8')

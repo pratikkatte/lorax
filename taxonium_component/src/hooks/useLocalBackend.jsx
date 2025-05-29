@@ -66,7 +66,7 @@ worker.onmessage = (event) => {
   }
 };
 
-function useLocalBackend(uploaded_data, setChangeInProcess) {
+function useLocalBackend(uploaded_data, setChangeInProcess, setFileUploaded) {
   // processing status of uploaded data.
   const [statusMessage, setStatusMessage] = useState({ message: null });
   // const [hasUploaded, setHasUploaded] = useState(false);
@@ -77,32 +77,28 @@ function useLocalBackend(uploaded_data, setChangeInProcess) {
 
     if (receivedData.data.error) {
       window.alert(receivedData.data.error);
+      setFileUploaded(false);
+      hasUploaded.current = false
       console.log("ERROR33:", receivedData.data.error);
     }
-
-    const total_nodes = receivedData.data.total;
-    if(receivedData.data.message == 'process_completed'){
+    if(receivedData.data.message == 'file_uploaded'){
       setChangeInProcess(true)
+      setFileUploaded(true)
+      hasUploaded.current = true
     }
-    // upload limit. 
-    if (total_nodes && total_nodes > 6000000) {
-      if (1) {
-        window.alert(
-          "This is a large tree which may use too much memory to run in the web browser. If the page crashes you might want to try the Taxonium desktop app."
-        );
-      }
-    }
+
     setStatusMessage(receivedData.data);
   };
 
   useEffect(() => {
     if(uploaded_data.file!==null && !hasUploaded.current){
       console.log("Sending data to worker", uploaded_data);
-    worker.postMessage({
-      type: "upload",
-      data: uploaded_data,
-      // wow: setChangeInProcess
-    });
+      
+      worker.postMessage({
+        type: "upload",
+        data: uploaded_data,
+        // wow: setChangeInProcess
+      });
     hasUploaded.current= true
     }
   }, [uploaded_data]);
@@ -169,9 +165,8 @@ function useLocalBackend(uploaded_data, setChangeInProcess) {
     worker.postMessage({
       type: "config",
     });
-
+    
     onConfigReceipt = (receivedData) => {
-      console.log("got config result", receivedData);
       setResult(receivedData);
     };
   }, []);

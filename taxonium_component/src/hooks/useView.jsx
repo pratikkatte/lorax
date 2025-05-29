@@ -16,7 +16,16 @@ const defaultViewState = {
 
 const INITIAL_VIEW_STATE = {
   target: [0, 0],
-  zoom: [6,6]
+  zoom: [8,6],
+  'genom_positions':{
+    target:[0,4],
+    zoom: [8,6]
+  },
+  'ortho': {
+    target:[0.5,4],
+    zoom: [8,6]
+  }
+
 }
 
 class MyOrthographicController extends OrthographicController {
@@ -65,10 +74,10 @@ const useView = ({
   const [viewState, setViewState] = useState({
     // target: [0, 0, 0],
     // zoom: 6,
-    'ortho': INITIAL_VIEW_STATE,
-    'genome-positions': INITIAL_VIEW_STATE 
+    'ortho': INITIAL_VIEW_STATE['ortho'],
+    'genome-positions': INITIAL_VIEW_STATE['genom_positions']
   });
-
+  
   const baseViewState = useMemo(() => {
     return {
       ...viewState,
@@ -155,6 +164,7 @@ const useView = ({
         };
       }
 
+      console.log("newViewStates", newViewStates)
       return newViewStates;
     });
     

@@ -204,23 +204,19 @@ const search = async (search, bounds) => {
 };
 
 const getConfig = async () => {
-  console.log("Worker getConfig");
   await waitForProcessedData();
   const config = {};
-  generateConfig(config, processedUploadedData);
+  var websocket_received_data;
 
-  config.mutations = processedUploadedData.mutations;
+  await pythonClient.sendRequest({
+    action: 'config',
+    // file: payload
+    values:config
+  }).then((response) => {
+    websocket_received_data = JSON.parse(response.data);    
+  })
 
-  console.log("overwrite with", processedUploadedData.overwrite_config);
-
-  const merged_config = {
-    ...config,
-    ...processedUploadedData.overwrite_config,
-  };
-
-  //console.log("config is ", config);
-
-  return merged_config;
+  return websocket_received_data.config
 };
 
 const getDetails = async (node_id) => {
@@ -393,9 +389,10 @@ onmessage = async (event) => {
   //Process uploaded data:
   console.log("Worker onmessage");
   const { data } = event;
-
+  
   if (data.type === "upload")
   {
+
     const {file} = data.data;
 
     if (file instanceof File){
@@ -431,16 +428,17 @@ onmessage = async (event) => {
         mutations = websocket_received_data.mutations
         times = websocket_received_data.global_times
       });
+
       processedUploadedData = await processData(nwk, mutations,times, sendStatusMessage)
       
-      // console.log("processedUploadedData", processedUploadedData)
-      sendStatusMessage({
-        message: "process_completed",
-      });
-      // console.log("asdas", processedUploadedData)
-      }
+      if (processedUploadedData){
+        sendStatusMessage({
+          message: "file_uploaded",
+        });
+      }}
   } else {
     if (data.type === "query") {
+      console.log("data value", data.value)
       const result = await queryNodes(data.bounds, data.value);
       postMessage({ type: "query", data: result });
     }
@@ -449,9 +447,11 @@ onmessage = async (event) => {
       // postMessage({ type: "search", data: result });
     }
     if (data.type === "config") {
-      // const result = await getConfig();
-      // postMessage({ type: "config", data: result });
+      console.log("in config")
+      const result = await getConfig();
+      postMessage({ type: "config", data: result });
     }
+
     if (data.type === "details") {
       // const result = await getDetails(data.node_id);
       // postMessage({ type: "details", data: result });

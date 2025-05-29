@@ -21,7 +21,15 @@ def extract_info(start, end, ts):
     print("mutations", mutations)
     print("times", times)
     return data
-    
+
+def get_config(config, ts):
+
+    intervals = [(tree.interval[0], tree.interval[1]) for tree in ts.trees()]
+    config = {'intervals':intervals[1:]}
+    data = json.dumps({
+        "config": config
+    })
+    return data    
 async def handle_connection(websocket):
     print("Python WebSocket connected")
     # ts = tskit.load("./sample.trees")  # Load tree sequence once
@@ -70,7 +78,6 @@ async def handle_connection(websocket):
                         if ts==None:
                             ts = tskit.load(path)
                         data = extract_info(start, end, ts)
-
                         
                         await websocket.send(json.dumps({"status": "file_received",'data':data,"filename": filename}))
                     except Exception as e:
@@ -86,6 +93,20 @@ async def handle_connection(websocket):
                 except Exception as e:
                     print("query_trees, error", e)
                     await websocket.send(json.dumps({"status": "error", "message": f"Failed to query trees: {str(e)}"}))
+            
+            elif metadata_msg['action']=='config':
+                try:
+                    values = metadata_msg['values']
+                    data = get_config(values, ts)
+                    await websocket.send(json.dumps({"status": 200, 'data':data}))
+                except Exception as e:
+                    print("config, error", e)
+                    await websocket.send(json.dumps({"status": "error", "message": f"Failed to get config: {str(e)}"}))
+
+
+                
+
+
 
     except Exception as e:
         print("Error:", e)

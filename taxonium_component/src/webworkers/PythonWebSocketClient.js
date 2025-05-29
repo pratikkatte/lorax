@@ -24,7 +24,6 @@ export default class PythonWebSocketClient {
             this.retryCount = 0;
             this._readyResolver(); // ✅ Resolve the ready promise
         };
-
         this.socket.onmessage = (event) => {
             try {
                 const response = JSON.parse(event.data);
@@ -74,6 +73,9 @@ export default class PythonWebSocketClient {
                     this.socket.send(content)
                 } else if (payload.action==='query_trees'){
                     console.log("action", payload.values)
+                    this.socket.send(JSON.stringify(payload))
+                } else if (payload.action === 'config'){
+                    console.log("action config", )
                     this.socket.send(JSON.stringify(payload))
                 }
                 // this.socket.send(JSON.stringify(payload));
