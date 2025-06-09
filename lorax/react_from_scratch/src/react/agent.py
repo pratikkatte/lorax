@@ -90,7 +90,7 @@ class Tool:
         try:
             return self.func(query)
         except Exception as e:
-            # logger.error(f"Error executing tool {self.name}: {e}")
+            print(f"Error executing tool {self.name}: {e}")
             return str(e)
 
 
@@ -158,10 +158,10 @@ class Agent:
         Processes the current query, decides actions, and iterates until a solution or max iteration limit is reached.
         """
         self.current_iteration += 1
-        # logger.info(f"Starting iteration {self.current_iteration}")
+        print(f"Starting iteration {self.current_iteration}")
 
         if self.current_iteration > self.max_iterations:
-            # logger.warning("Reached maximum iterations. Stopping.")
+            print("Reached maximum iterations. Stopping.")
             self.trace("assistant", "I'm sorry, but I couldn't find a satisfactory answer within the allowed number of iterations. Here's what I know so far: " + self.get_history())
             return
         
@@ -172,7 +172,7 @@ class Agent:
         )
 
         response = self.ask_llm(prompt)
-        # logger.info(f"Thinking => {response}")
+        print(f"Thinking => {response}")
         self.trace("assistant", f"Thought: {response}")
         self.decide(response)
 
@@ -195,7 +195,7 @@ class Agent:
                 action = parsed_response["action"]
                 tool_name = Name[action["name"].upper()]
                 if tool_name == Name.NONE:
-                    # logger.info("No action needed. Proceeding to final answer.")
+                    print("No action needed. Proceeding to final answer.")
                     self.think()
                 else:
                     self.trace("assistant", f"Action: Using {tool_name} tool")
@@ -205,11 +205,11 @@ class Agent:
             else:
                 raise ValueError("Invalid response format")
         except json.JSONDecodeError as e:
-            # logger.error(f"Failed to parse response: {response}. Error: {str(e)}")
+            print(f"Failed to parse response: {response}. Error: {str(e)}")
             self.trace("assistant", "I encountered an error in processing. Let me try again.")
             self.think()
         except Exception as e:
-            # logger.error(f"Error processing response: {str(e)}")
+            print(f"Error processing response: {str(e)}")
             self.trace("assistant", "I encountered an unexpected error. Let me try a different approach.")
             self.think()
 
@@ -229,7 +229,7 @@ class Agent:
             self.messages.append(Message(role="system", content=observation))  # Add observation to message history
             self.think()
         else:
-            # logger.error(f"No tool registered for choice: {tool_name}")
+            print(f"No tool registered for choice: {tool_name}")
             self.trace("system", f"Error: Tool {tool_name} not found")
             self.think()
 

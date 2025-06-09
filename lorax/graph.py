@@ -91,7 +91,7 @@ def query_planner(state):
         (
             "Here is the conversation so far:\n{history}\n\n"
             "Now, based on the above conversation and considering the latest question: {question}" 
-            "generate the correct query plan. If the query has NO dependencies on other subqueries, then it is a SINGLE_QUESTION query_type; "
+            "generate the correct query plan. If the query has NO dependencies on other subqueries, then it is a SINGLE query_type; "
             "otherwise, it is MULTI_DEPENDENCY."
         ),
     ),

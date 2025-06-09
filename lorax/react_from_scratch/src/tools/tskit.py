@@ -31,54 +31,6 @@ load_dotenv()
 
 retriever, reranker = getRetriever(0.8, 0.2)
 
-FAISS_DIR = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "../code-chunker/faiss-vector")
-)
-
-PKL_FILE = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "../code-chunker/documents.pkl")
-)
-
-def rerank_documents(query: str,reranker, documents: list, top_k: int = 3) -> list:
-    """Re-rank documents using cross-encoder"""
-    pairs = [(query, doc.page_content) for doc in documents]
-    
-    scores = reranker.predict(pairs)
-    
-    ranked_indices = np.argsort(scores)[::-1]  
-    ranked_docs = [documents[i] for i in ranked_indices]
-    
-    return ranked_docs[:top_k]
-
-def repo_to_text(path, output_file):
-    print(f"Starting to process repository at {path}.")
-    with open(output_file, 'w', encoding='utf-8') as file:
-        for root, dirs, files in os.walk(path):
-            for filename in files:
-                if filename.endswith((".py", ".md")):
-                    filepath = os.path.join(root, filename)
-                    print(f"Processing file: {filepath}")
-                    file.write(f"\n\n--- {filepath} ---\n\n")
-                    with open(filepath, 'r') as f:
-                        content = f.read()
-                        file.write(content)
-    print(f"Content written to {output_file}")
-
-def read_document(file_path):
-    print(f"Reading document from {file_path}.")
-    with open(file_path, 'r') as file:
-        data = file.read()
-    
-    print("Splitting document into chunks.")
-    python_splitter = RecursiveCharacterTextSplitter.from_language(
-        language=Language.PYTHON, chunk_size=50, chunk_overlap=0
-    )
-
-    python_docs = python_splitter.split_text(data)
-    print(f"Document split into {len(python_docs)} chunks.")
-    return python_docs
-
-
 
 def search(query: str) -> Optional[str]:
     """

@@ -31,7 +31,7 @@ def chat_interface():
             sys.exit()
 
         app = workflow.compile()
-        message = {'question':user_input, "attributes":{"file_path":"data/sample.trees", "memory": memory}}
+        message = {'question':user_input, "attributes":{"file_path":"lorax/data/sample.trees", "memory": memory}}
         solution = app.invoke(message)
         
         
