@@ -1,8 +1,58 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import websocketEvents from '../webworkers/websocketEvents';
+
+
+import workerSpec from "../webworkers/localBackendWorker.js?worker&inline";
+const worker = new workerSpec();
+
+console.log("useConnect worker")
+
+let onQueryReceipt = (receivedData) => {};
+let onStatusReceipt = (receivedData) => {
+  console.log("STATUS:", receivedData.data);
+};
+
+let onConfigReceipt = (receivedData) => {};
+// let onDetailsReceipt = (receivedData) => {};
+// let onListReceipt = (receivedData) => {};
+
+
+worker.onmessage = (event) => {
+  console.log(
+    "got message from worker", event.data);
+    
+  if (event.data.type === "status") {
+    
+    onStatusReceipt(event.data);
+  }
+  if (event.data.type === "query") {
+    onQueryReceipt(event.data.data);
+  }
+
+  // if (event.data.type === "search") {
+  //   // console.log("SEARCHRES", event.data.data);
+  //   searchSetters[event.data.data.key](event.data.data);
+  // }
+  if (event.data.type === "config") {
+    onConfigReceipt(event.data.data);
+  }
+  // if (event.data.type === "details") {
+  //   onDetailsReceipt(event.data.data);
+  // }
+  // if (event.data.type === "list") {
+  //   onListReceipt(event.data.data);
+  // }
+  // if (event.data.type === "nextstrain") {
+  //   onNextStrainReceipt(event.data.data);
+  // }
+};
+
+
 
 function useConnect() {
   const socketRef = useRef(null);
+  const [statusMessage, setStatusMessage] = useState({ message: null });
+
 
   useEffect(() => {
     const timeout = setTimeout(() => {
@@ -13,11 +63,18 @@ function useConnect() {
         console.log("WebSocket connection established");
       };
 
-      ws.onmessage = (event) => {
+      ws.onmessage = ((event) => {
         const message = JSON.parse(event.data);
-        console.log("message", message);
         websocketEvents.emit(message.type, message);
-      };
+        console.log("message", message)
+        if (message.type === "viz" && message.role === "query-result") {
+          console.log("query-result", message)
+          worker.postMessage({
+            type: "query",
+            data: message.data,
+          });
+        }
+      });
 
       ws.onerror = (error) => {
         console.error("WebSocket error:", error);
@@ -46,7 +103,45 @@ function useConnect() {
     return () => clearInterval(pingInterval);
   }, []);
 
-  return socketRef;
+  const queryNodes = useCallback(
+    async (boundsForQueries, setResult, value) => {
+      console.log("queryNodes", boundsForQueries, value);
+
+      if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+      socketRef.current.send(JSON.stringify({
+        type: "viz",
+        role: "query",
+        bounds: boundsForQueries,
+        value: value,
+      }))
+    } else {
+      console.log("socket not open")
+    }
+
+      onQueryReceipt = (receivedData) => {
+        console.log(
+          "got query result" //, receivedData
+        );
+        setResult(receivedData);
+      };
+    },
+    []
+  );
+
+  return useMemo(() => {
+    return {
+      statusMessage,
+      setStatusMessage,
+      socketRef,
+      queryNodes,
+    };
+  }, [statusMessage,
+    setStatusMessage,
+    socketRef,
+    queryNodes
+  ]);
+
+  // return socketRef;
 }
 
 export default useConnect;

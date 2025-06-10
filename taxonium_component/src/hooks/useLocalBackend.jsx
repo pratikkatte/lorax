@@ -37,80 +37,52 @@ let onNextStrainReceipt = (receivedData) => {
 
 let searchSetters = {};
 
-worker.onmessage = (event) => {
-  console.log(
-    "got message from worker", event.data);
-    
-  if (event.data.type === "status") {
-    
-    onStatusReceipt(event.data);
-  }
-  if (event.data.type === "query") {
-    onQueryReceipt(event.data.data);
-  }
-  if (event.data.type === "search") {
-    // console.log("SEARCHRES", event.data.data);
-    searchSetters[event.data.data.key](event.data.data);
-  }
-  if (event.data.type === "config") {
-    onConfigReceipt(event.data.data);
-  }
-  if (event.data.type === "details") {
-    onDetailsReceipt(event.data.data);
-  }
-  if (event.data.type === "list") {
-    onListReceipt(event.data.data);
-  }
-  if (event.data.type === "nextstrain") {
-    onNextStrainReceipt(event.data.data);
-  }
-};
 
-function useLocalBackend(uploaded_data, setChangeInProcess, setFileUploaded) {
+function useLocalBackend(socketRef) {
   // processing status of uploaded data.
-  const [statusMessage, setStatusMessage] = useState({ message: null });
-  // const [hasUploaded, setHasUploaded] = useState(false);
-  const hasUploaded = useRef(false)
 
   onStatusReceipt = (receivedData) => {
     console.log("Receive STATUS:", receivedData.data);
 
     if (receivedData.data.error) {
       window.alert(receivedData.data.error);
-      setFileUploaded(false);
       hasUploaded.current = false
       console.log("ERROR33:", receivedData.data.error);
     }
     if(receivedData.data.message == 'file_uploaded'){
-      setChangeInProcess(true)
-      setFileUploaded(true)
       hasUploaded.current = true
     }
 
     setStatusMessage(receivedData.data);
   };
 
-  useEffect(() => {
-    if(uploaded_data.file!==null && !hasUploaded.current){
-      console.log("Sending data to worker", uploaded_data);
+  // useEffect(() => {
+  //   if(uploaded_data.file!==null && !hasUploaded.current){
+  //     console.log("Sending data to worker", uploaded_data);
       
-      worker.postMessage({
-        type: "upload",
-        data: uploaded_data,
-        // wow: setChangeInProcess
-      });
-    hasUploaded.current= true
-    }
-  }, [uploaded_data]);
+  //     worker.postMessage({
+  //       type: "upload",
+  //       data: uploaded_data,
+  //       // wow: setChangeInProcess
+  //     });
+  //   }
+  // }, [uploaded_data]);
 
   const queryNodes = useCallback(
-    async (boundsForQueries, setResult, setTriggerRefresh, config, value) => {
-      console.log("queryNodes", boundsForQueries);
-      worker.postMessage({
-        type: "query",
+    async (boundsForQueries, setResult, setTriggerRefresh, config, value, socketRef) => {
+      console.log("queryNodes", boundsForQueries, value);
+
+      if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+      socketRef.current.send(JSON.stringify({
+        type: "viz",
+        role: "query",
         bounds: boundsForQueries,
-        value: value
-      });
+        value: value,
+      }))
+    } else {
+      console.log("socket not open")
+    }
+
       onQueryReceipt = (receivedData) => {
         console.log(
           "got query result" //, receivedData

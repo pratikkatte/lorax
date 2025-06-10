@@ -13,13 +13,16 @@ function App() {
     const [userName, setUserName] = useState("");
     const [isChatbotVisible, setIsChatbotVisible] = useState(true);
 
-    const socketRef = useConnect();
+    const backend = useConnect();
+    // const {socketRef} = useConnect();
+    const {socketRef} = backend;
     
   return (
     <>
       <div className="flex flex-row w-full">
         <div className={`${isChatbotVisible ? 'w-4/5' : 'w-full'} transition-all duration-300`}>
-          <Taxonium socketRef={socketRef}/>
+          <Taxonium backend={backend}/>
+          
         </div>
 
         {isChatbotVisible && (

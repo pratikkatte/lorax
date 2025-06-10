@@ -10,12 +10,11 @@ function addNodeLookup(data) {
   };
   return output;
 }
-function useGetDynamicData(backend, viewState, changeInProcess, xType, value, socketRef) {
+function useGetDynamicData(backend, viewState, xType, value) {
 
-  console.log("in dynamic data")
-  // colorBy, viewState, config, xType) {
 
-  const { queryNodes } = backend;
+  const { queryNodes, socketRef } = backend;
+
   const [dynamicData, setDynamicData] = useState({
     status: "not_started",
     data: [],
@@ -29,13 +28,6 @@ function useGetDynamicData(backend, viewState, changeInProcess, xType, value, so
     num_nodes: 0,
   });
 
-
-  useEffect(() => {
-    websocketEvents.on("viz", (data) => {
-      console.log("viz data", data)
-    })
-  }, [])
-
   useEffect(() => {
     // if (!boundsForQueries){
     //   return
@@ -46,9 +38,6 @@ function useGetDynamicData(backend, viewState, changeInProcess, xType, value, so
     // }
 
     // setDynamicData({ ...dynamicData, status: "loading" });
-    if(changeInProcess == true) {
-    // if(dynamicData.status === 'loading') {
-      
     queryNodes(
       boundsForQueries,
       (result) => {
@@ -63,14 +52,9 @@ function useGetDynamicData(backend, viewState, changeInProcess, xType, value, so
           return new_result;
         })
       },
-      null,
-      config, 
-      value
+      value,
     )
-    }
-
-
-  }, [changeInProcess, value])
+  }, [value])
 
 
   // useEffect(() => {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faPaperclip, faSpinner } from '@fortawesome/free-solid-svg-icons';
 import "./Chatbot.css"; 
@@ -23,6 +23,25 @@ function Chatbot(props) {
   const handleUserInput = (event) => {
     setUserInput(event.target.value);
   };
+  
+  const handleChat = useCallback((data) => {
+    const assistantResponse = data.data;
+    setConversation((prevConversation) => [
+      ...prevConversation,
+      { role: "assistant", content: assistantResponse, hidden: true },
+    ]);
+    lastAssistantMessageRef.current.scrollIntoView({ behavior: "smooth" });
+  }, []);
+
+  useEffect(() => { 
+    console.log("useEffect chat handle twice")
+    websocketEvents.on("chat", handleChat);
+    
+    // Cleanup function to remove the event listener
+    return () => {
+      websocketEvents.off("chat", handleChat);
+    };
+  }, []);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -31,20 +50,9 @@ function Chatbot(props) {
     setConversation((prevConversation) => [...prevConversation, sentMessage]);
     // Clear the input field
     setUserInput("");
-  socketRef.current.send(JSON.stringify({ type: "chat", message: userInput }))
+  socketRef.current.send(JSON.stringify({ type: "chat", message: userInput, role: "user"}))
 
-  const handleChat = (data)=> {
-    console.log("assistant response", data.data)
-    const assistantResponse = data.data;
-    setConversation((prevConversation) => [
-      ...prevConversation,
-      { role: "assistant", content: assistantResponse, hidden: true },
-    ]);
-    lastAssistantMessageRef.current.scrollIntoView({ behavior: "smooth" });
-  }
-
-  websocketEvents.on("chat", handleChat);
-
+  // websocketEvents.on("chat", handleChat);
   };
 
   const handleClearChat = async () => {

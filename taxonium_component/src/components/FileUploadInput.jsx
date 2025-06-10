@@ -3,6 +3,7 @@ import axios from "axios";
 
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faPaperclip, faSpinner } from '@fortawesome/free-solid-svg-icons';
+import websocketEvents from '../webworkers/websocketEvents';
 
 const API_BASE_URL = "http://localhost:8000";
 

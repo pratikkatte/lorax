@@ -1,26 +1,28 @@
 import { useState, useEffect } from "react";
+import websocketEvents from "../webworkers/websocketEvents";
+
 
 const useConfig = (
-  backend,
-  view,
-  query,
-  fileUploaded
-
+  socketRef
 ) => {
-  const [config, setConfig] = useState({
-    title: "loading",
-    source: "",
-    num_nodes: 0,
-  });
+  const [config, setConfig] = useState(null);
 
+  console.log("in config")
   useEffect(() => {
-    console.log("GETTING CONFIG");
-    backend.getConfig((results) => {
-      console.log("results", results)
-      setConfig(results);
-    });
+    console.log("socketRef", socketRef)
+    websocketEvents.on("viz", (data) => {
+      if(data.role == "config"){
+        console.log("viz data", data)
+        setConfig(data.config);
+      }
+    })
+    // console.log("GETTING CONFIG");
+    // backend.getConfig((results) => {
+    //   console.log("results", results)
+    //   setConfig(results);
+    // });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [backend.getConfig, fileUploaded]);
+  }, []);
 
   return config;
 };

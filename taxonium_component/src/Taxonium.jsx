@@ -25,22 +25,17 @@ import PositionSlider from './components/PositionSlider'
 
 const default_query = getDefaultQuery();
 
-function Taxonium({query, updateQuery, socketRef}) {
+function Taxonium({query, updateQuery, backend}) {
 
-   
-
-  const [treeposition, setTreeposition] = useState(null)
   const [value, setValue] = useState([227217, 227326]);
-
-  const [fileUploaded, setFileUploaded] = useState(false)
-
   const [backupQuery, setBackupQuery] = useState(default_query);
-  const [changeInProcess, setChangeInProcess] = useState(false)
 
   const backupUpdateQuery = useCallback((newQuery) => {
     setBackupQuery((oldQuery) => ({ ...oldQuery, ...newQuery }));
   }, []);
 
+  const {socketRef} = backend;
+  
   // if query and updateQuery are not provided, use the backupQuery
   if (!query && !updateQuery) {
     query = backupQuery;
@@ -48,21 +43,7 @@ function Taxonium({query, updateQuery, socketRef}) {
   }
 
   const [mouseDownIsMinimap, setMouseDownIsMinimap] = useState(false);
-
-  const sourceData = {'data': 'hello', 'file': ""}
-
-  const backend = useBackend(
-    sourceData,
-    setChangeInProcess, 
-    setFileUploaded
-  );
-
   let hoverDetails = useHoverDetails();
-
-  useEffect(()=> {
-    console.log("changeInProcess", changeInProcess)
-  },[changeInProcess])
-
   const [deckSize, setDeckSize] = useState(null);
   const settings = useSettings({ query, updateQuery });
 
@@ -77,11 +58,12 @@ function Taxonium({query, updateQuery, socketRef}) {
     mouseDownIsMinimap,
   });
   const config = useConfig(
-    backend,
-    view,
-    query,
-    fileUploaded, 
+    socketRef
   );
+  console.log("config", config)
+  // const backend = useBackend(
+  //   socketRef
+  // );
 
   const xType = query.xType ? query.xType : "x_dist";
 
@@ -92,20 +74,14 @@ function Taxonium({query, updateQuery, socketRef}) {
     [updateQuery]
   );
 
-  const { data } = useGetDynamicData(backend, view.viewState, changeInProcess, xType, value, socketRef)
+  const { data } = useGetDynamicData(backend, view.viewState, xType, value)
 
-  useEffect(()=> {
-    if(treeposition==null){
-      setTreeposition([227217,64334128])
-    }
-  },[treeposition])
 
   return (
     <>
-    <div className="flex flex-col w-full h-full">
       <div className="flex justify-center items-start w-full bg-white">
-        {treeposition && (
-          <PositionSlider config={config} genome_position={{'min':treeposition[0], 'max': treeposition[1]}} value={value} setValue={setValue} />
+        {config && (
+          <PositionSlider config={config} value={value} setValue={setValue} />
         )}
       </div>
     <div className="">
@@ -124,7 +100,6 @@ function Taxonium({query, updateQuery, socketRef}) {
             setMouseDownIsMinimap={setMouseDownIsMinimap}
           />
       </div>
-    </div>
     </>
   )
 }

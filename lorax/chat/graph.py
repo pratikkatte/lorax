@@ -22,8 +22,6 @@ def generate_answer(state):
     """
     responses = ""
     visual = None
-    
-    # print("state", state["Tasks"])
 
     for r in state["Tasks"]:
         if r.response['text'] is not None:
