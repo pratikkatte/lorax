@@ -3,33 +3,35 @@ import { useState } from 'react'
 // import viteLogo from '/vite.svg'
 import './App.css'
 import Taxonium from './Taxonium.jsx'
+import Chatbot from './ChatBot.jsx'
 import TreeSequenceUploader from './components/TreeSequenceUploader'
+import {ChatbotCloseButton, ChatbotOpenButton} from './ChatbotToggleButton.jsx'
+import useConnect from './hooks/useConnect.jsx'
+
 
 function App() {
+    const [userName, setUserName] = useState("");
+    const [isChatbotVisible, setIsChatbotVisible] = useState(true);
 
-    const [file, setFile] = useState(null);
-
-    const [fileUpload, setFileUpload] = useState(false)
-    const handleUploadSuccess = (result) => {
-        if(result.status == 201){
-          // setFileUpload(true)
-        }
-      };
-
-      const handleUploadError = (error) => {
-        console.error('Upload error:', error);
-      };
-      
+    const socketRef = useConnect();
+    
   return (
     <>
-    {!file ? <TreeSequenceUploader
-      onUploadSuccess={handleUploadSuccess}
-      onUploadError={handleUploadError}
-      setFile={setFile}
-      file={file}
-    /> : 
-      <Taxonium uploadFile={file}/>
-    }
+      <div className="flex flex-row w-full">
+        <div className={`${isChatbotVisible ? 'w-4/5' : 'w-full'} transition-all duration-300`}>
+          <Taxonium socketRef={socketRef}/>
+        </div>
+
+        {isChatbotVisible && (
+          <div className="w-1/5 relative">
+            <ChatbotCloseButton onClick={() => setIsChatbotVisible(false)} />
+            <Chatbot userName={userName} socketRef={socketRef} />
+          </div>
+        )}
+        {!isChatbotVisible && (
+          <ChatbotOpenButton onClick={() => setIsChatbotVisible(true)} />
+        )}
+      </div>
     </>
   )
 }

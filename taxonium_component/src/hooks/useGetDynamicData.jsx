@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import websocketEvents from "../webworkers/websocketEvents";
 
 const DEBOUNCE_TIME = 100;
 const CHECK_AGAIN_TIME = 100;
@@ -9,8 +10,9 @@ function addNodeLookup(data) {
   };
   return output;
 }
-function useGetDynamicData(backend, viewState, changeInProcess, xType, value) {
+function useGetDynamicData(backend, viewState, changeInProcess, xType, value, socketRef) {
 
+  console.log("in dynamic data")
   // colorBy, viewState, config, xType) {
 
   const { queryNodes } = backend;
@@ -26,6 +28,13 @@ function useGetDynamicData(backend, viewState, changeInProcess, xType, value) {
     source: "",
     num_nodes: 0,
   });
+
+
+  useEffect(() => {
+    websocketEvents.on("viz", (data) => {
+      console.log("viz data", data)
+    })
+  }, [])
 
   useEffect(() => {
     // if (!boundsForQueries){

@@ -25,12 +25,15 @@
     "build-storybook": "storybook build"
   },
   "dependencies": {
+    "@fortawesome/fontawesome-svg-core": "^6.7.2",
+    "@fortawesome/free-solid-svg-icons": "^6.7.2",
+    "@fortawesome/react-fontawesome": "^0.2.2",
+    "eventemitter3": "^5.0.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-rnd": "^10.5.2"
   },
   "devDependencies": {
-    "deck.gl": "^9.1.11",
     "@fontsource/roboto": "^5.0.1",
     "@headlessui/react": "^1.7.17",
     "@jbrowse/core": "^2.5.0",
@@ -52,6 +55,7 @@
     "axios": "^1.4.0",
     "classnames": "^2.3.2",
     "d3-scale": "^4.0.2",
+    "deck.gl": "^9.1.11",
     "eslint": "^8.38.0",
     "eslint-plugin-react": "^7.32.2",
     "eslint-plugin-react-hooks": "^4.6.0",

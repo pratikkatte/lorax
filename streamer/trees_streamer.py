@@ -29,7 +29,8 @@ def get_config(config, ts):
     data = json.dumps({
         "config": config
     })
-    return data    
+    return data
+
 async def handle_connection(websocket):
     print("Python WebSocket connected")
     # ts = tskit.load("./sample.trees")  # Load tree sequence once

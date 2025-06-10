@@ -25,7 +25,9 @@ import PositionSlider from './components/PositionSlider'
 
 const default_query = getDefaultQuery();
 
-function Taxonium({uploadFile, query, updateQuery, }) {
+function Taxonium({query, updateQuery, socketRef}) {
+
+   
 
   const [treeposition, setTreeposition] = useState(null)
   const [value, setValue] = useState([227217, 227326]);
@@ -47,7 +49,7 @@ function Taxonium({uploadFile, query, updateQuery, }) {
 
   const [mouseDownIsMinimap, setMouseDownIsMinimap] = useState(false);
 
-  const sourceData = {'data': 'hello', 'file': uploadFile}
+  const sourceData = {'data': 'hello', 'file': ""}
 
   const backend = useBackend(
     sourceData,
@@ -90,7 +92,7 @@ function Taxonium({uploadFile, query, updateQuery, }) {
     [updateQuery]
   );
 
-  const { data } = useGetDynamicData(backend, view.viewState, changeInProcess, xType, value)
+  const { data } = useGetDynamicData(backend, view.viewState, changeInProcess, xType, value, socketRef)
 
   useEffect(()=> {
     if(treeposition==null){
