@@ -1,5 +1,3 @@
-
-
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 
@@ -9,6 +7,10 @@ from dotenv import load_dotenv
 from pkg_resources import resource_filename
 import numpy as np
 import ollama
+import json
+import time
+import os
+from typing import Optional, List, Dict, Any
 
 from lorax.utils import code, execute_generated_code, response_parser, parse_output
 from lorax.faiss_vector import getRetriever, rerank_documents
@@ -17,30 +19,25 @@ from langchain_tavily import TavilySearch
 
 from langchain.agents import AgentExecutor, create_react_agent
 from langchain_community.agent_toolkits.load_tools import load_tools
-from langchain_openai import ChatOpenAI
-from langchain_ollama import ChatOllama
-from lorax.react_from_scratch.src.react.agent import run
-import time
-
+from lorax.models import Model
+from lorax.prompts import Prompt
+from lorax.react_agent import run
+from langchain_community.retrievers import ArxivRetriever
 
 load_dotenv()
 
-MODEL_NAME = ("OPENAI", "gpt-4o")
+COMPANY_NAME = "OPENAI"
+MODEL_NAME = "gpt-4o"
 
 ollama_client = None
 
-general_llm = ChatOpenAI(model_name='gpt-4o', temperature=0)
+general_llm = Model(model_name=MODEL_NAME, company=COMPANY_NAME)
 
 retriever, reranker = getRetriever()
 
-
-
 def visualizationTool(question, attributes=None):
-    question = """
-    The generated code should return two outputs in the following specific order:
-        1. Only a Newick string representation of the tree.
-        2. A sentence describing the genome position of the tree.
-        Here is the question: """ + question 
+    prompt_messages = Prompt(agent_type='visualization')
+    question = prompt_messages + question 
 
     _ , newick_string_genome_position = generatorTool(question, attributes['file_path'])
 
@@ -54,37 +51,18 @@ def visualizationTool(question, attributes=None):
 def generatorTool(question, input_file_path=None):
     try:
 
-        # understnad, how this format of prompt engineering helps the LLM to get good results. 
-        # input_file_path =  resource_filename(__name__, './data/sample.trees')
-
-        code_gen_prompt = ChatPromptTemplate.from_messages(
-            [
-                (
-                    "system",
-                    """You are a coding generator with expertise in using ts-kit toolkit for analysing tree-sequences. \n 
-                    Here is a relevant set of tskit documentation:  \n ------- \n  {context} \n ------- \n Answer the user 
-                    question based on the above provided documentation. Ensure any code you provide should be a callable function and can be executed \n 
-                    with all required imports and variables defined. Structure your answer with a description of the code solution. \n
-                    Then list the imports. And finally list the functioning code block. The function should return a string providing the answer. Here is the user question:""",
-                    ), 
-                    ("placeholder", "{messages}"),
-                ]
-            )
-        
+        code_gen_prompt_text = Prompt(agent_type='code_generation')
+        code_gen_prompt = ChatPromptTemplate.from_messages(code_gen_prompt_text)
+        lm = Model(model_name=MODEL_NAME, company=COMPANY_NAME)
 
         try:
             # Retriever model
             docs = retriever.invoke(question)
             final_context = rerank_documents(question, reranker, docs, 3)
-            # infer
         except Exception as e:
             print("context Error:", e)
 
-        comp, model = MODEL_NAME
-        if comp=="OPENAI":
-
-            lm = ChatOpenAI(
-                model=model, temperature=0)
+        if COMPANY_NAME=="OPENAI":
         
             structured_code_llm = lm.with_structured_output(code, include_raw=True)
 
@@ -98,17 +76,20 @@ def generatorTool(question, input_file_path=None):
             )
             
         else:
-            client = ollama.Client(host=ollama_client)
+            # client = ollama.Client(host=ollama_client)
 
             filled_prompt = code_gen_prompt.format(context=final_context, question=question)
-            response = client.chat(
-                messages=[{
+            response = lm.chat(
+                messages=[
+                    {
                         'role': 'user',
-                        'content': filled_prompt,
-                        }],
-                        model=model,
-                    # format=code.model_json_schema(),
-                        options={'temperature': 0})
+                        'content': filled_prompt
+                    }
+                ],
+                model=lm,
+                options={'temperature': 0}
+            )
+            
             code_solution = response_parser(response.message.content)
         
         print(code_solution)
@@ -149,37 +130,6 @@ def generalInfoTool(question, attributes=None):
     This function is used to get the general information about the tskit and treesequence.
     """
 
-    
-    # prompt_template = """
-    #     You are an expert in treesequences and population genetics and you help in answering queries related to it in general.
-    #     If the questions are not related to your expertise then kindly remind them to ask questions in your domain of expertise. 
-    #     Respond to the user based on this query or message: {question}
-    # """
-
-    # prompt_template = """Answer the following questions as best you can. 
-    #     The general topic of this conversation is treesequences and population genetics but don't include this in your search, just keep that in mind.
-    #     Include citations or reference links where applicable. 
-    #     You have access to the following tools:
-
-    #     {tools}
-
-    #     Use the following format and stick to it:
-
-    #     Question: the input question you must answer
-    #     Thought: you should always think about what to do
-    #     Action: the action to take, should be one of [{tool_names}] or "Finish"
-    #     Action Input: the input to the action
-    #     Observation: the result of the action
-    #     ... (this Thought/Action/Action Input/Observation can repeat N times until you decide to "Finish")
-    #     Thought: I now know the final answer
-    #     Final Answer: the final detailed answer to the original input question (with reference links if applicable)
-
-    #     Begin!
-
-    #     Context: {context}
-    #     Question: {input}
-    #     Thought:{agent_scratchpad}"""
-
     try:
         start = time.time()
         answer = run(question, attributes["memory"])
@@ -187,39 +137,100 @@ def generalInfoTool(question, attributes=None):
         end = time.time()
 
         print("Time taken to answer the question:", end-start)
-    #     prompt = PromptTemplate(
-    #         input_variables=['input', 'context'], template=prompt_template
-    #     )
-    #     # lm = ChatOpenAI(model="gpt-4o", temperature=0)
-    #     print("before lm")
-    #     lm = ChatOllama(
-    #         base_url="https://uwx72r685xxxb8-11434.proxy.runpod.net/",
-    #         model="llama3.2",  # or "llama3:latest" depending on what you pulled
-    #         temperature=0
-    #     )
-    #     print("after lm")
-    #     # lm = ChatOllama(model="llama3.2", temperature=0, api_key="76c6d00e-b785-45b4-a552-e3cb52304e29")
 
-    #     tools = [
-    #         *load_tools(["arxiv"]),
-    #         TavilySearch(
-    #             max_results=5,
-    #             topic="general",
-    #             search_depth="advanced"
-    #         )
-    #     ]
-
-    #     agent = create_react_agent(lm, tools, prompt)
-    #     agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True, handle_parsing_errors=True)
-
-    #     print("before answer")
-    #     answer = agent_executor.invoke({"input": question, "context": attributes["memory"]})
-    #     print("after answer")
-    #     # print("Answer:", answer["output"])
 
         return answer
     except Exception as e:
         return f"Found Error, {e}"
+
+# Tskit Search Functionality
+def search_tskit(query: str) -> Optional[str]:
+    """
+    Fetch tskit information for a given search query using FAISS vector and return as JSON.
+
+    Args:
+        query (str): The search query string.
+
+    Returns:
+        Optional[str]: A JSON string containing the query, title, and summary, or None if no result is found.
+    """
+    start = time.time()
+
+    try:
+        print(f"Searching Tskit Documentation for: {query}")
+
+        try:
+            # Retriever model
+            docs = retriever.invoke(query)
+            final_context = rerank_documents(query, reranker, docs, 5)
+        except Exception as e:
+            print("context Error:", e)
+
+        final_context_parsed = "\n".join([doc.page_content.strip() for doc in final_context])
+
+        if final_context_parsed:
+            # Create a dictionary with query, title, and summary
+            result = {
+                "query": query,
+                "title": "Tskit Retrieved Information",
+                "summary": final_context_parsed
+            }
+            print(f"Successfully retrieved summary for: {query}")
+            end = time.time()
+            print(f"Time taken for tskit search: {end - start} seconds")
+            return json.dumps(result, ensure_ascii=False, indent=2)
+        else:
+            print(f"No results found for query: {query}")
+            return None
+
+    except Exception as e:
+        print(f"An error occurred while processing the Tskit query: {e}")
+        return None
+
+# Arxiv Search Functionality
+def format_docs(docs):
+    """Format documents for display."""
+    return "\n\n".join(doc.page_content for doc in docs)
+
+def search_arxiv(query: str) -> Optional[str]:
+    """
+    Fetch ArXiv information for a given search query using ArxivRetriever and return as JSON.
+
+    Args:
+        query (str): The search query string.
+
+    Returns:
+        Optional[str]: A JSON string containing the query and articles, or None if no result is found.
+    """
+    start = time.time()
+
+    try:
+        print(f"Searching Arxiv for: {query}")
         
+        retriever = ArxivRetriever(
+            load_max_docs=3,
+            get_full_documents=True,
+        )
+
+        docs = retriever.invoke(query)
+        docs = format_docs(docs)
+
+        if docs is not None:
+            # Create a dictionary with query and articles
+            result = {
+                "query": query,
+                "articles": docs
+            }
+            print(f"Successfully retrieved articles for: {query}")
+            end = time.time()
+            print(f"Time taken for arxiv search: {end - start} seconds")
+            return json.dumps(result, ensure_ascii=False, indent=2)
+        else:
+            print(f"No results found for query: {query}")
+            return None
+
+    except Exception as e:
+        print(f"An error occurred while processing the Arxiv query: {e}")
+        return None
 
     

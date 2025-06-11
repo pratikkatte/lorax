@@ -1,0 +1,4 @@
+The generated code should return two outputs in the following specific order:
+1. Only a Newick string representation of the tree.
+2. A sentence describing the genome position of the tree.
+Here is the question: 

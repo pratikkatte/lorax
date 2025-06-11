@@ -4,8 +4,8 @@ from langgraph.graph import END, StateGraph, START
 from langgraph.graph.message import add_messages
 from typing_extensions import TypedDict
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_openai import ChatOpenAI
-
+from lorax.models import Model
+from lorax.prompts import Prompt
 
 from lorax.tools import routerTool, generalInfoTool, generatorTool
 from lorax.utils import execute_generated_code
@@ -16,6 +16,9 @@ tracemalloc.start()
 
 # Max tries
 max_iterations = 3
+
+COMPANY_NAME = "OPENAI"
+MODEL_NAME = "gpt-4o"
 
 def generate_answer(state):
     """
@@ -70,41 +73,12 @@ def query_planner(state):
     state['attributes']["memory"].chat_memory.add_user_message(state['question'])
     history = state['attributes']["memory"]
 
-
-    prompt_messages = [
-    (
-        "system",
-        (
-            "You are a world class query planning algorithm capable of breaking apart questions into its dependency queries. Don't rewrite the queries, just break it down. If the user doesn't ask a question. responding politely."
-            "such that the answers can be used to inform the parent question. Do not answer the questions, simply provide a correct "
-            "compute graph with specific subquestions and their dependencies. Before calling any function, think step by step to understand "
-            "the problem. Also consider the following tool types: \n"
-            "- VISUALIZATION: if the query asks to display any part of the treesequences.\n"
-            "- CODE_GENERATE: if the query requires using tskit to generate code in Python in order to answer.\n"
-            "- GENERAL_ANSWER: if the query requires a simple text-based answer.\n"
-            "- FETCH_FILE: if the query requires fetching a tree-sequence file from the user.\n\n"
-            "Classify the tool type as one of: VISUALIZATION, CODE_GENERATE, GENERAL_ANSWER, FETCH_FILE."
-        ),
-    ),
-    (
-        "user",
-        (
-            "Here is the conversation so far:\n{history}\n\n"
-            "Now, based on the above conversation and considering the latest question: {question}" 
-            "generate the correct query plan. If the query has NO dependencies on other subqueries, then it is a SINGLE query_type; "
-            "otherwise, it is MULTI_DEPENDENCY."
-        ),
-    ),
-]
-
-
-
-    # Create a ChatPromptTemplate using these messages.
+    # Create a ChatPromptTemplate using these messages
+    prompt_messages = Prompt(agent_type='planner')
     planner_prompt = ChatPromptTemplate.from_messages(prompt_messages)
+    planner_llm = Model(model_name=MODEL_NAME, company=COMPANY_NAME)
 
-    planner = planner_prompt | ChatOpenAI(
-        model="gpt-4o", temperature=0
-    ).with_structured_output(QueryPlan)
+    planner = planner_prompt | planner_llm.with_structured_output(QueryPlan)
 
     plan = planner.invoke({"question":state['question'], "history": history})
     state['Tasks'] = plan

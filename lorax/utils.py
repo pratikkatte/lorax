@@ -4,7 +4,8 @@ from types import ModuleType
 import sys
 import inspect
 import re
-    
+import importlib
+import yaml
 import tiktoken
 import json
 
@@ -147,6 +148,105 @@ def count_tokens(string: str, encoding_name: str) -> int:
     num_tokens = len(encoding.encode(string))
     return num_tokens
 
-def load_json(json_file):
-    with open(json_file) as f:
-        return json.load(f)
+def read_file(path: str) -> str:
+    """
+    Reads the content of a file and returns it as a text object.
+
+    Args:
+        path (str): The path to the file.
+
+    Returns:
+        str: The content of the file as a string.
+
+    Raises:
+        FileNotFoundError: If the file is not found.
+        Exception: For any other exceptions encountered during file reading.
+    """
+    try:
+        with open(path, 'r', encoding='utf-8') as file:
+            content: str = file.read()
+        return content
+    except FileNotFoundError:
+        print(f"File not found: {path}")
+        raise
+    except Exception as e:
+        print(f"Error reading file: {e}")
+        raise
+
+def load_yaml(filename: str) -> dict:
+    """
+    Load a YAML file and return its contents.
+
+    Args:
+        filename (str): The path to the YAML file.
+
+    Returns:
+        dict: The parsed YAML object.
+
+    Raises:
+        FileNotFoundError: If the file is not found.
+        yaml.YAMLError: If there is an error parsing the YAML file.
+        Exception: For any other exceptions.
+    """
+    try:
+        with open(filename, 'r') as file:
+            return yaml.safe_load(file)
+    except FileNotFoundError:
+        print(f"File '{filename}' not found.")
+        raise
+    except yaml.YAMLError as e:
+        print(f"Error parsing YAML file '{filename}': {e}")
+        raise
+    except Exception as e:
+        print(f"Error loading YAML file: {e}")
+        raise
+
+def load_json(filename: str) -> dict:
+    """
+    Load a JSON file and return its contents.
+
+    Args:
+        filename (str): The path to the JSON file.
+
+    Returns:
+        dict: The parsed JSON object.
+
+    Raises:
+        FileNotFoundError: If the file is not found.
+        json.JSONDecodeError: If there is an error parsing the JSON file.
+        Exception: For any other exceptions.
+    """
+    try:
+        with open(filename, 'r') as file:
+            return json.load(file)
+    except FileNotFoundError:
+        print(f"File '{filename}' not found.")
+        raise
+    except json.JSONDecodeError:
+        print(f"File '{filename}' contains invalid JSON.")
+        raise
+    except Exception as e:
+        print(f"Error loading JSON file: {e}")
+        raise
+
+def write_to_file(path: str, content: str) -> None:
+    """
+    Writes content to a specified file. Appends to the file if it already exists.
+
+    Args:
+        path (str): The path to the file.
+        content (str): The content to write to the file.
+
+    Raises:
+        Exception: For any other exceptions encountered during file writing.
+    """
+    try:
+        with open(path, 'a', encoding='utf-8') as file:
+            file.write(content)
+        print(f"Content written to file: {path}")
+    except FileNotFoundError:
+        print(f"File not found: {path}")
+        raise
+    except Exception as e:
+        print(f"Error writing to file '{path}': {e}")
+        raise
