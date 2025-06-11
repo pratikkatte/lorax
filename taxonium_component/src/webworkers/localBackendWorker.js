@@ -460,7 +460,6 @@ onmessage = async (event) => {
       // postMessage({ type: "search", data: result });
     }
     if (data.type === "config") {
-      console.log("in config")
       const result = await getConfig();
       postMessage({ type: "config", data: result });
     }

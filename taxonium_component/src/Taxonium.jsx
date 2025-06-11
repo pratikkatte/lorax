@@ -23,56 +23,27 @@ import { Toaster } from "react-hot-toast";
 import PositionSlider from './components/PositionSlider'
 
 
-const default_query = getDefaultQuery();
-
-function Taxonium({query, updateQuery, backend}) {
+function Taxonium({backend}) {
 
   const [value, setValue] = useState([227217, 227326]);
-  const [backupQuery, setBackupQuery] = useState(default_query);
-
-  const backupUpdateQuery = useCallback((newQuery) => {
-    setBackupQuery((oldQuery) => ({ ...oldQuery, ...newQuery }));
-  }, []);
-
-  const {socketRef} = backend;
-  
-  // if query and updateQuery are not provided, use the backupQuery
-  if (!query && !updateQuery) {
-    query = backupQuery;
-    updateQuery = backupUpdateQuery;
-  }
 
   const [mouseDownIsMinimap, setMouseDownIsMinimap] = useState(false);
-  let hoverDetails = useHoverDetails();
+  // let hoverDetails = useHoverDetails();
   const [deckSize, setDeckSize] = useState(null);
-  const settings = useSettings({ query, updateQuery });
+  // const settings = useSettings({ query, updateQuery });
 
   const deckRef = useRef();
   const jbrowseRef = useRef();
 
-  const view = useView({
-    settings,
-    deckSize,
-    deckRef,
-    jbrowseRef,
-    mouseDownIsMinimap,
-  });
-  const config = useConfig(
-    socketRef
-  );
+  const view = useView({});
+  const config = useConfig({backend});
   console.log("config", config)
   // const backend = useBackend(
   //   socketRef
   // );
 
-  const xType = query.xType ? query.xType : "x_dist";
+  const xType = "x_dist";
 
-  const setxType = useCallback(
-    (xType) => {
-      updateQuery({ xType });
-    },
-    [updateQuery]
-  );
 
   const { data } = useGetDynamicData(backend, view.viewState, xType, value)
 
@@ -91,7 +62,7 @@ function Taxonium({query, updateQuery, backend}) {
             data={data}
             view={view}
             ariaHideApp={false} 
-            hoverDetails={hoverDetails}
+            // hoverDetails={hoverDetails}
             xType={xType}
             setDeckSize={setDeckSize}
             deckSize={deckSize}

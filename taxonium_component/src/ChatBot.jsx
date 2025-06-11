@@ -11,8 +11,9 @@ const API_BASE_URL = "http://localhost:8000";
 
 function Chatbot(props) {
 
-  const {socketRef, userName} = props;
+  const {backend, userName} = props;
 
+  const {socketRef, isConnected} = backend;
 
   const [userInput, setUserInput] = useState("");
   const [conversation, setConversation] = useState([]);
@@ -50,9 +51,17 @@ function Chatbot(props) {
     setConversation((prevConversation) => [...prevConversation, sentMessage]);
     // Clear the input field
     setUserInput("");
-  socketRef.current.send(JSON.stringify({ type: "chat", message: userInput, role: "user"}))
-
-  // websocketEvents.on("chat", handleChat);
+    
+    if (isConnected) {
+      socketRef.current.send(JSON.stringify({ type: "chat", message: userInput, role: "user"}));
+    } else {
+      console.log("WebSocket is not connected. Message not sent.");
+      setConversation(prev => [...prev, {
+        role: "assistant",
+        content: "Unable to send message. Please check your connection.",
+        hidden: false
+      }]);
+    }
   };
 
   const handleClearChat = async () => {
@@ -109,6 +118,11 @@ function Chatbot(props) {
           New Chat
         </div>
       </div>
+      {!isConnected && (
+        <div className="connection-status">
+          Disconnected - Waiting for connection...
+        </div>
+      )}
       {/* Attach the ref to the chat content */}
       <div ref={chatContentRef} className="chat-content">
         {conversation.map((message, index) => (

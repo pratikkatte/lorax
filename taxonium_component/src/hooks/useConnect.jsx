@@ -19,7 +19,7 @@ let onConfigReceipt = (receivedData) => {};
 
 worker.onmessage = (event) => {
   console.log(
-    "got message from worker", event.data);
+    "got message from worker");
     
   if (event.data.type === "status") {
     
@@ -52,6 +52,7 @@ worker.onmessage = (event) => {
 function useConnect() {
   const socketRef = useRef(null);
   const [statusMessage, setStatusMessage] = useState({ message: null });
+  const [isConnected, setIsConnected] = useState(false);
 
 
   useEffect(() => {
@@ -61,6 +62,7 @@ function useConnect() {
 
       ws.onopen = () => {
         console.log("WebSocket connection established");
+        setIsConnected(true);
       };
 
       ws.onmessage = ((event) => {
@@ -78,10 +80,12 @@ function useConnect() {
 
       ws.onerror = (error) => {
         console.error("WebSocket error:", error);
+        setIsConnected(false);
       };
 
       ws.onclose = () => {
         console.log("WebSocket connection closed");
+        setIsConnected(false);
       };
     }, 500);
 
@@ -134,11 +138,13 @@ function useConnect() {
       setStatusMessage,
       socketRef,
       queryNodes,
+      isConnected,
     };
   }, [statusMessage,
     setStatusMessage,
     socketRef,
-    queryNodes
+    queryNodes,
+    isConnected
   ]);
 
   // return socketRef;

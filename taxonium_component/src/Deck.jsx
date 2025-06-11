@@ -27,24 +27,15 @@ import FirefoxWarning from "./components/FirefoxWarning";
 import { JBrowseErrorBoundary } from "./components/JBrowseErrorBoundary";
 import ColorSettingModal from "./components/ColorSettingModal";
 import Key from "./components/Key";
-// import {Controller} from 'deck.gl';
 
 
-const MemoizedKey = React.memo(Key);
 function Deck({
   data,
   view,
-  // hoverDetails,
   statusMessage,
   xType,
-
-  setDeckSize,
-  deckSize,
   deckRef,
-  mouseDownIsMinimap,
-  setMouseDownIsMinimap,
 }) {
-
   const zoomReset = view.zoomReset;
   const snapshot = useSnapshot(deckRef);
   const [hoveredKey, setHoveredKey] = useState(null);
@@ -54,7 +45,6 @@ function Deck({
   const {views, viewState,setMouseXY, mouseXy, setViewState, MyOrthographicController, handleViewStateChange} = view
 
   useEffect(()=> {
-
     console.log("statusMessage", statusMessage)
 
   },[statusMessage])
@@ -78,29 +68,10 @@ function Deck({
     }
 
   }
-
-
-  // const [viewState, setViewState] = useState({
-  //   target: [0, 0, 0],
-  //   zoom: 6,
-  //   'ortho': INITIAL_VIEW_STATE,
-  //   'genome-positions': INITIAL_VIEW_STATE 
-  // });
-
   const [hoverInfo, setHoverInfoRaw] = useState(null);
   const setHoverInfo = useCallback(
     (info) => {
       setHoverInfoRaw(info);
-
-      // if (info && info.object) {
-      //   if (hoverDetails.setNodeDetails) {
-      //     hoverDetails.setNodeDetails(info.object);
-      //   } else {
-      //     hoverDetails.getNodeDetails(info.object.node_id);
-      //   }
-      // } else {
-      //   hoverDetails.clearNodeDetails();
-      // }
     },[]);
 
   const { layers, layerFilter } = useLayers({
@@ -144,22 +115,11 @@ function Deck({
       style={{ width: '100%', height: '100%', border: '1px solid black'}} 
       layers={layers}
       layerFilter={layerFilter}
-      // onHover={setMouseXY}
       viewState={viewState}
       onViewStateChange={handleViewStateChange}
-      // onResize={(size) => {
-      //   setDeckSize(size);
-      //   console.log("resize", size);
-      // }}
-      // onAfterRender={(event) => {
-      //   if (isNaN(deckSize.width)) {
-      //     setDeckSize(event.target.parentElement.getBoundingClientRect());
-      //   }
-      // }}
-      
       views={views} 
     />
-    <div style={{
+    {/* <div style={{
       position: 'absolute',
       left: '10.01%', //x
       top: '1%',  // y
@@ -174,7 +134,7 @@ function Deck({
       width: '9%',
       height: '90%',
       border: '2px solid blue', zIndex: '10', pointerEvents: 'none'}}>
-      </div>
+      </div> */}
     </div>
     </div>
     </>

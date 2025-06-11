@@ -1,28 +1,27 @@
 import { useState, useEffect } from "react";
 import websocketEvents from "../webworkers/websocketEvents";
 
-
-const useConfig = (
-  socketRef
-) => {
+const useConfig = ({backend}) => {
   const [config, setConfig] = useState(null);
-
-  console.log("in config")
+  const {isConnected} = backend;
+  
   useEffect(() => {
-    console.log("socketRef", socketRef)
-    websocketEvents.on("viz", (data) => {
-      if(data.role == "config"){
-        console.log("viz data", data)
+    if (!isConnected) return;
+    const handleConfigUpdate = (data) => {
+      if (data.role === "config") {
+        console.log("Received config update:", data);
         setConfig(data.config);
       }
-    })
-    // console.log("GETTING CONFIG");
-    // backend.getConfig((results) => {
-    //   console.log("results", results)
-    //   setConfig(results);
-    // });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    };
+
+    // Subscribe to config updates
+    websocketEvents.on("viz", handleConfigUpdate);
+
+    // Cleanup subscription on unmount or disconnect
+    return () => {
+      websocketEvents.off("viz", handleConfigUpdate);
+    };
+  }, [isConnected]);
 
   return config;
 };
