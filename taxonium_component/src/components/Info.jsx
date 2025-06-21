@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback} from "react";
 import websocketEvents from '../webworkers/websocketEvents';
+import FileUploadInput from './FileUploadInput';
 
-const Info = ({backend, gettingDetails, setGettingDetails, setShowInfo}) => {
+const Info = ({backend, gettingDetails, setGettingDetails, setShowInfo, config, setConfig}) => {
 
 const {socketRef, isConnected} = backend;
 
@@ -18,7 +19,6 @@ const handleDetails = useCallback((data) => {
     }
   }, []);
   
-
   useEffect(() => { 
     console.log("gettingDetails", isConnected)
     if (!isConnected) return;
@@ -49,10 +49,24 @@ const handleDetails = useCallback((data) => {
       </span>
     </div>
   );
-
   return (
     <div className="w-full h-full bg-gray-50 p-3 overflow-y-auto">
       <div className="max-w-4xl mx-auto">
+        {/* Close button */}
+        <div className="flex justify-start mb-4">
+          <button
+            onClick={() => setShowInfo(false)}
+            className="bg-gray-200 hover:bg-gray-300 text-gray-700 px-3 py-1 rounded-md text-sm font-medium transition-colors duration-200"
+          >
+            Close
+          </button>
+        </div>
+        <div className="flex justify-center items-center mb-4"> 
+        {!config && (
+          <FileUploadInput config={config} setConfig={setConfig}/>
+        )}
+        </div>
+
         {treeDetails && (
           <DetailCard title="Tree Details">
             <DetailRow label="Interval" value={treeDetails.interval.join(', ')} />
@@ -97,7 +111,7 @@ const handleDetails = useCallback((data) => {
           </DetailCard>
         )}
         
-        {!treeDetails && !nodeDetails && !individualDetails && (
+        {!treeDetails && !nodeDetails && config && !individualDetails && (
           <div className="text-center py-6">
             <div className="text-gray-400 text-base">
               Select an element to view details

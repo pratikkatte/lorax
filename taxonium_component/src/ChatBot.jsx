@@ -84,7 +84,11 @@ function Chatbot(props) {
     }
   };
 
-
+  const handleCloseChat = () => {
+    // Call the onClose prop if it exists, otherwise just log
+    props.setIsChatbotVisible(false);
+    console.log("Close chat requested");
+  };
 
   // Use useEffect to trigger the fade-in effect
   useEffect(() => {
@@ -113,9 +117,14 @@ function Chatbot(props) {
   return (
     <div className="chat-container">
       <div className="chat-header">
+        <div className="close-button" onClick={handleCloseChat}>
+          ✕
+        </div>
         <div className="chat-title">Tree-Sequence Analysis</div>
-        <div className="clear-button" onClick={handleClearChat}>
-          New Chat
+        <div className="header-buttons">
+          <div className="clear-button" onClick={handleClearChat}>
+            New Chat
+          </div>
         </div>
       </div>
       {!isConnected && (

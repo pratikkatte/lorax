@@ -33,7 +33,6 @@ function Taxonium({backend, config}) {
   const [hoveredTreeIndex, setHoveredTreeIndex] = useState({path: null, node: null, treeIndex: null});
 
   const deckRef = useRef();
-  const jbrowseRef = useRef();
 
   const view = useView({});
 
@@ -42,8 +41,8 @@ function Taxonium({backend, config}) {
 
 
   return (
-    <>
-      {config && (
+    <div>
+      {backend.isConnected && config && (
         <>
           <div className="flex justify-center items-start bg-white">
             <PositionSlider config={config} value={value} setValue={setValue} />
@@ -68,7 +67,7 @@ function Taxonium({backend, config}) {
           </div>
         </>
       )}
-    </>
+    </div>
   )
 }
 

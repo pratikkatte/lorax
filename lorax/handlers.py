@@ -10,7 +10,6 @@ class LoraxHandler:
         self.ts = None  # Set when a file is uploaded
 
     async def handle_ping(self, message):
-        print("Ping received")
         return {"type": "ping", "data": "Pong"}
 
     async def handle_chat(self, message):
@@ -37,7 +36,6 @@ class LoraxHandler:
             },
             "tree_index": tree_index
         })
-        print("Query received")
         return data
 
     def get_config(self):

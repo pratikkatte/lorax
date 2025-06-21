@@ -12,7 +12,7 @@ import useConnect from './hooks/useConnect.jsx'
 function App() {
   const [userName, setUserName] = useState("");
   const [isChatbotVisible, setIsChatbotVisible] = useState(true);
-  const [showSidebar, setShowSidebar] = useState(false);
+  const [showSidebar, setShowSidebar] = useState(true);
   const [showInfo, setShowInfo] = useState(false);
 
   const [gettingDetails, setGettingDetails] = useState(false);
@@ -50,13 +50,12 @@ function App() {
         className="fixed top-0 right-0 h-full w-5 z-[100] pointer-events-auto"
         onMouseEnter={() => setShowSidebar(true)}
       />
-
       {/* Sidebar */}
       {showSidebar && (
         <div
           className="fixed top-0 right-0 h-full w-10 bg-gray-800 text-white z-[101] p-3 shadow-lg flex flex-col items-center space-y-6"
           onMouseLeave={(e) => {
-            setShowSidebar(false);
+            // setShowSidebar(false);
           }}
         >
           <div 
@@ -82,16 +81,12 @@ function App() {
         <div className={`${(isChatbotVisible || showInfo) ? (showSidebar ? 'w-[73%]' : 'w-3/4') : 'w-full'} transition-all duration-200`}>
           <Taxonium backend={backend} config={config} />
         </div>
-
-        {/* Chatbot */}
-        {isChatbotVisible && (
-          <div className={`transition-all relative duration-200 shadow-2xl ${showSidebar ? 'w-[25%]' : 'w-1/4'}`}>
-            <Chatbot userName={userName} backend={backend} config={config} setConfig={setConfig}/>
+          <div className={`transition-all relative ${isChatbotVisible ? '' : 'hidden'} duration-200 shadow-2xl ${showSidebar ? 'w-[25%]' : 'w-1/4'}`}>
+            <Chatbot userName={userName} setIsChatbotVisible={setIsChatbotVisible}  backend={backend} config={config} setConfig={setConfig}/>
           </div>
-        )}
-        <div className={`transition-all ${showInfo ? '' : 'hidden'} shadow-2xl bg-gray-100 duration-200 ${showSidebar ? 'w-[25%]' : 'w-1/4'}`}>
-            <Info backend={backend} gettingDetails={gettingDetails} setGettingDetails={setGettingDetails} setShowInfo={setShowInfo}/>
-          </div>
+        <div className={`transition-all relative ${showInfo ? '' : 'hidden'} shadow-2xl bg-gray-100 duration-200 ${showSidebar ? 'w-[25%]' : 'w-1/4'}`}>
+            <Info backend={backend} gettingDetails={gettingDetails} setGettingDetails={setGettingDetails} setShowInfo={setShowInfo} config={config} setConfig={setConfig}/>
+        </div>
         
       </div>
     </>
