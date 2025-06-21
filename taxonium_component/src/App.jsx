@@ -78,7 +78,7 @@ function App() {
       {/* Main UI - lower z-index */}
       <div className="flex flex-row h-screen w-full z-40">
         {/* Main Panel */}
-        <div className={`${(isChatbotVisible || showInfo) ? (showSidebar ? 'w-[73%]' : 'w-3/4') : 'w-full'} transition-all duration-200`}>
+        <div className={`${(isChatbotVisible || showInfo) ? (showSidebar ? 'w-[73%]' : 'w-3/4') :  (showSidebar ? 'w-[97%]' : 'w-full')} transition-all duration-200`}>
           <Taxonium backend={backend} config={config} />
         </div>
           <div className={`transition-all relative ${isChatbotVisible ? '' : 'hidden'} duration-200 shadow-2xl ${showSidebar ? 'w-[25%]' : 'w-1/4'}`}>

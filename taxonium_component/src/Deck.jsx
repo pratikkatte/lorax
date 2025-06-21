@@ -100,32 +100,26 @@ function Deck({
 
   
   return (
-    <div className=""
+    <div className="w-full h-full"
     onClick={onClickOrMouseMove}
     onPointerMove={onClickOrMouseMove}
     onPointerDown={onClickOrMouseMove}
     > 
       {no_data ? (
     <>
-      <div className="absolute top-0 left-0 w-full h-full flex justify-center items-center">
+      <div className="w-full h-full flex justify-center items-center">
       <Oval height="40" width="40" color="#666" ariaLabel="loading" secondaryColor="#666" />
       </div>
     </>
       ): (
     <>
-    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'flex-end', height: '100vh', width:'100vw' }}>
-    <div style={{
-          width: '100%',
-          height: '100%',
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          position: 'relative'
-        }}>
+    {/* <div style={{ display: 'flex', justifyContent: 'center', height: '100vh', width:'100vw' }}> */}
+    <div className="w-full h-full flex justify-center items-center">
+    <div className="w-full h-full flex justify-center items-center relative">
     <DeckGL
       ref={deckRef}
       pickingRadius={10}
-      style={{ width: '100%', height: '100%'}} 
+      // style={{ width: '100%', height: '100%'}} 
       layers={layers}
       layerFilter={layerFilter}
       viewState={viewState}
