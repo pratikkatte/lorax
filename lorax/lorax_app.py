@@ -72,13 +72,14 @@ async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
     await manager.register_component(websocket, "viz")
     await manager.register_component(websocket, "chat")
-    
+    await manager.register_component(websocket, "ping")
     try:
         while True:
             message = await websocket.receive_json()
             
             if message.get("type") == "ping":
-                await lorax_handler.handle_ping(message)
+                data = await lorax_handler.handle_ping(message)
+                await manager.send_to_component("ping", data)
                 continue  # ignore pings
 
             if message.get("type") == "chat":
@@ -96,9 +97,15 @@ async def websocket_endpoint(websocket: WebSocket):
                     await manager.send_to_component("viz", message)
                     continue
 
-                print("Viz received")
-                message = await lorax_handler.handle_viz(message)
-                await manager.send_to_component("viz", message)
+                if message.get("role") == "details":
+                    result = await lorax_handler.handle_details(message)
+                    message = {"type": "viz", "role": "details-result", "data": result}
+                    await manager.send_to_component("viz", message)
+                    continue
+
+                # print("Viz received")
+                # message = await lorax_handler.handle_viz(message)
+                # await manager.send_to_component("viz", message)
                 continue
 
             for client in manager.connected_clients:

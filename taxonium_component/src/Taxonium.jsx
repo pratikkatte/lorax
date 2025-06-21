@@ -12,7 +12,6 @@ import useHoverDetails from "./hooks/useHoverDetails";
 import { useMemo, useState, useRef } from "react";
 import useBackend from "./hooks/useBackend";
 import usePerNodeFunctions from "./hooks/usePerNodeFunctions";
-import useConfig from "./hooks/useConfig";
 import { useSettings } from "./hooks/useSettings";
 import { MdArrowBack, MdArrowUpward } from "react-icons/md";
 import { useEffect } from "react";
@@ -23,54 +22,52 @@ import { Toaster } from "react-hot-toast";
 import PositionSlider from './components/PositionSlider'
 
 
-function Taxonium({backend}) {
+function Taxonium({backend, config}) {
 
-  const [value, setValue] = useState([227217, 227326]);
+  const [value, setValue] = useState(null);
 
   const [mouseDownIsMinimap, setMouseDownIsMinimap] = useState(false);
   // let hoverDetails = useHoverDetails();
   const [deckSize, setDeckSize] = useState(null);
   // const settings = useSettings({ query, updateQuery });
+  const [hoveredTreeIndex, setHoveredTreeIndex] = useState({path: null, node: null, treeIndex: null});
 
   const deckRef = useRef();
   const jbrowseRef = useRef();
 
   const view = useView({});
-  const config = useConfig({backend});
-  console.log("config", config)
-  // const backend = useBackend(
-  //   socketRef
-  // );
 
   const xType = "x_dist";
-
-
-  const { data } = useGetDynamicData(backend, view.viewState, xType, value)
+  const { data } = useGetDynamicData(backend, view.viewState, xType, value, config)
 
 
   return (
     <>
-      <div className="flex justify-center items-start w-full bg-white">
-        {config && (
-          <PositionSlider config={config} value={value} setValue={setValue} />
-        )}
-      </div>
-    <div className="">
-      <Toaster />
-      <Deck
-            statusMessage={backend.statusMessage}
-            data={data}
-            view={view}
-            ariaHideApp={false} 
-            // hoverDetails={hoverDetails}
-            xType={xType}
-            setDeckSize={setDeckSize}
-            deckSize={deckSize}
-            deckRef={deckRef}
-            mouseDownIsMinimap={mouseDownIsMinimap}
-            setMouseDownIsMinimap={setMouseDownIsMinimap}
-          />
-      </div>
+      {config && (
+        <>
+          <div className="flex justify-center items-start bg-white">
+            <PositionSlider config={config} value={value} setValue={setValue} />
+          </div>
+          <div>
+            <Toaster />
+            <Deck 
+              backend={backend}
+              hoveredTreeIndex={hoveredTreeIndex}
+              setHoveredTreeIndex={setHoveredTreeIndex}
+              statusMessage={backend.statusMessage}
+              data={data}
+              view={view}
+              ariaHideApp={false} 
+              xType={xType}
+              setDeckSize={setDeckSize}
+              deckSize={deckSize}
+              deckRef={deckRef}
+              mouseDownIsMinimap={mouseDownIsMinimap}
+              setMouseDownIsMinimap={setMouseDownIsMinimap}
+            />
+          </div>
+        </>
+      )}
     </>
   )
 }

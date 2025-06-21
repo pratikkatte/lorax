@@ -158,7 +158,6 @@ const useView = ({}) => {
         };
       }
 
-      console.log("newViewStates", newViewStates)
       return newViewStates;
     });
     

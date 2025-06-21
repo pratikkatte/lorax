@@ -129,57 +129,47 @@ def return_data(node_objects, total_nodes, global_mutation, all_content_position
 # the start and end will be user given input. 
 
 def start_end(start, end, ts):
-    
-    # tree_min_max = {'start': int(ts.at_index(1).interval.left), 'end': int(ts.at_index(ts.num_trees - 1).interval.right)}
-    
     sub_ts = ts.keep_intervals([[start, end]], simplify=False)
 
     nwk_list = []
     positions = []
-    
     mutations = []
     times = []
+
     min_time = float('inf')
     max_time = float('-inf')
 
-    for index, tree in enumerate(sub_ts.trees()):
-         intervals = tree.interval
-         
-         if len(nwk_list)==10:
-             break
-         if tree.num_roots == 1:
-            labels = {
-                u: str(u) for u in tree.nodes()
-                }
-            
-            node_times = [sub_ts.node(u).time for u in tree.nodes()]
-            start_time = min(node_times)
-            end_time = -1 * max(node_times)
-            if end_time<min_time:
-                min_time = end_time
-            if start_time>=max_time:
-                max_time = start_time
-                
-            times.append({'start': start_time, 'end': end_time})
+    for i, tree in enumerate(sub_ts.trees()):
+        if len(nwk_list) == 10:
+            break
+        if tree.num_roots != 1:
+            continue
 
-            # newick string
-            nwk_list.append(tree.as_newick(node_labels=labels))
+        interval = tree.interval
+        nodes = list(tree.nodes())
+        node_times = [sub_ts.node(u).time for u in nodes]
+        start_time = min(node_times)
+        end_time = -max(node_times)
 
-            # positions
-            positions.append({'start':intervals.left,'end':intervals.right })
-            
-            # mutations
-            temp_mut = {}
-            for site in tree.sites():
-                for mut in site.mutations:
-                    mut_info = str(site.ancestral_state)+str(int(site.position))+str(mut.derived_state)
-                    if mut.node not in temp_mut:
-                        temp_mut[str(mut.node)] = [mut_info]
-                    else:
-                        temp_mut[str(mut.node)].append(mut_info)
-            mutations.append(temp_mut)
+        min_time = min(min_time, end_time)
+        max_time = max(max_time, start_time)
 
+        times.append({'start': start_time, 'end': end_time})
+
+        labels = {u: str(u) for u in nodes}
+        nwk_list.append(tree.as_newick(node_labels=labels))
+        positions.append({'start': interval.left, 'end': interval.right})
+
+        node_mut_map = {}
+        for site in tree.sites():
+            pos_str = str(int(site.position))
+            anc = site.ancestral_state
+            for mut in site.mutations:
+                node_id = str(mut.node)
+                mut_info = f"{anc}{pos_str}{mut.derived_state}"
+                node_mut_map.setdefault(node_id, []).append(mut_info)
+
+        mutations.append(node_mut_map)
 
     nwk_string = ''.join(nwk_list)
-    print('got nwk string')
-    return nwk_string[:-1] if nwk_string else '', positions, mutations, (min_time, max_time,times)
+    return nwk_string[:-1] if nwk_string else '', positions, mutations, (min_time, max_time, times)

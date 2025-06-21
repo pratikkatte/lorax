@@ -13,7 +13,7 @@ let onStatusReceipt = (receivedData) => {
 };
 
 let onConfigReceipt = (receivedData) => {};
-// let onDetailsReceipt = (receivedData) => {};
+let onDetailsReceipt = (receivedData) => {};
 // let onListReceipt = (receivedData) => {};
 
 
@@ -36,9 +36,9 @@ worker.onmessage = (event) => {
   if (event.data.type === "config") {
     onConfigReceipt(event.data.data);
   }
-  // if (event.data.type === "details") {
-  //   onDetailsReceipt(event.data.data);
-  // }
+  if (event.data.type === "details") {
+    onDetailsReceipt(event.data.data);
+  }
   // if (event.data.type === "list") {
   //   onListReceipt(event.data.data);
   // }
@@ -49,7 +49,7 @@ worker.onmessage = (event) => {
 
 
 
-function useConnect() {
+function useConnect({setGettingDetails}) {
   const socketRef = useRef(null);
   const [statusMessage, setStatusMessage] = useState({ message: null });
   const [isConnected, setIsConnected] = useState(false);
@@ -67,10 +67,10 @@ function useConnect() {
 
       ws.onmessage = ((event) => {
         const message = JSON.parse(event.data);
-        websocketEvents.emit(message.type, message);
         console.log("message", message)
+        websocketEvents.emit(message.type, message);
+        
         if (message.type === "viz" && message.role === "query-result") {
-          console.log("query-result", message)
           worker.postMessage({
             type: "query",
             data: message.data,
@@ -102,7 +102,7 @@ function useConnect() {
       if (socketRef.current?.readyState === WebSocket.OPEN) {
         socketRef.current.send(JSON.stringify({ type: "ping" }));
       }
-    }, 30000);
+    }, 3000);
 
     return () => clearInterval(pingInterval);
   }, []);
@@ -132,6 +132,23 @@ function useConnect() {
     []
   );
 
+  const queryDetails = useCallback(
+    async (clickedObject) => {
+      console.log("details", clickedObject)
+      if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+        socketRef.current.send(JSON.stringify({
+          type: "viz",
+          role: "details",
+          object: clickedObject,
+        }))
+        setGettingDetails(true);
+    }
+    
+    onDetailsReceipt = (receivedData) => {
+      console.log("got details result", receivedData)
+    };
+  }, []);
+
   return useMemo(() => {
     return {
       statusMessage,
@@ -139,12 +156,14 @@ function useConnect() {
       socketRef,
       queryNodes,
       isConnected,
+      queryDetails,
     };
   }, [statusMessage,
     setStatusMessage,
     socketRef,
     queryNodes,
-    isConnected
+    isConnected,
+    queryDetails
   ]);
 
   // return socketRef;

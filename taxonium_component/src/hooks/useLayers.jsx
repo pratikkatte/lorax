@@ -3,16 +3,19 @@ import {
   ScatterplotLayer,
   TextLayer,
   PathLayer,
-  IconLayer
+  IconLayer,
+  SolidPolygonLayer
 } from "@deck.gl/layers";
 import { Matrix4, Vector3 } from "@math.gl/core";
-import { useMemo, useCallback } from "react";
+import { useMemo, useCallback, useState } from "react";
 
 const useLayers = ({
   data,
   viewState,
   setHoverInfo,
-  hoverInfo
+  hoverInfo,
+  hoveredTreeIndex,
+  setHoveredTreeIndex,
 }) => {
   const layerFilter = useCallback(({ layer, viewport }) => {
     const isOrtho = viewport.id === 'ortho';
@@ -23,45 +26,105 @@ const useLayers = ({
     );
   }, []);
 
+  
   const layers = useMemo(() => {
     if (!data?.data?.paths) return [];
 
     return data.data.paths.flatMap((tree, i) => {
       const genomePos = data.data.genome_positions[i];
+      const treeIndex = data.data.tree_index[i];
       const modelMatrix = new Matrix4().translate([0, i * 1.2, 0]);
-
       const pathData = tree.filter(d => d.path);
       const nodeData = tree.filter(d => d.position);
+
       const mutationData = tree.filter(d => 'mutations' in d);
 
       const pathLayer = new PathLayer({
         id: `main-layer-${i}`,
         data: pathData,
         getPath: d => d.path,
-        getColor: () => [255, 80, 200],
-        getWidth: 2,
+        getColor: d => {
+          if (hoveredTreeIndex && d.path === hoveredTreeIndex.path) {
+            return [0,0,0, 255]
+          }
+          return [150, 150, 150, 255];
+        },
+        // () => [255, 80, 200],
+        getWidth: d => {
+          if (hoveredTreeIndex && d.path === hoveredTreeIndex.path) {
+            return 3
+          }
+          return 2;
+        },
+        
         widthUnits: 'pixels',
         modelMatrix,
         viewId: 'ortho',
-        pickable: false,
-        zOffset: 0.1,
+        zOffset: -1,
+        pickable: true,
+        onHover: ({object, picked}) => {
+          if (picked && object) {
+            setHoveredTreeIndex({...hoveredTreeIndex, path: object.path, treeIndex: treeIndex, node: null});
+          }
+          else{
+            setHoveredTreeIndex({...hoveredTreeIndex,treeIndex:null, path: null, node: null});
+          }
+        },
+        updateTriggers: {
+          getWidth: [hoveredTreeIndex]
+        }
       });
 
       const nodeLayer = new ScatterplotLayer({
         id: `main-dots-${i}`,
         data: nodeData,
         getPosition: d => d.position,
-        getFillColor: [80, 80, 180],
-        getRadius: 4,
+        getFillColor: d => {
+          if (hoveredTreeIndex?.node === d.name) {
+            return [255, 255, 0, 255]; 
+          }
+          return [80, 80, 180, 255]; 
+        },
+        getLineColor: [80, 80, 180, 255],
+        getLineWidth: 1,
+        opacity: 0.5,
+        getLineOpacity: 0.5,
+        getRadius: d => {
+          // Base radius that scales with zoom
+          const baseRadius = hoveredTreeIndex?.node === d.name ? 2 : 1;
+          
+          // Scale factor based on zoom level
+          // Higher zoom = larger scale factor
+          const currentZoom = Array.isArray(viewState.ortho.zoom) ? viewState.ortho.zoom[0] : viewState.ortho.zoom;
+          const zoomScale = Math.pow(2, currentZoom - 10); // Adjust base zoom as needed
+          return baseRadius * Math.max(0.5, Math.min(3, zoomScale)); // Clamp between 0.5x and 3x
+        },
+
+        filled: true,
+        stroked: true,
+        lineWidthUnits: "pixels",
         radiusUnits: 'pixels',
+        lineWidthScale:1,
         modelMatrix,
         viewId: 'ortho',
-        pickable: false,
-        zOffset: 0.1,
+        pickable: true,
+        zOffset: -1,
+        onHover: ({object, picked}) => {
+          if (picked && object) {
+            setHoveredTreeIndex({...hoveredTreeIndex, node: object.name, treeIndex: treeIndex});
+          }
+          else{
+            setHoveredTreeIndex({...hoveredTreeIndex, node: null, treeIndex: null});
+          }
+        },
+        updateTriggers: {
+          getFillColor: [hoveredTreeIndex],
+          getRadius: [hoveredTreeIndex, viewState.zoom] 
+        }
       });
 
       const mutationLayer = new IconLayer({
-        id: `main-mutations-marker`,
+        id: `main-mutations-marker-${i}`,
         data: mutationData,
         getPosition: d => d.position,
         getIcon: () => 'marker',
@@ -80,7 +143,6 @@ const useLayers = ({
             setHoverInfo(object ? { object,index:i} : null);
           }
           else{
-            // console.log("nul object")
             setHoverInfo(null)
           }
       }
@@ -139,6 +201,33 @@ const useLayers = ({
         viewId: 'genome-positions',
       });
 
+      const backgroundLayer = new SolidPolygonLayer({
+        id: `main-background-${i}`,
+        data: [{
+          polygon: [
+            [0, 1], [1, 1], [1, 0], [0, 0]
+          ],
+          treeIndex
+        }],
+        // autoHighlight: true,
+        // highlightColor: [150, 230, 250, 60],
+        // highlightColor: [0, 0, 0, 40],
+        getPolygon: d => d.polygon,
+        getFillColor: hoveredTreeIndex?.treeIndex === treeIndex ? [150, 230, 250, 60] : [255,255,255, 0],
+        // getFillColor: [255,255,255, 0],
+        getLineColor: d =>
+          hoveredTreeIndex?.treeIndex === treeIndex ? [110, 50, 50, 150] : [0, 0, 0, 40],
+        getLineWidth: d => (hoveredTreeIndex?.treeIndex === i ? 10 : 1),
+        stroked: true,
+        filled: true,
+        modelMatrix,
+        viewId: 'ortho',
+          updateTriggers: {
+            getLineColor: [hoveredTreeIndex],
+            getLineWidth: [hoveredTreeIndex]
+          }
+      });
+
       return [
         pathLayer,
         nodeLayer,
@@ -146,10 +235,11 @@ const useLayers = ({
         lineLayer,
         topLabelLayer,
         bottomLabelLayer,
-        textLayer
+        textLayer,
+        backgroundLayer
       ].filter(Boolean);
     });
-  }, [data, viewState.zoom, hoverInfo]);
+  }, [data, viewState.zoom, hoverInfo, hoveredTreeIndex]);
 
   return { layers, layerFilter };
 };

@@ -136,6 +136,7 @@ def start_end(start, end, ts):
 
     nwk_list = []
     positions = []
+    tree_index = []
     
     mutations = []
     times = []
@@ -164,8 +165,10 @@ def start_end(start, end, ts):
 
             # newick string
             nwk_list.append(tree.as_newick(node_labels=labels))
+            # tree index
+            tree_index.append(ts.at(tree.interval.left).index)
 
-            # positions
+            # positions        
             positions.append({'start':intervals.left,'end':intervals.right })
             
             # mutations
@@ -182,4 +185,4 @@ def start_end(start, end, ts):
 
     nwk_string = ''.join(nwk_list)
     print('got nwk string')
-    return nwk_string[:-1] if nwk_string else '', positions, mutations, (min_time, max_time,times)
+    return nwk_string[:-1] if nwk_string else '', positions, mutations, (min_time, max_time,times), tree_index

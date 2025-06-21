@@ -4,7 +4,7 @@ import {
   processJsonl,
   generateConfig,
 } from "taxonium_data_handling/importing.js";
-import { processNewickAndMetadata, cleanup } from "../utils/processNewick.js";
+import { cleanup } from "../utils/processNewick.js";
 import { processNextstrain } from "../utils/processNextstrain.js";
 import { ReadableWebToNodeStream } from "readable-web-to-node-stream";
 import { parser } from "stream-json";
@@ -46,6 +46,7 @@ function extractSquarePaths(node) {
       // Horizontal segment from parent to child x at parent y
       // console.log("node", node)
       // Vertical drop to child's y
+
       segments.push({
         path: [
           [node.x, node.y],
@@ -64,11 +65,12 @@ function extractSquarePaths(node) {
     });
   } else {
     segments.push({
+      name: node.name,
       position: [node.x, node.y],
     })
   }
   if(node.mutations) {
-    segments.push({ mutations: node.mutations, position:[node.x, node.y]})
+    segments.push({ mutations: node.mutations,name: node.name, position:[node.x, node.y]})
   } 
   return segments;
 }
@@ -118,31 +120,19 @@ const waitForProcessedData = async () => {
 export const queryNodes = async (data) => {
   console.log("Worker query Nodes");
 
-  // await waitForProcessedData();
-  // let result;
-  // var websocket_received_data;
-  // console.log("in webworker, querynode", values);
-  // var nwk = null
-  // var mutations = null
-  // var times = null
-  // await pythonClient.sendRequest({
-  //   action: 'query_trees',
-  //   // file: payload
-  //   values:values
-  // }).then((response) => {
-  //   sendStatusMessage({
-  //     "status": response.status,
-  //   })    
   const received_data = JSON.parse(data);
   const nwk = received_data.nwk;
   const mutations = received_data.mutations;
   const times = received_data.global_times;
+  const tree_index = received_data.tree_index;
 
   const processed_data = await processData(nwk, mutations, times, sendStatusMessage)
   const result = {
     paths: processed_data,
-    genome_positions: received_data.genome_positions
+    genome_positions: received_data.genome_positions,
+    tree_index: tree_index
   }
+  console.log("result", result)
   return result
 
   //     console.log("query response", websocket_received_data)
@@ -253,7 +243,6 @@ function processNewick(nwk_str, mutations, globalMinTime, globalMaxTime, times) 
   let ladderize = true;
   // let globalMinTime = -324375.4523505669
   // let globalMaxTime = 0.0
-  console.log("start", globalMinTime, globalMaxTime, times)
   let start_time = times['end']
   // if (index > 0){
     
@@ -310,7 +299,6 @@ function processNewick(nwk_str, mutations, globalMinTime, globalMaxTime, times) 
   kn_global_calxy(tree, true, globalMinTime, globalMaxTime, start_time)
   // sort on y:
   tree.node.sort((a, b) => a.y - b.y);
-  console.log("clieaning up")
   cleanup(tree);
 
   return tree

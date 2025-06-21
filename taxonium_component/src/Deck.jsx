@@ -9,6 +9,7 @@ import { OrthographicView, OrthographicController } from '@deck.gl/core';
 import { TextLayer, ScatterplotLayer } from "@deck.gl/layers";
 
 
+import { Oval } from 'react-loader-spinner';
 
 import {
   CircularProgressbarWithChildren,
@@ -17,57 +18,63 @@ import {
 import "react-circular-progressbar/dist/styles.css";
 
 import useSnapshot from "./hooks/useSnapshot";
-import NodeHoverTip from "./components/NodeHoverTip";
-import TreenomeMutationHoverTip from "./components/TreenomeMutationHoverTip";
-import { DeckButtons } from "./components/DeckButtons";
-import DeckSettingsModal from "./components/DeckSettingsModal";
-import { TreenomeButtons } from "./components/TreenomeButtons";
-import TreenomeModal from "./components/TreenomeModal";
-import FirefoxWarning from "./components/FirefoxWarning";
-import { JBrowseErrorBoundary } from "./components/JBrowseErrorBoundary";
-import ColorSettingModal from "./components/ColorSettingModal";
-import Key from "./components/Key";
+
 
 
 function Deck({
+  backend,
   data,
   view,
   statusMessage,
   xType,
   deckRef,
+  hoveredTreeIndex,
+  setHoveredTreeIndex
 }) {
   const zoomReset = view.zoomReset;
   const snapshot = useSnapshot(deckRef);
   const [hoveredKey, setHoveredKey] = useState(null);
-  
-  const no_data = !data || !data.data.paths
+
+  useEffect(()=> {
+    if (data.status === "loading") {
+    console.log("statusMessage", data)
+    }
+  },[data])
+
+  const no_data = !data || data.status === "loading"
 
   const {views, viewState,setMouseXY, mouseXy, setViewState, MyOrthographicController, handleViewStateChange} = view
 
-  useEffect(()=> {
-    console.log("statusMessage", statusMessage)
+  const {queryDetails} = backend;
 
-  },[statusMessage])
-  
-  const defaultViewState = {
+  const onClickOrMouseMove = useCallback(
+    (event) => {
+      const reactEvent = event;
+      if (event.buttons === 0 && reactEvent._reactName === "onPointerMove") {
+        return false;
+      }
+      const pickInfo = deckRef.current?.pickObject({
+        x: event.nativeEvent.offsetX,
+        y: event.nativeEvent.offsetY,
+        radius: 10,
+      });
 
-    ortho: {
-      target: [0.5, 0.5],  // [x, y, z]
-      zoom: 4,
-      pitch:0
+      if (
+        pickInfo &&
+        pickInfo.viewport?.id === "ortho" &&
+        reactEvent._reactName === "onClick"
+      ) {
+        if (pickInfo.layer.id.includes("main")) {
+          console.log("pickInfo", pickInfo)
+          console.log("hoveredTreeIndex", hoveredTreeIndex)
+          queryDetails(hoveredTreeIndex)
+          // setHoveredTreeIndex({...hoveredTreeIndex, path: pickInfo.object?.path})
+        }
+      }
     },
-    scalesX: {
-      target: [0.5, 0.5],
-      zoom: 4,
-      pitch:0
-    },
-    scalesY: {
-      target: [0.5, 0.5],
-      zoom: 4,
-      pitch:0
-    }
+    [hoveredTreeIndex]
+  )
 
-  }
   const [hoverInfo, setHoverInfoRaw] = useState(null);
   const setHoverInfo = useCallback(
     (info) => {
@@ -81,24 +88,30 @@ function Deck({
     hoverInfo,
     xType,
     hoveredKey,
+    hoveredTreeIndex,
+    setHoveredTreeIndex,
+    queryDetails
   });
 
-  const handleHover = useCallback((info, event) => {
-    console.log("handleOver",info, event)
-
+  const handleClick = useCallback((treeindex) => {
+    console.log("handleOver",treeindex)
+    queryDetails(treeindex)
   }, []);
 
   
   return (
-
-    <div className=""> 
+    <div className=""
+    onClick={onClickOrMouseMove}
+    onPointerMove={onClickOrMouseMove}
+    onPointerDown={onClickOrMouseMove}
+    > 
       {no_data ? (
-        <>
-        {statusMessage.status}
-        </>
+    <>
+      <div className="absolute top-0 left-0 w-full h-full flex justify-center items-center">
+      <Oval height="40" width="40" color="#666" ariaLabel="loading" secondaryColor="#666" />
+      </div>
+    </>
       ): (
-
-
     <>
     <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'flex-end', height: '100vh', width:'100vw' }}>
     <div style={{
@@ -107,34 +120,19 @@ function Deck({
           display: 'flex',
           justifyContent: 'center',
           alignItems: 'center',
-          border: '1px solid black',
           position: 'relative'
         }}>
     <DeckGL
+      ref={deckRef}
       pickingRadius={10}
-      style={{ width: '100%', height: '100%', border: '1px solid black'}} 
+      style={{ width: '100%', height: '100%'}} 
       layers={layers}
       layerFilter={layerFilter}
       viewState={viewState}
       onViewStateChange={handleViewStateChange}
       views={views} 
     />
-    {/* <div style={{
-      position: 'absolute',
-      left: '10.01%', //x
-      top: '1%',  // y
-      height: '90%',
-      width: '88.99%',
-      border: '1px solid black', zIndex: '10', pointerEvents: 'none'}}>
-      </div>
-      <div style={{
-      position: 'absolute',
-      left: '1%',//x
-      top: '1%', //y
-      width: '9%',
-      height: '90%',
-      border: '2px solid blue', zIndex: '10', pointerEvents: 'none'}}>
-      </div> */}
+   
     </div>
     </div>
     </>

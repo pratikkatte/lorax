@@ -2,8 +2,8 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { TextField, Slider, Box } from '@mui/material';
 import { Rnd } from 'react-rnd';
 import EditableRange from './EditableRange';
+
 export default function PositionSlider(props) {
-  
   
     const containerRef = useRef(null);
     const sliderRef = useRef(null)
@@ -15,6 +15,15 @@ export default function PositionSlider(props) {
     const tree_index = useRef(null);
 
     const { config, value, setValue } = props
+
+    useEffect(() => {
+
+      if (config?.value) {
+        setValue(config.value)
+        console.log("config", config.value)
+      }
+    }, [config])
+
     const { intervals } = config
     const tree_length = 10;
     
@@ -149,7 +158,9 @@ export default function PositionSlider(props) {
       >
         ←
       </button>
+      {value && (
         <EditableRange value={value} onChange={onChange}/>
+      )}
 
         <button 
         onClick={moveRight}

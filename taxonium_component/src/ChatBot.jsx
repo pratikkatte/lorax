@@ -149,7 +149,7 @@ function Chatbot(props) {
         ))}
         </div>
         <div ref={lastAssistantMessageRef}></div>
-        <FileUploadInput />
+        <FileUploadInput config={props.config} setConfig={props.setConfig}/>
 
       <form onSubmit={handleSubmit} className="chat-input-container">
         <input
