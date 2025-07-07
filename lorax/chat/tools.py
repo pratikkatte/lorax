@@ -48,7 +48,7 @@ def visualizationTool(question, attributes=None):
 
     return nwk_string, genomic_position
 
-def generatorTool(question, input_file_path=None):
+def generatorTool(question, input_file_path=None, viz_snapshot=None):
     try:
 
         # understnad, how this format of prompt engineering helps the LLM to get good results. 
@@ -59,7 +59,7 @@ def generatorTool(question, input_file_path=None):
                 (
                     "system",
                     """You are a coding generator with expertise in using ts-kit toolkit for analysing tree-sequences. \n 
-                    Here is a relevant set of tskit documentation:  \n ------- \n  {context} \n ------- \n Answer the user 
+                    Here is a relevant set of tskit documentation:  \n ------- \n  {context} and the specific window and sample sets are given here: uses these as an input to the function if required according to the user question: {viz_snapshot} \n ------- \n Answer the user 
                     question based on the above provided documentation. Ensure any code you provide should be a callable function and can be executed \n 
                     with all required imports and variables defined. Structure your answer with a description of the code solution. \n
                     Then list the imports. And finally list the functioning code block. The function should return a string providing the answer. Here is the user question:""",
@@ -67,8 +67,7 @@ def generatorTool(question, input_file_path=None):
                     ("placeholder", "{messages}"),
                 ]
             )
-        
-
+    
         try:
             # Retriever model
             docs = retriever.invoke(question)
@@ -81,7 +80,7 @@ def generatorTool(question, input_file_path=None):
         if comp=="OPENAI":
 
             lm = ChatOpenAI(
-                model=model, temperature=0)
+                model=model, temperature=0.1)
         
             structured_code_llm = lm.with_structured_output(code, include_raw=True)
 
@@ -91,7 +90,7 @@ def generatorTool(question, input_file_path=None):
             )
     
             code_solution = code_chain_raw.invoke(
-                {"context": final_context, "messages": [question]}
+                {"context": final_context, "viz_snapshot": viz_snapshot, "messages": [question]}
             )
             
         else:
@@ -177,13 +176,36 @@ def generalInfoTool(question, attributes=None):
     #     Question: {input}
     #     Thought:{agent_scratchpad}"""
 
+
+        # general_llm = ChatOpenAI(model="gpt-4o", temperature=0)
+        
     try:
         start = time.time()
-        answer = run(question, attributes["memory"])
+        prompt_template = """
+        You are an  expert in treesequences and population genetics and you help in answering queries related to it in general.
+        if the questions are not related to your experties then kindly remind them to ask questions in your domain of experties. 
+        Respond the users in brief based on this query or message: {question}
+            """
+        
+        prompt = PromptTemplate(
+            input_variables=['question'], template=prompt_template
+        )
 
+        chain = prompt | general_llm
+        
+        general_info_conversation = ConversationChain(
+            llm=chain, 
+            memory=attributes["memory"]
+        )
+     
+        answer = general_info_conversation.run(question)   
         end = time.time()
 
         print("Time taken to answer the question:", end-start)
+        
+        return answer
+
+        
     #     prompt = PromptTemplate(
     #         input_variables=['input', 'context'], template=prompt_template
     #     )

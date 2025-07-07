@@ -8,38 +8,64 @@ import numpy as np
 class LoraxHandler:
     def __init__(self):
         self.ts = None  # Set when a file is uploaded
+        self.file_path = None
+        self.viz_snapshot = None
+        self.ts_intervals = None
 
     async def handle_ping(self, message):
         return {"type": "ping", "data": "Pong"}
 
-    async def handle_chat(self, message):
-        print("Chat received")
-        llm_output = api_interface(message.get("message"), '../data/sample.trees')
-        print("llm_output", llm_output)
-        return {"type": "chat", "data": llm_output}
+    def handle_chat(self, message):
+        try:
+            action = None
+            llm_output = api_interface(message.get("message"), self.file_path, self.viz_snapshot)
+            
+            # Handle different types of llm_output
+            if isinstance(llm_output, str):
+                # If it's already a string, use it directly
+                response_data = llm_output
+            elif isinstance(llm_output, (list, tuple)) and len(llm_output) > 0:
+                # If it's a list/tuple, take the first element
+                response_data = str(llm_output[0]) if llm_output[0] else str(llm_output)
+                action = llm_output[1]
+            else:
+                # Otherwise, convert to string
+                response_data = str(llm_output)
+                
+            data = {"type": "chat", "data": response_data, "action": action}
+            return data
+        except Exception as e:
+            print(f"Error in handle_chat: {e}")
+            return {"type": "chat", "data": f"Error processing chat message: {str(e)}"}
 
     async def handle_query(self, message):
         if self.ts is None:
-            raise ValueError("Tree sequence (ts) is not set. Please upload a file first.")
+            return json.dumps({"error": "Tree sequence (ts) is not set. Please upload a file first."})
 
-        start, end = message.get("value")
+        try:
+            start, end = message.get("value")
+            nwk_string, genome_positions, mutations, times, tree_index = start_end(start, end, self.ts)
+            self.viz_snapshot = {'window': [0, start, end, self.ts.sequence_length], 'sample_sets':'ts.get_samples()'}
 
-        nwk_string, genome_positions, mutations, times, tree_index = start_end(start, end, self.ts)
-        data = json.dumps({
-            "nwk": nwk_string,
-            "genome_positions": genome_positions, 
-            "mutations": mutations,
-            "global_times": {
-                'min_time': times[0],
-                'max_time': times[1],
-                'times': times[2]
-            },
-            "tree_index": tree_index
-        })
-        return data
+            data = json.dumps({
+                "nwk": nwk_string,
+                "genome_positions": genome_positions, 
+                "mutations": mutations,
+                "global_times": {
+                    'min_time': times[0],
+                    'max_time': times[1],
+                    'times': times[2]
+                },
+                "tree_index": tree_index
+            })
+            return data
+        except Exception as e:
+            return json.dumps({"error": f"Error processing query: {str(e)}"})
 
     def get_config(self):
         intervals = [(tree.interval[0], tree.interval[1]) for tree in self.ts.trees()]
+        self.ts_intervals = intervals[1:]
+
         config = {'intervals':intervals[1:], 'value': [intervals[1][0], intervals[9][1]]}
         return config
     
@@ -88,28 +114,32 @@ class LoraxHandler:
             return obj
     
     async def handle_upload(self, file_path=None):
+        self.file_path = file_path
         self.ts = tskit.load(file_path)
         viz_config = self.get_config()
         chat_config = "file uploaded"
         return viz_config, chat_config
 
     async def handle_details(self, message):
-        return_data = {}
-        object = message.get("object")
-        tree_index = object.get("treeIndex")
+        try:
+            return_data = {}
+            object = message.get("object")
+            tree_index = object.get("treeIndex")
 
-        if tree_index:
-            tree_details = self.get_tree_details(tree_index)
-            return_data["tree"] = tree_details
-        
-        node_name = object.get("node")
-        if node_name:
-            node_details = self.get_node_details(int(node_name))
-            return_data["node"] = node_details
-            if node_details.get("individual") != -1:
-                individual_details = self.get_individual_details(node_details.get("individual"))
-                return_data["individual"] = individual_details
-        return return_data
+            if tree_index:
+                tree_details = self.get_tree_details(tree_index)
+                return_data["tree"] = tree_details
+            
+            node_name = object.get("node")
+            if node_name:
+                node_details = self.get_node_details(int(node_name))
+                return_data["node"] = node_details
+                if node_details.get("individual") != -1:
+                    individual_details = self.get_individual_details(node_details.get("individual"))
+                    return_data["individual"] = individual_details
+            return return_data
+        except Exception as e:
+            return {"error": f"Error getting details: {str(e)}"}
 
     async def handle_viz(self, message):
         print("Viz received")

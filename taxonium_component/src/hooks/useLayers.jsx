@@ -20,17 +20,20 @@ const useLayers = ({
   const layerFilter = useCallback(({ layer, viewport }) => {
     const isOrtho = viewport.id === 'ortho';
     const isGenome = viewport.id === 'genome-positions';
+    const isTreeTime = viewport.id === 'tree-time';
     return (
       (isOrtho && layer.id.startsWith('main')) ||
-      (isGenome && layer.id.startsWith('genome-positions'))
+      (isGenome && layer.id.startsWith('genome-positions')) ||
+      (isTreeTime && layer.id.startsWith('tree-time'))
     );
   }, []);
-
   
   const layers = useMemo(() => {
     if (!data?.data?.paths) return [];
 
-    return data.data.paths.flatMap((tree, i) => {
+    const times = data.data?.times || {};
+    console.log("times", times)
+    const singleTreeLayers = data.data.paths.flatMap((tree, i) => {
       const genomePos = data.data.genome_positions[i];
       const treeIndex = data.data.tree_index[i];
       const modelMatrix = new Matrix4().translate([0, i * 1.2, 0]);
@@ -175,6 +178,8 @@ const useLayers = ({
         viewId: 'genome-positions',
       });
 
+      
+
       const topLabelLayer = i === 0 ? new TextLayer({
         id: `genome-positions-top-label-${i}`,
         data: [{ position: [0, -0.01], text: String(genomePos.start) }],
@@ -236,10 +241,53 @@ const useLayers = ({
         topLabelLayer,
         bottomLabelLayer,
         textLayer,
-        backgroundLayer
+        backgroundLayer,
       ].filter(Boolean);
     });
+
+    const timeLayer = new LineLayer({
+      id: `tree-time-layer`,
+      data: [{ sourcePosition: [0, 1], targetPosition: [1, 1] }],
+      getSourcePosition: d => d.sourcePosition,
+      getTargetPosition: d => d.targetPosition,
+      getColor: [0, 0, 255],
+      getWidth: 4,
+      widthUnits: 'pixels',
+      viewId: 'tree-time',
+      pickable: true,
+          onHover: ({object, coordinate}) => {
+
+            if (object){
+
+              const x_coordinate = 1 - coordinate[0]
+
+              console.log("current time", parseFloat(x_coordinate)*parseFloat(times.min_time))
+            }
+          }
+    });
+
+      var timeLabels = null;
+ 
+      if (times) {
+        timeLabels = new TextLayer({
+          id: `tree-time-labels`,
+          data: [{position: [0, 1], text: String(times.min_time)}, {position: [1, 1], text: String(times.max_time)}],
+          getPosition: d => d.position,
+          getText: d => d.text,
+          getColor: [0, 0, 0],
+          getSize: 10,
+          sizeUnits: 'pixels',
+          getAlignmentBaseline: 'top',
+          getTextAnchor: 'middle',
+          viewId: 'tree-time'
+
+        });
+      }
+    return [...singleTreeLayers, timeLayer, timeLabels];
+
   }, [data, viewState.zoom, hoverInfo, hoveredTreeIndex]);
+
+ 
 
   return { layers, layerFilter };
 };

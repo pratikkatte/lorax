@@ -51,32 +51,37 @@ class Tools(BaseModel):
     def visualization(query: str, attributes=None) -> str:
 
         if attributes['file_path']:
-            
-            nwk_string, genome_position = visualizationTool(query, attributes) 
+              
+            # nwk_string, genome_position = visualizationTool(query, attributes) 
 
-            if str(genome_position):
+            # if str(genome_position):
                 
-                result = f'{genome_position}.\n The tree is shown in the visualization board!'
-            else:
-                result = f'The tree is shown in the visualization board!'
+                # result = f'{genome_position}.\n The tree is shown in the visualization board!'
+            # else:
+                # result = f'The tree is shown in the visualization board!'
         
-            result = generate_response(nwk_string, result, tool='visual')
+            # result = generate_response(nwk_string, result, tool='visual')
+            print("query", query)
+            result = f"the users query is {query}"
+            
         else:
             result="File Not Provided!"
             return {
                 'text': result,
                 'visual': None
                 }
+
+
         
         # Manually adding visualization result to memory
         attributes['memory'].chat_memory.add_ai_message(str(result))
         
-        return result
+        return {'text': result, 'visual': True}
  
     @staticmethod
     def code_generation(query: str, attributes=None) -> str:
 
-        code_solution, result = generatorTool(query, input_file_path=attributes['file_path'])
+        code_solution, result = generatorTool(query, input_file_path=attributes['file_path'], viz_snapshot=attributes['viz_snapshot'])
 
         # return response
         result = generate_response(code_solution, result, tool='code')

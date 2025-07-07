@@ -21,6 +21,10 @@ const INITIAL_VIEW_STATE = {
     target:[0,4],
     zoom: [8,6]
   },
+  'tree-time':{
+    target:[0.5,1],
+    zoom: [8,6]
+  },
   'ortho': {
     target:[0.5,4],
     zoom: [8,6]
@@ -69,7 +73,8 @@ const useView = ({}) => {
     // target: [0, 0, 0],
     // zoom: 6,
     'ortho': INITIAL_VIEW_STATE['ortho'],
-    'genome-positions': INITIAL_VIEW_STATE['genom_positions']
+    'genome-positions': INITIAL_VIEW_STATE['genom_positions'],
+    'tree-time': INITIAL_VIEW_STATE['tree-time']
   });
   
   const baseViewState = useMemo(() => {
@@ -106,6 +111,14 @@ const useView = ({}) => {
           id: "genome-positions",
           controller:false,
         }),
+        new OrthographicView({
+          x:'10%',
+          y:'90%',
+          height: '9%',
+          width:'90%',
+          id: "tree-time",
+          controller:false,
+        }),
       ]}, [
     viewState,
     zoomAxis,
@@ -116,6 +129,7 @@ const useView = ({}) => {
   
   const handleViewStateChange = useCallback(({viewState:newViewState, viewId, oldViewState, basicTarget, overrideZoomAxis}) => {
     if (!viewId || !newViewState) return;
+
     setViewState((prev) => {
       let zoom = [...oldViewState.zoom];
       let target = [...oldViewState.target];
@@ -135,8 +149,8 @@ const useView = ({}) => {
         zoom[1] = oldViewState.zoom[1];
         target[1] = oldViewState.target[1];
       }
-      else{
-        
+
+      else {
         zoom = newViewState.zoom
         target = newViewState.target
       }
@@ -156,6 +170,15 @@ const useView = ({}) => {
           target: [prev['genome-positions'].target?.[0] || 0, target[1]],
           zoom: [prev['genome-positions'].zoom?.[0], zoom[1]]  
         };
+        
+      }
+
+      if (prev['tree-time']) {
+        newViewStates['tree-time'] = {
+          ...prev['tree-time'],
+          target: [target[0], prev['tree-time'].target?.[1] || 0],
+          zoom: [zoom[0], prev['tree-time'].zoom?.[1], ]  
+        }
       }
 
       return newViewStates;

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback} from "react";
 import websocketEvents from '../webworkers/websocketEvents';
 import FileUploadInput from './FileUploadInput';
 
-const Info = ({backend, gettingDetails, setGettingDetails, setShowInfo, config, setConfig}) => {
+const Info = ({backend, gettingDetails, setGettingDetails, setShowInfo, config, setConfig,  selectedFileName, setSelectedFileName}) => {
 
 const {socketRef, isConnected} = backend;
 
@@ -26,7 +26,6 @@ const handleDetails = useCallback((data) => {
     return () => {
       console.log("unmounting")
       websocketEvents.off("viz", handleDetails);
-
     };
   }, [isConnected]);
 
@@ -63,7 +62,13 @@ const handleDetails = useCallback((data) => {
         </div>
         <div className="flex justify-center items-center mb-4"> 
         {!config && (
-          <FileUploadInput config={config} setConfig={setConfig}/>
+          <div className="text-center py-1">
+            <div className="text-gray-400 text-base mb-4">
+              Select a file to upload
+            </div>
+            {/* <br/> */}
+            <FileUploadInput config={config} setConfig={setConfig} selectedFileName={selectedFileName} setSelectedFileName={setSelectedFileName}/>
+          </div>
         )}
         </div>
 

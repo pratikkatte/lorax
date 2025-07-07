@@ -8,9 +8,10 @@ function useConfig({backend}) {
   const handleConfigUpdate = useCallback((data) => {
     console.log("config update", data)
     if (data.role === "config") {
+      console.log("config update", data.config)
       setConfig(data.config);
     }
-  }, []);
+  }, [config]);
 
   useEffect(() => {
     console.log("isConnected", isConnected)

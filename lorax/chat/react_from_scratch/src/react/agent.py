@@ -44,14 +44,12 @@ class Name(Enum):
         """
         return self.name.lower()
 
-
 class Choice(BaseModel):
     """
     Represents a choice of tool with a reason for selection.
     """
     name: Name = Field(..., description="The name of the tool chosen.")
     reason: str = Field(..., description="The reason for choosing this tool.")
-
 
 class Message(BaseModel):
     """

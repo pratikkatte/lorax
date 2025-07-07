@@ -9,7 +9,6 @@ load_dotenv()
 
 memory = ConversationBufferMemory(return_messages=True)
 
-
 question = "Calculate the diversity of the given treesequence."
 workflow = create_graph()
 
@@ -34,22 +33,22 @@ def chat_interface():
         message = {'question':user_input, "attributes":{"file_path":"data/sample.trees", "memory": memory}}
         solution = app.invoke(message)
         
-        
         llm_output, _ = parseSolution(solution)
         print()
         print(llm_output)
         print()
 
 def parseSolution(input_solution):
-
+    """
+    """
     return input_solution['response'], input_solution['visual']
 
-def api_interface(user_input, file_path, memory=None):
+def api_interface(user_input, file_path, viz_snapshot, memory=None):
     if memory is None:
         memory = ConversationBufferMemory(return_messages=True)
-        
+    
     app = workflow.compile()
-    message = {'question': user_input, "attributes": {"file_path": file_path, "memory": memory}}
+    message = {'question': user_input, "attributes": {"file_path": file_path, "viz_snapshot": viz_snapshot, "memory": memory}}
     solution = app.invoke(message)
 
     llm_output = parseSolution(solution)

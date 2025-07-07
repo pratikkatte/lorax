@@ -41,7 +41,7 @@ function useGetDynamicData(backend, viewState, xType, value, config) {
           value,
       )
     }
-  }, [value, config])
+  }, [value])
 
   return { data: dynamicData };
 }

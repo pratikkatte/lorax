@@ -152,7 +152,7 @@ def start_end(start, end, ts):
             labels = {
                 u: str(u) for u in tree.nodes()
                 }
-            
+
             node_times = [sub_ts.node(u).time for u in tree.nodes()]
             start_time = min(node_times)
             end_time = -1 * max(node_times)
@@ -160,7 +160,6 @@ def start_end(start, end, ts):
                 min_time = end_time
             if start_time>=max_time:
                 max_time = start_time
-                
             times.append({'start': start_time, 'end': end_time})
 
             # newick string
@@ -181,8 +180,6 @@ def start_end(start, end, ts):
                     else:
                         temp_mut[str(mut.node)].append(mut_info)
             mutations.append(temp_mut)
-
-
     nwk_string = ''.join(nwk_list)
-    print('got nwk string')
+
     return nwk_string[:-1] if nwk_string else '', positions, mutations, (min_time, max_time,times), tree_index

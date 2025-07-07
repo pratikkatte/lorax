@@ -80,8 +80,8 @@ def query_planner(state):
             "- VISUALIZATION: if the query asks to display any part of the treesequences.\n"
             "- CODE_GENERATE: if the query requires using tskit to generate code in Python in order to answer.\n"
             "- GENERAL_ANSWER: if the query requires a simple text-based answer.\n"
-            "- FETCH_FILE: if the query requires fetching a tree-sequence file from the user.\n\n"
-            "Classify the tool type as one of: VISUALIZATION, CODE_GENERATE, GENERAL_ANSWER, FETCH_FILE."
+            "Classify the tool type as one of: VISUALIZATION, CODE_GENERATE, GENERAL_ANSWER."
+            "some user queries may just be a greeting. In that case, respond politely and ask the user to ask a question."
         ),
     ),
     (
@@ -95,8 +95,6 @@ def query_planner(state):
     ),
 ]
 
-
-
     # Create a ChatPromptTemplate using these messages.
     planner_prompt = ChatPromptTemplate.from_messages(prompt_messages)
 
@@ -108,7 +106,7 @@ def query_planner(state):
     state['Tasks'] = plan
 
     state['attributes']["memory"].chat_memory.add_ai_message(str(plan))
-
+    print(plan)
     return state
 
 def generate(state: GraphState):

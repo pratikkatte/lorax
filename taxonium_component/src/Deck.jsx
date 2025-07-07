@@ -100,7 +100,7 @@ function Deck({
 
   
   return (
-    <div className="w-full h-full"
+    <div className="w-full"
     onClick={onClickOrMouseMove}
     onPointerMove={onClickOrMouseMove}
     onPointerDown={onClickOrMouseMove}
@@ -113,25 +113,24 @@ function Deck({
     </>
       ): (
     <>
-    {/* <div style={{ display: 'flex', justifyContent: 'center', height: '100vh', width:'100vw' }}> */}
-    <div className="w-full h-full flex justify-center items-center">
     <div className="w-full h-full flex justify-center items-center relative">
     <DeckGL
       ref={deckRef}
       pickingRadius={10}
-      // style={{ width: '100%', height: '100%'}} 
       layers={layers}
       layerFilter={layerFilter}
       viewState={viewState}
       onViewStateChange={handleViewStateChange}
       views={views} 
     />
-   
-    </div>
+    {/* <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'absolute', border: '1px solid black', top: '1%', left: '1%', height: '90%', width: '9%',  zIndex: '10', pointerEvents: 'none'}}></div> */}
+    {/* <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'absolute', border: '1px solid black', top: '90.9%', left: '10%', height: '10%', width: '90%',  zIndex: '10', pointerEvents: 'none'}}></div> */}
     </div>
     </>
   )}
+
     </div>
+    
   );
 }
 

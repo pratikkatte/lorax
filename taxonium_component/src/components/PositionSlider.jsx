@@ -17,7 +17,6 @@ export default function PositionSlider(props) {
     const { config, value, setValue } = props
 
     useEffect(() => {
-
       if (config?.value) {
         setValue(config.value)
         console.log("config", config.value)
@@ -77,7 +76,7 @@ export default function PositionSlider(props) {
     })
 
     const moveLeft = () => {
-      console.log("tree index", tree_index.current)
+      console.log("tree index", tree_index.current, intervals)
       if (intervals) {
         var left_index = tree_index.current[0]
       if (left_index === 0 ){
@@ -133,13 +132,11 @@ export default function PositionSlider(props) {
       });
     }
     }
-  
-  
+
     return (
       <>
         <div style={{  
-          width: '50%',
-          height: '10%', // Match the background height
+          width: '60%',
           border: '1px',
           borderColor: 'black',
           display: 'flex',

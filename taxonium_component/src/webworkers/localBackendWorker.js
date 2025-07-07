@@ -130,36 +130,10 @@ export const queryNodes = async (data) => {
   const result = {
     paths: processed_data,
     genome_positions: received_data.genome_positions,
-    tree_index: tree_index
+    tree_index: tree_index,
+    times: times
   }
-  console.log("result", result)
-  return result
-
-  //     console.log("query response", websocket_received_data)
-  //     nwk = websocket_received_data.nwk;
-  //     mutations = websocket_received_data.mutations
-  //     times = websocket_received_data.global_times
-  //     console.log("mutations", mutations)
-  // })
-  // // nwk = "((A:1,B:1):1,C:2);((A:3,B:3)AB:1,C:2);"
-  // processedUploadedData = await processData(nwk, mutations, times, sendStatusMessage)
-  // // if(nwk){
-    
-  // // }
-    
-  // result = {
-  //   paths: processedUploadedData,
-  //   genome_positions: websocket_received_data.genome_positions
-    // nodes: filtering.getNodes(
-    //   nodes,
-    //   y_positions,
-    //   min_y,
-    //   max_y,
-    //   min_x,
-    //   max_x,
-    //   boundsForQueries.xType
-    // ),
-  // };
+  
   return result;
 };
 

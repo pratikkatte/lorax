@@ -43,12 +43,11 @@ function Taxonium({backend, config}) {
   return (
     <>
       {backend.isConnected && config && (
-        <>
-          <div className="flex justify-center items-start bg-white">
+        <div className="flex flex-col h-screen bg-white">
+          <div className="flex justify-center items-center py-2 bg-white border-b border-gray-200">
             <PositionSlider config={config} value={value} setValue={setValue} />
           </div>
-          <div className="flex justify-center bg-white h-screen w-full">
-            {/* <Toaster /> */}
+          <div className="flex-1 flex justify-center">
             <Deck 
               backend={backend}
               hoveredTreeIndex={hoveredTreeIndex}
@@ -65,8 +64,7 @@ function Taxonium({backend, config}) {
               setMouseDownIsMinimap={setMouseDownIsMinimap}
             />
           </div>
-
-        </>
+        </div>
       )}
     </>
   )

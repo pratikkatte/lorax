@@ -6,9 +6,11 @@ import { faPaperclip, faSpinner } from '@fortawesome/free-solid-svg-icons';
 
 const API_BASE_URL = "http://localhost:8000";
 
-const FileUploadInput = ({config,setConfig}) => {
+const FileUploadInput = ({config,setConfig, selectedFileName, setSelectedFileName}) => {
   
-  const [selectedFileName, setSelectedFileName] = useState("");
+  const [uploadProgress, setUploadProgress] = useState(0);
+
+  
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef(null); // Use ref instead of getElementById
 
@@ -23,8 +25,14 @@ const FileUploadInput = ({config,setConfig}) => {
 
       try {
         const response = await axios.post(`${API_BASE_URL}/api/upload`, formData, {
-          headers: {
-            'Content-Type': 'multipart/form-data'
+          maxRedirects: 0,
+          // headers: {
+          //   'Content-Type': 'multipart/form-data'
+          // },
+          onUploadProgress: (progressEvent) => {
+            const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+            console.log(`Upload progress: ${percent}%`);
+            setUploadProgress(percent);
           }
         });
         console.log('File uploaded successfully:', response.data);
