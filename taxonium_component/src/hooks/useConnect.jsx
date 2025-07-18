@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import websocketEvents from '../webworkers/websocketEvents';
-
-
+import useLoraxConfig from "../globalconfig.js";
 import workerSpec from "../webworkers/localBackendWorker.js?worker&inline";
 const worker = new workerSpec();
 
@@ -49,15 +48,17 @@ worker.onmessage = (event) => {
 
 
 
-function useConnect({setGettingDetails}) {
+function useConnect({setGettingDetails, API_BASE}) {
   const socketRef = useRef(null);
   const [statusMessage, setStatusMessage] = useState({ message: null });
   const [isConnected, setIsConnected] = useState(false);
 
-
+  const {WEBSOCKET_BASE} = useLoraxConfig();
+  
+  console.log("WEBSOCKET_BASE", WEBSOCKET_BASE);
   useEffect(() => {
     const timeout = setTimeout(() => {
-      const ws = new WebSocket("ws://localhost:8000/ws");
+      const ws = new WebSocket(WEBSOCKET_BASE);
       socketRef.current = ws;
 
       ws.onopen = () => {

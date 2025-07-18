@@ -4,7 +4,7 @@ from lorax.chat.graph import create_graph
 from dotenv import load_dotenv
 from pkg_resources import resource_filename
 from langchain.chains.conversation.memory import ConversationBufferMemory
-
+import time
 load_dotenv()
 
 memory = ConversationBufferMemory(return_messages=True)
@@ -12,7 +12,14 @@ memory = ConversationBufferMemory(return_messages=True)
 question = "Calculate the diversity of the given treesequence."
 workflow = create_graph()
 
+global_context = {
+    "file_path": None,
+    "viz_snapshot": None,
+    "memory": memory
+}
+
 def chat_interface():
+
     app = create_graph()
     
     data_file_path =  resource_filename(__name__, 'data')
@@ -30,7 +37,10 @@ def chat_interface():
             sys.exit()
 
         app = workflow.compile()
-        message = {'question':user_input, "attributes":{"file_path":"data/sample.trees", "memory": memory}}
+
+        global_context['file_path'] = "data/sample.trees"
+        
+        message = {'question':user_input, "attributes": global_context}
         solution = app.invoke(message)
         
         llm_output, _ = parseSolution(solution)
@@ -43,12 +53,13 @@ def parseSolution(input_solution):
     """
     return input_solution['response'], input_solution['visual']
 
-def api_interface(user_input, file_path, viz_snapshot, memory=None):
+def api_interface(user_input, global_context):
     if memory is None:
         memory = ConversationBufferMemory(return_messages=True)
     
     app = workflow.compile()
-    message = {'question': user_input, "attributes": {"file_path": file_path, "viz_snapshot": viz_snapshot, "memory": memory}}
+
+    message = {'question': user_input, "attributes": global_context}
     solution = app.invoke(message)
 
     llm_output = parseSolution(solution)
@@ -56,4 +67,4 @@ def api_interface(user_input, file_path, viz_snapshot, memory=None):
     return llm_output
  
 if __name__== "__main__":
-    chat_interface()
+    chat_interface(global_context)

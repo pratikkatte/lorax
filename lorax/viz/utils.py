@@ -75,8 +75,6 @@ def do_chronumental(mat, chronumental_reference_node, metadata_file,
             print("#####  Exiting.  #####")
             sys.exit(1)
 
-        # %%
-
         print("Reading time tree")
         time_tree = treeswift.read_tree(os.path.join(tmpdirname,
                                                      "timetree.nwk"),
@@ -267,7 +265,6 @@ def get_node_object(node, node_to_index, metadata, input_to_index, columns,
         object['clades'] = node.clades
 
     return object
-
 
 def sort_on_y(tree):
     with alive_bar(title="Sorting on y") as bar:

@@ -7,7 +7,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 
 
-from lorax.chat.tools import routerTool, generalInfoTool, generatorTool
+from lorax.chat.tools import generalInfoTool, generatorTool
 from lorax.chat.utils import execute_generated_code
 from lorax.chat.planner import QueryPlan
 
@@ -67,8 +67,8 @@ def query_planner(state):
     # Add the new question to the chat history
     state['attributes']["memory"].chat_memory.add_user_message(state['question'])
     history = state['attributes']["memory"]
-
-
+    
+    
     prompt_messages = [
     (
         "system",
@@ -212,27 +212,6 @@ def decide_to_finish(state: GraphState):
         print("---DECISION: RE-TRY SOLUTION---")
         return "generate"
 
-def router_call(state: GraphState):
-    next = state['next']
-    
-    if next == 'no':
-        return 'general_info'
-    else:
-        return 'generate'
-    
-def router(state: GraphState):
-    """
-    """
-    # state
-    question = state['messages'][-1].content
-
-    query = {'query':question}
-    answer = routerTool(query)
-
-    return {
-        "next": answer.content.lower()
-    }
-
 def general_info(state: GraphState):
     """
     """
@@ -246,7 +225,6 @@ def general_info(state: GraphState):
         )]
     
     state['attributes']["memory"].chat_memory.add_ai_message(answer.content)
-    
 
     return {
         "result": answer.content,

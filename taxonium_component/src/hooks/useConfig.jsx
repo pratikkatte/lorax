@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import websocketEvents from "../webworkers/websocketEvents";
 
+
 function useConfig({backend}) {
   const [config, setConfig] = useState(null);
   const {isConnected} = backend;
-  
+
   const handleConfigUpdate = useCallback((data) => {
     console.log("config update", data)
     if (data.role === "config") {

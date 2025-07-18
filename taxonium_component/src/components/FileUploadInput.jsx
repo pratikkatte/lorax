@@ -1,16 +1,17 @@
 import React, { useState, useCallback, useRef } from 'react';
 import axios from "axios";
+import useLoraxConfig from "../globalconfig.js";
 
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faPaperclip, faSpinner } from '@fortawesome/free-solid-svg-icons';
 
-const API_BASE_URL = "http://localhost:8000";
 
 const FileUploadInput = ({config,setConfig, selectedFileName, setSelectedFileName}) => {
   
   const [uploadProgress, setUploadProgress] = useState(0);
 
-  
+  const {API_BASE} = useLoraxConfig();
+
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef(null); // Use ref instead of getElementById
 
@@ -24,7 +25,7 @@ const FileUploadInput = ({config,setConfig, selectedFileName, setSelectedFileNam
       formData.append('file', file);
 
       try {
-        const response = await axios.post(`${API_BASE_URL}/api/upload`, formData, {
+        const response = await axios.post(`${API_BASE}/api/upload`, formData, {
           maxRedirects: 0,
           // headers: {
           //   'Content-Type': 'multipart/form-data'

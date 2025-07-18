@@ -4,7 +4,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 
 from langchain_core.prompts import PromptTemplate
-from langchain.chains import ConversationChain
+
 from dotenv import load_dotenv
 from pkg_resources import resource_filename
 import numpy as np
@@ -13,12 +13,12 @@ import ollama
 from lorax.chat.utils import code, execute_generated_code, response_parser, parse_output
 from lorax.chat.faiss_vector import getRetriever, rerank_documents
 
-from langchain_tavily import TavilySearch
+# from langchain_tavily import 
 
-from langchain.agents import AgentExecutor, create_react_agent
-from langchain_community.agent_toolkits.load_tools import load_tools
+
+# from langchain_community.agent_toolkits.load_tools import load_tools
 from langchain_openai import ChatOpenAI
-from langchain_ollama import ChatOllama
+# from langchain_ollama import ChatOllama
 from lorax.chat.react_from_scratch.src.react.agent import run
 import time
 
@@ -48,7 +48,7 @@ def visualizationTool(question, attributes=None):
 
     return nwk_string, genomic_position
 
-def generatorTool(question, input_file_path=None, viz_snapshot=None):
+def generatorTool(question, attributes=None):
     try:
 
         # understnad, how this format of prompt engineering helps the LLM to get good results. 
@@ -89,9 +89,12 @@ def generatorTool(question, input_file_path=None, viz_snapshot=None):
                 code_gen_prompt | structured_code_llm | parse_output
             )
     
+            input_file_path = attributes['file_path']
+            viz_snapshot = attributes['viz_snapshot']
+
             code_solution = code_chain_raw.invoke(
                 {"context": final_context, "viz_snapshot": viz_snapshot, "messages": [question]}
-            )
+                )
             
         else:
             client = ollama.Client(host=ollama_client)
@@ -118,27 +121,6 @@ def generatorTool(question, input_file_path=None, viz_snapshot=None):
         print("Tools Error:", e)
         return f"Found Error while processing your query", None
 
-def routerTool(query, attributes=None):
-    """
-    """
-    prompt_template = """
-    Provide answer in 1 word (yes/no).
-    If the question requires generating a code and using the given tressequence and tskit library in order to provide the answer, then respond with 'yes' else respond with 'no' 
-    Respond appropriately based on the user's query: {query}
-    """
-    prompt = PromptTemplate(
-        input_variables=['quert'], template=prompt_template
-    )
-    chain = prompt | general_llm
-
-    router_conversation = ConversationChain(
-        llm=chain, 
-        memory=attributes["memory"]
-    )
-    
-    answer = router_conversation.run(query)
-
-    return answer
 
 def generalInfoTool(question, attributes=None):
     """
@@ -193,17 +175,19 @@ def generalInfoTool(question, attributes=None):
 
         chain = prompt | general_llm
         
-        general_info_conversation = ConversationChain(
-            llm=chain, 
-            memory=attributes["memory"]
-        )
-     
-        answer = general_info_conversation.run(question)   
+        # general_info_conversation = ConversationChain(
+        #     llm=chain, 
+        #     memory=attributes["memory"]
+        # )
+
+        answer = chain.invoke({"question": question})
+        print("answer", answer.content)
+        # answer = general_info_conversation.run(question)   
         end = time.time()
 
         print("Time taken to answer the question:", end-start)
         
-        return answer
+        return answer.content
 
         
     #     prompt = PromptTemplate(

@@ -5,7 +5,9 @@ from tree_sitter_languages import get_parser
 import marko
 from bs4 import BeautifulSoup
 from langchain_core.documents import Document
-from langchain.vectorstores import FAISS
+
+
+from langchain_community.vectorstores import FAISS
 from langchain_ollama import OllamaEmbeddings
 import pickle
 import sys

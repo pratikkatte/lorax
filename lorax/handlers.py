@@ -11,6 +11,7 @@ class LoraxHandler:
         self.file_path = None
         self.viz_snapshot = None
         self.ts_intervals = None
+        self.global_context = {'file_path': self.file_path, 'viz_snapshot': self.viz_snapshot, 'memory': None}
 
     async def handle_ping(self, message):
         return {"type": "ping", "data": "Pong"}
@@ -18,7 +19,7 @@ class LoraxHandler:
     def handle_chat(self, message):
         try:
             action = None
-            llm_output = api_interface(message.get("message"), self.file_path, self.viz_snapshot)
+            llm_output = api_interface(message.get("message"), self.global_context)
             
             # Handle different types of llm_output
             if isinstance(llm_output, str):
@@ -45,8 +46,10 @@ class LoraxHandler:
         try:
             start, end = message.get("value")
             nwk_string, genome_positions, mutations, times, tree_index = start_end(start, end, self.ts)
+
             self.viz_snapshot = {'window': [0, start, end, self.ts.sequence_length], 'sample_sets':'ts.get_samples()'}
 
+            # self.global_context['viz_snapshot'] = self.viz_snapshot
             data = json.dumps({
                 "nwk": nwk_string,
                 "genome_positions": genome_positions, 
@@ -115,6 +118,8 @@ class LoraxHandler:
     
     async def handle_upload(self, file_path=None):
         self.file_path = file_path
+        self.global_context = self.file_path
+        
         self.ts = tskit.load(file_path)
         viz_config = self.get_config()
         chat_config = "file uploaded"

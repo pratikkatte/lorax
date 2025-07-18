@@ -31,11 +31,7 @@ manager = WebSocketManager()
 async def root(request: Request):
     return {"message": "Hello, Loorax!"}
 
-@app.get('/api/llm_api')
-async def get_llm_api():
-    return {"message": "Hello, Loorax!"}
-
-@app.post('/api/upload')
+@app.post('/upload')
 async def upload(file: UploadFile = File(...)):
     try:
         # Create a safe file path

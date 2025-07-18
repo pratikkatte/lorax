@@ -1,15 +1,7 @@
-import filtering from "taxonium_data_handling/filtering.js";
-import { getNextstrainSubtreeJson } from "taxonium_data_handling/exporting.js";
-import {
-  processJsonl,
-  generateConfig,
-} from "taxonium_data_handling/importing.js";
+
 import { cleanup } from "../utils/processNewick.js";
-import { processNextstrain } from "../utils/processNextstrain.js";
-import { ReadableWebToNodeStream } from "readable-web-to-node-stream";
-import { parser } from "stream-json";
-import { streamValues } from "stream-json/streamers/StreamValues";
-import { kn_parse, kn_calxy,kn_expand_node, kn_global_calxy} from "../utils/jstree";
+import { kn_parse, kn_calxy, kn_expand_node, kn_global_calxy} from "../utils/jstree";
+
 console.log("[Worker] Initialized");
 
 // const WebSocket = require('ws');
@@ -18,6 +10,7 @@ console.log("[Worker] Initialized");
 
 // import PythonWebSocketClient from './PythonWebSocketClient.js';
 // const pythonClient = new PythonWebSocketClient();
+
 postMessage({ data: "Worker starting" });
 
 const the_cache = {};
@@ -143,18 +136,16 @@ const search = async (search, bounds) => {
 
   const {
     nodes,
-    // eslint-disable-next-line no-unused-vars
     overallMaxX,
     overallMaxY,
-    // eslint-disable-next-line no-unused-vars
     overallMinX,
     overallMinY,
     y_positions,
     node_to_mut,
     mutations,
   } = processedUploadedData;
+  
   const spec = JSON.parse(search);
-
   const min_y = bounds && bounds.min_y ? bounds.min_y : overallMinY;
   const max_y = bounds && bounds.max_y ? bounds.max_y : overallMaxY;
   const min_x = bounds && bounds.min_x ? bounds.min_x : overallMinX;
@@ -351,65 +342,17 @@ async function processData(data, mutations, times, sendStatusMessage){
   return paths
 }
 
-const getList = async (node_id, att) => {
-  console.log("Worker getList");
-  await waitForProcessedData();
-  const { nodes } = processedUploadedData;
-  const atts = filtering.getTipAtts(nodes, node_id, att);
-  return atts;
-};
+
 
 onmessage = async (event) => {
   //Process uploaded data:
   console.log("Worker onmessage");
   const { data } = event;
-  
+
   if (data.type === "upload")
   {
+    console.log("upload value: TO IMPLEMENT")
 
-    const {file} = data.data;
-
-    if (file instanceof File){
-      const arrayBuffer = await file.arrayBuffer();
-      //Now you can send it via WebSocket
-
-    const payload = {
-      filename: file.name,
-      size: file.size,
-      type: "fileUpload",
-      // content: new Uint8Array(arrayBuffer),
-      content: arrayBuffer
-      }
-      var websocket_data = {}
-      var nwk = null
-      var mutations = null
-      var times = null
-      console.log("sending data to pythonclient")
-
-      sendStatusMessage({
-        "status": "uploading_file",
-      })
-      await pythonClient.sendRequest({
-        action: 'load_file',
-        file: payload
-      }).then((response) => {
-        sendStatusMessage({
-          "status": response.status,
-        })
-        const websocket_received_data = JSON.parse(response.data);
-        console.log("response", websocket_received_data)
-        nwk = websocket_received_data.nwk;
-        mutations = websocket_received_data.mutations
-        times = websocket_received_data.global_times
-      });
-
-      processedUploadedData = await processData(nwk, mutations,times, sendStatusMessage)
-      
-      if (processedUploadedData){
-        sendStatusMessage({
-          message: "file_uploaded",
-        });
-      }}
   } else {
     if (data.type === "query") {
       console.log("data query value", data)
@@ -418,30 +361,15 @@ onmessage = async (event) => {
       postMessage({ type: "query", data: result });
     }
     if (data.type === "search") {
-      // const result = await search(data.search, data.bounds);
-      // postMessage({ type: "search", data: result });
+      console.log("search : TO IMPLEMENT")
     }
     if (data.type === "config") {
-      const result = await getConfig();
-      postMessage({ type: "config", data: result });
+      console.log("config value: TO IMPLEMENT")
     }
 
     if (data.type === "details") {
-      // const result = await getDetails(data.node_id);
-      // postMessage({ type: "details", data: result });
+      console.log("data details value: TO IMPLEMENT")
     }
-    if (data.type === "list") {
-      // const result = await getList(data.node_id, data.key);
-      // postMessage({ type: "list", data: result });
-    }
-    if (data.type === "nextstrain") {
-      // const result = await getNextstrainSubtreeJson(
-      //   data.node_id,
-      //   processedUploadedData.nodes,
-      //   data.config,
-      //   processedUploadedData.mutations
-      // );
-      // postMessage({ type: "nextstrain", data: result });
-    }
+
   }
 };

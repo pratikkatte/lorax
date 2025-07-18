@@ -81,8 +81,9 @@ class Tools(BaseModel):
     @staticmethod
     def code_generation(query: str, attributes=None) -> str:
 
-        code_solution, result = generatorTool(query, input_file_path=attributes['file_path'], viz_snapshot=attributes['viz_snapshot'])
-
+        # code_solution, result = generatorTool(query, input_file_path=attributes['file_path'], viz_snapshot=attributes['viz_snapshot'])
+        code_solution, result = generatorTool(query, attributes)
+        
         # return response
         result = generate_response(code_solution, result, tool='code')
 

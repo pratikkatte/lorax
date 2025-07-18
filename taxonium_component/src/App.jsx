@@ -19,6 +19,8 @@ function App() {
   const [chatbotEnabled, setChatbotEnabled] = useState(false);
   
   const [gettingDetails, setGettingDetails] = useState(false);
+
+
   const backend = useConnect({setGettingDetails});
   const {config, setConfig} = useConfig({backend});
 

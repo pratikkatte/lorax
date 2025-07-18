@@ -1,19 +1,10 @@
-# treesequence-Visualization
-Visualization Framework for Treevizualization
+# Lorax: Visualization Framework for Ancestral Recombination Graphs
 
-### To Run File-Streamer
 
-```
-uvicorn trees_streamer:app --reload --port 8000
-```
+### Build Docker
 
-### To run server
-```
-cd server/taxonium_backend
-node server.js --port 8080
-```
+```bash
+docker build -t lorax . # build docker image
 
-### To run Frontend
-```
-yarn run dev
+docker run -it -p 80:80 lorax
 ```
