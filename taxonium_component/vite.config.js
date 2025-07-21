@@ -4,9 +4,20 @@ import { nodePolyfills } from "vite-plugin-node-polyfills";
 import cssInjectedByJsPlugin from "vite-plugin-css-injected-by-js";
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(),
+    cssInjectedByJsPlugin(),
+    nodePolyfills({
+      exclude: ["fs"],
+      protocolImports: true,
+    }),
+  ],
   build: {
     outDir: "dist", // default
+    rollupOptions: {
+      output: {
+        manualChunks: undefined
+      }
+    }
   }
 });
 

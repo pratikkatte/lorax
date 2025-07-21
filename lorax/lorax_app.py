@@ -8,6 +8,8 @@ from lorax.handlers import LoraxHandler
 import shutil
 import os
 from pathlib import Path
+import time
+import aiofiles
 
 app = FastAPI()
 
@@ -31,40 +33,76 @@ manager = WebSocketManager()
 async def root(request: Request):
     return {"message": "Hello, Loorax!"}
 
+
+@app.get('/test')
+async def test(request: Request):
+    file_name = "sample.trees"
+    file_path = UPLOAD_DIR / file_name
+    viz_config, chat_config = await lorax_handler.handle_upload(file_path)
+
+    await manager.send_to_component("viz", {
+            "type": "viz", 
+            "role": "config",
+            "data": viz_config,
+        })
+
+    await manager.send_to_component("chat", {
+        "type": "chat", 
+        "role": "assistant",
+        "data": chat_config # send the config to the chat component  
+    })
+    
+    return {
+        "message": "File uploaded successfully",
+        "filename": file_name,
+        "file_path": str(file_path)
+    }
+
 @app.post('/upload')
-async def upload(file: UploadFile = File(...)):
+# async def upload(file: UploadFile = File(...)):
+async def upload(request: Request):
     try:
         # Create a safe file path
-        file_path = UPLOAD_DIR / file.filename
+        form_data = await request.form()
+        file = form_data.get("file")
+        filename = form_data.get("filename") or file.filename
+
+        file_path = UPLOAD_DIR / filename
         
-        # Save the file
-        with file_path.open("wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-        
+        start = time.time()
+        # Stream 1MB chunks to disk (no memory blow-up)
+        async with aiofiles.open(file_path, "wb") as f:
+            # Read in chunks to handle large files efficiently
+            chunk_size = 10240 * 10240 # 1MB chunks
+            while content := await file.read(chunk_size):
+                await f.write(content)
+
         # Notify components about the upload
-        print("Upload received", file_path)
         viz_config, chat_config = await lorax_handler.handle_upload(file_path)
 
-        # Only send to connected clients
+        # Only send to connected components
+
+         # Only send to connected clients
         await manager.send_to_component("viz", {
             "type": "viz", 
             "role": "config",
-            "config": viz_config,
+            "data": viz_config,
         })
 
         await manager.send_to_component("chat", {
             "type": "chat", 
             "role": "assistant",
-            "data": str(chat_config)  # send the config to the chat component  
+            "data": chat_config # send the config to the chat component  
         })
-
+        
         return {
             "message": "File uploaded successfully",
-            "filename": file.filename,
+            "filename": filename,
             "file_path": str(file_path)
         }
 
     except Exception as e:
+        print(f"Upload error: {e}")
         return {"error": str(e)}
     finally:
         file.file.close()
@@ -151,9 +189,6 @@ async def websocket_endpoint(websocket: WebSocket):
                             })
                         continue
 
-                    # print("Viz received")
-                    # message = await lorax_handler.handle_viz(message)
-                    # await manager.send_to_component("viz", message)
                     continue
 
                 # Broadcast to all connected clients

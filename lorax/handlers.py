@@ -19,7 +19,7 @@ class LoraxHandler:
     def handle_chat(self, message):
         try:
             action = None
-            llm_output = api_interface(message.get("message"), self.global_context)
+            llm_output = api_interface(message.get("message"), self.file_path)
             
             # Handle different types of llm_output
             if isinstance(llm_output, str):
@@ -69,7 +69,7 @@ class LoraxHandler:
         intervals = [(tree.interval[0], tree.interval[1]) for tree in self.ts.trees()]
         self.ts_intervals = intervals[1:]
 
-        config = {'intervals':intervals[1:], 'value': [intervals[1][0], intervals[9][1]]}
+        config = {'intervals':intervals, 'value': [intervals[0][0], intervals[9][1]]}
         return config
     
     def get_tree_details(self, tree_index):

@@ -18,8 +18,8 @@ let onDetailsReceipt = (receivedData) => {};
 
 worker.onmessage = (event) => {
   console.log(
-    "got message from worker");
-    
+    "got message from worker", event.data);
+
   if (event.data.type === "status") {
     
     onStatusReceipt(event.data);
@@ -55,7 +55,6 @@ function useConnect({setGettingDetails, API_BASE}) {
 
   const {WEBSOCKET_BASE} = useLoraxConfig();
   
-  console.log("WEBSOCKET_BASE", WEBSOCKET_BASE);
   useEffect(() => {
     const timeout = setTimeout(() => {
       const ws = new WebSocket(WEBSOCKET_BASE);
@@ -68,10 +67,11 @@ function useConnect({setGettingDetails, API_BASE}) {
 
       ws.onmessage = ((event) => {
         const message = JSON.parse(event.data);
-        console.log("message", message)
+
         websocketEvents.emit(message.type, message);
         
         if (message.type === "viz" && message.role === "query-result") {
+          console.log("message", message)
           worker.postMessage({
             type: "query",
             data: message.data,
@@ -125,7 +125,7 @@ function useConnect({setGettingDetails, API_BASE}) {
 
       onQueryReceipt = (receivedData) => {
         console.log(
-          "got query result" //, receivedData
+          "got query result", receivedData
         );
         setResult(receivedData);
       };

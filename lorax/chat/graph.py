@@ -64,6 +64,7 @@ def query_planner(state):
     """
     state['messages'] = [("user", state['question'])]
 
+
     # Add the new question to the chat history
     state['attributes']["memory"].chat_memory.add_user_message(state['question'])
     history = state['attributes']["memory"]

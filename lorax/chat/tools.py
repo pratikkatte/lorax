@@ -90,7 +90,7 @@ def generatorTool(question, attributes=None):
             )
     
             input_file_path = attributes['file_path']
-            viz_snapshot = attributes['viz_snapshot']
+            viz_snapshot = ''
 
             code_solution = code_chain_raw.invoke(
                 {"context": final_context, "viz_snapshot": viz_snapshot, "messages": [question]}

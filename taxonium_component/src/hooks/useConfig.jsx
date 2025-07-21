@@ -9,8 +9,8 @@ function useConfig({backend}) {
   const handleConfigUpdate = useCallback((data) => {
     console.log("config update", data)
     if (data.role === "config") {
-      console.log("config update", data.config)
-      setConfig(data.config);
+      console.log("config update", data.data)
+      setConfig(data.data);
     }
   }, [config]);
 

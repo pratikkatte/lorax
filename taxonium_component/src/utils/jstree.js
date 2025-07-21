@@ -77,6 +77,41 @@ function kn_new_node() {
   };
 }
 
+
+function kn_parse_auto(str) {
+  const cleaned = str.trim();
+  if (cleaned.includes("(") || cleaned.includes(")")) {
+    return kn_parse(cleaned); // assume it's proper Newick
+  } else {
+    return kn_parse_flat_list(cleaned); // semicolon-separated list
+  }
+}
+
+function kn_parse_flat_list(str) {
+  const tree = {
+    error: 0,
+    n_tips: 0,
+    node: [],
+  };
+
+  const root = kn_new_node();
+  tree.node.push(root);
+
+  const names = str.split(";").filter(n => n.trim().length > 0);
+  
+  for (const name of names) {
+    const leaf = kn_new_node();
+    leaf.name = name;
+    leaf.parent = root;
+    root.child.push(leaf);
+    tree.node.push(leaf);
+    tree.n_tips++;
+  }
+
+  tree.root = root;
+  return tree;
+}
+
 function kn_add_node(str, l, tree, x) {
   // private method
   let i;
@@ -669,4 +704,4 @@ function kn_get_node(tree, conf, x, y) {
   return tree.node.length;
 }
 
-export { kn_expand_node, kn_reorder, kn_parse, kn_calxy, kn_reorder_num_tips, kn_global_calxy };
+export { kn_expand_node, kn_reorder, kn_parse, kn_calxy, kn_reorder_num_tips, kn_global_calxy, kn_parse_auto};

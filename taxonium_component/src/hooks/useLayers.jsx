@@ -32,7 +32,7 @@ const useLayers = ({
     if (!data?.data?.paths) return [];
 
     const times = data.data?.times || {};
-    console.log("times", times)
+
     const singleTreeLayers = data.data.paths.flatMap((tree, i) => {
       const genomePos = data.data.genome_positions[i];
       const treeIndex = data.data.tree_index[i];

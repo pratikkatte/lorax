@@ -17,7 +17,6 @@ const FileUploadInput = ({config,setConfig, selectedFileName, setSelectedFileNam
 
   const handleFileChange = useCallback(async (event) => {
     
-    console.log("handleFileChange");
     const file = event.target.files[0];
     if (file) {
       setIsUploading(true);
@@ -25,7 +24,7 @@ const FileUploadInput = ({config,setConfig, selectedFileName, setSelectedFileNam
       formData.append('file', file);
 
       try {
-        const response = await axios.post(`${API_BASE}/api/upload`, formData, {
+        const response = await axios.post(`${API_BASE}/upload`, formData, {
           maxRedirects: 0,
           // headers: {
           //   'Content-Type': 'multipart/form-data'

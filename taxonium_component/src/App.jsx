@@ -6,7 +6,7 @@ import { BsChatDots } from "react-icons/bs";
 import { BsFillKanbanFill } from "react-icons/bs";
 import Info from './components/Info.jsx'
 import useConfig from "./hooks/useConfig";
-
+import useLoraxConfig from './globalconfig.js'
 import useConnect from './hooks/useConnect.jsx'
 
 function App() {
@@ -20,7 +20,7 @@ function App() {
   
   const [gettingDetails, setGettingDetails] = useState(false);
 
-
+  const {API_BASE} = useLoraxConfig();
   const backend = useConnect({setGettingDetails});
   const {config, setConfig} = useConfig({backend});
 
@@ -57,6 +57,16 @@ function App() {
         className="fixed top-0 right-0 h-full w-5 z-[100] pointer-events-auto"
         onMouseEnter={() => setShowSidebar(true)}
       />
+      {!config && (
+        <div>
+          <button onClick={async () => {
+            const response = await fetch(`${API_BASE}/test`);
+            console.log(response);
+          }}>
+            Load file
+          </button>
+        </div>
+      )}
       {showSidebar && (
         <div
           className="fixed top-0 right-0 h-full w-10 bg-gray-800 text-white z-[101] p-3 shadow-lg flex flex-col items-center space-y-6"

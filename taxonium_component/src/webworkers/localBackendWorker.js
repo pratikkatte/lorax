@@ -1,6 +1,6 @@
 
 import { cleanup } from "../utils/processNewick.js";
-import { kn_parse, kn_calxy, kn_expand_node, kn_global_calxy} from "../utils/jstree";
+import { kn_parse,kn_parse_auto, kn_calxy, kn_expand_node, kn_global_calxy} from "../utils/jstree";
 
 console.log("[Worker] Initialized");
 
@@ -111,23 +111,28 @@ const waitForProcessedData = async () => {
 };
 
 export const queryNodes = async (data) => {
-  console.log("Worker query Nodes");
+  try {
+    console.log("Worker query Nodes");
 
-  const received_data = JSON.parse(data);
-  const nwk = received_data.nwk;
-  const mutations = received_data.mutations;
-  const times = received_data.global_times;
-  const tree_index = received_data.tree_index;
+    const received_data = JSON.parse(data);
+    const nwk = received_data.nwk;
+    const mutations = received_data.mutations;
+    const times = received_data.global_times;
+    const tree_index = received_data.tree_index;
 
-  const processed_data = await processData(nwk, mutations, times, sendStatusMessage)
-  const result = {
-    paths: processed_data,
-    genome_positions: received_data.genome_positions,
-    tree_index: tree_index,
-    times: times
-  }
+    const processed_data = await processData(nwk, mutations, times, sendStatusMessage)
+    const result = {
+      paths: processed_data,
+      genome_positions: received_data.genome_positions,
+      tree_index: tree_index,
+      times: times
+    }
   
-  return result;
+    return result;
+  } catch (error) {
+    console.log("error")
+    // console.error("Error in queryNodes: ", error);
+  }
 };
 
 const search = async (search, bounds) => {
@@ -166,7 +171,6 @@ const search = async (search, bounds) => {
     cache_helper,
   });
 
-  console.log("got search result", result);
   result.key = spec.key;
   return result;
 };
@@ -183,8 +187,7 @@ const getConfig = async () => {
   }).then((response) => {
     websocket_received_data = JSON.parse(response.data);    
   })
-
-  return websocket_received_data.config
+  return websocket_received_data.data
 };
 
 const getDetails = async (node_id) => {
@@ -206,17 +209,11 @@ const getDetails = async (node_id) => {
 
 function processNewick(nwk_str, mutations, globalMinTime, globalMaxTime, times) {
   let ladderize = true;
-  // let globalMinTime = -324375.4523505669
-  // let globalMaxTime = 0.0
   let start_time = times['end']
-  // if (index > 0){
-    
-  //   start_time = -99228.96210396479
-  // }else{
-  //   start_time = globalMinTime
-  // }
+
   
-  const tree = kn_parse(nwk_str)
+  // const tree = kn_parse(nwk_str)
+  const tree = kn_parse_auto(nwk_str)
 
   function assignNumTips(node) {
     if (node.child.length === 0) {
@@ -326,9 +323,10 @@ export async function globalCleanup(allTrees) {
 
 async function processData(data, mutations, times, sendStatusMessage){
 
+  // const trees = data
+  // .split(';')
+  // .filter(Boolean)
   const trees = data
-  .split(';')
-  .filter(Boolean)
   .map((str, index) => {
     return processNewick(str, mutations[index], times['min_time'], times['max_time'], times['times'][index]);
   });
@@ -355,9 +353,9 @@ onmessage = async (event) => {
 
   } else {
     if (data.type === "query") {
-      console.log("data query value", data)
-
+      console.log("data query value")
       const result = await queryNodes(data.data);
+
       postMessage({ type: "query", data: result });
     }
     if (data.type === "search") {

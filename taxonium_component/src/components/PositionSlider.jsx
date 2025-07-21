@@ -82,11 +82,13 @@ export default function PositionSlider(props) {
       if (left_index === 0 ){
         console.log("ERROR: cannot move more left" )
         alert(`ERROR: cannot move more left`)
-      }
-      let new_left_index = Math.max(0, Math.floor(left_index - (tree_length / 2)));
+      }else{
+        let new_left_index = Math.max(0, Math.floor(left_index - (tree_length / 2)));
 
       tree_index.current = [new_left_index, parseInt(new_left_index+(tree_length))]
       getIntervals(new_left_index, parseInt(new_left_index+(tree_length)))
+      }
+      
       }
       // setPosition(prev => ({ ...prev, x: prev.x - POS_SHIFT }));
     };
@@ -103,6 +105,7 @@ export default function PositionSlider(props) {
       }
       else {
         let new_right_index = Math.min(intervals.length, Math.floor(right_index + (tree_length/2)));
+        console.log("new right index", new_right_index, intervals.length, right_index)
         tree_index.current = [parseInt(new_right_index-(tree_length)), new_right_index]
         getIntervals(parseInt(new_right_index-(tree_length)), new_right_index)
       }
@@ -153,7 +156,7 @@ export default function PositionSlider(props) {
           color: 'black'
         }}
       >
-        ←
+        ↓
       </button>
       {value && (
         <EditableRange value={value} onChange={onChange}/>
@@ -170,7 +173,7 @@ export default function PositionSlider(props) {
           color: 'black'
         }}
       >
-        →
+        ↑
       </button>
   
       </div>
