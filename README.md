@@ -1,6 +1,5 @@
 # Lorax: Visualization Framework for Ancestral Recombination Graphs
 
-
 ### Build Docker
 
 ```bash

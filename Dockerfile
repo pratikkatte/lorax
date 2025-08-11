@@ -29,7 +29,7 @@
     COPY . /app
     
     # ---- Build Vite app using Yarn ----
-    WORKDIR /app/taxonium_component
+    WORKDIR /app/frontend
     RUN yarn install && yarn build
     
     # ---- Move built frontend to Nginx root ----
