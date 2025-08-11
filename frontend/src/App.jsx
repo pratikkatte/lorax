@@ -74,13 +74,13 @@ function App() {
             // setShowSidebar(false);
           }}
         >
-          <div 
+          {/* <div 
             className="text-2xl hover:text-gray-300 transition-colors cursor-pointer p-2 hover:bg-gray-700 rounded" 
             onClick={handleChatClick}
             onMouseDown={(e) => e.preventDefault()}
           >
             <BsChatDots />
-          </div>
+          </div> */}
           <div 
             className="text-2xl hover:text-gray-300 transition-colors cursor-pointer p-2 hover:bg-gray-700 rounded" 
             onClick={handleInfoClick}
@@ -95,7 +95,7 @@ function App() {
         <div className={`${(isChatbotVisible || showInfo) ? (showSidebar ? 'w-[73%]' : 'w-3/4') :  (showSidebar ? 'w-[97%]' : 'w-full')} transition-all duration-200`}>
           <Lorax backend={backend} config={config} />
         </div>
-          <div className={`transition-all relative ${isChatbotVisible ? '' : 'hidden'} duration-200 shadow-2xl ${showSidebar ? 'w-[25%]' : 'w-1/4'}`}>
+          {/* <div className={`transition-all relative ${isChatbotVisible ? '' : 'hidden'} duration-200 shadow-2xl ${showSidebar ? 'w-[25%]' : 'w-1/4'}`}>
             <Chatbot userName={userName} 
                 setIsChatbotVisible={setIsChatbotVisible} 
                 backend={backend}
@@ -106,7 +106,7 @@ function App() {
                 selectedFileName={selectedFileName}
                 setSelectedFileName={setSelectedFileName}
             />
-          </div>
+          </div> */}
         <div className={`transition-all relative ${showInfo ? '' : 'hidden'} shadow-2xl bg-gray-100 duration-200 ${showSidebar ? 'w-[25%]' : 'w-1/4'}`}>
             <Info backend={backend} gettingDetails={gettingDetails} setGettingDetails={setGettingDetails} setShowInfo={setShowInfo} config={config} setConfig={setConfig} selectedFileName={selectedFileName} setSelectedFileName={setSelectedFileName}/>
         </div>
