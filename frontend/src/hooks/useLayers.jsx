@@ -16,7 +16,9 @@ const useLayers = ({
   hoverInfo,
   hoveredTreeIndex,
   setHoveredTreeIndex,
+  settings,
 }) => {
+  
   const layerFilter = useCallback(({ layer, viewport }) => {
     const isOrtho = viewport.id === 'ortho';
     const isGenome = viewport.id === 'genome-positions';
@@ -26,9 +28,11 @@ const useLayers = ({
       (isGenome && layer.id.startsWith('genome-positions')) ||
       (isTreeTime && layer.id.startsWith('tree-time'))
     );
-  }, []);
+  }, [settings]);
   
+
   const layers = useMemo(() => {
+    console.log("settings in layers", settings)
     if (!data?.data?.paths) return [];
 
     const times = data.data?.times || {};
@@ -36,7 +40,7 @@ const useLayers = ({
     const singleTreeLayers = data.data.paths.flatMap((tree, i) => {
       const genomePos = data.data.genome_positions[i];
       const treeIndex = data.data.tree_index[i];
-      const modelMatrix = new Matrix4().translate([0, i * 1.2, 0]);
+      const modelMatrix = settings.vertical_mode ? new Matrix4().translate([0, i * 1.2, 0]) : new Matrix4().translate([i * 1.2,0, 0]);
       const pathData = tree.filter(d => d.path);
       const nodeData = tree.filter(d => d.position);
 
@@ -50,6 +54,7 @@ const useLayers = ({
           if (hoveredTreeIndex && d.path === hoveredTreeIndex.path) {
             return [0,0,0, 255]
           }
+
           return [150, 150, 150, 255];
         },
         // () => [255, 80, 200],
@@ -168,7 +173,7 @@ const useLayers = ({
 
       const lineLayer = new LineLayer({
         id: `genome-positions-line-${i}`,
-        data: [{ sourcePosition: [0, 0], targetPosition: [0, 1] }],
+        data: settings.vertical_mode? [{ sourcePosition: [1, 0], targetPosition: [1, 1] }]: [{ sourcePosition: [0, 1], targetPosition: [1, 1] }],
         getSourcePosition: d => d.sourcePosition,
         getTargetPosition: d => d.targetPosition,
         getColor: [0, 0, 255],
@@ -178,11 +183,9 @@ const useLayers = ({
         viewId: 'genome-positions',
       });
 
-      
-
       const topLabelLayer = i === 0 ? new TextLayer({
         id: `genome-positions-top-label-${i}`,
-        data: [{ position: [0, -0.01], text: String(genomePos.start) }],
+        data: [{ position: [0, 1], text: String(genomePos.start) }],
         getPosition: d => d.position,
         getText: d => d.text,
         getColor: [0, 0, 0],
@@ -195,7 +198,7 @@ const useLayers = ({
 
       const bottomLabelLayer = new TextLayer({
         id: `genome-positions-bottom-label-${i}`,
-        data: [{ position: [0, 1.15], text: String(genomePos.end) }],
+        data: [{ position: [1, 1.15], text: String(genomePos.end) }],
         getPosition: d => d.position,
         getText: d => d.text,
         getColor: [0, 0, 0],
@@ -247,7 +250,7 @@ const useLayers = ({
 
     const timeLayer = new LineLayer({
       id: `tree-time-layer`,
-      data: [{ sourcePosition: [0, 1], targetPosition: [1, 1] }],
+      data: settings.vertical_mode ? [{ sourcePosition: [0, 0.5], targetPosition: [1, 0.5] }] : [{ sourcePosition: [0.5, 0], targetPosition: [0.5, 1] }],
       getSourcePosition: d => d.sourcePosition,
       getTargetPosition: d => d.targetPosition,
       getColor: [0, 0, 255],
@@ -261,7 +264,6 @@ const useLayers = ({
 
               const x_coordinate = 1 - coordinate[0]
 
-              console.log("current time", parseFloat(x_coordinate)*parseFloat(times.min_time))
             }
           }
     });
@@ -271,7 +273,14 @@ const useLayers = ({
       if (times) {
         timeLabels = new TextLayer({
           id: `tree-time-labels`,
-          data: [{position: [0, 1], text: String(times.min_time)}, {position: [1, 1], text: String(times.max_time)}],
+          data: settings.vertical_mode ? [
+                                {position: [0, 0.5], text: String(times.min_time)}, 
+                                {position: [1, 0.5], text: String(times.max_time)}
+                              ] : 
+                              [
+                                {position: [0.5, 0], text: String(times.min_time)}, 
+                                {position: [0.5,1], text: String(times.max_time)}
+                              ],
           getPosition: d => d.position,
           getText: d => d.text,
           getColor: [0, 0, 0],
@@ -285,9 +294,7 @@ const useLayers = ({
       }
     return [...singleTreeLayers, timeLayer, timeLabels];
 
-  }, [data, viewState.zoom, hoverInfo, hoveredTreeIndex]);
-
- 
+  }, [data, viewState.zoom, hoverInfo, hoveredTreeIndex, settings]);
 
   return { layers, layerFilter };
 };

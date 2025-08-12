@@ -14,6 +14,7 @@ console.log("[Worker] Initialized");
 postMessage({ data: "Worker starting" });
 
 const the_cache = {};
+let vertical_mode = true;
 
 function getYExtent(node) {
   const ys = [];
@@ -31,63 +32,37 @@ function getYExtent(node) {
   };
 }
 
-function extractSquarePaths(node) {
+function extractSquarePaths(node, vertical_mode) {
   const segments = [];
 
   if (node.child.length>0) {
     node.child.forEach(child => {
       // Horizontal segment from parent to child x at parent y
-      // console.log("node", node)
       // Vertical drop to child's y
-
       segments.push({
-        path: [
-          [node.x, node.y],
-          [node.x, child.y]
-        ],
+        path: vertical_mode ? [[node.x, node.y], [node.x, child.y]] : [[node.y, node.x], [child.y, node.x]]
       });
-
       segments.push({
-        path: [
-          [node.x, child.y],
-          [child.x, child.y]
-        ]
+        path: vertical_mode ?[[node.x, child.y],[child.x, child.y]]: [[child.y, node.x],[child.y, child.x]]
       });
-
-      segments.push(...extractSquarePaths(child));
+      segments.push(...extractSquarePaths(child, vertical_mode));
     });
   } else {
     segments.push({
       name: node.name,
-      position: [node.x, node.y],
+      position: vertical_mode ? [node.x, node.y] : [node.y, node.x],
     })
   }
   if(node.mutations) {
-    segments.push({ mutations: node.mutations,name: node.name, position:[node.x, node.y]})
+    if(vertical_mode){
+      segments.push({ mutations: node.mutations,name: node.name, position:[node.x, node.y]})
+    }else{
+      segments.push({ mutations: node.mutations,name: node.name, position:[node.y, node.x]})
+    }
   } 
   return segments;
 }
 
-const cache_helper = {
-  retrieve_from_cache: (key) => the_cache[key],
-  store_in_cache: (key, value) => {
-    the_cache[key] = value;
-
-    // Total size of the lists in the cache
-    let total_size = 0;
-    for (const key in the_cache) {
-      total_size += the_cache[key].length;
-    }
-    // If the cache is too big, remove a random item
-    if (total_size > 100e6) {
-      const keys = Object.keys(the_cache);
-      const random_key = keys[Math.floor(Math.random() * keys.length)];
-      delete the_cache[random_key];
-    }
-  },
-};
-
-let processedUploadedData;
 
 const sendStatusMessage = (status_obj) => {
   postMessage({
@@ -96,21 +71,9 @@ const sendStatusMessage = (status_obj) => {
   });
 };
 
-const waitForProcessedData = async () => {
-  // check if processedUploadedData is defined, if not wait until it is
-  if (processedUploadedData === undefined) {
-    await new Promise((resolve) => {
-      const interval = setInterval(() => {
-        if (processedUploadedData !== undefined) {
-          clearInterval(interval);
-          resolve();
-        }
-      }, 100);
-    });
-  }
-};
 
-export const queryNodes = async (data) => {
+
+export const queryNodes = async (data, vertical_mode) => {
   try {
     console.log("Worker query Nodes");
 
@@ -120,7 +83,7 @@ export const queryNodes = async (data) => {
     const times = received_data.global_times;
     const tree_index = received_data.tree_index;
 
-    const processed_data = await processData(nwk, mutations, times, sendStatusMessage)
+    const processed_data = await processData(nwk, mutations, times, sendStatusMessage, vertical_mode)
     const result = {
       paths: processed_data,
       genome_positions: received_data.genome_positions,
@@ -135,76 +98,6 @@ export const queryNodes = async (data) => {
   }
 };
 
-const search = async (search, bounds) => {
-
-  await waitForProcessedData();
-
-  const {
-    nodes,
-    overallMaxX,
-    overallMaxY,
-    overallMinX,
-    overallMinY,
-    y_positions,
-    node_to_mut,
-    mutations,
-  } = processedUploadedData;
-  
-  const spec = JSON.parse(search);
-  const min_y = bounds && bounds.min_y ? bounds.min_y : overallMinY;
-  const max_y = bounds && bounds.max_y ? bounds.max_y : overallMaxY;
-  const min_x = bounds && bounds.min_x ? bounds.min_x : overallMinX;
-  const max_x = bounds && bounds.max_x ? bounds.max_x : overallMaxX;
-  const xType = bounds && bounds.xType ? bounds.xType : "x_dist";
-
-  const result = filtering.singleSearch({
-    data: nodes,
-    spec,
-    min_y,
-    max_y,
-    min_x,
-    max_x,
-    y_positions,
-    mutations,
-    node_to_mut,
-    xType: xType,
-    cache_helper,
-  });
-
-  result.key = spec.key;
-  return result;
-};
-
-const getConfig = async () => {
-  await waitForProcessedData();
-  const config = {};
-  var websocket_received_data;
-
-  await pythonClient.sendRequest({
-    action: 'config',
-    // file: payload
-    values:config
-  }).then((response) => {
-    websocket_received_data = JSON.parse(response.data);    
-  })
-  return websocket_received_data.data
-};
-
-const getDetails = async (node_id) => {
-  console.log("Worker getDetails");
-  await waitForProcessedData();
-  const { nodes } = processedUploadedData;
-  const node = nodes[node_id];
-  console.log("node is ", node);
-  const details = { ...node };
-  details.mutations = processedUploadedData.node_to_mut[node_id]
-    ? processedUploadedData.node_to_mut[node_id].map(
-        (x) => processedUploadedData.mutations[x]
-      )
-    : [];
-
-  return details;
-};
 
 
 function processNewick(nwk_str, mutations, globalMinTime, globalMaxTime, times) {
@@ -321,7 +214,7 @@ export async function globalCleanup(allTrees) {
   }
 }
 
-async function processData(data, mutations, times, sendStatusMessage){
+async function processData(data, mutations, times, sendStatusMessage, vertical_mode){
 
   // const trees = data
   // .split(';')
@@ -331,11 +224,9 @@ async function processData(data, mutations, times, sendStatusMessage){
     return processNewick(str, mutations[index], times['min_time'], times['max_time'], times['times'][index]);
   });
 
-  // globalCleanup(trees)
   const paths = []
   trees.map((tree, i) => {
-    // const extent = getYExtent(tree.root);
-    paths.push(extractSquarePaths(tree.root))
+    paths.push(extractSquarePaths(tree.root, vertical_mode))
   })
   return paths
 }
@@ -354,7 +245,7 @@ onmessage = async (event) => {
   } else {
     if (data.type === "query") {
       console.log("data query value")
-      const result = await queryNodes(data.data);
+      const result = await queryNodes(data.data, data.vertical_mode);
 
       postMessage({ type: "query", data: result });
     }

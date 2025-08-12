@@ -14,7 +14,8 @@ function Deck({
   xType,
   deckRef,
   hoveredTreeIndex,
-  setHoveredTreeIndex
+  setHoveredTreeIndex,
+  settings,
 }) {
   
   const [hoveredKey, setHoveredKey] = useState(null);
@@ -59,23 +60,28 @@ function Deck({
     [hoveredTreeIndex]
   )
 
+    
   const [hoverInfo, setHoverInfoRaw] = useState(null);
   const setHoverInfo = useCallback(
     (info) => {
       setHoverInfoRaw(info);
     },[]);
 
-  const { layers, layerFilter } = useLayers({
-    data,
-    viewState,
-    setHoverInfo,
-    hoverInfo,
-    xType,
-    hoveredKey,
-    hoveredTreeIndex,
-    setHoveredTreeIndex,
-    queryDetails
-  });
+
+        
+    const { layers, layerFilter } = useLayers({
+      data,
+      viewState,
+      setHoverInfo,
+      hoverInfo,
+      xType,
+      hoveredKey,
+      hoveredTreeIndex,
+      setHoveredTreeIndex,
+      queryDetails,
+      settings,
+    });
+  
 
   const handleClick = useCallback((treeindex) => {
     console.log("handleOver",treeindex)
@@ -99,6 +105,7 @@ function Deck({
     <>
     <div className="w-full h-full flex justify-center items-center relative">
     <DeckGL
+      
       ref={deckRef}
       pickingRadius={10}
       layers={layers}
@@ -107,8 +114,9 @@ function Deck({
       onViewStateChange={handleViewStateChange}
       views={views} 
     />
-    {/* <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'absolute', border: '1px solid black', top: '1%', left: '1%', height: '90%', width: '9%',  zIndex: '10', pointerEvents: 'none'}}></div> */}
-    {/* <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'absolute', border: '1px solid black', top: '90.9%', left: '10%', height: '10%', width: '90%',  zIndex: '10', pointerEvents: 'none'}}></div> */}
+    {/* <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'absolute', border: '1px solid black', top: '0.9%', left: '10%', height: '9%', width: '90%',  zIndex: '10', pointerEvents: 'none'}}></div> */}
+    {/* <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'absolute', border: '1px solid black', top: '10%', left: '1%', height: '90%', width: '9%',  zIndex: '10', pointerEvents: 'none'}}></div> */}
+    {/* <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'absolute', border: '1px solid black', top: '10.1%', left: '10.1%', height: '90%', width: '90%',  zIndex: '10', pointerEvents: 'none'}}></div> */}
     </div>
     </>
   )}

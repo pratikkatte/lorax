@@ -61,15 +61,15 @@ const handleDetails = useCallback((data) => {
           </button>
         </div>
         <div className="flex justify-center items-center mb-4"> 
-        {!config && (
+        {/* {!config && (
           <div className="text-center py-1">
             <div className="text-gray-400 text-base mb-4">
               Select a file to upload
-            </div>
+            </div> */}
             {/* <br/> */}
-            <FileUploadInput config={config} setConfig={setConfig} selectedFileName={selectedFileName} setSelectedFileName={setSelectedFileName}/>
+            {/* <FileUploadInput config={config} setConfig={setConfig} selectedFileName={selectedFileName} setSelectedFileName={setSelectedFileName}/>
           </div>
-        )}
+        )} */}
         </div>
 
         {treeDetails && (

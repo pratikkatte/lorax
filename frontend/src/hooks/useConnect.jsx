@@ -48,7 +48,7 @@ worker.onmessage = (event) => {
 
 
 
-function useConnect({setGettingDetails, API_BASE}) {
+function useConnect({setGettingDetails, API_BASE, settings}) {
   const socketRef = useRef(null);
   const [statusMessage, setStatusMessage] = useState({ message: null });
   const [isConnected, setIsConnected] = useState(false);
@@ -75,6 +75,7 @@ function useConnect({setGettingDetails, API_BASE}) {
           worker.postMessage({
             type: "query",
             data: message.data,
+            vertical_mode: settings.vertical_mode,
           });
         }
       });
@@ -96,7 +97,7 @@ function useConnect({setGettingDetails, API_BASE}) {
         socketRef.current.close();
       }
     };
-  }, []);
+  }, [settings]);
 
   useEffect(() => {
     const pingInterval = setInterval(() => {

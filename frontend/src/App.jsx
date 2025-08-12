@@ -4,10 +4,13 @@ import Lorax from './Lorax.jsx'
 import Chatbot from './ChatBot.jsx'
 import { BsChatDots } from "react-icons/bs";
 import { BsFillKanbanFill } from "react-icons/bs";
+import { FaGear } from "react-icons/fa6";
 import Info from './components/Info.jsx'
 import useConfig from "./hooks/useConfig";
 import useLoraxConfig from './globalconfig.js'
 import useConnect from './hooks/useConnect.jsx'
+import useSettings from './hooks/useSettings.jsx'
+import Settings from './components/Settings.jsx'
 
 function App() {
   const [userName, setUserName] = useState("");
@@ -17,12 +20,15 @@ function App() {
   const [selectedFileName, setSelectedFileName] = useState("");
 
   const [chatbotEnabled, setChatbotEnabled] = useState(false);
-  
+  const [showSettings, setShowSettings] = useState(false);
   const [gettingDetails, setGettingDetails] = useState(false);
 
   const {API_BASE} = useLoraxConfig();
-  const backend = useConnect({setGettingDetails});
+  const {settings, setSettings} = useSettings();
+
+  const backend = useConnect({setGettingDetails, settings});
   const {config, setConfig} = useConfig({backend});
+
 
   const handleChatClick = () => {
     setIsChatbotVisible(true);
@@ -31,20 +37,27 @@ function App() {
 
   const handleInfoClick = () => {
     setIsChatbotVisible(false);
+    setShowSettings(false);
     setShowInfo(true);
   };
 
-  useEffect(() => {
-    if (showInfo) {
-      setIsChatbotVisible(false);
-    }
-  }, [showInfo]);
+  const handleSettingsClick = () => {
+    setIsChatbotVisible(false);
+    setShowInfo(false);
+    setShowSettings(true);
+  };
+
+  // useEffect(() => {
+  //   if (showInfo) {
+  //     setIsChatbotVisible(false);
+  //   }
+  // }, [showInfo]);
   
-  useEffect(() => {
-    if (isChatbotVisible) {
-      setShowInfo(false);
-    }
-  }, [isChatbotVisible]);
+  // useEffect(() => {
+  //   if (isChatbotVisible) {
+  //     setShowInfo(false);
+  //   }
+  // }, [isChatbotVisible]);
 
   // useEffect(() => {
 
@@ -88,12 +101,19 @@ function App() {
           >
             <BsFillKanbanFill />
           </div>
+          <div 
+            className="text-2xl hover:text-gray-300 transition-colors cursor-pointer p-2 hover:bg-gray-700 rounded" 
+            onClick={handleSettingsClick}
+            onMouseDown={(e) => e.preventDefault()}
+          >
+            <FaGear />
+          </div>
         </div>
       )}
 
       <div className="flex flex-row h-screen w-full z-40">
-        <div className={`${(isChatbotVisible || showInfo) ? (showSidebar ? 'w-[73%]' : 'w-3/4') :  (showSidebar ? 'w-[97%]' : 'w-full')} transition-all duration-200`}>
-          <Lorax backend={backend} config={config} />
+        <div className={`${(isChatbotVisible || showInfo || showSettings) ? (showSidebar ? 'w-[73%]' : 'w-3/4') :  (showSidebar ? 'w-[97%]' : 'w-full')} transition-all duration-200`}>
+          <Lorax backend={backend} config={config} settings={settings} setSettings={setSettings} />
         </div>
           {/* <div className={`transition-all relative ${isChatbotVisible ? '' : 'hidden'} duration-200 shadow-2xl ${showSidebar ? 'w-[25%]' : 'w-1/4'}`}>
             <Chatbot userName={userName} 
@@ -109,6 +129,9 @@ function App() {
           </div> */}
         <div className={`transition-all relative ${showInfo ? '' : 'hidden'} shadow-2xl bg-gray-100 duration-200 ${showSidebar ? 'w-[25%]' : 'w-1/4'}`}>
             <Info backend={backend} gettingDetails={gettingDetails} setGettingDetails={setGettingDetails} setShowInfo={setShowInfo} config={config} setConfig={setConfig} selectedFileName={selectedFileName} setSelectedFileName={setSelectedFileName}/>
+        </div>
+        <div className={`transition-all relative ${showSettings ? '' : 'hidden'} shadow-2xl bg-gray-100 duration-200 ${showSidebar ? 'w-[25%]' : 'w-1/4'}`}>
+            <Settings settings={settings} setSettings={setSettings} showSettings={showSettings} setShowSettings={setShowSettings}/>
         </div>
       </div>
     </>

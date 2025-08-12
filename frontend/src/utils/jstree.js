@@ -77,7 +77,6 @@ function kn_new_node() {
   };
 }
 
-
 function kn_parse_auto(str) {
   const cleaned = str.trim();
   if (cleaned.includes("(") || cleaned.includes(")")) {
@@ -593,19 +592,7 @@ function kn_reorder_num_tips(root) {
       }
     }
   }
-  // // --------- ADD START TIME OFFSET ---------
-  // for (i = 0; i < tree.node.length; ++i) {
-  //   tree.node[i].x += startTime;
-  // }
 
-  // // --------- GLOBAL TIME NORMALIZATION ---------
-  // if (globalMinTime !== null && globalMaxTime !== null) {
-  //   const range = globalMaxTime - globalMinTime || 1;
-  //   for (i = 0; i < tree.node.length; ++i) {
-  //     tree.node[i].x = (tree.node[i].x - globalMinTime) / range;
-  //   }
-  // }
-  
   const applyGlobalNormalization = globalMinTime !== null && globalMaxTime !== null;
   const range = applyGlobalNormalization ? (globalMaxTime - globalMinTime || 1) : 1;
 

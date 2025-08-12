@@ -6,7 +6,7 @@ import { useState, useRef } from "react";
 import PositionSlider from './components/PositionSlider'
 
 
-function Lorax({backend, config}) {
+function Lorax({backend, config, settings, setSettings}) {
 
   const [value, setValue] = useState(null);
 
@@ -18,7 +18,7 @@ function Lorax({backend, config}) {
 
   const deckRef = useRef();
 
-  const view = useView({});
+  const view = useView({settings, setSettings});
 
   const xType = "x_dist";
   const { data } = useGetDynamicData(backend, view.viewState, xType, value, config)
@@ -46,6 +46,8 @@ function Lorax({backend, config}) {
               deckRef={deckRef}
               mouseDownIsMinimap={mouseDownIsMinimap}
               setMouseDownIsMinimap={setMouseDownIsMinimap}
+              settings={settings}
+              setSettings={setSettings}
             />
           </div>
         </div>

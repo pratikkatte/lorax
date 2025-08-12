@@ -7,30 +7,6 @@ import {
 
 let globalSetZoomAxis = () => {};
 
-const defaultViewState = {
-  zoom: -2,
-  target:[0.5, 0.5],
-  pitch: 0,
-  bearing: 0,
-};
-
-const INITIAL_VIEW_STATE = {
-  target: [0, 0],
-  zoom: [8,6],
-  'genom_positions':{
-    target:[0,4],
-    zoom: [8,6]
-  },
-  'tree-time':{
-    target:[0.5,1],
-    zoom: [8,6]
-  },
-  'ortho': {
-    target:[0.5,4],
-    zoom: [8,6]
-  }
-
-}
 
 class MyOrthographicController extends OrthographicController {
   
@@ -62,8 +38,27 @@ class MyOrthographicController extends OrthographicController {
   }
 }
 
-const useView = ({}) => {
+const useView = ({settings, setSettings}) => {
   const [zoomAxis, setZoomAxis] = useState("Y");
+
+  useEffect(() => {
+    console.log("settings updated", settings,settings.vertical_mode)
+  }, [settings])
+
+  const INITIAL_VIEW_STATE = {
+    'genome_positions':{
+      target:settings.vertical_mode ?  [1,2]:[3,1],
+      zoom: [8,8]
+    },
+    'tree-time':{
+      target:settings.vertical_mode? [0,0.5]:[0.5 ,0],
+      zoom: [8,8]
+    },
+    'ortho': {
+      target:settings.vertical_mode? [0,2]:[3,0],
+      zoom: [8,8]
+    }
+  }
 
   const [xzoom, setXzoom] = useState(window.screen.width < 600 ? -1 : 0);
   
@@ -73,49 +68,48 @@ const useView = ({}) => {
     // target: [0, 0, 0],
     // zoom: 6,
     'ortho': INITIAL_VIEW_STATE['ortho'],
-    'genome-positions': INITIAL_VIEW_STATE['genom_positions'],
+    'genome-positions': INITIAL_VIEW_STATE['genome_positions'],
     'tree-time': INITIAL_VIEW_STATE['tree-time']
   });
   
-  const baseViewState = useMemo(() => {
-    return {
-      ...viewState,
-      "genome-positions": { zoom: 0, target: [0, 0] },
-      "ortho": { zoom: 0, target: [0, 0] },
-    };
-  }, [viewState]);
+  useEffect(() => {
+    setViewState({
+      'ortho': INITIAL_VIEW_STATE['ortho'],
+    'genome-positions': INITIAL_VIEW_STATE['genome_positions'],
+    'tree-time': INITIAL_VIEW_STATE['tree-time']
+    })
+  }, [settings])
 
   const views = useMemo(() => {
+    console.log("settings in views", settings)
     return [
         new OrthographicView({
-          x: '11.01%',
-          y:'1%',
+          x: settings.vertical_mode ? '10%' : '10%',
+          y:settings.vertical_mode ? '1%' : '10%',
           height: '90%',
-          width: '88.99%',
+          width:'90%',
           id: "ortho",
           controller: {
-            // type: OrthographicController,
             type: MyOrthographicController,
             scrollZoom: { smooth: true, zoomAxis: zoomAxis },
-            panX: false,
-            panY: false,
             dragPan:true,
           },
+
           initialViewState: INITIAL_VIEW_STATE
         }),
         new OrthographicView({
-          x:'1%',
-          y:'1%',
-          height: '90%',
-          width:'9%',
+          x: settings.vertical_mode ? '1%' : '10%',
+          y: settings.vertical_mode ? '1%' : '1%',
+          height: settings.vertical_mode ? '90%' : '9%',
+          width: settings.vertical_mode ? '9%' : '90%',
           id: "genome-positions",
           controller:false,
         }),
         new OrthographicView({
-          x:'10%',
-          y:'90%',
-          height: '9%',
-          width:'90%',
+          x: settings.vertical_mode ? '10%' : '1%',
+          y: settings.vertical_mode ? '90%' : '10%',
+          height: settings.vertical_mode ? '9%' : '90%',
+          width: settings.vertical_mode ? '90%' : '9%',
           id: "tree-time",
           controller:false,
         }),
@@ -123,6 +117,7 @@ const useView = ({}) => {
     viewState,
     zoomAxis,
     xzoom,
+    settings
   ]);
 
   const [mouseXY, setMouseXY] = useState(false);
@@ -167,177 +162,34 @@ const useView = ({}) => {
       if (prev['genome-positions']) {
         newViewStates['genome-positions'] = {
           ...prev['genome-positions'],
-          target: [prev['genome-positions'].target?.[0] || 0, target[1]],
-          zoom: [prev['genome-positions'].zoom?.[0], zoom[1]]  
+          target: settings.vertical_mode ? [prev['genome-positions'].target?.[0] || 0, target[1]] : [target[0], prev['genome-positions'].target?.[1] || 0],
+          zoom: settings.vertical_mode ? [prev['genome-positions'].zoom?.[0], zoom[1]] : [zoom[0], prev['genome-positions'].zoom?.[1]]  
         };
-        
       }
 
       if (prev['tree-time']) {
         newViewStates['tree-time'] = {
           ...prev['tree-time'],
-          target: [target[0], prev['tree-time'].target?.[1] || 0],
-          zoom: [zoom[0], prev['tree-time'].zoom?.[1], ]  
+          // target: [target[0], prev['tree-time'].target?.[1] || 0],
+          target: settings.vertical_mode? [target[0], prev['tree-time'].target?.[1] || 0]: [prev['tree-time'].target?.[0] || 0, target[1]],
+          // zoom: [zoom[0], prev['tree-time'].zoom?.[1], ]  
+          zoom: settings.vertical_mode ? [zoom[0], prev['tree-time'].zoom?.[1]] : [prev['tree-time'].zoom?.[0], zoom[1]]
         }
       }
 
       return newViewStates;
     });
     
-  }, [zoomAxis])
-
-  // const onViewStateChange = useCallback(
-  //   ({
-  //     viewState: newViewState,
-  //     interactionState,
-  //     viewId,
-  //     oldViewState,
-  //     basicTarget,
-  //     overrideZoomAxis,
-  //     specialMinimap,
-  //   }) => {
-  //     if (!deckSize) {
-  //       console.log("decksize", deckSize)
-
-  //       return;
-  //     }
-
-  //     const localZoomAxis = overrideZoomAxis || zoomAxis;
-
-  //     // // check oldViewState has a initial_xzoom property or set it to initial_xzoom
-  //     // if (viewId === "minimap") {
-  //     //   return;
-  //     // }
-
-  //     //const temp_viewport = new OrthographicViewport(viewS
-  //     const oldScaleY = 2 ** oldViewState.zoom;
-  //     const newScaleY = 2 ** newViewState.zoom;
-  //     // eslint-disable-line no-unused-vars
-
-  //     if (mouseDownIsMinimap && !specialMinimap && oldScaleY === newScaleY) {
-  //       return;
-  //     }
-
-  //     let newScaleX = 2 ** xzoom;
-  //     if (basicTarget) {
-  //       newViewState.target[0] =
-  //         (newViewState.target[0] / newScaleY) * newScaleX;
-  //     } else {
-  //       if (oldScaleY !== newScaleY) {
-  //         if (localZoomAxis === "Y") {
-  //           newViewState.target[0] =
-  //             (oldViewState.target[0] / newScaleY) * oldScaleY;
-  //         } else {
-  //           const difference = newViewState.zoom - oldViewState.zoom;
-
-  //           setXzoom((old) => old + difference);
-
-  //           newScaleX = 2 ** (xzoom + difference);
-
-  //           newViewState.zoom = oldViewState.zoom;
-  //           newViewState.target[0] =
-  //             (oldViewState.target[0] / oldScaleY) * newScaleY;
-  //         }
-  //       }
-  //     }
-
-  //     newViewState.target = [...newViewState.target];
-
-  //     newViewState.real_height = deckSize.height / newScaleY;
-  //     newViewState.real_width = deckSize.width / newScaleX;
-
-  //     newViewState.real_target = [...newViewState.target];
-  //     newViewState.real_target[0] =
-  //       (newViewState.real_target[0] * newScaleY) / newScaleX;
-
-  //     const nw = [
-  //       newViewState.real_target[0] - newViewState.real_width / 2,
-  //       newViewState.real_target[1] - newViewState.real_height / 2,
-  //     ];
-  //     const se = [
-  //       newViewState.real_target[0] + newViewState.real_width / 2,
-  //       newViewState.real_target[1] + newViewState.real_height / 2,
-  //     ];
-
-  //     newViewState.min_x = nw[0];
-  //     newViewState.max_x = se[0];
-  //     newViewState.min_y = nw[1];
-  //     newViewState.max_y = se[1];
-
-  //     // newViewState["minimap"] = { zoom: -3, target: [250, 1000] };
-
-  //     // if (jbrowseRef.current) {
-  //     //   const yBound = jbrowseRef.current.children[0].children[0].clientHeight;
-  //     //   const xBound =
-  //     //     jbrowseRef.current.children[0].children[0].offsetParent.offsetParent
-  //     //       .offsetLeft;
-  //     //   if (
-  //     //     (mouseXY[0] > xBound && mouseXY[1] < yBound) ||
-  //     //     mouseXY[0] < 0 ||
-  //     //     mouseXY[1] < 0
-  //     //   ) {
-  //     //     if (!basicTarget && viewId) {
-  //     //       return;
-  //     //     }
-  //     //   }
-  //     // }
-
-  //     // // Treenome view state
-  //     // if (viewId === "main" || viewId === "main-overlay" || !viewId) {
-  //     //   newViewState["browser-main"] = {
-  //     //     ...viewState["browser-main"],
-  //     //     zoom: newViewState.zoom,
-  //     //     target: [viewState["browser-main"].target[0], newViewState.target[1]],
-  //     //   };
-  //     // }
-
-  //     setViewState(newViewState);
-  //     return newViewState;
-  //   },
-  //   [zoomAxis, xzoom, deckSize, viewState, jbrowseRef, mouseXY]
-  // );
-
-  // const zoomIncrement = useCallback(
-  //   (increment, overrideZoomAxis) => {
-  //     const newViewState = { ...viewState };
-  //     newViewState.zoom += increment;
-
-  //     onViewStateChange({
-  //       viewState: newViewState,
-  //       interactionState: "isZooming",
-  //       oldViewState: viewState,
-  //       overrideZoomAxis,
-  //     });
-  //   },
-  //   [viewState, onViewStateChange]
-  // );
-
-  // const zoomReset = useCallback(() => {
-  //   const newViewState = { ...defaultViewState };
-  //   setXzoom(0);
-  //   setViewState(newViewState);
-  //   onViewStateChange({
-  //     viewState: newViewState,
-  //     interactionState: "isZooming",
-  //     oldViewState: newViewState,
-  //   });
-  // }, [viewState, onViewStateChange]);
+  }, [zoomAxis, settings])
 
   const output = useMemo(() => {
     return {
       viewState,
       setViewState,
-      // onViewStateChange,
       views,
       zoomAxis,
       setZoomAxis,
-      // modelMatrix,
-      // zoomIncrement,
       xzoom,
-      // mouseXY,
-      // setMouseXY,
-      // baseViewState,
-      // zoomReset,
       setMouseXY,
       mouseXY,
       handleViewStateChange
@@ -345,19 +197,14 @@ const useView = ({}) => {
   }, [
     viewState,
     setViewState,
-    // onViewStateChange,
+
     views,
     zoomAxis,
     setZoomAxis,
-    // modelMatrix,
-    // zoomIncrement,
     xzoom,
-    // mouseXY,
-    // setMouseXY,
-    // baseViewState,
-    // zoomReset,
     setMouseXY,
     mouseXY,
+    settings,
    handleViewStateChange
   ]);
 
