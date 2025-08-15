@@ -270,7 +270,6 @@ const useLayers = ({
         modelMatrix,
         viewId: 'ortho'
       }) : null;
-
     
       const genomeLineLayer = new LineLayer({
         id: `genome-positions-lines-${i}`,
@@ -301,7 +300,7 @@ const useLayers = ({
         }, 
         {
           polygon: [[0, 0], [1, 0], [1, 2], [0, 2]],
-          color: hoveredTreeIndex?.treeIndex === i ? [150, 230, 250, 60] : [255, 255, 255, 0]
+          color: hoveredTreeIndex?.treeIndex === treeIndex ? [150, 230, 250, 60] : [255, 255, 255, 0]
         }
       ],
         modelMatrix,

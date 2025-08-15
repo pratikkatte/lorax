@@ -6,6 +6,7 @@ import {
 } from "@deck.gl/core";
 
 let globalSetZoomAxis = () => {};
+let globalPanDirection = () => {};
 
 
 class MyOrthographicController extends OrthographicController {
@@ -32,8 +33,18 @@ class MyOrthographicController extends OrthographicController {
       const controlKey = event.srcEvent.ctrlKey 
       if (controlKey){
         globalSetZoomAxis('X')
+        globalPanDirection(null)
       }else{
-        globalSetZoomAxis('Y')
+        if(Math.abs(event.srcEvent.deltaY) === 0) {
+          if(event.srcEvent.deltaX > 0) {
+            globalPanDirection("R")
+          } else {
+            globalPanDirection("L")
+          }
+        } else {
+          globalSetZoomAxis('Y')
+          globalPanDirection(null)
+        }
       }
     }
     super.handleEvent(event);
@@ -42,11 +53,10 @@ class MyOrthographicController extends OrthographicController {
 
 const useView = ({settings, setSettings}) => {
   const [zoomAxis, setZoomAxis] = useState("Y");
-
+  const [panDirection, setPanDirection] = useState(null);
   const maxZoom = 17;
 
   useEffect(() => {
-    console.log("settings updated", settings,settings.vertical_mode)
   }, [settings])
 
   const INITIAL_VIEW_STATE = {
@@ -72,6 +82,7 @@ const useView = ({settings, setSettings}) => {
   const [xzoom, setXzoom] = useState(window.screen.width < 600 ? -1 : 0);
   
   globalSetZoomAxis = setZoomAxis;
+  globalPanDirection = setPanDirection;
 
   const [viewState, setViewState] = useState({
     // target: [0, 0, 0],
@@ -127,7 +138,8 @@ const useView = ({settings, setSettings}) => {
     viewState,
     zoomAxis,
     xzoom,
-    settings
+    settings,
+    panDirection
   ]);
 
   const [mouseXY, setMouseXY] = useState(false);
@@ -140,6 +152,7 @@ const useView = ({settings, setSettings}) => {
       let target = [...oldViewState.target];
 
       let genome_position_view = prev['genome-positions'] || {};
+      if(panDirection === null){
       if(zoomAxis==='Y'){
         zoom[1] = newViewState.zoom[1] <= maxZoom ? newViewState.zoom[1] : maxZoom; 
         target[1] = zoom[1] >= maxZoom ? oldViewState.target[1] : newViewState.target[1]; 
@@ -154,7 +167,13 @@ const useView = ({settings, setSettings}) => {
         zoom[1] = oldViewState.zoom[1];
         target[1] = oldViewState.target[1];
       }
+      }else if (panDirection === "L"){
 
+        target[0] = target[0] - 0.05
+      }
+      else if (panDirection === "R"){
+        target[0] = target[0] + 0.05
+      }
       else {
         zoom = newViewState.zoom
         target = [newViewState.target[0], oldViewState.target[1]]
@@ -190,7 +209,7 @@ const useView = ({settings, setSettings}) => {
       return newViewStates;
     });
     
-  }, [zoomAxis, settings])
+  }, [zoomAxis, settings, panDirection])
 
   const output = useMemo(() => {
     return {
@@ -215,6 +234,7 @@ const useView = ({settings, setSettings}) => {
     setMouseXY,
     mouseXY,
     settings,
+    panDirection,
    handleViewStateChange
   ]);
 
