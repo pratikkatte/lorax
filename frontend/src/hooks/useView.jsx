@@ -12,6 +12,7 @@ class MyOrthographicController extends OrthographicController {
   
   handleEvent(event) {
 
+
     if (event.pointerType === "touch") {
       if (event.type === "pinchmove") {
         if (
@@ -25,6 +26,7 @@ class MyOrthographicController extends OrthographicController {
     }
     if (event.type === 'panmove') {
       globalSetZoomAxis('all')
+      
     }
     if (event.type === "wheel") {
       const controlKey = event.srcEvent.ctrlKey 
@@ -41,6 +43,8 @@ class MyOrthographicController extends OrthographicController {
 const useView = ({settings, setSettings}) => {
   const [zoomAxis, setZoomAxis] = useState("Y");
 
+  const maxZoom = 17;
+
   useEffect(() => {
     console.log("settings updated", settings,settings.vertical_mode)
   }, [settings])
@@ -48,15 +52,20 @@ const useView = ({settings, setSettings}) => {
   const INITIAL_VIEW_STATE = {
     'genome_positions':{
       target:settings.vertical_mode ?  [1,2]:[3,1],
-      zoom: [8,8]
+      zoom: [8,8],
+      minZoom: 7,
     },
     'tree-time':{
       target:settings.vertical_mode? [0,0.5]:[0.5 ,0],
-      zoom: [8,8]
+      zoom: [8,8],
+      minZoom: 7,
+      
     },
     'ortho': {
       target:settings.vertical_mode? [0,2]:[3,0],
-      zoom: [8,8]
+      zoom: [8,8],
+      minZoom: 7,
+      
     }
   }
 
@@ -81,35 +90,36 @@ const useView = ({settings, setSettings}) => {
   }, [settings])
 
   const views = useMemo(() => {
-    console.log("settings in views", settings)
     return [
         new OrthographicView({
           x: settings.vertical_mode ? '10%' : '10%',
-          y:settings.vertical_mode ? '1%' : '10%',
-          height: '90%',
-          width:'90%',
+          y:settings.vertical_mode ? '1%' : '8%',
+          height: '80%',
+          width:'80%',
           id: "ortho",
+          minZoom: [3,3],
           controller: {
             type: MyOrthographicController,
             scrollZoom: { smooth: true, zoomAxis: zoomAxis },
             dragPan:true,
+            
           },
 
-          initialViewState: INITIAL_VIEW_STATE
+          initialViewState: INITIAL_VIEW_STATE.ortho
         }),
         new OrthographicView({
-          x: settings.vertical_mode ? '1%' : '10%',
-          y: settings.vertical_mode ? '1%' : '1%',
-          height: settings.vertical_mode ? '90%' : '9%',
-          width: settings.vertical_mode ? '9%' : '90%',
+          x: settings.vertical_mode ? '5%' : '10%',
+          y: settings.vertical_mode ? '5%' : '5%',
+          height: settings.vertical_mode ? '90%' : '3%',
+          width: settings.vertical_mode ? '5%' : '80%',
           id: "genome-positions",
           controller:false,
         }),
         new OrthographicView({
-          x: settings.vertical_mode ? '10%' : '1%',
-          y: settings.vertical_mode ? '90%' : '10%',
-          height: settings.vertical_mode ? '9%' : '90%',
-          width: settings.vertical_mode ? '90%' : '9%',
+          x: settings.vertical_mode ? '10%' : '5%',
+          y: settings.vertical_mode ? '80%' : '8%',
+          height: settings.vertical_mode ? '9%' : '80%',
+          width: settings.vertical_mode ? '80%' : '5%',
           id: "tree-time",
           controller:false,
         }),
@@ -131,15 +141,15 @@ const useView = ({settings, setSettings}) => {
 
       let genome_position_view = prev['genome-positions'] || {};
       if(zoomAxis==='Y'){
-        zoom[1] = newViewState.zoom[1]; 
-        target[1] = newViewState.target[1]; 
+        zoom[1] = newViewState.zoom[1] <= maxZoom ? newViewState.zoom[1] : maxZoom; 
+        target[1] = zoom[1] >= maxZoom ? oldViewState.target[1] : newViewState.target[1]; 
 
         zoom[0] = oldViewState.zoom[0];
         target[0] = oldViewState.target[0];
       }
       else if (zoomAxis=='X'){
-        zoom[0] = newViewState.zoom[0]; 
-        target[0] = newViewState.target[0]; 
+        zoom[0] = newViewState.zoom[0] <= maxZoom ? newViewState.zoom[0] : maxZoom; 
+        target[0] = zoom[0] >= maxZoom ? oldViewState.target[0] : newViewState.target[0]; 
 
         zoom[1] = oldViewState.zoom[1];
         target[1] = oldViewState.target[1];
@@ -147,7 +157,7 @@ const useView = ({settings, setSettings}) => {
 
       else {
         zoom = newViewState.zoom
-        target = newViewState.target
+        target = [newViewState.target[0], oldViewState.target[1]]
       }
 
       const newViewStates = {

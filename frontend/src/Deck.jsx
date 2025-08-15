@@ -5,7 +5,6 @@ import useLayers from "./hooks/useLayers";
 
 import { Oval } from 'react-loader-spinner';
 
-
 function Deck({
   backend,
   data,
@@ -16,6 +15,7 @@ function Deck({
   hoveredTreeIndex,
   setHoveredTreeIndex,
   settings,
+  config,
 }) {
   
   const [hoveredKey, setHoveredKey] = useState(null);
@@ -114,9 +114,26 @@ function Deck({
       onViewStateChange={handleViewStateChange}
       views={views} 
     />
-    {/* <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'absolute', border: '1px solid black', top: '0.9%', left: '10%', height: '9%', width: '90%',  zIndex: '10', pointerEvents: 'none'}}></div> */}
-    {/* <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'absolute', border: '1px solid black', top: '10%', left: '1%', height: '90%', width: '9%',  zIndex: '10', pointerEvents: 'none'}}></div> */}
-    {/* <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'absolute', border: '1px solid black', top: '10.1%', left: '10.1%', height: '90%', width: '90%',  zIndex: '10', pointerEvents: 'none'}}></div> */}
+    <div
+  style={{
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'absolute',
+    top: '5%',
+    left: '10%',
+    height: '83%',
+    width: '80%',
+    zIndex: 10,
+    pointerEvents: 'none',
+    border: '2px solid #333333', 
+    borderRadius: '6px',
+    boxShadow: '0 0 4px rgba(0,0,0,0.15)',
+    backgroundColor: 'transparent',
+  }}
+></div>
+    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'absolute', border: '1px solid black', top: '5%', left: '10%', height: '3%', width: '80%',  zIndex: '10', pointerEvents: 'none'}}></div>
+
     </div>
     </>
   )}

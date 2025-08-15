@@ -48,6 +48,7 @@ function Lorax({backend, config, settings, setSettings}) {
               setMouseDownIsMinimap={setMouseDownIsMinimap}
               settings={settings}
               setSettings={setSettings}
+              config={config}
             />
           </div>
         </div>
