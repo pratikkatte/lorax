@@ -8,13 +8,12 @@ function useConfig({backend}) {
 
   const handleConfigUpdate = useCallback((data) => {
     if (data.role === "config") {
-      console.log("config update", data.data)
-      setConfig(data.data);
+      console.log("config update", config,data.data)
+      setConfig({...config, ...data.data});
     }
   }, [config]);
 
   useEffect(() => {
-    console.log("isConnected", isConnected)
     if (!isConnected) return;
     // Subscribe to config updates
     websocketEvents.on("viz", handleConfigUpdate);
