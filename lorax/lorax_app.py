@@ -1,94 +1,208 @@
-import os
-import logging
-import asyncio
-from fastapi import FastAPI, Request, UploadFile, File, HTTPException, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, UploadFile, File
+from fastapi.templating import Jinja2Templates
+from fastapi.requests import Request
+from fastapi.websockets import WebSocket, WebSocketDisconnect
+from lorax.manager import WebSocketManager
 from fastapi.middleware.cors import CORSMiddleware
-from werkzeug.utils import secure_filename
-from fastapi.staticfiles import StaticFiles
-from lorax.langgraph_tskit import api_interface
-from langchain.chains.conversation.memory import ConversationBufferMemory
+from lorax.handlers import LoraxHandler
+import shutil
+import os
+from pathlib import Path
+import time
+import aiofiles
 
-class LoraxApp:
-    def __init__(self):
-        self.newick_data = "initial data"
-        self.app = FastAPI()
-        self.build_path = os.path.join(os.path.dirname(__file__), "website/taxonium_component", "dist")
-        self.ALLOWED_EXTENSIONS = {"trees"}
-        self.file_path = ''
-        self.memory = ConversationBufferMemory(return_messages=True)
+app = FastAPI()
 
-        self._configure_logging()
-        self._setup_cors()
-        self._setup_routes()
-        self._setup_upload_folder()
+lorax_handler = LoraxHandler()
 
-    def _configure_logging(self):
-        log = logging.getLogger("uvicorn")
-        log.setLevel(logging.ERROR)
+# Create uploads directory if it doesn't exist
+UPLOAD_DIR = Path("uploads")
+UPLOAD_DIR.mkdir(exist_ok=True)
 
-    def _setup_cors(self):
-        self.app.add_middleware(
-            CORSMiddleware,
-            allow_origins=["*"],
-            allow_credentials=True,
-            allow_methods=["*"],
-            allow_headers=["*"],
-        )
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-    def _setup_upload_folder(self):
-        self.UPLOAD_FOLDER = os.path.abspath(os.path.dirname(__file__)) + "/data"
-        os.makedirs(self.UPLOAD_FOLDER, exist_ok=True)
+manager = WebSocketManager()
 
-    def _setup_routes(self):
-        self.app.mount("/assets", StaticFiles(directory=os.path.join(self.build_path, "assets")), name="assets")
-        self.app.get("/")(self.serve_react_app)
-        self.app.post("/api/upload")(self.upload)
-        self.app.post("/api/chat")(self.chat)
-        self.app.post("/api/clear_chat")(self.clear_chat)
-        self.app.websocket("/ws/newick")(self.websocket_endpoint)
+@app.get('/')
+async def root(request: Request):
+    return {"message": "Hello, Loorax!"}
 
-    def serve_react_app(self):
-        return FileResponse(os.path.join(self.build_path, "index.html"))
 
-    async def upload(self, file: UploadFile = File(...)):
-        """Endpoint to handle single file upload."""
-        filename = secure_filename(file.filename)
-        if not filename.lower().endswith(".trees"):
-            raise HTTPException(status_code=400, detail="Unsupported file type")
-        file_save_path = os.path.join(self.UPLOAD_FOLDER, filename)
+@app.get('/test')
+async def test(request: Request):
+    file_name = "sample.trees"
+    file_path = UPLOAD_DIR / file_name
+    viz_config, chat_config = await lorax_handler.handle_upload(file_path)
+
+    await manager.send_to_component("viz", {
+            "type": "viz", 
+            "role": "config",
+            "data": viz_config,
+        })
+
+    await manager.send_to_component("chat", {
+        "type": "chat", 
+        "role": "assistant",
+        "data": chat_config # send the config to the chat component  
+    })
+    
+    return {
+        "message": "File uploaded successfully",
+        "filename": file_name,
+        "file_path": str(file_path)
+    }
+
+@app.post('/upload')
+# async def upload(file: UploadFile = File(...)):
+async def upload(request: Request):
+    try:
+        # Create a safe file path
+        form_data = await request.form()
+        file = form_data.get("file")
+        filename = form_data.get("filename") or file.filename
+
+        file_path = UPLOAD_DIR / filename
         
-        with open(file_save_path, "wb") as f:
-            f.write(await file.read())
-        self.file_path = file_save_path
-        return {"status": "success", "filename": filename}
+        start = time.time()
+        # Stream 1MB chunks to disk (no memory blow-up)
+        async with aiofiles.open(file_path, "wb") as f:
+            # Read in chunks to handle large files efficiently
+            chunk_size = 10240 * 10240 # 1MB chunks
+            while content := await file.read(chunk_size):
+                await f.write(content)
 
-    def allowed_file(self, filename):
-        return "." in filename and filename.rsplit(".", 1)[1].lower() in self.ALLOWED_EXTENSIONS
+        # Notify components about the upload
+        viz_config, chat_config = await lorax_handler.handle_upload(file_path)
 
-    async def clear_chat(self):
-        """Reset the conversation memory and visualization."""
-        self.memory = ConversationBufferMemory(return_messages=True)
-        self.newick_data = "initial data"  # Reset visualization data
-        return {"status": "success"}
+        # Only send to connected components
 
-    async def chat(self, request: Request):
-        """Handle chat messages."""
-        data = await request.json()
-        message = data.get("message")
-        llm_output, llm_visual = api_interface(message, self.file_path, self.memory)
-        self.newick_data = llm_visual
-        return {"response": llm_output}
+         # Only send to connected clients
+        await manager.send_to_component("viz", {
+            "type": "viz", 
+            "role": "config",
+            "data": viz_config,
+        })
 
-    async def websocket_endpoint(self, websocket: WebSocket):
-        """WebSocket endpoint for sending newick data."""
-        await websocket.accept()
-        try:
-            while True:
-                await websocket.send_json({"data": self.newick_data})
-                await asyncio.sleep(5)
-        except WebSocketDisconnect:
-            logging.info("WebSocket disconnected")
+        await manager.send_to_component("chat", {
+            "type": "chat", 
+            "role": "assistant",
+            "data": chat_config # send the config to the chat component  
+        })
+        
+        return {
+            "message": "File uploaded successfully",
+            "filename": filename,
+            "file_path": str(file_path)
+        }
 
-# Instantiate the app
-app = LoraxApp().app
+    except Exception as e:
+        print(f"Upload error: {e}")
+        return {"error": str(e)}
+    finally:
+        file.file.close()
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await manager.connect(websocket)
+    await manager.register_component(websocket, "viz")
+    await manager.register_component(websocket, "chat")
+    await manager.register_component(websocket, "ping")
+    
+    # Clean up any existing disconnected clients
+    await manager.cleanup_disconnected_clients()
+    
+    try:
+        while True:
+            # Check if client is still connected before processing
+            if not manager.is_connected(websocket):
+                print("Client disconnected, breaking loop")
+                break
+                
+            try:
+                message = await websocket.receive_json()
+                
+                # Check connection again after receiving message
+                if not manager.is_connected(websocket):
+                    print("Client disconnected after receiving message")
+                    break
+                
+                # Periodic cleanup of other disconnected clients
+                await manager.cleanup_disconnected_clients()
+                
+                if message.get("type") == "ping":
+                    data = await lorax_handler.handle_ping(message)
+                    await manager.send_to_component("ping", data)
+                    continue  # ignore pings
+
+                if message.get("type") == "chat":
+                    try:
+                        print("Chat received", message)
+                        message = lorax_handler.handle_chat(message)
+
+                        if message.get("action") == True:
+                            print("viz action")
+
+                        await manager.send_to_component("chat", message)
+                    except Exception as e:
+                        print(f"Error handling chat message: {e}")
+                        await manager.send_to_component("chat", {
+                            "type": "chat", 
+                            "role": "assistant",
+                            "data": f"Error processing message: {str(e)}"
+                        })
+                    continue
+
+                if message.get("type") == "viz":
+                    print("message", message)
+                    if message.get("role") == "query":
+                        try:
+                            result = await lorax_handler.handle_query(message)
+                            print("Viz received query")
+                            message = {"type": "viz", "role": "query-result", "data": result}
+                            await manager.send_to_component("viz", message)
+                        except Exception as e:
+                            print(f"Error handling viz query: {e}")
+                            await manager.send_to_component("viz", {
+                                "type": "viz", 
+                                "role": "query-result", 
+                                "data": {"error": str(e)}
+                            })
+                        continue
+
+                    if message.get("role") == "details":
+                        try:
+                            result = await lorax_handler.handle_details(message)
+                            message = {"type": "viz", "role": "details-result", "data": result}
+                            await manager.send_to_component("viz", message)
+                        except Exception as e:
+                            print(f"Error handling viz details: {e}")
+                            await manager.send_to_component("viz", {
+                                "type": "viz", 
+                                "role": "details-result", 
+                                "data": {"error": str(e)}
+                            })
+                        continue
+
+                    continue
+
+                # Broadcast to all connected clients
+                connected_clients = manager.get_connected_clients()
+                for client in connected_clients:
+                    print("Sending message to client", message)
+                    await manager.send_message(client, message)
+            except Exception as e:
+                print(f"Error processing message: {e}")
+                # Don't disconnect for message processing errors, just log them
+                continue
+    except WebSocketDisconnect:
+        await manager.disconnect(websocket)
+        print("Client disconnected")
+    except Exception as e:
+        print(f"Unexpected error: {e}")
+        await manager.disconnect(websocket)
