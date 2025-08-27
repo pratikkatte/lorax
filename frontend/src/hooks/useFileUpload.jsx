@@ -30,6 +30,7 @@ export default function useFileUpload({
   onError,
   accept = ".trees,.ts,.tree,.newick,.nwk,.json,.bb,.bed,.bed.gz",
   autoClearOnError = true,
+  setProject,
 } = {}) {
   const { API_BASE } = useLoraxConfig();
   const navigate = useNavigate(); 
@@ -49,20 +50,23 @@ export default function useFileUpload({
   const _finishSuccess = useCallback(
     (resp, file) => {
       try {
+        console.log("resp", resp, file);
         if (typeof setConfig === "function") {
           const cfg = typeof mapResponseToConfig === "function"
             ? mapResponseToConfig(resp, file, config)
             : { ...(config ?? {}), file: file?.name };
-          setConfig(cfg);
         }
         if (file?.name) {
-            navigate(`/${encodeURIComponent(file.name)}`);
+
+          setProject(file.project);
+
+          navigate(`/${encodeURIComponent(file.name)}`);
           }
       } catch (e) {
         console.error("Post-upload handling failed:", e);
       }
     },
-    [config, mapResponseToConfig, setConfig, navigate]
+    [config, mapResponseToConfig, setConfig]
   );
 
   const _finishError = useCallback(
@@ -72,6 +76,24 @@ export default function useFileUpload({
       setIsUploading(false);
     },
     [autoClearOnError, onError]
+  );
+
+  const loadFile = useCallback(
+    async (project) => {
+      if (!project) return;
+  
+      try {
+        const url = `${API_BASE}/load_file`;
+        const payload = project;
+        console.log("payload", payload);
+        const res = await axios.post(url, payload);
+        console.log("res", res);
+        _finishSuccess(res?.data, { name: project.file, project: project.project });
+      } catch (err) {
+        _finishError(err);
+      }
+    },
+    [API_BASE, _finishSuccess, _finishError]
   );
 
   const uploadFile = useCallback(
@@ -167,6 +189,7 @@ export default function useFileUpload({
     browse,
     remove,
     uploadFile,
+    loadFile,
 
     // event handlers
     onInputChange,

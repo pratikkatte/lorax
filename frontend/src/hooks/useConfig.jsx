@@ -1,8 +1,11 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import websocketEvents from "../webworkers/websocketEvents";
+import { useNavigate } from "react-router-dom";
 
 
 function useConfig({backend}) {
+  
+
   const [config, setConfig] = useState(null);
   const {isConnected} = backend;
 

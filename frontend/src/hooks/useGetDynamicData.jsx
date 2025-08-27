@@ -10,7 +10,7 @@ function addNodeLookup(data) {
   };
   return output;
 }
-function useGetDynamicData(backend, viewState, xType, value, config) {
+function useGetDynamicData(backend, config) {
 
   const { queryNodes, socketRef, isConnected } = backend;
 
@@ -21,8 +21,9 @@ function useGetDynamicData(backend, viewState, xType, value, config) {
 
   let [boundsForQueries, setBoundsForQueries] = useState(null);
 
+
   useEffect(() => {
-    if (value) {
+    if (config?.value) {
     setDynamicData({ ...dynamicData, status: "loading" });
     queryNodes(
       boundsForQueries,
@@ -38,10 +39,10 @@ function useGetDynamicData(backend, viewState, xType, value, config) {
           return new_result;
         })
       },
-          value,
+          config.value,
       )
     }
-  }, [value])
+  }, [config])
 
   return { data: dynamicData };
 }

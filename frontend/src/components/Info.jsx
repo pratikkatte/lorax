@@ -10,12 +10,15 @@ const [nodeDetails, setNodeDetails] = useState(null);
 const [individualDetails, setIndividualDetails] = useState(null);
 const [treeDetails, setTreeDetails] = useState(null);
 
-const handleDetails = useCallback((data) => {
-    if (data.role === "details-result") {
+const handleDetails = useCallback((incoming_data) => {
+    if (incoming_data.role === "details-result") {
+      
+      var data = JSON.parse(incoming_data.data)
+      console.log("data", data)
       setShowInfo(true);
-      setTreeDetails(data.data?.tree? data.data.tree : null);
-      setNodeDetails(data.data?.node? data.data.node : null);
-      setIndividualDetails(data.data?.individual? data.data.individual : null);
+      setTreeDetails(data?.tree? data.tree : null);
+      setNodeDetails(data?.node? data.node : null);
+      setIndividualDetails(data?.individual? data.individual : null);
     }
   }, []);
   

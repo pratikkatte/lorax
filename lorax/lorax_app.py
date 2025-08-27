@@ -8,6 +8,8 @@ from lorax.handlers import LoraxHandler
 import shutil
 import os
 from pathlib import Path
+import fastapi
+
 import time
 import aiofiles
 
@@ -33,6 +35,10 @@ manager = WebSocketManager()
 async def root(request: Request):
     return {"message": "Hello, Loorax!"}
 
+@app.get('/projects')
+async def projects():
+    projects = await lorax_handler.get_projects(UPLOAD_DIR)
+    return {"projects": projects}
 
 @app.get('/test')
 async def test(request: Request):
@@ -57,6 +63,61 @@ async def test(request: Request):
         "filename": file_name,
         "file_path": str(file_path)
     }
+
+@app.get("/{file}")
+async def get_file(file: str, project: str=None,  start: int=None, end: int=None):
+    file_path = UPLOAD_DIR / project / file
+    viz_config, chat_config = await lorax_handler.handle_upload(file_path)
+    # await manager.send_to_component("viz", {
+    #     "type": "viz", 
+    #     "role": "config",
+    #     "data": viz_config,
+    # })
+
+    # # await manager.send_to_component("chat", {
+    # #     "type": "chat", 
+    # #     "role": "assistant",
+    # #     "data": chat_config # send the config to the chat component  
+    # # })
+    
+    # return {
+    #     "message": "File uploaded successfully",
+    #     "filename": file,
+    #     "file_path": str(file_path)
+    # } 
+    return {"file_path": str(file_path)}
+
+@app.post('/load_file')
+async def load_file(request: Request):
+    try:
+        form_data = await request.json()
+        print("form_data", form_data)
+        project = form_data.get("project")
+        file = form_data.get("file")
+        file_path = UPLOAD_DIR / project / file
+        print("file_path", file_path)
+        viz_config, chat_config = await lorax_handler.handle_upload(file_path)
+        await manager.send_to_component("viz", {
+            "type": "viz", 
+            "role": "config",
+            "data": viz_config,
+        })
+
+        await manager.send_to_component("chat", {
+            "type": "chat", 
+            "role": "assistant",
+            "data": chat_config # send the config to the chat component  
+        })
+        
+        return {
+            "message": "File uploaded successfully",
+            "filename": file,
+            "file_path": str(file_path)
+        }
+
+    except Exception as e:
+        print(f"Error loading file: {e}")
+        return {"error": str(e)}
 
 @app.post('/upload')
 # async def upload(file: UploadFile = File(...)):
@@ -179,6 +240,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         try:
                             result = await lorax_handler.handle_details(message)
                             message = {"type": "viz", "role": "details-result", "data": result}
+                            
                             await manager.send_to_component("viz", message)
                         except Exception as e:
                             print(f"Error handling viz details: {e}")
@@ -194,7 +256,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 # Broadcast to all connected clients
                 connected_clients = manager.get_connected_clients()
                 for client in connected_clients:
-                    print("Sending message to client", message)
+                    print("Sending message to client" )
                     await manager.send_message(client, message)
             except Exception as e:
                 print(f"Error processing message: {e}")

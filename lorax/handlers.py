@@ -3,7 +3,9 @@ import json
 from lorax.chat.langgraph_tskit import api_interface
 from lorax.viz.trees_to_taxonium import start_end
 import tskit
+import tszip
 import numpy as np
+import os
 
 class LoraxHandler:
     def __init__(self):
@@ -69,7 +71,7 @@ class LoraxHandler:
         intervals = [(tree.interval[0], tree.interval[1]) for tree in self.ts.trees()]
         self.ts_intervals = intervals[1:]
 
-        config = {'intervals':intervals, 'value': [intervals[0][0], intervals[9][1]]}
+        config = {'intervals':intervals, 'value': [intervals[0][0], intervals[9][1]], 'filename': str(self.file_path).split('/')[-1]}
         return config
     
     def get_tree_details(self, tree_index):
@@ -94,10 +96,10 @@ class LoraxHandler:
     
     def get_individual_details(self, individual_id):
         individual = self.ts.individual(individual_id)
-        data = {
+        data = { 
             "id": individual.id,
             "nodes": self.make_json_serializable(individual.nodes),
-            "metadata": individual.metadata
+            "metadata": self.make_json_serializable(individual.metadata)
         }
         return data
     
@@ -120,11 +122,21 @@ class LoraxHandler:
         self.file_path = file_path
         self.global_context = self.file_path
         
-        self.ts = tskit.load(file_path)
+        basefilename = os.path.basename(file_path)
+        if basefilename.endswith('.tsz'):
+            print("decompressing", file_path)
+            self.ts = tszip.load(file_path)
+        else:
+            self.ts = tskit.load(file_path)
         viz_config = self.get_config()
         chat_config = "file uploaded"
         return viz_config, chat_config
 
+    async def get_projects(self, upload_dir):
+        with open(f'{upload_dir}/projects.json', 'r') as f:
+            projects = json.load(f)
+        return projects
+    
     async def handle_details(self, message):
         try:
             return_data = {}
@@ -142,7 +154,7 @@ class LoraxHandler:
                 if node_details.get("individual") != -1:
                     individual_details = self.get_individual_details(node_details.get("individual"))
                     return_data["individual"] = individual_details
-            return return_data
+            return json.dumps(return_data)
         except Exception as e:
             return {"error": f"Error getting details: {str(e)}"}
 

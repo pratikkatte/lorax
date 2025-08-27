@@ -2,10 +2,12 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { TextField, Slider, Box } from '@mui/material';
 import { Rnd } from 'react-rnd';
 import EditableRange from './EditableRange';
+import { useSearchParams } from 'react-router-dom';
 
 export default function PositionSlider(props) {
   
     const containerRef = useRef(null);
+    const [value, setValue] = useState(null);
     const sliderRef = useRef(null)
     const containerWidth = useRef(null);
     const sliderWidth = useRef(null)
@@ -14,14 +16,25 @@ export default function PositionSlider(props) {
 
     const tree_index = useRef(null);
 
-    const { config, value, setValue } = props
+    const { config, setConfig, project} = props
+    
+    const [searchParams, setSearchParams] = useSearchParams();
 
     useEffect(() => {
-      if (config?.value) {
+      if (value) {
+        // console.log("searchParams", searchParams.get("project"), searchParams.get("start"), searchParams.get("end"))
+        setConfig({...config, value: [value[0], value[1]]})
+        console.log("value", value)
+      } else {
         setValue(config.value)
-        console.log("config", config.value)
       }
-    }, [config])
+    }, [value])
+
+    useEffect(() => {
+      if (value) {
+      setSearchParams({project: project, start: value[0], end: value[1]});
+      }
+    }, [value]) 
 
     const { intervals } = config
     const tree_length = 10;

@@ -9,8 +9,6 @@ function Deck({
   backend,
   data,
   view,
-  statusMessage,
-  xType,
   deckRef,
   hoveredTreeIndex,
   setHoveredTreeIndex,
@@ -74,7 +72,7 @@ function Deck({
       viewState,
       setHoverInfo,
       hoverInfo,
-      xType,
+      
       hoveredKey,
       hoveredTreeIndex,
       setHoveredTreeIndex,

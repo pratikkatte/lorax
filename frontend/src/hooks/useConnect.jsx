@@ -1,174 +1,154 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from "react";
-import websocketEvents from '../webworkers/websocketEvents';
+import websocketEvents from "../webworkers/websocketEvents";
 import useLoraxConfig from "../globalconfig.js";
 import workerSpec from "../webworkers/localBackendWorker.js?worker&inline";
+
 const worker = new workerSpec();
 
-console.log("useConnect worker")
-
 let onQueryReceipt = (receivedData) => {};
-let onStatusReceipt = (receivedData) => {
-  console.log("STATUS:", receivedData.data);
-};
-
+let onStatusReceipt = (receivedData) => console.log("STATUS:", receivedData.data);
 let onConfigReceipt = (receivedData) => {};
 let onDetailsReceipt = (receivedData) => {};
-// let onListReceipt = (receivedData) => {};
-
 
 worker.onmessage = (event) => {
-  console.log(
-    "got message from worker", event.data);
-
-  if (event.data.type === "status") {
-    
-    onStatusReceipt(event.data);
-  }
-  if (event.data.type === "query") {
-    onQueryReceipt(event.data.data);
-  }
-
-  // if (event.data.type === "search") {
-  //   // console.log("SEARCHRES", event.data.data);
-  //   searchSetters[event.data.data.key](event.data.data);
-  // }
-  if (event.data.type === "config") {
-    onConfigReceipt(event.data.data);
-  }
-  if (event.data.type === "details") {
-    onDetailsReceipt(event.data.data);
-  }
-  // if (event.data.type === "list") {
-  //   onListReceipt(event.data.data);
-  // }
-  // if (event.data.type === "nextstrain") {
-  //   onNextStrainReceipt(event.data.data);
-  // }
+  if (event.data.type === "status") onStatusReceipt(event.data);
+  if (event.data.type === "query") onQueryReceipt(event.data.data);
+  if (event.data.type === "config") onConfigReceipt(event.data.data);
+  if (event.data.type === "details") onDetailsReceipt(event.data.data);
 };
 
-
-
-function useConnect({setGettingDetails, API_BASE, settings}) {
+function useConnect({ setGettingDetails, settings }) {
   const socketRef = useRef(null);
+  const messageQueue = useRef([]); // <-- buffer for unsent messages
   const [statusMessage, setStatusMessage] = useState({ message: null });
   const [isConnected, setIsConnected] = useState(false);
 
-  const {WEBSOCKET_BASE} = useLoraxConfig();
-  
-  useEffect(() => {
-    const timeout = setTimeout(() => {
-      const ws = new WebSocket(WEBSOCKET_BASE);
-      socketRef.current = ws;
+  const { WEBSOCKET_BASE } = useLoraxConfig();
 
-      ws.onopen = () => {
-        console.log("WebSocket connection established");
-        setIsConnected(true);
-      };
+  /** 🔑 Function: actually connect */
+  const connect = useCallback(() => {
+    console.log("connecting to websocket")
+    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+      console.log("WebSocket already connected");
+      return;
+    }
 
-      ws.onmessage = ((event) => {
-        const message = JSON.parse(event.data);
+    console.log("Connecting WebSocket to", WEBSOCKET_BASE);
+    const ws = new WebSocket(WEBSOCKET_BASE);
+    socketRef.current = ws;
 
-        websocketEvents.emit(message.type, message);
-        
-        if (message.type === "viz" && message.role === "query-result") {
-          console.log("message", message)
-          worker.postMessage({
-            type: "query",
-            data: message.data,
-            vertical_mode: settings.vertical_mode,
-          });
-        }
-      });
+    ws.onopen = () => {
+      console.log("✅ WebSocket connected");
+      setIsConnected(true);
+      flushQueue(); // send any queued messages
+    };
 
-      ws.onerror = (error) => {
-        console.error("WebSocket error:", error);
-        setIsConnected(false);
-      };
+    ws.onmessage = (event) => {
+      const message = JSON.parse(event.data);
+      websocketEvents.emit(message.type, message);
 
-      ws.onclose = () => {
-        console.log("WebSocket connection closed");
-        setIsConnected(false);
-      };
-    }, 500);
-
-    return () => {
-      clearTimeout(timeout);
-      if (socketRef.current) {
-        socketRef.current.close();
+      if (message.type === "viz" && message.role === "query-result") {
+        worker.postMessage({
+          type: "query",
+          data: message.data,
+          vertical_mode: settings.vertical_mode,
+        });
       }
     };
-  }, [settings]);
 
+    ws.onerror = (err) => {
+      console.error("WebSocket error:", err);
+      setIsConnected(false);
+    };
+
+    ws.onclose = () => {
+      console.log("⚠️ WebSocket closed, retrying in 2s...");
+      setIsConnected(false);
+      socketRef.current = null;
+      setTimeout(() => connect(), 2000); // retry
+    };
+  }, [WEBSOCKET_BASE, settings]);
+
+  /** 🔑 Flush queued messages once reconnected */
+  const flushQueue = useCallback(() => {
+    while (messageQueue.current.length > 0 && socketRef.current?.readyState === WebSocket.OPEN) {
+      const msg = messageQueue.current.shift();
+      console.log("Flushing queued message:", msg);
+      socketRef.current.send(msg);
+    }
+  }, []);
+
+  /** 🔑 Safe send with queue fallback */
+  const sendMessage = useCallback((msgObj) => {
+    const msg = JSON.stringify(msgObj);
+    if (socketRef.current?.readyState === WebSocket.OPEN) {
+      socketRef.current.send(msg);
+    } else {
+      console.log("Socket not open, queueing message:", msgObj);
+      messageQueue.current.push(msg);
+    }
+  }, []);
+
+  /** Start connection once on mount */
+  useEffect(() => {
+    connect();
+    return () => {
+      if (socketRef.current) socketRef.current.close();
+    };
+  }, [connect]);
+
+  /** Keep-alive pings */
   useEffect(() => {
     const pingInterval = setInterval(() => {
       if (socketRef.current?.readyState === WebSocket.OPEN) {
         socketRef.current.send(JSON.stringify({ type: "ping" }));
       }
     }, 3000);
-
     return () => clearInterval(pingInterval);
   }, []);
 
-  const queryNodes = useCallback(
-    async (boundsForQueries, setResult, value) => {
-      console.log("queryNodes", boundsForQueries, value);
+  /** Exposed methods */
+  const queryNodes = useCallback((boundsForQueries, setResult, value) => {
+    sendMessage({
+      type: "viz",
+      role: "query",
+      bounds: boundsForQueries,
+      value,
+    });
 
-      if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
-      socketRef.current.send(JSON.stringify({
-        type: "viz",
-        role: "query",
-        bounds: boundsForQueries,
-        value: value,
-      }))
-    } else {
-      console.log("socket not open")
-    }
-
-      onQueryReceipt = (receivedData) => {
-        console.log(
-          "got query result", receivedData
-        );
-        setResult(receivedData);
-      };
-    },
-    []
-  );
-
-  const queryDetails = useCallback(
-    async (clickedObject) => {
-      console.log("details", clickedObject)
-      if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
-        socketRef.current.send(JSON.stringify({
-          type: "viz",
-          role: "details",
-          object: clickedObject,
-        }))
-        setGettingDetails(true);
-    }
-    
-    onDetailsReceipt = (receivedData) => {
-      console.log("got details result", receivedData)
+    onQueryReceipt = (receivedData) => {
+      console.log("got query result", receivedData);
+      setResult(receivedData);
     };
+  }, [sendMessage]);
+
+  const queryDetails = useCallback((clickedObject) => {
+    sendMessage({
+      type: "viz",
+      role: "details",
+      object: clickedObject,
+    });
+    setGettingDetails(true);
+
+    onDetailsReceipt = (receivedData) => {
+      console.log("got details result", receivedData);
+      setGettingDetails(false);
+    };
+  }, [sendMessage, setGettingDetails]);
+
+  const checkConnection = useCallback(() => {
+    return socketRef.current?.readyState === WebSocket.OPEN;
   }, []);
 
-  return useMemo(() => {
-    return {
-      statusMessage,
-      setStatusMessage,
-      socketRef,
-      queryNodes,
-      isConnected,
-      queryDetails,
-    };
-  }, [statusMessage,
+  return useMemo(() => ({
+    statusMessage,
     setStatusMessage,
     socketRef,
     queryNodes,
+    queryDetails,
     isConnected,
-    queryDetails
-  ]);
-
-  // return socketRef;
+    checkConnection,
+  }), [statusMessage, queryNodes, queryDetails, isConnected, checkConnection]);
 }
 
 export default useConnect;
