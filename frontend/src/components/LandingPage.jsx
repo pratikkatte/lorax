@@ -89,6 +89,7 @@ export default function LandingPage({
   upload,
   version = "pre‑release",
 }) {
+
   const {API_BASE} = useLoraxConfig();
 
   const [projects, setProjects] = useState([]);

@@ -31,9 +31,9 @@ app.add_middleware(
 
 manager = WebSocketManager()
 
-@app.get('/')
-async def root(request: Request):
-    return {"message": "Hello, Loorax!"}
+# @app.get('/')
+# async def root(request: Request):
+#     return {"message": "Hello, Loorax!"}
 
 @app.get('/projects')
 async def projects():
@@ -64,28 +64,66 @@ async def test(request: Request):
         "file_path": str(file_path)
     }
 
-@app.get("/{file}")
-async def get_file(file: str, project: str=None,  start: int=None, end: int=None):
-    file_path = UPLOAD_DIR / project / file
-    viz_config, chat_config = await lorax_handler.handle_upload(file_path)
-    # await manager.send_to_component("viz", {
-    #     "type": "viz", 
-    #     "role": "config",
-    #     "data": viz_config,
-    # })
-
-    # # await manager.send_to_component("chat", {
-    # #     "type": "chat", 
-    # #     "role": "assistant",
-    # #     "data": chat_config # send the config to the chat component  
-    # # })
+# @app.get("/{file}")
+# async def get_file(file: str, project: str=None, chrom=None, genomiccoordstart: int=None, genomiccoordend: int=None, regionstart: int=None, regionend: int=None):
+#     print("file_path", file) 
+#     file_path = UPLOAD_DIR / project / file
     
-    # return {
-    #     "message": "File uploaded successfully",
-    #     "filename": file,
-    #     "file_path": str(file_path)
-    # } 
-    return {"file_path": str(file_path)}
+#     viz_config, chat_config = await lorax_handler.handle_upload(file_path)
+#     return {"file_path": str(file_path)}
+
+
+from fastapi import Query
+from typing import Optional
+
+@app.get("/{file}")
+async def get_file(
+    file: Optional[str] = None,
+    project: Optional[str] = Query(None),
+    chrom: Optional[str] = Query(None),
+    genomiccoordstart: Optional[int] = Query(None),
+    genomiccoordend: Optional[int] = Query(None),
+    regionstart: Optional[int] = Query(None),
+    regionend: Optional[int] = Query(None)
+):
+
+    # Case 1: file provided in path
+    if file and file != "" and file != "ucgb":
+        file_path = UPLOAD_DIR / (project or "") / file
+    else:
+        # Case 2: no file in path (like just http://localhost:5173?...)
+        file_path = None
+        file = "1kg_chr20.trees.tsz"
+        file_path = UPLOAD_DIR / (project or "1000Genomes") / file
+
+    print("file_path", file_path)
+    print("project", project)
+    print("chrom", chrom)
+    print("genomiccoordstart", genomiccoordstart)
+    print("genomiccoordend", genomiccoordend)
+    print("regionstart", regionstart)
+    print("regionend", regionend)
+
+    try:
+        if file_path:
+            viz_config, chat_config = await lorax_handler.handle_upload(file_path)
+        else:
+            viz_config, chat_config = {"data": "no file"}, {"data": "no file"}  # Or handle differently
+    except Exception as e:
+        print(f"Error loading file: {e}")
+        return {"error": str(e)}  
+
+    print("viz_config", file_path)
+    return {
+        "file_path": str(file_path) if file_path else None,
+        "project": project,
+        "chrom": chrom,
+        "genomiccoordstart": genomiccoordstart,
+        "genomiccoordend": genomiccoordend,
+        "regionstart": regionstart,
+        "regionend": regionend,
+    }
+
 
 @app.post('/load_file')
 async def load_file(request: Request):

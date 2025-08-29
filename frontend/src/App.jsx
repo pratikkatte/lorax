@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import './App.css'
 import Lorax from './Lorax.jsx'
 
@@ -18,6 +18,8 @@ function App() {
 
   const {API_BASE} = useLoraxConfig();
   const [project, setProject] = useState();
+  const ucgbMode = useRef(false);
+
 
   const {settings, setSettings} = useSettings();
   const [gettingDetails, setGettingDetails] = useState(false);
@@ -29,12 +31,9 @@ function App() {
     setConfig,
     setProject,
   });
-  
-  
 
   return (
     <>
-
     <Routes>
       {/* <Route path="/:filename" element={<Trees />} /> */}
       <Route
@@ -57,6 +56,8 @@ function App() {
             setSettings={setSettings}
             project={project}
             setProject={setProject}
+            ucgbMode={ucgbMode}
+            
           />
         }
       />

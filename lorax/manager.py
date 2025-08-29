@@ -74,7 +74,10 @@ class WebSocketManager:
         for ws, ws_component in self.client_component.items():
             if component in ws_component:
                 if self.is_connected(ws):
-                    print("Sending message to component", component)
+                    if component == "ping":
+                        pass
+                    else: 
+                        print("Sending message to component", component)
                     try:
                         await self.send_message(ws, message)
                     except Exception as e:

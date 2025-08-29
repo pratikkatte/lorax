@@ -16,13 +16,13 @@ export default function PositionSlider(props) {
 
     const tree_index = useRef(null);
 
-    const { config, setConfig, project} = props
+    const { config, setConfig, project, ucgbMode} = props
     
     const [searchParams, setSearchParams] = useSearchParams();
 
     useEffect(() => {
       if (value) {
-        // console.log("searchParams", searchParams.get("project"), searchParams.get("start"), searchParams.get("end"))
+        // console.log("searchParams", searchParams.get("project"), searchParams.get("genomiccoordstart"), searchParams.get("genomiccoordend"))
         setConfig({...config, value: [value[0], value[1]]})
         console.log("value", value)
       } else {
@@ -32,7 +32,12 @@ export default function PositionSlider(props) {
 
     useEffect(() => {
       if (value) {
-      setSearchParams({project: project, start: value[0], end: value[1]});
+        if (ucgbMode.current) {
+          setSearchParams({chrom: config.chrom, genomiccoordstart: value[0], genomiccoordend: value[1]});
+        }
+        else {  
+          setSearchParams({project: project, genomiccoordstart: value[0], genomiccoordend: value[1]});
+        }
       }
     }, [value]) 
 

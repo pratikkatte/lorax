@@ -6,7 +6,7 @@ import { useState, useRef, useEffect } from "react";
 import PositionSlider from './components/PositionSlider'
 
 
-function Lorax({backend, config, setConfig, settings, setSettings, project}) {
+function Lorax({backend, config, setConfig, settings, setSettings, project, ucgbMode}) {
 
 
   const [mouseDownIsMinimap, setMouseDownIsMinimap] = useState(false);
@@ -25,9 +25,11 @@ function Lorax({backend, config, setConfig, settings, setSettings, project}) {
     <>
       {backend.isConnected && config && (
         <div className="flex flex-col h-screen bg-white">
+          {(!ucgbMode.current) && (
           <div className="flex justify-center items-center py-2 bg-white border-b border-gray-200">
-            <PositionSlider config={config} setConfig={setConfig} project={project} />
+            <PositionSlider config={config} setConfig={setConfig} project={project} ucgbMode={ucgbMode} />
           </div>
+          )}
           <div className="flex-1 flex justify-center">
             <Deck 
               backend={backend}

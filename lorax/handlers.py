@@ -47,6 +47,7 @@ class LoraxHandler:
 
         try:
             start, end = message.get("value")
+            print("start", start,end)
             nwk_string, genome_positions, mutations, times, tree_index = start_end(start, end, self.ts)
 
             self.viz_snapshot = {'window': [0, start, end, self.ts.sequence_length], 'sample_sets':'ts.get_samples()'}
@@ -63,6 +64,7 @@ class LoraxHandler:
                 },
                 "tree_index": tree_index
             })
+            print("mutations", mutations)
             return data
         except Exception as e:
             return json.dumps({"error": f"Error processing query: {str(e)}"})
@@ -119,15 +121,18 @@ class LoraxHandler:
             return obj
     
     async def handle_upload(self, file_path=None):
-        self.file_path = file_path
-        self.global_context = self.file_path
-        
-        basefilename = os.path.basename(file_path)
-        if basefilename.endswith('.tsz'):
-            print("decompressing", file_path)
-            self.ts = tszip.load(file_path)
-        else:
-            self.ts = tskit.load(file_path)
+        if self.file_path != file_path:    
+            basefilename = os.path.basename(file_path)
+            if basefilename.endswith('.tsz'):
+                self.ts = tszip.load(file_path)
+                self.file_path = file_path
+                self.global_context = self.file_path
+            
+            else:
+                self.ts = tskit.load(file_path)
+                self.file_path = file_path
+                self.global_context = self.file_path
+            
         viz_config = self.get_config()
         chat_config = "file uploaded"
         return viz_config, chat_config
