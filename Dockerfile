@@ -30,7 +30,7 @@
     
     # ---- Build Vite app using Yarn ----
     WORKDIR /app/frontend
-    RUN yarn install && yarn build
+    # RUN yarn install && yarn build
     
     # ---- Move built frontend to Nginx root ----
     RUN mkdir -p /var/www/html && \

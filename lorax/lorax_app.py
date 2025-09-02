@@ -1,5 +1,4 @@
 from fastapi import FastAPI, UploadFile, File
-from fastapi.templating import Jinja2Templates
 from fastapi.requests import Request
 from fastapi.websockets import WebSocket, WebSocketDisconnect
 from lorax.manager import WebSocketManager
@@ -239,23 +238,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     await manager.send_to_component("ping", data)
                     continue  # ignore pings
 
-                if message.get("type") == "chat":
-                    try:
-                        print("Chat received", message)
-                        message = lorax_handler.handle_chat(message)
-
-                        if message.get("action") == True:
-                            print("viz action")
-
-                        await manager.send_to_component("chat", message)
-                    except Exception as e:
-                        print(f"Error handling chat message: {e}")
-                        await manager.send_to_component("chat", {
-                            "type": "chat", 
-                            "role": "assistant",
-                            "data": f"Error processing message: {str(e)}"
-                        })
-                    continue
+    
 
                 if message.get("type") == "viz":
                     print("message", message)

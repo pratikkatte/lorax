@@ -1,6 +1,6 @@
 # handlers.py
 import json
-from lorax.chat.langgraph_tskit import api_interface
+# from lorax.chat.langgraph_tskit import api_interface
 from lorax.viz.trees_to_taxonium import start_end
 import tskit
 import tszip
@@ -18,28 +18,28 @@ class LoraxHandler:
     async def handle_ping(self, message):
         return {"type": "ping", "data": "Pong"}
 
-    def handle_chat(self, message):
-        try:
-            action = None
-            llm_output = api_interface(message.get("message"), self.file_path)
+    # def handle_chat(self, message):
+    #     try:
+    #         action = None
+    #         llm_output = api_interface(message.get("message"), self.file_path)
             
-            # Handle different types of llm_output
-            if isinstance(llm_output, str):
-                # If it's already a string, use it directly
-                response_data = llm_output
-            elif isinstance(llm_output, (list, tuple)) and len(llm_output) > 0:
-                # If it's a list/tuple, take the first element
-                response_data = str(llm_output[0]) if llm_output[0] else str(llm_output)
-                action = llm_output[1]
-            else:
-                # Otherwise, convert to string
-                response_data = str(llm_output)
+    #         # Handle different types of llm_output
+    #         if isinstance(llm_output, str):
+    #             # If it's already a string, use it directly
+    #             response_data = llm_output
+    #         elif isinstance(llm_output, (list, tuple)) and len(llm_output) > 0:
+    #             # If it's a list/tuple, take the first element
+    #             response_data = str(llm_output[0]) if llm_output[0] else str(llm_output)
+    #             action = llm_output[1]
+    #         else:
+    #             # Otherwise, convert to string
+    #             response_data = str(llm_output)
                 
-            data = {"type": "chat", "data": response_data, "action": action}
-            return data
-        except Exception as e:
-            print(f"Error in handle_chat: {e}")
-            return {"type": "chat", "data": f"Error processing chat message: {str(e)}"}
+    #         data = {"type": "chat", "data": response_data, "action": action}
+    #         return data
+    #     except Exception as e:
+    #         print(f"Error in handle_chat: {e}")
+    #         return {"type": "chat", "data": f"Error processing chat message: {str(e)}"}
 
     async def handle_query(self, message):
         if self.ts is None:
@@ -64,7 +64,6 @@ class LoraxHandler:
                 },
                 "tree_index": tree_index
             })
-            print("mutations", mutations)
             return data
         except Exception as e:
             return json.dumps({"error": f"Error processing query: {str(e)}"})

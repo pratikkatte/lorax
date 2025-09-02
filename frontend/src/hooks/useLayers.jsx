@@ -103,6 +103,7 @@ const useLayers = ({
   setHoveredTreeIndex,
   settings,
   config,
+  hideOrthoLayers
 }) => {
   
   const debouncedZoomX = useDebouncedValue(
@@ -116,9 +117,10 @@ const useLayers = ({
 
 
   const layerFilter = useCallback(({ layer, viewport }) => {
-    const isOrtho = viewport.id === 'ortho';
+    const isOrtho = viewport.id === 'ortho'
     const isGenome = viewport.id === 'genome-positions';
     const isTreeTime = viewport.id === 'tree-time';
+
     return (
       (isOrtho && layer.id.startsWith('main')) ||
       (isGenome && layer.id.startsWith('genome-positions')) ||
@@ -131,8 +133,6 @@ const useLayers = ({
     if (!data?.data?.paths) return [];
 
     const times = data.data?.times || {};
-
-
 
     const singleTreeLayers = data.data.paths.flatMap((tree, i) => {
       const spacing = 1.03;
@@ -148,6 +148,7 @@ const useLayers = ({
       
       const pathLayer = new PathLayer({
         id: `main-layer-${i}`,
+        visible: !hideOrthoLayers,
         data: pathData,
         getPath: d => d.path,
         getColor: d => {
@@ -164,7 +165,7 @@ const useLayers = ({
           }
           return 2;
         },
-        
+        visible: !hideOrthoLayers,
         widthUnits: 'pixels',
         modelMatrix,
         viewId: 'ortho',
@@ -180,12 +181,14 @@ const useLayers = ({
         },
         updateTriggers: {
           getWidth: [hoveredTreeIndex]
-        }
+        },
       });
 
       const nodeLayer = new ScatterplotLayer({
         id: `main-dots-${i}`,
+        visible: !hideOrthoLayers,
         data: nodeData,
+        visible: !hideOrthoLayers,
         getPosition: d => d.position,
         getFillColor: d => {
           if (hoveredTreeIndex?.node === d.name) {
@@ -233,7 +236,9 @@ const useLayers = ({
 
       const mutationLayer = new IconLayer({
         id: `main-mutations-marker-${i}`,
+        visible: !hideOrthoLayers,
         data: mutationData,
+        visible: !hideOrthoLayers,
         getPosition: d => d.position,
         getIcon: () => 'marker',
         getSize: 10,
@@ -258,6 +263,7 @@ const useLayers = ({
 
       const textLayer = (hoverInfo && hoverInfo.index === i )? new TextLayer({
         id: `main-mutation-text-layer`,
+        visible: !hideOrthoLayers,
         data: [hoverInfo.object],
         getPosition: d => d.position,
         getText: d => d.mutations.join(' ') || 'Hovered Marker',
@@ -381,6 +387,7 @@ const useLayers = ({
       
       const backgroundLayer = new SolidPolygonLayer({
         id: `main-background-${i}`,
+        visible: !hideOrthoLayers,
         data: [{
           polygon: [
             [0, 1], [1, 1], [1, 0], [0, 0]
@@ -457,7 +464,7 @@ const useLayers = ({
 
     return [...singleTreeLayers,coalescenceLayer, coalescenceTimeLabels,];
 
-  }, [data, viewState.zoom, hoverInfo, hoveredTreeIndex, settings]);
+  }, [data, viewState.zoom, hoverInfo, hoveredTreeIndex, settings, hideOrthoLayers]);
 
   return { layers, layerFilter };
 };

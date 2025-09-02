@@ -1,6 +1,8 @@
 /// app.js
 import React, { useState,useEffect, useCallback, useRef } from "react";
 import DeckGL from "@deck.gl/react";
+import {View} from '@deck.gl/core';
+
 import useLayers from "./hooks/useLayers";
 
 import { Oval } from 'react-loader-spinner';
@@ -24,11 +26,31 @@ function Deck({
     }
   },[data])
 
+  const [hideOrthoLayers, setHideOrthoLayers] = useState(false);
   const no_data = !data || data.status === "loading"
+
+  useEffect(()=> {
+    if (no_data) {
+      setHideOrthoLayers(true);
+    }
+    else{
+      setHideOrthoLayers(false);
+    }
+  },[no_data])
+
 
   const {views, viewState,setMouseXY, mouseXy, setViewState, MyOrthographicController, handleViewStateChange} = view
 
   const {queryDetails} = backend;
+
+  // const [genomicZoom, setGenomicZoom] = useState(155);
+
+
+  useEffect(()=> {
+    if (no_data) {
+      //
+    }
+  },[no_data])
 
   const onClickOrMouseMove = useCallback(
     (event) => {
@@ -48,8 +70,6 @@ function Deck({
         reactEvent._reactName === "onClick"
       ) {
         if (pickInfo.layer.id.includes("main")) {
-          console.log("pickInfo", pickInfo)
-          console.log("hoveredTreeIndex", hoveredTreeIndex)
           queryDetails(hoveredTreeIndex)
           // setHoveredTreeIndex({...hoveredTreeIndex, path: pickInfo.object?.path})
         }
@@ -64,46 +84,33 @@ function Deck({
     (info) => {
       setHoverInfoRaw(info);
     },[]);
-
-
-        
     const { layers, layerFilter } = useLayers({
       data,
       viewState,
       setHoverInfo,
       hoverInfo,
-      
       hoveredKey,
       hoveredTreeIndex,
       setHoveredTreeIndex,
       queryDetails,
       settings,
+      hideOrthoLayers
     });
   
 
   const handleClick = useCallback((treeindex) => {
-    console.log("handleOver",treeindex)
     queryDetails(treeindex)
   }, []);
 
-  
   return (
     <div className="w-full"
     onClick={onClickOrMouseMove}
     onPointerMove={onClickOrMouseMove}
     onPointerDown={onClickOrMouseMove}
     > 
-      {no_data ? (
-    <>
-      <div className="w-full h-full flex justify-center items-center">
-      <Oval height="40" width="40" color="#666" ariaLabel="loading" secondaryColor="#666" />
-      </div>
-    </>
-      ): (
     <>
     <div className="w-full h-full flex justify-center items-center relative">
     <DeckGL
-      
       ref={deckRef}
       pickingRadius={10}
       layers={layers}
@@ -111,7 +118,17 @@ function Deck({
       viewState={viewState}
       onViewStateChange={handleViewStateChange}
       views={views} 
-    />
+    >
+      <View id="ortho">
+        {/* React overlay pinned to the main view */}
+        {no_data ? (
+    
+      <div className="w-full h-full flex justify-center items-center">
+      <Oval height="40" width="40" color="#666" ariaLabel="loading" secondaryColor="#666" />
+      </div>
+      ) : null}
+      </View>
+    </DeckGL>
     <div
   style={{
     display: 'flex',
@@ -134,10 +151,8 @@ function Deck({
 
     </div>
     </>
-  )}
-
+  
     </div>
-    
   );
 }
 
