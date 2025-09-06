@@ -10,14 +10,18 @@ function Lorax({backend, config, setConfig, settings, setSettings, project, ucgb
 
 
   const [mouseDownIsMinimap, setMouseDownIsMinimap] = useState(false);
-  // let hoverDetails = useHoverDetails();
+  const [genomeViewportCoords, setGenomeViewportCoords] = useState([]);
+  const [viewportSize, setViewportSize] = useState(null);
   const [deckSize, setDeckSize] = useState(null);
-  // const settings = useSettings({ query, updateQuery });
   const [hoveredTreeIndex, setHoveredTreeIndex] = useState({path: null, node: null, treeIndex: null});
-
   const deckRef = useRef();
+  const [viewPortCoords, setViewPortCoords] = useState([]);
 
-  const view = useView({settings, setSettings});
+  // let hoverDetails = useHoverDetails();
+  
+  // const settings = useSettings({ query, updateQuery });
+  
+  const view = useView({config, settings, setSettings, genomeViewportCoords, setGenomeViewportCoords, viewportSize, setViewportSize});
 
   const { data } = useGetDynamicData(backend, config)
 
@@ -38,7 +42,8 @@ function Lorax({backend, config, setConfig, settings, setSettings, project, ucgb
               data={data}
               view={view}
               ariaHideApp={false} 
-
+              genomeViewportCoords={genomeViewportCoords}
+              setGenomeViewportCoords={setGenomeViewportCoords}
               setDeckSize={setDeckSize}
               deckSize={deckSize}
               deckRef={deckRef}
@@ -47,6 +52,10 @@ function Lorax({backend, config, setConfig, settings, setSettings, project, ucgb
               settings={settings}
               setSettings={setSettings}
               config={config}
+              viewportSize={viewportSize}
+              setViewportSize={setViewportSize}
+              setViewPortCoords={setViewPortCoords}
+              viewPortCoords={viewPortCoords}
             />
           </div>
         </div>

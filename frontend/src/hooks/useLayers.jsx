@@ -7,7 +7,12 @@ import {
   SolidPolygonLayer
 } from "@deck.gl/layers";
 import { Matrix4, Vector3 } from "@math.gl/core";
+import genomeCoordinates from "../layers/genomeCoordinates";
 import { useMemo, useCallback, useState, useEffect } from "react";
+import { GenomeGridLayer } from "../layers/GenomeGridLayer";
+import useRegions from "./useRegions";
+
+
 
 const getGenomeLinesCached = (() => {
   const cache = new Map();
@@ -84,6 +89,14 @@ const getCoalescenceLinesCached = (() => {
 }
 )()
 
+function formatBp(n) {
+  if (n >= 1e9) return `${(n/1e9).toFixed(2)} Gbp`;
+  if (n >= 1e6) return `${(n/1e6).toFixed(1)} Mbp`;
+  if (n >= 1e3) return `${(n/1e3).toFixed(1)} kbp`;
+  return `${Math.round(n)} bp`;
+}
+
+
 
 const useDebouncedValue = (value, delay) => {
   const [debounced, setDebounced] = useState(value);
@@ -97,14 +110,20 @@ const useDebouncedValue = (value, delay) => {
 const useLayers = ({
   data,
   viewState,
+  setViewState,
   setHoverInfo,
   hoverInfo,
   hoveredTreeIndex,
   setHoveredTreeIndex,
   settings,
-  config,
-  hideOrthoLayers
+  hideOrthoLayers,
+  deckRef,
+  config, 
+  viewportSize,
+  setViewportSize,
 }) => {
+
+
   
   const debouncedZoomX = useDebouncedValue(
     Array.isArray(viewState.ortho.zoom) ? viewState.ortho.zoom[0] : viewState.ortho.zoom,
@@ -114,6 +133,13 @@ const useLayers = ({
     Array.isArray(viewState.ortho.zoom) ? viewState.ortho.zoom[1] : viewState.ortho.zoom,
     50 // ms debounce
   );
+
+  // const genomeViewport = useMemo(() => {
+  //   const deck = deckRef?.current?.deck;
+  //   if (!deck) return null;
+    
+  //   return deck.getViewports().find(vp => vp.id === "genome-positions") || null;
+  // }, [deckRef, viewState['genome-positions']]);
 
 
   const layerFilter = useCallback(({ layer, viewport }) => {
@@ -128,12 +154,61 @@ const useLayers = ({
     );
   }, [settings]);
   
+    const genome_length = 10000;
 
+    const { genomeGridLines, bpPerDecimal } = genomeCoordinates({genome_length, viewState, config, viewportSize, setViewState})
+
+    const { getbounds } = useRegions({config, viewportSize});
+    const bins = getbounds();
   const layers = useMemo(() => {
     if (!data?.data?.paths) return [];
 
     const times = data.data?.times || {};
 
+    const genomeGridLayer = new GenomeGridLayer({
+      id: 'genome-positions-grid',
+      // data: genomeGridLines,
+      data: bins,
+      y0: 0,
+      y1: 2,
+      labelOffset: 0.06,
+      getColor: [100, 100, 100, 100],
+      getTextColor: [0, 0,0, 255],
+      getText: d => d.end.toLocaleString("en-US", { maximumFractionDigits: 0 }),
+      modelMatrix: new Matrix4().translate([0, 0, 0]),
+      viewId: 'genome-positions',
+      showLabels: true
+    });
+
+    const bpTocoord = (bp) => {
+      return bp / bpPerDecimal
+    }
+
+    const TreeLayerss = config.intervals.map((interval, i) => {
+      if (i > 10) return [];
+      const tree_layers = []
+      const worldCoord = bpTocoord(interval[0])
+
+      const textLayer = new TextLayer({
+        id: `main-tree-text-${i}`,
+        data: [{
+          position: [worldCoord, 0.5],
+          text: interval[0].toLocaleString("en-US", { maximumFractionDigits: 0 }),
+        }],
+        fontFamily: 'Arial, sans-serif',
+        fontWeight: 'bold',
+        fontSize: 6,
+        color: [50, 50, 50, 255],
+        // backgroundColor: [255, 255, 255, 220],
+        // backgroundPadding: [4, 2, 4, 2],
+        borderColor: [150, 150, 150, 255],
+        borderWidth: 1,
+      })
+      tree_layers.push(textLayer)
+
+      return tree_layers
+    })
+            
     const singleTreeLayers = data.data.paths.flatMap((tree, i) => {
       const spacing = 1.03;
 
@@ -142,13 +217,37 @@ const useLayers = ({
       const modelMatrix = settings.vertical_mode ? new Matrix4().translate([0, i * spacing, 0]) : new Matrix4().translate([i * spacing,0, 0]);
       const pathData = tree.filter(d => d.path);
       const nodeData = tree.filter(d => d.position);
-
+var bin = bins[i]
+var nextbin = bins[i+1]
       const mutationData = tree.filter(d => 'mutations' in d);
+      const boxLayer = new SolidPolygonLayer({
+        id: `main-box-${i}`,
+        data: [{
+          // left top, right top, right bottom, left bottom
+          // polygon: [[0, 0], [1, 0], [1, 1], [0, 1]],
+          polygon: [
+            [bin.sourcePosition[0], bin.sourcePosition[1]],
+             [nextbin.sourcePosition[0]-0.02, nextbin.sourcePosition[1]],
+             [nextbin.targetPosition[0]-0.02, nextbin.targetPosition[1]],
+             [bin.targetPosition[0], bin.targetPosition[1]],
+            ],
+          color: [255, 124, 200, 100]
+        }],
+        getPolygon: d => d.polygon,
+        getFillColor: d => d.color,
+        stroked: true,
+        filled: true,
+        lineWidthUnits: "pixels",
+        lineWidthScale: 1,
+        getLineWidth: 1,
+        borderColor: [0, 0, 0, 255],
+        borderWidth: 1,
+        // modelMatrix
+      })
 
-      
       const pathLayer = new PathLayer({
         id: `main-layer-${i}`,
-        visible: !hideOrthoLayers,
+        // visible: !hideOrthoLayers,
         data: pathData,
         getPath: d => d.path,
         getColor: d => {
@@ -165,7 +264,7 @@ const useLayers = ({
           }
           return 2;
         },
-        visible: !hideOrthoLayers,
+        // visible: !hideOrthoLayers,
         widthUnits: 'pixels',
         modelMatrix,
         viewId: 'ortho',
@@ -184,243 +283,244 @@ const useLayers = ({
         },
       });
 
-      const nodeLayer = new ScatterplotLayer({
-        id: `main-dots-${i}`,
-        visible: !hideOrthoLayers,
-        data: nodeData,
-        visible: !hideOrthoLayers,
-        getPosition: d => d.position,
-        getFillColor: d => {
-          if (hoveredTreeIndex?.node === d.name) {
-            return [255, 255, 0, 255]; 
-          }
-          return [80, 80, 180, 255]; 
-        },
-        getLineColor: [80, 80, 180, 255],
-        getLineWidth: 1,
-        opacity: 0.5,
-        getLineOpacity: 0.5,
-        getRadius: d => {
-          // Base radius that scales with zoom
-          const baseRadius = hoveredTreeIndex?.node === d.name ? 2 : 1;
+      // const nodeLayer = new ScatterplotLayer({
+      //   id: `main-dots-${i}`,
+      //   visible: !hideOrthoLayers,
+      //   data: nodeData,
+      //   visible: !hideOrthoLayers,
+      //   getPosition: d => d.position,
+      //   getFillColor: d => {
+      //     if (hoveredTreeIndex?.node === d.name) {
+      //       return [255, 255, 0, 255]; 
+      //     }
+      //     return [80, 80, 180, 255]; 
+      //   },
+      //   getLineColor: [80, 80, 180, 255],
+      //   getLineWidth: 1,
+      //   opacity: 0.5,
+      //   getLineOpacity: 0.5,
+      //   getRadius: d => {
+      //     // Base radius that scales with zoom
+      //     const baseRadius = hoveredTreeIndex?.node === d.name ? 2 : 1;
           
-          // Scale factor based on zoom level
-          // Higher zoom = larger scale factor
-          const currentZoom = Array.isArray(viewState.ortho.zoom) ? viewState.ortho.zoom[0] : viewState.ortho.zoom;
-          const zoomScale = Math.pow(2, currentZoom - 10); // Adjust base zoom as needed
-          return baseRadius * Math.max(0.5, Math.min(3, zoomScale)); // Clamp between 0.5x and 3x
-        },
+      //     // Scale factor based on zoom level
+      //     // Higher zoom = larger scale factor
+      //     const currentZoom = Array.isArray(viewState.ortho.zoom) ? viewState.ortho.zoom[0] : viewState.ortho.zoom;
+      //     const zoomScale = Math.pow(2, currentZoom - 10); // Adjust base zoom as needed
+      //     return baseRadius * Math.max(0.5, Math.min(3, zoomScale)); // Clamp between 0.5x and 3x
+      //   },
 
-        filled: true,
-        stroked: true,
-        lineWidthUnits: "pixels",
-        radiusUnits: 'pixels',
-        lineWidthScale:1,
-        modelMatrix,
-        viewId: 'ortho',
-        pickable: true,
-        zOffset: -1,
-        onHover: ({object, picked}) => {
-          if (picked && object) {
-            setHoveredTreeIndex({...hoveredTreeIndex, node: object.name, treeIndex: treeIndex});
-          }
-          else{
-            setHoveredTreeIndex({...hoveredTreeIndex, node: null, treeIndex: null});
-          }
-        },
-        updateTriggers: {
-          getFillColor: [hoveredTreeIndex],
-          getRadius: [hoveredTreeIndex, viewState.zoom] 
-        }
-      });
+      //   filled: true,
+      //   stroked: true,
+      //   lineWidthUnits: "pixels",
+      //   radiusUnits: 'pixels',
+      //   lineWidthScale:1,
+      //   modelMatrix,
+      //   viewId: 'ortho',
+      //   pickable: true,
+      //   zOffset: -1,
+      //   onHover: ({object, picked}) => {
+      //     if (picked && object) {
+      //       setHoveredTreeIndex({...hoveredTreeIndex, node: object.name, treeIndex: treeIndex});
+      //     }
+      //     else{
+      //       setHoveredTreeIndex({...hoveredTreeIndex, node: null, treeIndex: null});
+      //     }
+      //   },
+      //   updateTriggers: {
+      //     getFillColor: [hoveredTreeIndex],
+      //     getRadius: [hoveredTreeIndex, viewState.zoom] 
+      //   }
+      // });
 
-      const mutationLayer = new IconLayer({
-        id: `main-mutations-marker-${i}`,
-        visible: !hideOrthoLayers,
-        data: mutationData,
-        visible: !hideOrthoLayers,
-        getPosition: d => d.position,
-        getIcon: () => 'marker',
-        getSize: 10,
-        sizeScale: 2,
-        iconAtlas: '/X.png',
-        iconMapping: {
-          marker: { x: 0, y: 0, width: 128, height: 128, anchorY: 64}
-        },
-        modelMatrix,
-        viewId: 'ortho',
-        getColor: [255, 0, 0],
-        pickable: true,
-        onHover: ({object}) => {
-          if (object){
-            setHoverInfo(object ? { object,index:i} : null);
-          }
-          else{
-            setHoverInfo(null)
-          }
-      }
-    });
+    //   const mutationLayer = new IconLayer({
+    //     id: `main-mutations-marker-${i}`,
+    //     visible: !hideOrthoLayers,
+    //     data: mutationData,
+    //     visible: !hideOrthoLayers,
+    //     getPosition: d => d.position,
+    //     getIcon: () => 'marker',
+    //     getSize: 10,
+    //     sizeScale: 2,
+    //     iconAtlas: '/X.png',
+    //     iconMapping: {
+    //       marker: { x: 0, y: 0, width: 128, height: 128, anchorY: 64}
+    //     },
+    //     modelMatrix,
+    //     viewId: 'ortho',
+    //     getColor: [255, 0, 0],
+    //     pickable: true,
+    //     onHover: ({object}) => {
+    //       if (object){
+    //         setHoverInfo(object ? { object,index:i} : null);
+    //       }
+    //       else{
+    //         setHoverInfo(null)
+    //       }
+    //   }
+    // });
 
-      const textLayer = (hoverInfo && hoverInfo.index === i )? new TextLayer({
-        id: `main-mutation-text-layer`,
-        visible: !hideOrthoLayers,
-        data: [hoverInfo.object],
-        getPosition: d => d.position,
-        getText: d => d.mutations.join(' ') || 'Hovered Marker',
-        getSize: 12,
-        sizeUnits: 'pixels',
-        getColor: [255, 0, 0],
-        getBackgroundColor: [255, 255, 255],
-        getTextAnchor: 'start',
-        getAlignmentBaseline: 'bottom',
-        modelMatrix,
-        viewId: 'ortho'
-      }) : null;
+      // const textLayer = (hoverInfo && hoverInfo.index === i )? new TextLayer({
+      //   id: `main-mutation-text-layer`,
+      //   visible: !hideOrthoLayers,
+      //   data: [hoverInfo.object],
+      //   getPosition: d => d.position,
+      //   getText: d => d.mutations.join(' ') || 'Hovered Marker',
+      //   getSize: 12,
+      //   sizeUnits: 'pixels',
+      //   getColor: [255, 0, 0],
+      //   getBackgroundColor: [255, 255, 255],
+      //   getTextAnchor: 'start',
+      //   getAlignmentBaseline: 'bottom',
+      //   modelMatrix,
+      //   viewId: 'ortho'
+      // }) : null;
     
-      const genomeLineLayer = new LineLayer({
-        id: `genome-positions-lines-${i}`,
-        data: getGenomeLinesCached(genomePos, debouncedZoomX),
-        getSourcePosition: d => d.sourcePosition,
-        getTargetPosition: d => d.targetPosition,
-        getColor: [100, 100, 100, 100],
-        getWidth: d =>
-          d.positionstatus === "start" && i === 0
-            ? 1
-            : d.positionstatus === "end"
-            ? 1
-            : 2,
-        widthUnits: "pixels",
-        modelMatrix,
-        viewId: "genome-positions",
-        updateTriggers: {
-          data: [debouncedZoomX]
-        }
-      });
+      // const genomeLineLayer = new LineLayer({
+      //   id: `genome-positions-lines-${i}`,
+      //   data: getGenomeLinesCached(genomePos, debouncedZoomX),
+      //   getSourcePosition: d => d.sourcePosition,
+      //   getTargetPosition: d => d.targetPosition,
+      //   getColor: [100, 100, 100, 100],
+      //   getWidth: d =>
+      //     d.positionstatus === "start" && i === 0
+      //       ? 1
+      //       : d.positionstatus === "end"
+      //       ? 1
+      //       : 2,
+      //   widthUnits: "pixels",
+      //   modelMatrix,
+      //   viewId: "genome-positions",
+      //   updateTriggers: {
+      //     data: [debouncedZoomX]
+      //   }
+      // });
 
 
-      const gapFiller = new SolidPolygonLayer({
-        id: `genome-positions-filler-${i}`,
-        data: [{
-          polygon: [[1, 0], [spacing, 0], [spacing, 2], [1, 2]],
-          color: i!== settings.number_of_trees ? [100, 100, 100, 100] : [255, 255, 255, 0]
-        }, 
-        {
-          polygon: [[0, 0], [1, 0], [1, 2], [0, 2]],
-          color: hoveredTreeIndex?.treeIndex === treeIndex ? [150, 230, 250, 60] : [255, 255, 255, 0]
-        }
-      ],
-        modelMatrix,
-        viewId: 'genome-positions',
-        getPolygon: d => d.polygon,
-        getFillColor: d => d.color,
+      // const gapFiller = new SolidPolygonLayer({
+      //   id: `genome-positions-filler-${i}`,
+      //   data: [{
+      //     polygon: [[1, 0], [spacing, 0], [spacing, 2], [1, 2]],
+      //     color: i!== settings.number_of_trees ? [100, 100, 100, 100] : [255, 255, 255, 0]
+      //   }, 
+      //   {
+      //     polygon: [[0, 0], [1, 0], [1, 2], [0, 2]],
+      //     color: hoveredTreeIndex?.treeIndex === treeIndex ? [150, 230, 250, 60] : [255, 255, 255, 0]
+      //   }
+      // ],
+      //   modelMatrix,
+      //   viewId: 'genome-positions',
+      //   getPolygon: d => d.polygon,
+      //   getFillColor: d => d.color,
 
-        updateTriggers: {
-          getFillColor: [hoveredTreeIndex]
-        }
-      })
+      //   updateTriggers: {
+      //     getFillColor: [hoveredTreeIndex]
+      //   }
+      // })
 
-      const startGenomePosition = i === 0 ? new TextLayer({
-        id: `genome-positions-start-label-${i}`,
-        data: (() => {
-          const start = genomeLineLayer.props.data.find(d => d.positionstatus === 'start');
-          return [{ position: [start.sourcePosition[0], 1], text: Math.round(start.genomicPosition).toString() }];
-        })(),
-        getPosition: d => d.position,
-        getText: d => d.text,
-        sizeUnits: 'pixels',
-        getTextAnchor: 'middle',
-        getColor: [50, 50, 50, 255],
-        modelMatrix,
-        viewId: 'genome-positions',
-        getBackgroundColor: [255, 255, 255, 220], 
-        backgroundPadding: [4, 2, 4, 2],
-        getBorderColor: [150, 150, 150, 255],
-        getBorderWidth: 1,
-        fontFamily: 'Arial, sans-serif',
-        fontWeight: 'bold',
-        getSize: 12,
-      }) : null;
+      // const startGenomePosition = i === 0 ? new TextLayer({
+      //   id: `genome-positions-start-label-${i}`,
+      //   data: (() => {
+      //     const start = genomeLineLayer.props.data.find(d => d.positionstatus === 'start');
+      //     return [{ position: [start.sourcePosition[0], 1], text: Math.round(start.genomicPosition).toString() }];
+      //   })(),
+      //   getPosition: d => d.position,
+      //   getText: d => d.text,
+      //   sizeUnits: 'pixels',
+      //   getTextAnchor: 'middle',
+      //   getColor: [50, 50, 50, 255],
+      //   modelMatrix,
+      //   viewId: 'genome-positions',
+      //   getBackgroundColor: [255, 255, 255, 220], 
+      //   backgroundPadding: [4, 2, 4, 2],
+      //   getBorderColor: [150, 150, 150, 255],
+      //   getBorderWidth: 1,
+      //   fontFamily: 'Arial, sans-serif',
+      //   fontWeight: 'bold',
+      //   getSize: 12,
+      // }) : null;
       
-      const endGenomePosition = i === settings.number_of_trees ? new TextLayer({
-        id: `genome-positions-end-label-${i}`,
-        data: (() => {
-          const end = genomeLineLayer.props.data.find(d => d.positionstatus === 'end');
-          return [{ position: [end.targetPosition[0], 1], text: Math.round(end.genomicPosition).toString() }];
-        })(),
-        getPosition: d => d.position,
-        getText: d => d.text,
-        sizeUnits: 'pixels',
-        getTextAnchor: 'middle',
-        getColor: [50, 50, 50, 255],
-        modelMatrix,
-        viewId: 'genome-positions',
-        getBackgroundColor: [255, 255, 255, 220], 
-        backgroundPadding: [4, 2, 4, 2],
-        getBorderColor: [150, 150, 150, 255],
-        getBorderWidth: 1,
-        fontFamily: 'Arial, sans-serif',
-        fontWeight: 'bold',
-        getSize: 12,
-      }) : null;
+      // const endGenomePosition = i === settings.number_of_trees ? new TextLayer({
+      //   id: `genome-positions-end-label-${i}`,
+      //   data: (() => {
+      //     const end = genomeLineLayer.props.data.find(d => d.positionstatus === 'end');
+      //     return [{ position: [end.targetPosition[0], 1], text: Math.round(end.genomicPosition).toString() }];
+      //   })(),
+      //   getPosition: d => d.position,
+      //   getText: d => d.text,
+      //   sizeUnits: 'pixels',
+      //   getTextAnchor: 'middle',
+      //   getColor: [50, 50, 50, 255],
+      //   modelMatrix,
+      //   viewId: 'genome-positions',
+      //   getBackgroundColor: [255, 255, 255, 220], 
+      //   backgroundPadding: [4, 2, 4, 2],
+      //   getBorderColor: [150, 150, 150, 255],
+      //   getBorderWidth: 1,
+      //   fontFamily: 'Arial, sans-serif',
+      //   fontWeight: 'bold',
+      //   getSize: 12,
+      // }) : null;
 
-      const middleGenomePosition = new TextLayer({
-        id: `genome-positions-middle-label-${i}`,
-        data: (() => {
-          const middle = genomeLineLayer.props.data.filter(d => d.positionstatus === 'middle');
-          return middle.map(m => ({ position: [m.sourcePosition[0], 1], text: Math.round(m.genomicPosition).toString() }));
-        })(),
-        getPosition: d => d.position,
-        getText: d => d.text,
-        sizeUnits: 'pixels',
-        getTextAnchor: 'middle',
-        getColor: [50, 50, 50, 255],
-        modelMatrix,
-        viewId: 'genome-positions',
-        getBackgroundColor: [255, 255, 255, 220], 
-        backgroundPadding: [4, 2, 4, 2],
-        getBorderColor: [150, 150, 150, 255],
-        getBorderWidth: 1,
-        fontFamily: 'Arial, sans-serif',
-        fontWeight: 'bold',
-        getSize: 12,
-      }) 
+      // const middleGenomePosition = new TextLayer({
+      //   id: `genome-positions-middle-label-${i}`,
+      //   data: (() => {
+      //     const middle = genomeLineLayer.props.data.filter(d => d.positionstatus === 'middle');
+      //     return middle.map(m => ({ position: [m.sourcePosition[0], 1], text: Math.round(m.genomicPosition).toString() }));
+      //   })(),
+      //   getPosition: d => d.position,
+      //   getText: d => d.text,
+      //   sizeUnits: 'pixels',
+      //   getTextAnchor: 'middle',
+      //   getColor: [50, 50, 50, 255],
+      //   modelMatrix,
+      //   viewId: 'genome-positions',
+      //   getBackgroundColor: [255, 255, 255, 220], 
+      //   backgroundPadding: [4, 2, 4, 2],
+      //   getBorderColor: [150, 150, 150, 255],
+      //   getBorderWidth: 1,
+      //   fontFamily: 'Arial, sans-serif',
+      //   fontWeight: 'bold',
+      //   getSize: 12,
+      // }) 
       
-      const backgroundLayer = new SolidPolygonLayer({
-        id: `main-background-${i}`,
-        visible: !hideOrthoLayers,
-        data: [{
-          polygon: [
-            [0, 1], [1, 1], [1, 0], [0, 0]
-          ],
-          treeIndex
-        }],
-        getPolygon: d => d.polygon,
-        getFillColor: hoveredTreeIndex?.treeIndex === treeIndex ? [150, 230, 250, 60] : [255,255,255, 0],
-        // getFillColor: [255,255,255, 0],
-        getLineColor: d =>
-          hoveredTreeIndex?.treeIndex === treeIndex ? [110, 50, 50, 150] : [0, 0, 0, 40],
-        getLineWidth: d => (hoveredTreeIndex?.treeIndex === i ? 10 : 1),
-        stroked: true,
-        filled: true,
-        modelMatrix,
-        viewId: 'ortho',
-          updateTriggers: {
-            getLineColor: [hoveredTreeIndex],
-            getLineWidth: [hoveredTreeIndex]
-          }
-      });
+      // const backgroundLayers = new SolidPolygonLayer({
+      //   id: `main-background-${i}`,
+      //   visible: !hideOrthoLayers,
+      //   data: [{
+      //     polygon: [
+      //       [0, 1], [1, 1], [1, 0], [0, 0]
+      //     ],
+      //     treeIndex
+      //   }],
+      //   getPolygon: d => d.polygon,
+      //   getFillColor: hoveredTreeIndex?.treeIndex === treeIndex ? [150, 230, 250, 60] : [255,255,255, 0],
+      //   // getFillColor: [255,255,255, 0],
+      //   getLineColor: d =>
+      //     hoveredTreeIndex?.treeIndex === treeIndex ? [110, 50, 50, 150] : [0, 0, 0, 40],
+      //   getLineWidth: d => (hoveredTreeIndex?.treeIndex === i ? 10 : 1),
+      //   stroked: true,
+      //   filled: true,
+      //   modelMatrix,
+      //   viewId: 'ortho',
+      //     updateTriggers: {
+      //       getLineColor: [hoveredTreeIndex],
+      //       getLineWidth: [hoveredTreeIndex]
+      //     }
+      // });
 
       return [
         pathLayer,
-        nodeLayer,
-        mutationLayer,
-        textLayer,
-        backgroundLayer,
-        genomeLineLayer,
-        startGenomePosition,
-        endGenomePosition,
-        gapFiller,
-        middleGenomePosition
+        // boxLayer,
+        // nodeLayer,
+        // mutationLayer,
+        // textLayer,
+        // // backgroundLayer,
+        // genomeLineLayer,
+        // startGenomePosition,
+        // endGenomePosition,
+        // gapFiller,
+        // middleGenomePosition
       ].filter(Boolean);
 
     });
@@ -440,6 +540,7 @@ const useLayers = ({
       }
       // pickable: true,
     })
+    
     const coalescenceTimeLabels = new TextLayer({
       id: `tree-time-labels`,
       data: (() => {
@@ -460,13 +561,14 @@ const useLayers = ({
       getSize: 12,
     }) 
 
+return [...singleTreeLayers, coalescenceLayer, coalescenceTimeLabels, genomeGridLayer];
+    // return [ ...singleTreeLayers,backgroundLayer];
+
+  }, [data, deckRef, viewState.zoom, viewState['genome-positions'], hoverInfo, hoveredTreeIndex, settings, hideOrthoLayers]);
 
 
-    return [...singleTreeLayers,coalescenceLayer, coalescenceTimeLabels,];
 
-  }, [data, viewState.zoom, hoverInfo, hoveredTreeIndex, settings, hideOrthoLayers]);
-
-  return { layers, layerFilter };
+  return { layers, layerFilter, bpPerDecimal };
 };
 
 export default useLayers;
