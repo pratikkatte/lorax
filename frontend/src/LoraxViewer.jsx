@@ -11,7 +11,7 @@ import Settings from './components/Settings.jsx'
 import useLoraxConfig from './globalconfig.js'
 import axios from 'axios';
 
-export default function LoraxViewer({ backend, config, setConfig, settings, setSettings, project, setProject, ucgbMode}) {
+export default function LoraxViewer({ backend, config, setConfig, settings, setSettings, project, setProject, ucgbMode, globalBins}) {
 
 
   const { file } = useParams();
@@ -136,7 +136,7 @@ export default function LoraxViewer({ backend, config, setConfig, settings, setS
       
       <div className="flex flex-row h-screen w-full z-40">
         <div className={`${(isChatbotVisible || showInfo || showSettings) ? (showSidebar ? 'w-[73%]' : 'w-3/4') :  (showSidebar ? 'w-[97%]' : 'w-full')} transition-all duration-200`}>
-          <Lorax backend={backend} config={config} setConfig={setConfig} settings={settings} setSettings={setSettings} project={project} ucgbMode={ucgbMode} />
+          <Lorax backend={backend} config={config} setConfig={setConfig} settings={settings} setSettings={setSettings} project={project} ucgbMode={ucgbMode} globalBins={globalBins} />
         </div>
         <div className={`transition-all relative ${showInfo ? '' : 'hidden'} shadow-2xl bg-gray-100 duration-200 ${showSidebar ? 'w-[25%]' : 'w-1/4'}`}>
             <Info backend={backend} gettingDetails={gettingDetails} setGettingDetails={setGettingDetails} setShowInfo={setShowInfo} config={config} setConfig={setConfig} selectedFileName={selectedFileName} setSelectedFileName={setSelectedFileName}/>

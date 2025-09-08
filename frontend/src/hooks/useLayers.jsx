@@ -121,6 +121,7 @@ const useLayers = ({
   config, 
   viewportSize,
   setViewportSize,
+  globalBins,
 }) => {
 
 
@@ -158,7 +159,7 @@ const useLayers = ({
 
     // const { genomeGridLines, bpPerDecimal } = genomeCoordinates({genome_length, viewState, config, viewportSize, setViewState})
 
-    const { getbounds } = useRegions({config, viewportSize});
+    const { getbounds } = useRegions({config, viewportSize, globalBins});
 
     const bins = getbounds();
   const layers = useMemo(() => {
@@ -169,7 +170,7 @@ const useLayers = ({
     const genomeGridLayer = new GenomeGridLayer({
       id: 'genome-positions-grid',
       // data: genomeGridLines,
-      data: bins.slice(0, 100),
+      data: bins,
       y0: 0,
       y1: 2,
       labelOffset: 0.06,

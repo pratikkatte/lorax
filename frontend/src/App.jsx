@@ -24,7 +24,7 @@ function App() {
   const {settings, setSettings} = useSettings();
   const [gettingDetails, setGettingDetails] = useState(false);
   const backend = useConnect({setGettingDetails, settings});
-  const {config, setConfig} = useConfig({backend});
+  const {config, setConfig, globalBins} = useConfig({backend});
 
   const upload = useFileUpload({
     config,
@@ -57,6 +57,7 @@ function App() {
             project={project}
             setProject={setProject}
             ucgbMode={ucgbMode}
+            globalBins={globalBins}
             
           />
         }

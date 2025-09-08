@@ -6,7 +6,7 @@ import { useState, useRef, useEffect } from "react";
 import PositionSlider from './components/PositionSlider'
 
 
-function Lorax({backend, config, setConfig, settings, setSettings, project, ucgbMode}) {
+function Lorax({backend, config, setConfig, settings, setSettings, project, ucgbMode, globalBins}) {
 
 
   const [mouseDownIsMinimap, setMouseDownIsMinimap] = useState(false);
@@ -56,6 +56,7 @@ function Lorax({backend, config, setConfig, settings, setSettings, project, ucgb
               setViewportSize={setViewportSize}
               setViewPortCoords={setViewPortCoords}
               viewPortCoords={viewPortCoords}
+              globalBins={globalBins}
             />
           </div>
         </div>

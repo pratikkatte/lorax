@@ -66,7 +66,7 @@ const GenomeVisualization = React.memo(({ pointsArray }) => (
         key={idx}
         points={points.map(([x, y]) => `${x},${y}`).join(" ")}
         fill="rgba(145, 194, 244, 0.18)"
-        stroke="rgba(0,0,0,0.3)"
+        // stroke="rgba(0,0,0,0.3)"
       />
     ))}
   </svg>
@@ -88,6 +88,7 @@ function Deck({
   setViewportSize,
   setViewPortCoords,
   viewPortCoords,
+  globalBins,
 }) {
   
   const [hoveredKey, setHoveredKey] = useState(null);
@@ -158,7 +159,7 @@ function Deck({
     (info) => {
       setHoverInfoRaw(info);
     },[]);
-    const { layers, layerFilter, bpPerDecimal } = useLayers({
+    const { layers, layerFilter } = useLayers({
       data,
       viewState,
       setHoverInfo,
@@ -176,6 +177,7 @@ function Deck({
       config,
       viewportSize,
       setViewportSize,
+      globalBins,
     });
 
     const [saveViewports, setSaveViewports] = useState({});
