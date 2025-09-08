@@ -1,10 +1,76 @@
 /// app.js
-import React, { useState,useEffect, useCallback, useRef } from "react";
+import React, { useState,useEffect, useCallback, useRef, useMemo } from "react";
 import DeckGL from "@deck.gl/react";
 import {View} from '@deck.gl/core';
 
 import useLayers from "./hooks/useLayers";
 import { Oval } from 'react-loader-spinner';
+
+const LoadingSpinner = React.memo(() => (
+  <div className="w-full h-full flex justify-center items-center">
+    <Oval height="40" width="40" color="#666" ariaLabel="loading" secondaryColor="#666" />
+  </div>
+));
+
+const ViewportOverlay = React.memo(() => (
+  <>
+    <div
+      style={{
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        position: 'absolute',
+        top: '5%',
+        left: '10%',
+        height: '83%',
+        width: '80%',
+        zIndex: 10,
+        pointerEvents: 'none',
+        border: '2px solid #333333',
+        borderRadius: '6px',
+        boxShadow: '0 0 4px rgba(0,0,0,0.15)',
+        backgroundColor: 'transparent',
+      }}
+    />
+    <div
+      style={{
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        position: 'absolute',
+        border: '1px solid black',
+        top: '5%',
+        left: '10%',
+        height: '3%',
+        width: '80%',
+        zIndex: '10',
+        pointerEvents: 'none'
+      }}
+    />
+  </>
+));
+
+const GenomeVisualization = React.memo(({ pointsArray }) => (
+  <svg
+    style={{
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      width: '100%',
+      height: '100%',
+      pointerEvents: 'none'
+    }}
+  >
+    {pointsArray?.map((points, idx) => (
+      <polygon
+        key={idx}
+        points={points.map(([x, y]) => `${x},${y}`).join(" ")}
+        fill="rgba(145, 194, 244, 0.18)"
+        stroke="rgba(0,0,0,0.3)"
+      />
+    ))}
+  </svg>
+));
 
 
 function Deck({
@@ -35,8 +101,11 @@ function Deck({
     }
   },[data])
 
+  
   const [hideOrthoLayers, setHideOrthoLayers] = useState(false);
-  const no_data = !data || data.status === "loading"
+  // const no_data = !data || data.status === "loading"
+
+  const no_data = useMemo(() => !data || data.status === "loading", [data]);
 
   useEffect(()=> {
     if (no_data) {
@@ -48,7 +117,7 @@ function Deck({
   },[no_data])
 
 
-  const {views, viewState,setMouseXY, mouseXy, setViewState, MyOrthographicController, handleViewStateChange} = view
+  const {views, viewState, setViewState, handleViewStateChange} = view
 
   const {queryDetails} = backend;
 
@@ -113,24 +182,24 @@ function Deck({
 
     const [dummy, setDummy] = useState(0);
   
-    useEffect(() => {
+    // useEffect(() => {
       
-      if (genomeViewportCoords.length > 0) {
+    //   if (genomeViewportCoords.length > 0) {
 
-        const genome_length = config.value[1]
+    //     const genome_length = config.value[1]
 
-        const specificLayer = layers.find(layer => layer.id === 'genome-positions-grid')
-        const layerdata = specificLayer?.props?.data?.filter(d => d.sourcePosition[0] >= genomeViewportCoords[0] && d.targetPosition[0] <= genomeViewportCoords[1])
-        if (layerdata && layerdata.length > 0) {
-        let endRemainder = bpPerDecimal* (genomeViewportCoords[1] - layerdata[layerdata.length - 1].sourcePosition[0])
-        let startRemainder = layerdata[0].sourcePosition[0] - genomeViewportCoords[0]
-        }
-      }
-    }, [genomeViewportCoords, layers, bpPerDecimal]);
+    //     const specificLayer = layers.find(layer => layer.id === 'genome-positions-grid')
+    //     const layerdata = specificLayer?.props?.data?.filter(d => d.sourcePosition[0] >= genomeViewportCoords[0] && d.targetPosition[0] <= genomeViewportCoords[1])
+    //     if (layerdata && layerdata.length > 0) {
+    //     let endRemainder = bpPerDecimal* (genomeViewportCoords[1] - layerdata[layerdata.length - 1].sourcePosition[0])
+    //     let startRemainder = layerdata[0].sourcePosition[0] - genomeViewportCoords[0]
+    //     }
+    //   }
+    // }, [genomeViewportCoords, layers, bpPerDecimal]);
 
-  const handleClick = useCallback((treeindex) => {
-    queryDetails(treeindex)
-  }, []);
+  // const handleClick = useCallback((treeindex) => {
+  //   queryDetails(treeindex)
+  // }, []);
 
   const getLayerPixelPositions = useCallback((deckRef, layerId) => {
     const spacing = 1.03;
@@ -142,16 +211,12 @@ function Deck({
       var genome_positions_pixels = []
       var main_positions_pixels = []
 
-      const mainTargetLayer = deck?.layerManager?.layers?.find(l => l.id === "main-layer-1");
-
-      if (mainTargetLayer) {
-        const coords = mainTargetLayer.props.getPath(mainTargetLayer.props.data[0]); // usually [x,y] or [lng,lat]
-      }
 
       if (targetLayer) {
 
       targetLayer?.props?.data?.map((d, i) => {
           // const coords = targetLayer.props.getPosition(d); // usually [x,y] or [lng,lat]
+
           const coords = [d.sourcePosition[0], d.sourcePosition[1]];
           const pixel = saveViewports?.['ortho']?.project(coords);
           genome_positions_pixels.push(pixel)
@@ -191,33 +256,79 @@ function Deck({
       }
 
     }
-
-    // const deck = deckRef?.current?.deck;
-    // const viewport = deck?.getViewports().find(vp => vp.id === "ortho" || vp.id === "default");
-  
-    // // Get layer by ID
-    // const targetLayer = deck.layerManager.layers.find(l => l.id === layerId);
-    // if (!targetLayer) {
-    //   console.warn(`TargetLayer "${layerId}" not found`);
-    //   // return [];
-    // }
-  
-    // // Extract data & project
-    // return targetLayer.props.data.map(d => {
-    //   const coords = targetLayer.props.getPosition(d); // usually [x,y] or [lng,lat]
-    //   const pixel = viewport.project(coords);
-    //   return {...d, pixel}; // attach pixel coords
-    // });
     return;
-  }, [deckRef, saveViewports]);
+  }, [deckRef, saveViewports, ]);
   
 
   useEffect(()=> {
     // console.log('View port coords', viewPortCoords);
 
-    var a = getLayerPixelPositions(deckRef, "main-layer-0");
+    getLayerPixelPositions(deckRef, "main-layer-0");
   }, [deckRef,viewPortCoords, saveViewports]);
   
+
+  const handleAfterRender = useCallback(() => {
+    
+      const deck = deckRef?.current?.deck;
+      if (!deck) return;
+
+      const vpGenome = deck.getViewports().find(v => v.id === 'genome-positions');
+      const vpOrtho = deck.getViewports().find(v => v.id === 'ortho');
+
+      if (!vpGenome || !vpOrtho) return;
+
+      setSaveViewports(prev => ({
+        ...prev,
+        'ortho': vpOrtho,
+        'genome-positions': vpGenome
+      }));
+
+        const [x0Ortho, y0Ortho] = vpOrtho.project([0, 0]);
+        const [x1Ortho, y1Ortho] = vpOrtho.project([vpOrtho.width, vpOrtho.height]);
+        const [x0, y0] = vpGenome.unproject([0, 0]);
+        const [x1, y1] = vpGenome.unproject([vpGenome.width, vpGenome.height]);
+        const [x0genome, y0genome] = vpGenome.project([0, 0]);
+        const [x1genome, y1genome] = vpGenome.project([vpGenome.width, vpGenome.height]);
+
+        setGenomeViewportCoords([x0, x1]); // redundant. 
+        setViewportSize([vpOrtho.width, vpOrtho.height]); // redundant. 
+
+        setViewPortCoords({
+          ['ortho']: {
+            pixels: {
+              x0: x0Ortho,
+              y0: y0Ortho,
+              x1: x1Ortho,
+              y1: y1Ortho
+            },
+            viewport: {
+              width: vpOrtho.width,
+              height: vpOrtho.height
+            },
+            coordinates: {
+            }
+          },
+          ['genome-positions']: {
+            coordinates: {
+              x0: x0,
+              y0: y0,
+              x1: x1,
+              y1: y1
+            },
+            viewport: {
+              width: vpGenome.width,
+              height: vpGenome.height
+            },
+            pixels: {
+              x0: x0genome,
+              y0: y0genome,
+              x1: x1genome,
+              y1: y1genome
+            }
+          }
+        })
+      }, [deckRef, setSaveViewports, setGenomeViewportCoords, setViewportSize, setViewPortCoords])
+
   return (
     <div className="w-full"
     onClick={onClickOrMouseMove}
@@ -234,141 +345,18 @@ function Deck({
       viewState={viewState}
       onViewStateChange={handleViewStateChange}
       views={views} 
-      onAfterRender={() => {
-        const deck = deckRef?.current?.deck;
-        const vp = deck.getViewports().find(v => v.id === 'genome-positions');
-        const vpOrtho = deck.getViewports().find(v => v.id === 'ortho');
-
-
-        if (vp && vpOrtho) {
-          setSaveViewports({
-            ['ortho']: vpOrtho,
-            ['genome-positions']: vp
-          });
-
-          const [x0Ortho, y0Ortho] = vpOrtho.project([0, 0]);
-          const [x1Ortho, y1Ortho] = vpOrtho.project([vpOrtho.width, vpOrtho.height]);
-          const [x0, y0] = vp.unproject([0, 0]);
-          const [x1, y1] = vp.unproject([vp.width, vp.height]);
-          const [x0genome, y0genome] = vp.project([0, 0]);
-          const [x1genome, y1genome] = vp.project([vp.width, vp.height]);
-  
-
-          setGenomeViewportCoords([x0, x1]);
-          setViewportSize([vp.width, vp.height]);
-          setViewPortCoords({
-            ['ortho']: {
-              pixels: {
-                x0: x0Ortho,
-                y0: y0Ortho,
-                x1: x1Ortho,
-                y1: y1Ortho
-              },
-              viewport: {
-                width: vpOrtho.width,
-                height: vpOrtho.height
-              },
-              coordinates: {
-              }
-            },
-            ['genome-positions']: {
-              coordinates: {
-                x0: x0,
-                y0: y0,
-                x1: x1,
-                y1: y1
-              },
-              viewport: {
-                width: vp.width,
-                height: vp.height
-              },
-              pixels: {
-                x0: x0genome,
-                y0: y0genome,
-                x1: x1genome,
-                y1: y1genome
-              }
-            }
-          });
-        }
-      }}
+      onAfterRender={handleAfterRender}
     >
       <View id="ortho">
-        {/* React overlay pinned to the main view */}
-        {no_data ? (
-    
-      <div className="w-full h-full flex justify-center items-center">
-      <Oval height="40" width="40" color="#666" ariaLabel="loading" secondaryColor="#666" />
-      </div>
-      ) : null}
-
-        {/* {dummy && viewPortCoords['ortho'] && viewPortCoords['genome-positions'] && <div
-          style={{
-            position: 'absolute',
-            left: dummy.startPixel[0],
-            // top: viewPortCoords['genome-positions'].pixels.y1,
-            top: '10%',
-            width: dummy.endPixel[0] - dummy.startPixel[0],
-            height: dummy.endPixel[1]- dummy.endPixel[1]*0.1,
-            background: 'rgba(145, 194, 244, 0.18)',
-            border: '1px solid rgba(0,0,0,0.3)',
-            pointerEvents: 'none'
-          }}
-          >
-            fix it
-          </div>} */}
-
-          {dummy && viewPortCoords['ortho'] && viewPortCoords['genome-positions'] && (
-            <svg
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              width: '100%',
-              height: '100%',
-              pointerEvents: 'none'
-            }}
-          >
-              {Array.isArray(dummy.pointsArray)
-                ? dummy.pointsArray.map((points, idx) => (
-                  
-                    <polygon
-                      key={idx}
-                      points={points.map(([x, y]) => `${x},${y}`).join(" ")}
-                      fill="rgba(145, 194, 244, 0.18)"
-                      stroke="rgba(0,0,0,0.3)"
-                    />
-
-                  ))
-                :null
-              }
-            </svg>
+        {no_data && <LoadingSpinner />}
+{dummy && dummy.pointsArray.length > 0 && viewPortCoords.ortho && viewPortCoords['genome-positions'] && (
+              <GenomeVisualization pointsArray={dummy.pointsArray} />
             )}
-        
       </View>
       <View id="genome-positions">
       </View>
     </DeckGL>
-    <div
-  style={{
-    display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'center',
-    position: 'absolute',
-    top: '5%',
-    left: '10%',
-    height: '83%',
-    width: '80%',
-    zIndex: 10,
-    pointerEvents: 'none',
-    border: '2px solid #333333', 
-    borderRadius: '6px',
-    boxShadow: '0 0 4px rgba(0,0,0,0.15)',
-    backgroundColor: 'transparent',
-  }}
-></div>
-    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'absolute', border: '1px solid black', top: '5%', left: '10%', height: '3%', width: '80%',  zIndex: '10', pointerEvents: 'none'}}></div>
-
+    <ViewportOverlay />
     </div>
     </>
   

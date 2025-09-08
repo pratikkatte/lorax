@@ -1,161 +1,131 @@
-import { useCallback, useEffect, useState, useMemo } from "react";
+import { useMemo } from "react";
 
-const useRegions = ({config, viewportSize}) => {
-
-  function findKeysInRange(intervals, start, end) {
-    return Object.keys(intervals)
-      .map(Number) // convert keys from string to number
-      .filter(key => key >= start && key <= end);
+function lowerBound(arr, x) {
+  let lo = 0, hi = arr.length - 1, ans = arr.length;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (arr[mid] >= x) { ans = mid; hi = mid - 1; } else { lo = mid + 1; }
   }
-
-  // function logNormalize(arr, eps = 1e-3) {
-  //   const shifted = arr.map(x => Math.log10(x + 1));      // compress range
-  //   const min = Math.min(...shifted);
-  //   const max = Math.max(...shifted);
-  
-  //   // Handle constant arrays
-  //   if (!isFinite(min) || !isFinite(max) || Math.abs(max - min) < 1e-12) {
-  //     return arr.map(() => 0.5); // everything to midpoint
-  //   }
-  
-  //   const scale = (1 - 2 * eps) / (max - min);
-  //   return shifted.map(v => eps + (v - min) * scale);
-  // }
-
-  function logNormalize(arr, nbins) {
-    // 1. Apply log transform to compress dynamic range
-    const shifted = arr.map(x => Math.log10(x + 1));
-  
-    // 2. Shift to positive
-    const min = Math.min(...shifted);
-    const positive = shifted.map(v => v - min);
-  
-    // 3. Normalize so they sum to 1
-    const total = positive.reduce((a, b) => a + b, 0);
-    if (total === 0) {
-      // edge case: all equal
-      return arr.map(() => nbins / arr.length);
-    }
-  
-    const probs = positive.map(v => v / total);
-  
-    // 4. Scale so the sum is nbins
-    return probs.map(p => p * nbins);
-  }
-  
-  // // Example:
-  // const data = [82571, 130, 53, 21, 123, 163, 191, 206, 153, 18, 163, 137];
-  // const out = logNormalizeSumBins(data, 12);
-  // console.log(out, "sum =", out.reduce((a,b) => a+b, 0));
-  
-
-  
-
-    const makeUniformedBins = useCallback(() => {
-        
-        var intervals = config.new_intervals; 
-        
-        var window_size = config.value[1] - config.value[0];
-       
-       // bpPerbins
-
-        const filtered_intervals = findKeysInRange(intervals, config.value[0], config.value[1])
-
-        var bpPerbins = window_size / filtered_intervals.length
-
-        var nbins = window_size / bpPerbins
-
-
-        var distance_between_intervals = filtered_intervals.map(key => intervals[key][1] - intervals[key][0])
-        distance_between_intervals = [0, ...distance_between_intervals]
-        const log_normalized = logNormalize(distance_between_intervals, nbins)
-
-        
-        const list_of_intervals = [[intervals[filtered_intervals[0]][0],intervals[filtered_intervals[0]][0]],...filtered_intervals.map(key => intervals[key])]
-
-        let bins = []
-        let prev_sourcePosition = 0
-
-        for (let i = 0; i < log_normalized.length; i++) {
-          let sourcePosition = prev_sourcePosition + log_normalized[i]
-          prev_sourcePosition = sourcePosition
-
-          
-          bins.push({
-            start: list_of_intervals[i][0],
-            end: list_of_intervals[i][1],
-            sourcePosition: [sourcePosition, 0],
-            targetPosition: [sourcePosition, 2]
-          })
-        }
-
-        return bins
-
-    }, [config, viewportSize])
-    // const makeFixedBins = useCallback((
-    //     genome_length,
-    //     viewport_width,
-    //     start = 0,
-    //     end = null,
-    //     zoom = 8,
-    //     baseZoom = 8,
-    //     baseBinBP = 10000,
-    //     baseNbins = 5
-    //   ) => {
-    //     const bins = [];
-    //     // const regionEnd = end ?? genome_length;
-  
-    //     window_size = end-start;
-
-    //     let bpPerbin = window_size / baseNbins;
-
-
-    //     const scale = Math.pow(2, baseZoom - Math.ceil(zoom));
-  
-    //     const desiredBinBP = baseBinBP * scale;
-  
-    //     // const L = Math.max(0, regionEnd - start);
-  
-    //   //   const binBP = alignedBinBP(L, desiredBinBP, "ceil");
-    //     const binBP = desiredBinBP;
-  
-    //     const regionEnd = (end ?? genome_length)+binBP;
-    //     // global index offset
-    //     let i = Math.floor(start / binBP);
-  
-    //     for (let pos = start; pos <= regionEnd; pos += binBP, i++) {
-    //       const binStart = pos;
-  
-    //       // const binEnd = Math.min(pos + binBP, regionEnd);
-    //       const binEnd = pos + binBP;
-  
-    //       bins.push({
-    //         start: binStart,
-    //         end: binEnd,
-    //         i, // global bin index
-    //         sourcePosition: [i, 0],
-    //         targetPosition: [i, 2]
-    //       });
-    //     }
-  
-    //     return {bins, binBP};
-    //   }, config]);
-
-  const getbounds = useMemo(() => {
-    return () => {
-      if (!config || !viewportSize) return [];
-      const genome_window_size = config.value[1] - config.value[0];
-      const viewport_width = viewportSize[0];
-      const bins = makeUniformedBins()
-      return bins
-    };
-  }, [config, viewportSize]);
-
-  return useMemo(() => {
-    return {
-      getbounds
-    }
-  }, [getbounds]);
+  return ans;
 }
 
+function upperBound(arr, x) {
+  let lo = 0, hi = arr.length - 1, ans = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (arr[mid] <= x) { ans = mid; lo = mid + 1; } else { hi = mid - 1; }
+  }
+  return ans;
+}
+
+function logNormalize(arr, targetTotal) {
+  // log10(x+1) to compress range; shift positive; scale to targetTotal
+  const n = arr.length;
+  if (n === 0) return [];
+  const shifted = new Array(n);
+  let min = Infinity;
+  for (let i = 0; i < n; i++) {
+    const v = Math.max(0, arr[i]); // guard negatives
+    const s = Math.log10(v + 1);
+    shifted[i] = s;
+    if (s < min) min = s;
+  }
+  let sum = 0;
+  for (let i = 0; i < n; i++) {
+    shifted[i] -= min;
+    sum += shifted[i];
+  }
+  if (sum === 0) {
+    const equal = targetTotal / n;
+    return new Array(n).fill(equal);
+  }
+  const scale = targetTotal / sum;
+  for (let i = 0; i < n; i++) shifted[i] *= scale;
+  return shifted;
+}
+
+
+
+const useRegions = ({ config, viewportSize }) => {
+  // Compute bins only when config changes (viewportSize not used)
+  const bins = useMemo(() => {
+    if (!config || !config.value || !config.new_intervals) return [];
+
+    const intervals = config.new_intervals; // { key:numberLike: [start,end], ... }
+    
+    let [start, end] = config.value;
+    if (start > end) [start, end] = [end, start];
+
+    start = 0
+    // Use the last key (as number) to get the last interval's end
+    const lastKey = Object.keys(intervals)[Object.keys(intervals).length - 1];
+    end = intervals[lastKey][1];
+
+    // sort numeric keys once
+    const keys = Object.keys(intervals).map(Number).sort((a, b) => a - b);
+    if (keys.length === 0) return [];
+
+    // slice keys into [start,end] via binary search
+    const lo = lowerBound(keys, start);
+    const hi = upperBound(keys, end);
+    if (lo > hi) return [];
+
+    const inRange = keys.slice(lo, hi + 1);
+
+    // Leading degenerate interval at the very first start (keeps lengths aligned with weights)
+    const firstStart = intervals[inRange[0]][0];
+    const list = new Array(inRange.length + 1);
+    list[0] = [firstStart, firstStart];
+    for (let i = 0; i < inRange.length; i++) {
+      const k = inRange[i];
+      list[i + 1] = intervals[k];
+    }
+
+    // Interval widths (prefix 0 to match original logic)
+    const widths = new Array(list.length);
+    widths[0] = 0;
+    for (let i = 0; i < inRange.length; i++) {
+      const [s, e] = intervals[inRange[i]];
+      widths[i + 1] = Math.max(0, e - s);
+    }
+
+    // Keep the accumulated total consistent with original code:
+    // targetTotal == number of (real) intervals
+    const targetTotal = inRange.length;
+    const weights = logNormalize(widths, targetTotal);
+
+    // Build bins with cumulative positions
+    const out = new Array(list.length);
+    let acc = 0;
+    for (let i = 0; i < list.length; i++) {
+      acc += weights[i];
+      const [s, e] = list[i];
+      out[i] = {
+        start: s,
+        end: e,
+        sourcePosition: [acc, 0],
+        targetPosition: [acc, 2],
+      };
+    }
+
+    return out;
+    
+  }, [config?.value, config?.new_intervals]);
+
+  // Keep your old API if you were calling a function.
+  const getbounds = useMemo(() => () => bins, [bins]);
+
+  
+
+  return { bins, getbounds };
+};
+
 export default useRegions;
+
+
+// i'm here first getting the start and end from from thec config.value and 
+// then logNormalizing the intervalst and creating the bins withing the range of number of intervals. 
+// then the trees are rendered 0 to 1. 
+// so, if the value changes, the bins should be recreated. 
+// now the start and are always 0 and the end is the last interval's end. 
+// what I want is global bins, local bins that is sliced based on the config.value. , and then the trees are rendered 0 to 1. 

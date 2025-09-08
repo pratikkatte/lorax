@@ -85,37 +85,37 @@ const genomeCoordinates = ({
 
       setBpPerDecimal(binBP)
 
-      if (viewportWidth != null && viewportHeight != null && !isViewSet) {
-      const [minX, minY] = bins[0].sourcePosition;
-      const [maxX, maxY] = bins[bins.length - 1].targetPosition;
+      // if (viewportWidth != null && viewportHeight != null && !isViewSet) {
+      // const [minX, minY] = bins[0].sourcePosition;
+      // const [maxX, maxY] = bins[bins.length - 1].targetPosition;
 
-      console.log("bounds",minX, maxX, minY, maxY, (maxX-minX), viewportWidth)
+      // console.log("bounds",minX, maxX, minY, maxY, (maxX-minX), viewportWidth)
 
-      const target = [(maxX-minX)/2, (maxY-minY)/2]
+      // const target = [(maxX-minX)/2, (maxY-minY)/2]
       
-      const zoomm = viewportWidth != null ? Math.log2(viewportWidth / (maxX - minX)) : null;
+      // const zoomm = viewportWidth != null ? Math.log2(viewportWidth / (maxX - minX)) : null;
       
-      setViewState((prev) => {
-        if (prev['genome-positions'] && zoomm != null && target != null) {
-          const genome_position_view = prev['genome-positions']
+      // setViewState((prev) => {
+      //   if (prev['genome-positions'] && zoomm != null && target != null) {
+      //     const genome_position_view = prev['genome-positions']
           
-          if (genome_position_view.zoom !== zoomm && genome_position_view.target !== target) {    
-            console.log("target", target, zoomm)
-            setIsViewSet(true)
+      //     if (genome_position_view.zoom !== zoomm && genome_position_view.target !== target) {    
+      //       console.log("target", target, zoomm)
+      //       setIsViewSet(true)
 
-            // return {
-            //           ...prev,
-            //           ['genome-positions']: {
-            //             ...genome_position_view,
-            //             zoom: zoomm,
-            //             target: target
-            //           }
-            //           }
-            }
-          }
-          return prev
-        })
-      }
+      //       // return {
+      //       //           ...prev,
+      //       //           ['genome-positions']: {
+      //       //             ...genome_position_view,
+      //       //             zoom: zoomm,
+      //       //             target: target
+      //       //           }
+      //       //           }
+      //       }
+      //     }
+      //     return prev
+      //   })
+      // }
     }, [binBP, viewState['genome-positions']], viewportSize, isViewSet)
 
   return {

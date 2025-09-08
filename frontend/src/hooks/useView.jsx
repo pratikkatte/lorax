@@ -172,14 +172,14 @@ const useView = ({config, settings, setSettings, genomeViewportCoords, setGenome
       } else if (panDirection === "L"){
         // Adjust pan step according to zoom level
         // The step size decreases as zoom increases (zoom[0] is log2 scale)
-        var panStep = zoom[0] / Math.pow(2, zoom[0]);
-        panStep = 0.2
+        var panStep = zoom[0]**2 / Math.pow(2, zoom[0]);
+        // panStep = 0.2
         target[0] = target[0] - panStep;
       }
 
       else if (panDirection === "R"){
-        var panStep = zoom[0] / Math.pow(2, zoom[0]);
-        panStep = 0.2
+        var panStep = zoom[0]*2 / Math.pow(2, zoom[0]);
+        // panStep = 0.2
         target[0] = target[0] + panStep
       }
       

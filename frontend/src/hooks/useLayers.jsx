@@ -7,56 +7,56 @@ import {
   SolidPolygonLayer
 } from "@deck.gl/layers";
 import { Matrix4, Vector3 } from "@math.gl/core";
-import genomeCoordinates from "../layers/genomeCoordinates";
+// import genomeCoordinates from "../layers/genomeCoordinates";
 import { useMemo, useCallback, useState, useEffect } from "react";
 import { GenomeGridLayer } from "../layers/GenomeGridLayer";
 import useRegions from "./useRegions";
 
 
 
-const getGenomeLinesCached = (() => {
-  const cache = new Map();
-  return (genomePos, zoom) => {
-    const bucketZoom = Math.ceil(zoom); // integer bucket
-    const cacheKey = `${genomePos.start}-${genomePos.end}-${bucketZoom}`;
-    if (cache.has(cacheKey)) {
-      return cache.get(cacheKey);
-    }
+// const getGenomeLinesCached = (() => {
+//   const cache = new Map();
+//   return (genomePos, zoom) => {
+//     const bucketZoom = Math.ceil(zoom); // integer bucket
+//     const cacheKey = `${genomePos.start}-${genomePos.end}-${bucketZoom}`;
+//     if (cache.has(cacheKey)) {
+//       return cache.get(cacheKey);
+//     }
 
-    // const divisions = bucketZoom <= 9 ? 10 : 20
-    const getDivisions = (zoom) => {
-      if (zoom <= 8) return 10;
-      return (zoom) * 2;
-    };
-    const divisions = getDivisions(bucketZoom);
-    const stepSize = (genomePos.end - genomePos.start) / divisions;
-    const middle = 5;
-    const lines = [];
+//     // const divisions = bucketZoom <= 9 ? 10 : 20
+//     const getDivisions = (zoom) => {
+//       if (zoom <= 8) return 10;
+//       return (zoom) * 2;
+//     };
+//     const divisions = getDivisions(bucketZoom);
+//     const stepSize = (genomePos.end - genomePos.start) / divisions;
+//     const middle = 5;
+//     const lines = [];
 
-    for (let j = 0; j <= divisions; j++) {
-      const xPosition = j / divisions;
-      const genomicPosition = genomePos.start + (stepSize * j);
-      const positionstatus =
-        j === 0
-          ? "start"
-          : j === divisions
-          ? "end"
-          : j % middle === 0
-          ? "middle"
-          : null;
+//     for (let j = 0; j <= divisions; j++) {
+//       const xPosition = j / divisions;
+//       const genomicPosition = genomePos.start + (stepSize * j);
+//       const positionstatus =
+//         j === 0
+//           ? "start"
+//           : j === divisions
+//           ? "end"
+//           : j % middle === 0
+//           ? "middle"
+//           : null;
 
-      lines.push({
-        sourcePosition: [xPosition, 0],
-        targetPosition: [xPosition, 2],
-        genomicPosition,
-        positionstatus
-      });
-    }
+//       lines.push({
+//         sourcePosition: [xPosition, 0],
+//         targetPosition: [xPosition, 2],
+//         genomicPosition,
+//         positionstatus
+//       });
+//     }
 
-    cache.set(cacheKey, lines);
-    return lines;
-  };
-})();
+//     cache.set(cacheKey, lines);
+//     return lines;
+//   };
+// })();
 
 const getCoalescenceLinesCached = (() => {
   const cache = new Map();
@@ -156,9 +156,10 @@ const useLayers = ({
   
     const genome_length = 10000;
 
-    const { genomeGridLines, bpPerDecimal } = genomeCoordinates({genome_length, viewState, config, viewportSize, setViewState})
+    // const { genomeGridLines, bpPerDecimal } = genomeCoordinates({genome_length, viewState, config, viewportSize, setViewState})
 
     const { getbounds } = useRegions({config, viewportSize});
+
     const bins = getbounds();
   const layers = useMemo(() => {
     if (!data?.data?.paths) return [];
@@ -168,7 +169,7 @@ const useLayers = ({
     const genomeGridLayer = new GenomeGridLayer({
       id: 'genome-positions-grid',
       // data: genomeGridLines,
-      data: bins,
+      data: bins.slice(0, 100),
       y0: 0,
       y1: 2,
       labelOffset: 0.06,
@@ -180,34 +181,34 @@ const useLayers = ({
       showLabels: true
     });
 
-    const bpTocoord = (bp) => {
-      return bp / bpPerDecimal
-    }
+    // const bpTocoord = (bp) => {
+    //   return bp / bpPerDecimal
+    // }
 
-    const TreeLayerss = config.intervals.map((interval, i) => {
-      if (i > 10) return [];
-      const tree_layers = []
-      const worldCoord = bpTocoord(interval[0])
+    // const TreeLayerss = config.intervals.map((interval, i) => {
+    //   if (i > 10) return [];
+    //   const tree_layers = []
+    //   const worldCoord = bpTocoord(interval[0])
 
-      const textLayer = new TextLayer({
-        id: `main-tree-text-${i}`,
-        data: [{
-          position: [worldCoord, 0.5],
-          text: interval[0].toLocaleString("en-US", { maximumFractionDigits: 0 }),
-        }],
-        fontFamily: 'Arial, sans-serif',
-        fontWeight: 'bold',
-        fontSize: 6,
-        color: [50, 50, 50, 255],
-        // backgroundColor: [255, 255, 255, 220],
-        // backgroundPadding: [4, 2, 4, 2],
-        borderColor: [150, 150, 150, 255],
-        borderWidth: 1,
-      })
-      tree_layers.push(textLayer)
+    //   const textLayer = new TextLayer({
+    //     id: `main-tree-text-${i}`,
+    //     data: [{
+    //       position: [worldCoord, 0.5],
+    //       text: interval[0].toLocaleString("en-US", { maximumFractionDigits: 0 }),
+    //     }],
+    //     fontFamily: 'Arial, sans-serif',
+    //     fontWeight: 'bold',
+    //     fontSize: 6,
+    //     color: [50, 50, 50, 255],
+    //     // backgroundColor: [255, 255, 255, 220],
+    //     // backgroundPadding: [4, 2, 4, 2],
+    //     borderColor: [150, 150, 150, 255],
+    //     borderWidth: 1,
+    //   })
+    //   tree_layers.push(textLayer)
 
-      return tree_layers
-    })
+    //   return tree_layers
+    // })
             
     const singleTreeLayers = data.data.paths.flatMap((tree, i) => {
       const spacing = 1.03;
@@ -568,7 +569,7 @@ return [...singleTreeLayers, coalescenceLayer, coalescenceTimeLabels, genomeGrid
 
 
 
-  return { layers, layerFilter, bpPerDecimal };
+  return { layers, layerFilter };
 };
 
 export default useLayers;
