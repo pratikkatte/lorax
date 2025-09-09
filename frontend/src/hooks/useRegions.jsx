@@ -52,7 +52,6 @@ const useRegions = ({ config, globalBins, setView, viewPortCoords, value, global
   const bufferRef = useRef(null);
 
   const {bins, maxX, minX} = useMemo(() => {
-    console.log("globalBinsIndexes", globalBinsIndexes)
     if (!config || !config.new_intervals || !globalBins || !value || !globalBinsIndexes) return [];
 
     const intervals = config.new_intervals; 
@@ -62,9 +61,7 @@ const useRegions = ({ config, globalBins, setView, viewPortCoords, value, global
     // slice keys into [start,end] via binary search
       let [lo, hi] = globalBinsIndexes;
 
-
     if (isValueRef.current === value) {
-      console.log("value not changed", value, isValueRef.current)
       return {bins: localBinsRef.current.bins, maxX: localBinsRef.current.maxX, minX: localBinsRef.current.minX };
     }else if (isValueRef.current?.[0] === value[0]){
       lo = localBinsRef.current.lo;
@@ -90,7 +87,6 @@ const useRegions = ({ config, globalBins, setView, viewPortCoords, value, global
 
     if(bufferRef.current && (lo < bufferRef.current.index[0] || hi > bufferRef.current.index[1])){
 
-      console.log("bufferRef.current local", local_bins[0].sourcePosition[0], local_bins[local_bins.length - 1].sourcePosition[0])
       bufferRef.current = {
         "index": [loBuffered, hiBuffered],
         "value": [local_bins[0].start, local_bins[local_bins.length - 1].end]
@@ -119,7 +115,6 @@ const useRegions = ({ config, globalBins, setView, viewPortCoords, value, global
 
   useEffect(() => {
     if (!bufferRef.current) return;
-    console.log("bufferRef.current", bufferRef.current)
 
     const [loBuffered, hiBuffered] = bufferRef.current.value;
 
