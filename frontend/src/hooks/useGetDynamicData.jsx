@@ -3,6 +3,7 @@ import websocketEvents from "../webworkers/websocketEvents";
 
 const DEBOUNCE_TIME = 100;
 const CHECK_AGAIN_TIME = 100;
+
 function addNodeLookup(data) {
   const output = {
     ...data,
@@ -10,7 +11,7 @@ function addNodeLookup(data) {
   };
   return output;
 }
-function useGetDynamicData(backend, config) {
+function useGetDynamicData(backend, config, dataExtractValues, setDataExtractValues) {
 
   const { queryNodes, socketRef, isConnected } = backend;
 
@@ -23,7 +24,8 @@ function useGetDynamicData(backend, config) {
 
 
   useEffect(() => {
-    if (config?.value) {
+    if (dataExtractValues) {
+      console.log("dataExtractValues", dataExtractValues)
     setDynamicData({ ...dynamicData, status: "loading" });
     queryNodes(
       boundsForQueries,
@@ -39,10 +41,10 @@ function useGetDynamicData(backend, config) {
           return new_result;
         })
       },
-          config.value,
+          dataExtractValues,
       )
     }
-  }, [config])
+  }, [dataExtractValues])
 
   return { data: dynamicData };
 }

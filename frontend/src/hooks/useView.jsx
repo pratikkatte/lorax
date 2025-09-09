@@ -31,6 +31,39 @@ const INITIAL_VIEW_STATE = {
   }
 }
 
+// Main helper: returns the two indices (i0 for x0, i1 for x1)
+function findClosestBinIndices(globalBins, x0, x1) {
+  const xs = getXArray(globalBins);
+  const i0 = nearestIndex(xs, x0);
+  const i1 = nearestIndex(xs, x1);
+  return { i0, i1 };
+}
+
+function nearestIndex(arr, x) {
+  if (arr.length === 0) return -1;
+  if (x <= arr[0]) return 0;
+  if (x >= arr[arr.length - 1]) return arr.length - 1;
+
+  const i = lowerBound(arr, x);
+  // i is first >= x, so candidate neighbors are i-1 and i
+  const prev = i - 1;
+  return (x - arr[prev] <= arr[i] - x) ? prev : i;
+}
+
+// Extract the sorted x-array once
+function getXArray(globalBins) {
+  return globalBins.map(b => b.sourcePosition[0]);
+}
+
+function lowerBound(arr, x) {
+  let lo = 0, hi = arr.length - 1, ans = arr.length;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (arr[mid] >= x) { ans = mid; hi = mid - 1; } else { lo = mid + 1; }
+  }
+  return ans;
+}
+
 class MyOrthographicController extends OrthographicController {
   
   handleEvent(event) {
@@ -72,7 +105,7 @@ class MyOrthographicController extends OrthographicController {
   }
 }
 
-const useView = ({config, settings, setSettings, genomeViewportCoords, setGenomeViewportCoords, viewportSize, setViewportSize}) => {
+const useView = ({config, settings, setSettings, genomeViewportCoords, setGenomeViewportCoords, viewportSize, setViewportSize, viewPortCoords, globalBins, setGenomicoodinates}) => {
   const [zoomAxis, setZoomAxis] = useState("Y");
   const [panDirection, setPanDirection] = useState(null);
   const [xzoom, setXzoom] = useState(window.screen.width < 600 ? -1 : 0);
@@ -145,8 +178,43 @@ const useView = ({config, settings, setSettings, genomeViewportCoords, setGenome
   ]);
 
   const [mouseXY, setMouseXY] = useState(false);
+
+  const [globalBinsIndexes, setGlobalBinsIndexes] = useState(null);
+
+  useEffect(() => {
+    if (!viewPortCoords) return;
+
+    if (!globalBins === undefined || globalBins === null) return;
+    var {x0, x1} = viewPortCoords['genome-positions']?.coordinates;
+    var {i0, i1} = findClosestBinIndices(globalBins, x0, x1)
+
+    setGlobalBinsIndexes([i0, i1])
+
+    setGenomicoodinates([globalBins[i0].start, globalBins[i1].end])
+
+  }, [viewState, globalBins])
+
+  const setView = useCallback((targetView) => {
+
+    setViewState((prev) => {
+      return {
+        ...prev,
+        'ortho': {
+          ...prev['ortho'],
+          target: [targetView['ortho']['target'],prev['ortho']['target'][1]],
+          zoom: [targetView['ortho']['zoom'],prev['ortho']['zoom'][1]]
+        },
+        'genome-positions': {
+          ...prev['genome-positions'],
+          target: [targetView['genome-positions']['target'],prev['genome-positions']['target'][1]],
+          zoom: [targetView['genome-positions']['zoom'],prev['genome-positions']['zoom'][1]]
+        }
+      }
+    })
+
+  },[]);
   
-  const handleViewStateChange = useCallback(({viewState:newViewState, viewId, oldViewState, basicTarget, overrideZoomAxis}) => {
+  const handleViewStateChange = useCallback(({viewState:newViewState, viewId, oldViewState}) => {
     if (!viewId || !newViewState) return;
     
     setViewState((prev) => {
@@ -191,7 +259,6 @@ const useView = ({config, settings, setSettings, genomeViewportCoords, setGenome
       if (target[0] < 0){
         target = [...oldViewState.target];
       }
-
       const newViewStates = {
         ...prev,
         [viewId]: {
@@ -217,18 +284,21 @@ const useView = ({config, settings, setSettings, genomeViewportCoords, setGenome
     return {
       viewState,
       setViewState,
+      setView,
       views,
       zoomAxis,
       setZoomAxis,
       xzoom,
       setMouseXY,
       mouseXY,
-      handleViewStateChange
+      handleViewStateChange,
+      globalBinsIndexes,
+      setGlobalBinsIndexes
     };
   }, [
     viewState,
     setViewState,
-
+    setView,
     views,
     zoomAxis,
     setZoomAxis,
@@ -237,7 +307,9 @@ const useView = ({config, settings, setSettings, genomeViewportCoords, setGenome
     mouseXY,
     settings,
     panDirection,
-   handleViewStateChange
+   handleViewStateChange,
+   globalBinsIndexes,
+   setGlobalBinsIndexes
   ]);
 
   return output;

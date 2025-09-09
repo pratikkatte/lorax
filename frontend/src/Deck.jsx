@@ -5,6 +5,8 @@ import {View} from '@deck.gl/core';
 
 import useLayers from "./hooks/useLayers";
 import { Oval } from 'react-loader-spinner';
+import useRegions from "./hooks/useRegions";
+
 
 const LoadingSpinner = React.memo(() => (
   <div className="w-full h-full flex justify-center items-center">
@@ -89,14 +91,18 @@ function Deck({
   setViewPortCoords,
   viewPortCoords,
   globalBins,
+  setGenomicoodinates,
+  value,
+  dataExtractValues,
+  setDataExtractValues
 }) {
   
   const [hoveredKey, setHoveredKey] = useState(null);
   const [hoverInfo, setHoverInfoRaw] = useState(null);
   const [genomePositions, setGenomePositions] = useState([]);
 
-  useEffect(()=> {
 
+  useEffect(()=> {
     if (data.status === "loading") {
     console.log("statusMessage", data)
     }
@@ -108,17 +114,7 @@ function Deck({
 
   const no_data = useMemo(() => !data || data.status === "loading", [data]);
 
-  useEffect(()=> {
-    if (no_data) {
-      setHideOrthoLayers(true);
-    }
-    else{
-      // setHideOrthoLayers(false);
-    }
-  },[no_data])
-
-
-  const {views, viewState, setViewState, handleViewStateChange} = view
+  const {views, setView, viewState, setViewState, handleViewStateChange, globalBinsIndexes, setGlobalBinsIndexes} = view
 
   const {queryDetails} = backend;
 
@@ -127,6 +123,9 @@ function Deck({
       //
     }
   },[no_data])
+
+
+  const { bins } = useRegions({config, viewportSize, globalBins, setView, viewPortCoords, setGenomicoodinates, value, dataExtractValues, setDataExtractValues, globalBinsIndexes, setGlobalBinsIndexes});
 
   const onClickOrMouseMove = useCallback(
     (event) => {
@@ -153,8 +152,7 @@ function Deck({
     },
     [hoveredTreeIndex]
   )
-
-    
+ 
   const setHoverInfo = useCallback(
     (info) => {
       setHoverInfoRaw(info);
@@ -178,30 +176,16 @@ function Deck({
       viewportSize,
       setViewportSize,
       globalBins,
+      setView,
+      viewPortCoords,
+      setGenomicoodinates, 
+      value,
+      bins
     });
 
     const [saveViewports, setSaveViewports] = useState({});
 
     const [dummy, setDummy] = useState(0);
-  
-    // useEffect(() => {
-      
-    //   if (genomeViewportCoords.length > 0) {
-
-    //     const genome_length = config.value[1]
-
-    //     const specificLayer = layers.find(layer => layer.id === 'genome-positions-grid')
-    //     const layerdata = specificLayer?.props?.data?.filter(d => d.sourcePosition[0] >= genomeViewportCoords[0] && d.targetPosition[0] <= genomeViewportCoords[1])
-    //     if (layerdata && layerdata.length > 0) {
-    //     let endRemainder = bpPerDecimal* (genomeViewportCoords[1] - layerdata[layerdata.length - 1].sourcePosition[0])
-    //     let startRemainder = layerdata[0].sourcePosition[0] - genomeViewportCoords[0]
-    //     }
-    //   }
-    // }, [genomeViewportCoords, layers, bpPerDecimal]);
-
-  // const handleClick = useCallback((treeindex) => {
-  //   queryDetails(treeindex)
-  // }, []);
 
   const getLayerPixelPositions = useCallback((deckRef, layerId) => {
     const spacing = 1.03;
@@ -229,11 +213,7 @@ function Deck({
           main_positions_pixels.push([x0,y0,x1,y1])
           // return {...d, pixel}; // attach pixel coords
         });
-      } 
-
-      // const [x0,y0] = saveViewports?.['ortho']?.project([0,0])
-      // const [x1,y1] = saveViewports?.['ortho']?.project([1,1])
-
+      }
       if (genome_positions_pixels.length > 0) {
         const pointsArray = [];
         genome_positions_pixels.map((pixel, i) => {
@@ -256,7 +236,6 @@ function Deck({
           'pointsArray': pointsArray
         })
       }
-
     }
     return;
   }, [deckRef, saveViewports, ]);

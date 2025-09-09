@@ -4,10 +4,9 @@ import { Rnd } from 'react-rnd';
 import EditableRange from './EditableRange';
 import { useSearchParams } from 'react-router-dom';
 
-export default function PositionSlider(props) {
+export default function PositionSlider( { config, setConfig, project, ucgbMode, value, setValue}) {
   
     const containerRef = useRef(null);
-    const [value, setValue] = useState(null);
     const sliderRef = useRef(null)
     const containerWidth = useRef(null);
     const sliderWidth = useRef(null)
@@ -16,16 +15,12 @@ export default function PositionSlider(props) {
 
     const tree_index = useRef(null);
 
-    const { config, setConfig, project, ucgbMode} = props
-    
     const [searchParams, setSearchParams] = useSearchParams();
 
     useEffect(() => {
-      if (value) {
+      if (!value) {
         // console.log("searchParams", searchParams.get("project"), searchParams.get("genomiccoordstart"), searchParams.get("genomiccoordend"))
-        setConfig({...config, value: [value[0], value[1]]})
-        console.log("value", value)
-      } else {
+        // setConfig({...config, value: [value[0], value[1]]})
         setValue(config.value)
       }
     }, [value])

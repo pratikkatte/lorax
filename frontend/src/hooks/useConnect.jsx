@@ -109,6 +109,8 @@ function useConnect({ setGettingDetails, settings }) {
 
   /** Exposed methods */
   const queryNodes = useCallback((boundsForQueries, setResult, value) => {
+
+    console.log("querying nodes", boundsForQueries, value);
     sendMessage({
       type: "viz",
       role: "query",

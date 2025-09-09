@@ -122,6 +122,11 @@ const useLayers = ({
   viewportSize,
   setViewportSize,
   globalBins,
+  setView,
+  viewPortCoords,
+  setGenomicoodinates,
+  value,
+  bins
 }) => {
 
 
@@ -159,9 +164,9 @@ const useLayers = ({
 
     // const { genomeGridLines, bpPerDecimal } = genomeCoordinates({genome_length, viewState, config, viewportSize, setViewState})
 
-    const { getbounds } = useRegions({config, viewportSize, globalBins});
+    // const { getbounds } = useRegions({config, viewportSize, globalBins, setView, viewPortCoords, setGenomicoodinates, value});
 
-    const bins = getbounds();
+    
   const layers = useMemo(() => {
     if (!data?.data?.paths) return [];
 
@@ -219,33 +224,33 @@ const useLayers = ({
       const modelMatrix = settings.vertical_mode ? new Matrix4().translate([0, i * spacing, 0]) : new Matrix4().translate([i * spacing,0, 0]);
       const pathData = tree.filter(d => d.path);
       const nodeData = tree.filter(d => d.position);
-var bin = bins[i]
-var nextbin = bins[i+1]
-      const mutationData = tree.filter(d => 'mutations' in d);
-      const boxLayer = new SolidPolygonLayer({
-        id: `main-box-${i}`,
-        data: [{
-          // left top, right top, right bottom, left bottom
-          // polygon: [[0, 0], [1, 0], [1, 1], [0, 1]],
-          polygon: [
-            [bin.sourcePosition[0], bin.sourcePosition[1]],
-             [nextbin.sourcePosition[0]-0.02, nextbin.sourcePosition[1]],
-             [nextbin.targetPosition[0]-0.02, nextbin.targetPosition[1]],
-             [bin.targetPosition[0], bin.targetPosition[1]],
-            ],
-          color: [255, 124, 200, 100]
-        }],
-        getPolygon: d => d.polygon,
-        getFillColor: d => d.color,
-        stroked: true,
-        filled: true,
-        lineWidthUnits: "pixels",
-        lineWidthScale: 1,
-        getLineWidth: 1,
-        borderColor: [0, 0, 0, 255],
-        borderWidth: 1,
-        // modelMatrix
-      })
+// var bin = bins[i]
+// var nextbin = bins[i+1]
+      // const mutationData = tree.filter(d => 'mutations' in d);
+      // const boxLayer = new SolidPolygonLayer({
+      //   id: `main-box-${i}`,
+      //   data: [{
+      //     // left top, right top, right bottom, left bottom
+      //     // polygon: [[0, 0], [1, 0], [1, 1], [0, 1]],
+      //     polygon: [
+      //       [bin.sourcePosition[0], bin.sourcePosition[1]],
+      //        [nextbin.sourcePosition[0]-0.02, nextbin.sourcePosition[1]],
+      //        [nextbin.targetPosition[0]-0.02, nextbin.targetPosition[1]],
+      //        [bin.targetPosition[0], bin.targetPosition[1]],
+      //       ],
+      //     color: [255, 124, 200, 100]
+      //   }],
+      //   getPolygon: d => d.polygon,
+      //   getFillColor: d => d.color,
+      //   stroked: true,
+      //   filled: true,
+      //   lineWidthUnits: "pixels",
+      //   lineWidthScale: 1,
+      //   getLineWidth: 1,
+      //   borderColor: [0, 0, 0, 255],
+      //   borderWidth: 1,
+      //   // modelMatrix
+      // })
 
       const pathLayer = new PathLayer({
         id: `main-layer-${i}`,
