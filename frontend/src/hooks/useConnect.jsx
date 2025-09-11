@@ -10,6 +10,7 @@ let onStatusReceipt = (receivedData) => console.log("STATUS:", receivedData.data
 let onConfigReceipt = (receivedData) => {};
 let onLocalBinsReceipt = (receivedData) => {};
 let onDetailsReceipt = (receivedData) => {};
+let onValueChangedReceipt = (receivedData) => {};
 
 worker.onmessage = (event) => {
   if (event.data.type === "status") onStatusReceipt(event.data);
@@ -17,6 +18,7 @@ worker.onmessage = (event) => {
   if (event.data.type === "config") onConfigReceipt(event.data);
   if (event.data.type === "details") onDetailsReceipt(event.data.data);
   if (event.data.type === "local-bins") onLocalBinsReceipt(event.data);
+  if (event.data.type === "value-changed") onValueChangedReceipt(event.data);
 };
 
 function useConnect({ setGettingDetails, settings }) {
@@ -138,6 +140,21 @@ function useConnect({ setGettingDetails, settings }) {
     };
   }, []);
 
+  
+  const valueChanged = useCallback((globalBins, value, setResult, setGenomicoodinates) => {
+
+    worker.postMessage({
+      type: "value-changed",
+      data: value,
+    });
+
+    onValueChangedReceipt = (receivedData) => {
+      setResult([receivedData.data.i0, receivedData.data.i1]);
+      setGenomicoodinates([globalBins[receivedData.data.i0].s, globalBins[receivedData.data.i1].e]);
+    };
+
+  })
+
   const queryLocalBins = useCallback((globalBins, globalBinsIndexes, setResult) => {
     
     worker.postMessage({
@@ -197,8 +214,9 @@ function useConnect({ setGettingDetails, settings }) {
     queryDetails,
     isConnected,
     checkConnection,
-    queryLocalBins
-  }), [statusMessage, queryNodes, queryDetails, isConnected, checkConnection, queryConfig, queryLocalBins]);
+    queryLocalBins,
+    valueChanged  
+  }), [statusMessage, queryNodes, queryDetails, isConnected, checkConnection, queryConfig, queryLocalBins, valueChanged]);
 }
 
 export default useConnect;

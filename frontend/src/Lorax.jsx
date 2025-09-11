@@ -28,7 +28,7 @@ function Lorax({backend, config, setConfig, settings, setSettings, project, ucgb
   
   // const settings = useSettings({ query, updateQuery });
   
-  const view = useView({config, settings, setSettings, genomeViewportCoords, setGenomeViewportCoords, viewportSize, setViewportSize, viewPortCoords, globalBins, setGenomicoodinates});
+  const view = useView({backend, config, settings, setSettings, genomeViewportCoords, setGenomeViewportCoords, viewportSize, setViewportSize, viewPortCoords, globalBins, setGenomicoodinates});
 
   const { data } = useGetDynamicData(backend, config, dataExtractValues, setDataExtractValues)
 

@@ -14,6 +14,11 @@ console.log("[Worker] Initialized");
 postMessage({ data: "Worker starting" });
 
 
+// Extract the sorted x-array once
+function getXArray(globalBins) {
+  return globalBins.map(b => b.acc);
+}
+
 function logNormalize(arr, targetTotal) {
   // log10(x+1) to compress range; shift positive; scale to targetTotal
   const n = arr.length;
@@ -40,6 +45,33 @@ function logNormalize(arr, targetTotal) {
   return shifted;
 }
 
+function lowerBound(arr, x) {
+  let lo = 0, hi = arr.length - 1, ans = arr.length;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (arr[mid] >= x) { ans = mid; hi = mid - 1; } else { lo = mid + 1; }
+  }
+  return ans;
+}
+
+function nearestIndex(arr, x) {
+  if (arr.length === 0) return -1;
+  if (x <= arr[0]) return 0;
+  if (x >= arr[arr.length - 1]) return arr.length - 1;
+
+  const i = lowerBound(arr, x);
+  // i is first >= x, so candidate neighbors are i-1 and i
+  const prev = i - 1;
+  return (x - arr[prev] <= arr[i] - x) ? prev : i;
+}
+
+// Main helper: returns the two indices (i0 for x0, i1 for x1)
+function findClosestBinIndices(globalBins, x0, x1) {
+  const xs = getXArray(globalBins);
+  const i0 = nearestIndex(xs, x0);
+  const i1 = nearestIndex(xs, x1);
+  return { i0, i1 };
+}
 
 function getGlobalBins(data) {
 
@@ -165,6 +197,12 @@ function makeBin(bin) {
     sourcePosition: [bin.acc, 0],
     targetPosition: [bin.acc, 2],
   };  
+}
+
+export const queryValueChanged = async (value) => {
+  const [x0, x1] = value;
+  const { i0, i1 } = findClosestBinIndices(globalBins, x0, x1);
+  return { i0, i1 };
 }
 
 export const queryLocalBins = async (localBins, globalBinsIndexes) => {
@@ -403,6 +441,11 @@ onmessage = async (event) => {
       const result = await queryLocalBins(data.data.globalBins, data.data.globalBinsIndexes);
       console.log("local bins result", result);
       postMessage({ type: "local-bins", data: result });
+    }
+
+    if (data.type === "value-changed") {
+      const result = await queryValueChanged(data.data);
+      postMessage({ type: "value-changed", data: result });
     }
 
     if (data.type === "details") {
