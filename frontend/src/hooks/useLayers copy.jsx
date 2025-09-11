@@ -7,7 +7,7 @@ import {
   SolidPolygonLayer
 } from "@deck.gl/layers";
 import { Matrix4, Vector3 } from "@math.gl/core";
-import genomeCoordinates from "../layers/genomeCoordinates";
+// import genomeCoordinates from "../layers/genomeCoordinates";
 import { useMemo, useCallback, useState, useEffect } from "react";
 import { GenomeGridLayer } from "../layers/GenomeGridLayer";
 
@@ -155,7 +155,7 @@ const useLayers = ({
   
     const genome_length = 10000;
 
-    const { genomeGridLines } = genomeCoordinates({genome_length, viewState, config})
+    // const { genomeGridLines } = genomeCoordinates({genome_length, viewState, config})
 
   const layers = useMemo(() => {
     if (!data?.data?.paths) return [];

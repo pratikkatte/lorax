@@ -119,8 +119,8 @@ const useLayers = ({
   hideOrthoLayers,
   deckRef,
   config, 
-  viewportSize,
-  setViewportSize,
+  // viewportSize,
+  // setViewportSize,
   globalBins,
   setView,
   viewPortCoords,
@@ -162,9 +162,6 @@ const useLayers = ({
   
     const genome_length = 10000;
 
-    // const { genomeGridLines, bpPerDecimal } = genomeCoordinates({genome_length, viewState, config, viewportSize, setViewState})
-
-    // const { getbounds } = useRegions({config, viewportSize, globalBins, setView, viewPortCoords, setGenomicoodinates, value});
 
     
   const layers = useMemo(() => {

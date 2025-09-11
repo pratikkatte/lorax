@@ -149,6 +149,7 @@ function useConnect({ setGettingDetails, settings }) {
     });
 
     onValueChangedReceipt = (receivedData) => {
+      console.log("valueChanged result", receivedData);
       setResult([receivedData.data.i0, receivedData.data.i1]);
       setGenomicoodinates([globalBins[receivedData.data.i0].s, globalBins[receivedData.data.i1].e]);
     };

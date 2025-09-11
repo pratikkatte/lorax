@@ -10,15 +10,13 @@ function Lorax({backend, config, setConfig, settings, setSettings, project, ucgb
 
 
   const [mouseDownIsMinimap, setMouseDownIsMinimap] = useState(false);
-  const [genomeViewportCoords, setGenomeViewportCoords] = useState([]);
-  const [viewportSize, setViewportSize] = useState(null);
-  const [deckSize, setDeckSize] = useState(null);
-  const [hoveredTreeIndex, setHoveredTreeIndex] = useState({path: null, node: null, treeIndex: null});
-  const deckRef = useRef();
-  const [viewPortCoords, setViewPortCoords] = useState(null);
-  const [value, setValue] = useState(null);
-  const [dataExtractValues, setDataExtractValues] = useState(null);
-
+  // const [viewportSize, setViewportSize] = useState(null); // size of the viewport. REDUNDANT. OBSOLETE. 
+  const [deckSize, setDeckSize] = useState(null); // idk the use of this?
+  const [hoveredTreeIndex, setHoveredTreeIndex] = useState({path: null, node: null, treeIndex: null}); // this is for knowing which tree is hovered. 
+  const deckRef = useRef(); // reference to the deck component. 
+  const [viewPortCoords, setViewPortCoords] = useState(null); // OBSOLETE. REDUNDANT. viewport coordinates of the genome-position window. 
+  const [value, setValue] = useState(null); // hook to know the genomic values displayed on the window. 
+  const [dataExtractValues, setDataExtractValues] = useState(null); // hook to know how much data to extract from the backend. The range values are more than what viewed by the user. 
 
   const setGenomicoodinates = useCallback((value) => {
     console.log("setGenomicoodinates", value)
@@ -27,8 +25,8 @@ function Lorax({backend, config, setConfig, settings, setSettings, project, ucgb
   // let hoverDetails = useHoverDetails();
   
   // const settings = useSettings({ query, updateQuery });
-  
-  const view = useView({backend, config, settings, setSettings, genomeViewportCoords, setGenomeViewportCoords, viewportSize, setViewportSize, viewPortCoords, globalBins, setGenomicoodinates});
+  const view = useView({backend, config, settings, setSettings, viewPortCoords, globalBins, setGenomicoodinates});
+  // const view = useView({backend, config, settings, setSettings, genomeViewportCoords, setGenomeViewportCoords, viewportSize, setViewportSize, viewPortCoords, globalBins, setGenomicoodinates});
 
   const { data } = useGetDynamicData(backend, config, dataExtractValues, setDataExtractValues)
 
@@ -49,8 +47,6 @@ function Lorax({backend, config, setConfig, settings, setSettings, project, ucgb
               data={data}
               view={view}
               ariaHideApp={false} 
-              genomeViewportCoords={genomeViewportCoords}
-              setGenomeViewportCoords={setGenomeViewportCoords}
               setDeckSize={setDeckSize}
               deckSize={deckSize}
               deckRef={deckRef}
@@ -59,8 +55,8 @@ function Lorax({backend, config, setConfig, settings, setSettings, project, ucgb
               settings={settings}
               setSettings={setSettings}
               config={config}
-              viewportSize={viewportSize}
-              setViewportSize={setViewportSize}
+              // viewportSize={viewportSize}
+              // setViewportSize={setViewportSize}
               setViewPortCoords={setViewPortCoords}
               viewPortCoords={viewPortCoords}
               globalBins={globalBins}

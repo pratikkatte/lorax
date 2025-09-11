@@ -31,6 +31,39 @@ const INITIAL_VIEW_STATE = {
   }
 }
 
+// Main helper: returns the two indices (i0 for x0, i1 for x1)
+function findClosestBinIndices(globalBins, x0, x1) {
+  const xs = getXArray(globalBins);
+  const i0 = nearestIndex(xs, x0);
+  const i1 = nearestIndex(xs, x1);
+  return { i0, i1 };
+}
+
+function nearestIndex(arr, x) {
+  if (arr.length === 0) return -1;
+  if (x <= arr[0]) return 0;
+  if (x >= arr[arr.length - 1]) return arr.length - 1;
+
+  const i = lowerBound(arr, x);
+  // i is first >= x, so candidate neighbors are i-1 and i
+  const prev = i - 1;
+  return (x - arr[prev] <= arr[i] - x) ? prev : i;
+}
+
+// Extract the sorted x-array once
+function getXArray(globalBins) {
+  return globalBins.map(b => b.acc);
+}
+
+function lowerBound(arr, x) {
+  let lo = 0, hi = arr.length - 1, ans = arr.length;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (arr[mid] >= x) { ans = mid; hi = mid - 1; } else { lo = mid + 1; }
+  }
+  return ans;
+}
+
 class MyOrthographicController extends OrthographicController {
   
   handleEvent(event) {
@@ -72,14 +105,14 @@ class MyOrthographicController extends OrthographicController {
   }
 }
 
-const useView = ({backend, config, settings, setSettings, genomeViewportCoords, setGenomeViewportCoords, viewportSize, setViewportSize, viewPortCoords, globalBins, setGenomicoodinates}) => {
+// const useView = ({backend, config, settings, setSettings, genomeViewportCoords, setGenomeViewportCoords, viewportSize, setViewportSize, viewPortCoords, globalBins, setGenomicoodinates}) => {
+  const useView = ({backend, config, settings, setSettings, viewPortCoords, globalBins, setGenomicoodinates}) => {
   const [zoomAxis, setZoomAxis] = useState("Y");
   const [panDirection, setPanDirection] = useState(null);
   const [xzoom, setXzoom] = useState(window.screen.width < 600 ? -1 : 0);
 
   const { valueChanged } = backend;
 
-  // const { getbounds } = useRegions({config, viewportSize});
 
   const [viewState, setViewState] = useState({
     // target: [0, 0, 0],
@@ -93,15 +126,6 @@ const useView = ({backend, config, settings, setSettings, genomeViewportCoords, 
   globalPanDirection = setPanDirection;
 
   const maxZoom = 17;
-
-  useEffect(() => {
-    if (config && config.value && viewportSize) {
-      // console.log("useView config and viewportsize", viewportSize, config.value) 
-      // getbounds()
-    }
-    
-  }, [viewportSize, config?.value])
-  
 
   const views = useMemo(() => {
     return [

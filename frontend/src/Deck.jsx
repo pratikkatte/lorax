@@ -84,10 +84,8 @@ function Deck({
   setHoveredTreeIndex,
   settings,
   config,
-  genomeViewportCoords,
-  setGenomeViewportCoords,
-  viewportSize,
-  setViewportSize,
+  // viewportSize,
+  // setViewportSize,
   setViewPortCoords,
   viewPortCoords,
   globalBins,
@@ -125,7 +123,7 @@ function Deck({
   },[no_data])
 
 
-  const { bins } = useRegions({config, viewportSize, globalBins, setView, viewPortCoords, setGenomicoodinates, value, dataExtractValues, setDataExtractValues, globalBinsIndexes, setGlobalBinsIndexes, backend});
+  const { bins } = useRegions({config, globalBins, setView, viewPortCoords, setGenomicoodinates, value, dataExtractValues, setDataExtractValues, globalBinsIndexes, setGlobalBinsIndexes, backend});
 
   const onClickOrMouseMove = useCallback(
     (event) => {
@@ -173,8 +171,8 @@ function Deck({
       setGenomePositions,
       setViewState,
       config,
-      viewportSize,
-      setViewportSize,
+      // viewportSize,
+      // setViewportSize,
       globalBins,
       setView,
       viewPortCoords,
@@ -271,8 +269,8 @@ function Deck({
         const [x0genome, y0genome] = vpGenome.project([0, 0]);
         const [x1genome, y1genome] = vpGenome.project([vpGenome.width, vpGenome.height]);
 
-        setGenomeViewportCoords([x0, x1]); // redundant. 
-        setViewportSize([vpOrtho.width, vpOrtho.height]); // redundant. 
+        // setGenomeViewportCoords([x0, x1]); // redundant. 
+        // setViewportSize([vpOrtho.width, vpOrtho.height]); // redundant. 
 
         setViewPortCoords({
           ['ortho']: {
@@ -308,7 +306,7 @@ function Deck({
             }
           }
         })
-      }, [deckRef, setSaveViewports, setGenomeViewportCoords, setViewportSize, setViewPortCoords])
+      }, [deckRef, setSaveViewports, setViewPortCoords])
 
   return (
     <div className="w-full"
