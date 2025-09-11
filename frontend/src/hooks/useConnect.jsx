@@ -8,13 +8,15 @@ const worker = new workerSpec();
 let onQueryReceipt = (receivedData) => {};
 let onStatusReceipt = (receivedData) => console.log("STATUS:", receivedData.data);
 let onConfigReceipt = (receivedData) => {};
+let onLocalBinsReceipt = (receivedData) => {};
 let onDetailsReceipt = (receivedData) => {};
 
 worker.onmessage = (event) => {
   if (event.data.type === "status") onStatusReceipt(event.data);
   if (event.data.type === "query") onQueryReceipt(event.data.data);
-  if (event.data.type === "config") onConfigReceipt(event.data.data);
+  if (event.data.type === "config") onConfigReceipt(event.data);
   if (event.data.type === "details") onDetailsReceipt(event.data.data);
+  if (event.data.type === "local-bins") onLocalBinsReceipt(event.data);
 };
 
 function useConnect({ setGettingDetails, settings }) {
@@ -52,6 +54,15 @@ function useConnect({ setGettingDetails, settings }) {
           type: "query",
           data: message.data,
           vertical_mode: settings.vertical_mode,
+        });
+      }
+      if (message.type === "viz" && message.role === "config") {
+
+        queryConfig(message.data);
+
+        worker.postMessage({
+          type: "config",
+          data: message.data,
         });
       }
     };
@@ -107,6 +118,41 @@ function useConnect({ setGettingDetails, settings }) {
     return () => clearInterval(pingInterval);
   }, []);
 
+
+  const queryConfig = useCallback((configData) => {
+
+    console.log("querying config", configData);
+    // sendMessage({
+    //   type: "config",
+    //   data: configData,
+    // });
+
+    onConfigReceipt = (receivedData) => {
+      console.log("got config result", receivedData);
+      // setResult(receivedData);
+      websocketEvents.emit("viz", {
+        type: "viz",
+        role: "config-global-bins",
+        data: receivedData,
+      });
+    };
+  }, []);
+
+  const queryLocalBins = useCallback((globalBins, globalBinsIndexes, setResult) => {
+    
+    worker.postMessage({
+      type: "local-bins",
+      data: {globalBins, globalBinsIndexes},
+    });
+
+    onLocalBinsReceipt = (receivedData) => {
+      console.log("got local bins result", receivedData);
+      setResult(receivedData);
+      
+    };    
+  }, []);
+
+
   /** Exposed methods */
   const queryNodes = useCallback((boundsForQueries, setResult, value) => {
 
@@ -146,11 +192,13 @@ function useConnect({ setGettingDetails, settings }) {
     statusMessage,
     setStatusMessage,
     socketRef,
+    queryConfig,
     queryNodes,
     queryDetails,
     isConnected,
     checkConnection,
-  }), [statusMessage, queryNodes, queryDetails, isConnected, checkConnection]);
+    queryLocalBins
+  }), [statusMessage, queryNodes, queryDetails, isConnected, checkConnection, queryConfig, queryLocalBins]);
 }
 
 export default useConnect;

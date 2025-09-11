@@ -52,7 +52,7 @@ function nearestIndex(arr, x) {
 
 // Extract the sorted x-array once
 function getXArray(globalBins) {
-  return globalBins.map(b => b.sourcePosition[0]);
+  return globalBins.map(b => b.acc);
 }
 
 function lowerBound(arr, x) {
@@ -111,7 +111,7 @@ const useView = ({config, settings, setSettings, genomeViewportCoords, setGenome
   const [xzoom, setXzoom] = useState(window.screen.width < 600 ? -1 : 0);
 
 
-  const { getbounds } = useRegions({config, viewportSize});
+  // const { getbounds } = useRegions({config, viewportSize});
 
   const [viewState, setViewState] = useState({
     // target: [0, 0, 0],
@@ -182,7 +182,7 @@ const useView = ({config, settings, setSettings, genomeViewportCoords, setGenome
   const [globalBinsIndexes, setGlobalBinsIndexes] = useState(null);
 
   useEffect(() => {
-    if (!viewPortCoords) return;
+    if (!viewPortCoords || !globalBins) return;
 
     if (!globalBins === undefined || globalBins === null) return;
     var {x0, x1} = viewPortCoords['genome-positions']?.coordinates;
@@ -190,7 +190,7 @@ const useView = ({config, settings, setSettings, genomeViewportCoords, setGenome
 
     setGlobalBinsIndexes([i0, i1])
 
-    setGenomicoodinates([globalBins[i0].start, globalBins[i1].end])
+    setGenomicoodinates([globalBins[i0].s, globalBins[i1].e])
 
   }, [viewState, globalBins])
 

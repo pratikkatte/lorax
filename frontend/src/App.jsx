@@ -26,6 +26,7 @@ function App() {
   const backend = useConnect({setGettingDetails, settings});
   const {config, setConfig, globalBins} = useConfig({backend});
 
+
   const upload = useFileUpload({
     config,
     setConfig,

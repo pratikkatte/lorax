@@ -125,7 +125,7 @@ function Deck({
   },[no_data])
 
 
-  const { bins } = useRegions({config, viewportSize, globalBins, setView, viewPortCoords, setGenomicoodinates, value, dataExtractValues, setDataExtractValues, globalBinsIndexes, setGlobalBinsIndexes});
+  const { bins } = useRegions({config, viewportSize, globalBins, setView, viewPortCoords, setGenomicoodinates, value, dataExtractValues, setDataExtractValues, globalBinsIndexes, setGlobalBinsIndexes, backend});
 
   const onClickOrMouseMove = useCallback(
     (event) => {

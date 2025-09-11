@@ -1,4 +1,4 @@
-import { useMemo, useRef, useEffect} from "react";
+import { useMemo, useRef, useEffect, useState } from "react";
 
 function lowerBound(arr, x) {
   let lo = 0, hi = arr.length - 1, ans = arr.length;
@@ -43,7 +43,12 @@ function findClosestBinIndices(globalBins, x0, x1) {
   return { i0, i1 };
 }
 
-const useRegions = ({ config, globalBins, setView, viewPortCoords, value, globalBinsIndexes, setGlobalBinsIndexes, dataExtractValues, setDataExtractValues}) => {
+const useRegions = ({ config, globalBins, setView, viewPortCoords, value, globalBinsIndexes, setGlobalBinsIndexes, dataExtractValues, setDataExtractValues, backend}) => {
+
+  const { queryLocalBins } = backend;
+
+
+  const [localBins, setLocalBins] = useState(null);
 
   const isValueRef = useRef(null);
 
@@ -51,65 +56,56 @@ const useRegions = ({ config, globalBins, setView, viewPortCoords, value, global
 
   const bufferRef = useRef(null);
 
+
+
+  useEffect(() => {
+
+    if (globalBins && value, globalBinsIndexes) {
+      if(localBins) {
+      queryLocalBins(localBins.data.local_bins, globalBinsIndexes, setLocalBins);
+      } else {
+        queryLocalBins(null, globalBinsIndexes, setLocalBins);
+      }
+    }
+
+  }, [globalBins, value]);
+
+  useEffect(() => {
+    
+  }, [localBins]);
+
+
   const {bins, maxX, minX} = useMemo(() => {
-    if (!config || !config.new_intervals || !globalBins || !value || !globalBinsIndexes) return [];
 
-    const intervals = config.new_intervals; 
+    if (globalBins, localBins) {
+      const [lo, hi] = globalBinsIndexes;
 
-    let intervalsKeys = Object.keys(intervals);
+      const hiBuffered = localBins.data.hiBuffered;
+      const loBuffered = localBins.data.loBuffered;
+      const local_bins = localBins.data.local_bins;
+      const maxX = localBins.data.maxX;
+      const minX = localBins.data.minX;
 
-    // slice keys into [start,end] via binary search
-      let [lo, hi] = globalBinsIndexes;
+      if(bufferRef.current && (lo < bufferRef.current.index[0] || hi > bufferRef.current.index[1])) {
 
-    if (isValueRef.current === value) {
-      return {bins: localBinsRef.current.bins, maxX: localBinsRef.current.maxX, minX: localBinsRef.current.minX };
-    }else if (isValueRef.current?.[0] === value[0]){
-      lo = localBinsRef.current.lo;
-    } else if (isValueRef.current?.[1] === value[1]){
-      hi = localBinsRef.current.hi;
+        bufferRef.current = {
+          "index": [loBuffered, hiBuffered],
+          "value": [local_bins[0].start, local_bins[local_bins.length - 1].end]
+        };
+      } 
+      if (!bufferRef.current){
+        bufferRef.current = {
+          "index": [loBuffered, hiBuffered],
+          "value": [local_bins[0].start, local_bins[local_bins.length - 1].end]
+        };
+      }    
+      
+      return {bins: local_bins, maxX: maxX, minX: minX};
     }
-    // lo = lo === null ? lowerBound(intervalsKeys, value[0]) : lo;
 
-    // hi = hi === null ? upperBound(intervalsKeys, value[1]) : hi;
+    return {bins: [], maxX: 0, minX: 0};
 
-    if (lo > hi) return [];
-
-    const nIntervals = hi - lo + 1;
-    const buffer = nIntervals*2
-
-    const loBuffered = Math.max(0, lo - buffer);
-    const hiBuffered = Math.min(globalBins.length - 1, hi + buffer);
-
-    let maxX = globalBins[hi+1].sourcePosition[0]
-    let minX = globalBins[lo].sourcePosition[0]
-
-    const local_bins = globalBins.slice(loBuffered, hiBuffered);
-
-    if(bufferRef.current && (lo < bufferRef.current.index[0] || hi > bufferRef.current.index[1])){
-
-      bufferRef.current = {
-        "index": [loBuffered, hiBuffered],
-        "value": [local_bins[0].start, local_bins[local_bins.length - 1].end]
-      };
-    } 
-    if (!bufferRef.current){
-      bufferRef.current = {
-        "index": [loBuffered, hiBuffered],
-        "value": [local_bins[0].start, local_bins[local_bins.length - 1].end]
-      };
-    }
-    
-    if (local_bins.length === 0) return [];
-    
-    isValueRef.current = value;
-
-    localBinsRef.current = {bins: local_bins, maxX, minX , lo, hi};
-
-    // setDataExtractValues([loBuffered, hiBuffered]);
-
-    return {bins: local_bins, maxX, minX};
-    
-  }, [config, globalBins, value, globalBinsIndexes]);
+  }, [localBins]);
 
   const lastAppliedView = useRef({ zoom: null, target: null });
 
@@ -120,36 +116,6 @@ const useRegions = ({ config, globalBins, setView, viewPortCoords, value, global
 
     setDataExtractValues([loBuffered, hiBuffered]);
   }, [bufferRef.current]);
-
-
-  // Function toset the view directly. 
-  // useEffect(() => {
-
-  //   const ortho_width = viewPortCoords ? viewPortCoords['ortho']?.viewport?.width : null;
-
-  //   const span = maxX - minX;
-    
-  //   if (span <= 0) return;
-  //   const target = minX + span / 2;
-  //   const ortho_zoom = Math.log2(ortho_width / span);
-
-  //   if (!Number.isFinite(ortho_zoom) || !Number.isFinite(target)) return;
-
-  //   const eps = 1e-6;
-  //   const { zoom: lastZ, target: lastT } = lastAppliedView.current;
-  //   const sameZoom = lastZ !== null && Math.abs(lastZ - ortho_zoom) < eps;
-  //   const sameTarget = lastT !== null && Math.abs(lastT - target) < eps;
-
-  //   if (sameZoom && sameTarget) return;
-
-  //   // setView({
-  //   //   "genome-positions": { target, zoom: ortho_zoom },
-  //   //   "ortho":            { target, zoom: ortho_zoom }
-  //   // });
-
-  //   lastAppliedView.current = { zoom: ortho_zoom, target };
-
-  // }, [viewPortCoords])
 
   const getbounds = useMemo(() => () => bins, [bins]);
 

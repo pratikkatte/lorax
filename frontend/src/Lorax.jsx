@@ -21,6 +21,7 @@ function Lorax({backend, config, setConfig, settings, setSettings, project, ucgb
 
 
   const setGenomicoodinates = useCallback((value) => {
+    console.log("setGenomicoodinates", value)
     setValue(value)
   }, [])
   // let hoverDetails = useHoverDetails();

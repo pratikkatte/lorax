@@ -13,6 +13,66 @@ console.log("[Worker] Initialized");
 
 postMessage({ data: "Worker starting" });
 
+
+function logNormalize(arr, targetTotal) {
+  // log10(x+1) to compress range; shift positive; scale to targetTotal
+  const n = arr.length;
+  if (n === 0) return [];
+  const shifted = new Array(n);
+  let min = Infinity;
+  for (let i = 0; i < n; i++) {
+    const v = Math.max(0, arr[i]); // guard negatives
+    const s = Math.log10(v + 1);
+    shifted[i] = s;
+    if (s < min) min = s;
+  }
+  let sum = 0;
+  for (let i = 0; i < n; i++) {
+    shifted[i] -= min;
+    sum += shifted[i];
+  }
+  if (sum === 0) {
+    const equal = targetTotal / n;
+    return new Array(n).fill(equal);
+  }
+  const scale = targetTotal / sum;
+  for (let i = 0; i < n; i++) shifted[i] *= scale;
+  return shifted;
+}
+
+
+function getGlobalBins(data) {
+
+  const intervals = data.new_intervals;
+  const intervalsKeys = Object.keys(intervals);
+  const widths = new Array(intervalsKeys.length+1);
+  widths[0] = 0;
+  for (let i = 0; i < intervalsKeys.length; i++) {
+    const [s, e] = intervals[intervalsKeys[i]];
+    widths[i + 1] = Math.max(0, e - s);
+  }
+  const weights = logNormalize(widths, intervalsKeys.length);
+  const list = new Array(intervalsKeys.length + 1);
+  list[0] = [0, 0];
+  for (let i = 0; i < intervalsKeys.length; i++) {
+    const k = intervalsKeys[i];
+    list[i + 1] = intervals[k];
+  }
+  const out = new Array(intervalsKeys.length);
+  let acc = 0;
+  for (let i = 0; i < intervalsKeys.length; i++) {
+    acc += weights[i];
+    const [s, e] = list[i];
+    out[i] = {s,e,acc
+      // start: s,
+      // end: e,
+      // sourcePosition: [acc, 0],
+      // targetPosition: [acc, 2],
+    };
+  }
+  return out;
+}
+
 const the_cache = {};
 let vertical_mode = true;
 
@@ -64,6 +124,8 @@ function extractSquarePaths(node, vertical_mode) {
 }
 
 
+
+
 const sendStatusMessage = (status_obj) => {
   postMessage({
     type: "status",
@@ -71,12 +133,92 @@ const sendStatusMessage = (status_obj) => {
   });
 };
 
+let globalBins = [];
+
+export const queryConfig = async (data) => {
+  
+  try {
+    const global_bins = getGlobalBins(data.data);
+
+    globalBins = global_bins;
+
+    return global_bins;
+  } catch (error) {
+    console.log("error")
+  }
+}
+
+let cachedBins = [];
+let cachedLo = null;
+let cachedHi = null;
+
+function buildBins(globalBins, lo, hi) {
+  const arr = [];
+  for (let i = lo; i <= hi; i++) arr.push(makeBin(globalBins[i]));
+  return arr;
+}
+
+function makeBin(bin) {
+  return {
+    start: bin.s,
+    end: bin.e,
+    sourcePosition: [bin.acc, 0],
+    targetPosition: [bin.acc, 2],
+  };  
+}
+
+export const queryLocalBins = async (localBins, globalBinsIndexes) => {
+
+  let [lo, hi] = globalBinsIndexes;
+
+  if (lo > hi) return [];
+
+  // const localBins = globalBins.slice(lo, hi+1);
+  const interval = hi - lo + 1;
+  const buffer = interval*2;
+
+  const loBuffered = Math.max(0, lo - buffer);
+  const hiBuffered = Math.min(globalBins.length - 1, hi + buffer);
+
+  // If no cache yet, build fresh
+  if (cachedLo === null || cachedHi === null) {
+    cachedBins = buildBins(globalBins, loBuffered, hiBuffered);
+    cachedLo = loBuffered;
+    cachedHi = hiBuffered;
+  } else {
+    // Expand left
+    while (loBuffered < cachedLo) {
+      cachedLo--;
+      cachedBins.unshift(makeBin(globalBins[cachedLo]));
+    }
+    // Expand right
+    while (hiBuffered > cachedHi) {
+      cachedHi++;
+      cachedBins.push(makeBin(globalBins[cachedHi]));
+    }
+    // Shrink left
+    while (loBuffered > cachedLo) {
+      cachedBins.shift();
+      cachedLo++;
+    }
+    // Shrink right
+    while (hiBuffered < cachedHi) {
+      cachedBins.pop();
+      cachedHi--;
+    }
+  }
 
 
+  // const local_bins = globalBins.slice(loBuffered, hiBuffered);
+
+  let maxX = globalBins[hi+1].acc
+  let minX = globalBins[lo].acc
+
+  return {local_bins: cachedBins, maxX, minX, loBuffered, hiBuffered};
+
+}
 export const queryNodes = async (data, vertical_mode) => {
   try {
-    console.log("Worker query Nodes");
-
     const received_data = JSON.parse(data);
     const nwk = received_data.nwk;
     const mutations = received_data.mutations;
@@ -90,15 +232,13 @@ export const queryNodes = async (data, vertical_mode) => {
       tree_index: tree_index,
       times: times
     }
-  
+
     return result;
   } catch (error) {
     console.log("error")
     // console.error("Error in queryNodes: ", error);
   }
 };
-
-
 
 function processNewick(nwk_str, mutations, globalMinTime, globalMaxTime, times) {
   let ladderize = true;
@@ -158,6 +298,7 @@ function processNewick(nwk_str, mutations, globalMinTime, globalMaxTime, times) 
 
   return tree
 }
+
 
 export async function globalCleanup(allTrees) {
   const emptyList = []; // Define your default mutation list or placeholder
@@ -254,6 +395,14 @@ onmessage = async (event) => {
     }
     if (data.type === "config") {
       console.log("config value: TO IMPLEMENT")
+      const result = await queryConfig(data);
+      postMessage({ type: "config", data: result });
+    }
+
+    if (data.type === "local-bins") {
+      const result = await queryLocalBins(data.data.globalBins, data.data.globalBinsIndexes);
+      console.log("local bins result", result);
+      postMessage({ type: "local-bins", data: result });
     }
 
     if (data.type === "details") {
