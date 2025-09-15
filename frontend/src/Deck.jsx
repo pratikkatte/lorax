@@ -116,13 +116,6 @@ function Deck({
 
   const {queryDetails} = backend;
 
-  useEffect(()=> {
-    if (no_data) {
-      //
-    }
-  },[no_data])
-
-
   const { bins } = useRegions({config, globalBins, setView, viewPortCoords, setGenomicoodinates, value, dataExtractValues, setDataExtractValues, globalBinsIndexes, setGlobalBinsIndexes, backend});
 
   const onClickOrMouseMove = useCallback(

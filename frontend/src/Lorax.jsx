@@ -10,7 +10,6 @@ function Lorax({backend, config, setConfig, settings, setSettings, project, ucgb
 
 
   const [mouseDownIsMinimap, setMouseDownIsMinimap] = useState(false);
-  // const [viewportSize, setViewportSize] = useState(null); // size of the viewport. REDUNDANT. OBSOLETE. 
   const [deckSize, setDeckSize] = useState(null); // idk the use of this?
   const [hoveredTreeIndex, setHoveredTreeIndex] = useState({path: null, node: null, treeIndex: null}); // this is for knowing which tree is hovered. 
   const deckRef = useRef(); // reference to the deck component. 
@@ -26,7 +25,6 @@ function Lorax({backend, config, setConfig, settings, setSettings, project, ucgb
   
   // const settings = useSettings({ query, updateQuery });
   const view = useView({backend, config, settings, setSettings, viewPortCoords, globalBins, setGenomicoodinates});
-  // const view = useView({backend, config, settings, setSettings, genomeViewportCoords, setGenomeViewportCoords, viewportSize, setViewportSize, viewPortCoords, globalBins, setGenomicoodinates});
 
   const { data } = useGetDynamicData(backend, config, dataExtractValues, setDataExtractValues)
 
@@ -55,8 +53,6 @@ function Lorax({backend, config, setConfig, settings, setSettings, project, ucgb
               settings={settings}
               setSettings={setSettings}
               config={config}
-              // viewportSize={viewportSize}
-              // setViewportSize={setViewportSize}
               setViewPortCoords={setViewPortCoords}
               viewPortCoords={viewPortCoords}
               globalBins={globalBins}

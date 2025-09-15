@@ -105,7 +105,6 @@ class MyOrthographicController extends OrthographicController {
   }
 }
 
-// const useView = ({backend, config, settings, setSettings, genomeViewportCoords, setGenomeViewportCoords, viewportSize, setViewportSize, viewPortCoords, globalBins, setGenomicoodinates}) => {
   const useView = ({backend, config, settings, setSettings, viewPortCoords, globalBins, setGenomicoodinates}) => {
   const [zoomAxis, setZoomAxis] = useState("Y");
   const [panDirection, setPanDirection] = useState(null);
