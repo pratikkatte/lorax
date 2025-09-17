@@ -163,9 +163,49 @@ const useLayers = ({
     const genome_length = 10000;
 
 
-    
+    // Function to randomly sample n bins from the bins array
+    // Deterministic PRNG using a seed (Mulberry32)
+    function mulberry32(seed) {
+      let t = seed;
+      return function() {
+        t += 0x6D2B79F5;
+        let r = Math.imul(t ^ t >>> 15, 1 | t);
+        r ^= r + Math.imul(r ^ r >>> 7, 61 | r);
+        return ((r ^ r >>> 14) >>> 0) / 4294967296;
+      }
+    }
+
+    // sampleBins with random seed
+    function sampleBins(bins) {
+      if (!bins || bins.length === 0) return [];
+      let n = bins[bins.length-1].sourcePosition[0] - bins[0].sourcePosition[0] + 1;
+      if (bins.length <= n) return bins;
+      if (!Array.isArray(bins) || bins.length === 0 || n <= 0) return [];
+      // If n >= bins.length, just return a shallow copy of bins
+      if (n >= bins.length) return bins.slice();
+
+      const sampled = [];
+      const skip_n = Math.floor(bins.length/n);
+      for (let i = 0; i < bins.length; i += skip_n) {
+        sampled.push(bins[i]);
+      }
+      return sampled;
+      // // Use seeded PRNG
+      // const rand = mulberry32(seed);
+      // const indices = new Set();
+      // while (indices.size < n) {
+      //   indices.add(Math.floor(rand() * bins.length));
+      // }
+      // const sortedIndices = Array.from(indices).sort((a, b) => a - b);
+      // for (const idx of sortedIndices) {
+      //   sampled.push(bins[idx]);
+      // }
+      // return sampled;
+    }
+    // Example usage: sample 10 bins
+    // const randomBins = sampleBins(bins, 10);
   const layers = useMemo(() => {
-    if (!data?.data?.paths) return [];
+    // if (!data?.data?.paths) return [];
 
     const times = data.data?.times || {};
 
@@ -181,7 +221,7 @@ const useLayers = ({
       getText: d => d.end.toLocaleString("en-US", { maximumFractionDigits: 0 }),
       modelMatrix: new Matrix4().translate([0, 0, 0]),
       viewId: 'genome-positions',
-      showLabels: true
+      showLabels: false
     });
 
     // const bpTocoord = (bp) => {
@@ -212,9 +252,56 @@ const useLayers = ({
 
     //   return tree_layers
     // })
+    const spacing = 1.03;
+    const singleTreeHighlightLayer = new TextLayer({
+      id: `main-layer-highlight`,
+      data: (() => {
+        const result = [];
+        let prevVisible = 0;
+        let treeIndex = 0
+        for (let i = 0; i < bins.length; i++) {
+          const bin = bins[i];
+          const visible = bin.visible;
+          if (visible) {
+            result.push({
+              position: [treeIndex + 0.5, 0.5],
+              i,
+              text: bin.end.toLocaleString("en-US", { maximumFractionDigits: 0 }),
+              skip: 0
+            });
+            prevVisible = i;
+            treeIndex++;
+          } else {
+            if (prevVisible === i-1){
+              result.push({
+                position: [treeIndex + 0.5, 0.5],
+                i,
+                text: "skip 1 tree",
+                skip: 1
+              });
+              treeIndex++;
+            }
+            else{
+              result[result.length-1].text = `skip ${i-prevVisible} trees`
+              result[result.length-1].skip = i-prevVisible
+            }
+          }
+        }
+        return result;
+      })(),
+      getPosition: d => d.position,
+      getText: d => d.text,
+      getColor: [0, 0, 0, 255],
+      sizeUnits: 'pixels',
+      getSize: 12,
+      getTextAnchor: 'middle',
+      getAlignmentBaseline: 'bottom',
+      // modelMatrix: d => new Matrix4().translate([d.i * spacing,0, 0]),
+      viewId: 'ortho',
+    });
             
-    const singleTreeLayers = data.data.paths.flatMap((tree, i) => {
-      const spacing = 1.03;
+    const singleTreeLayers = (!data?.data?.paths)? [] : data.data.paths.flatMap((tree, i) => {
+      // const spacing = 1.03;
 
       const genomePos = data.data.genome_positions[i];
       const treeIndex = data.data.tree_index[i];
@@ -539,9 +626,9 @@ const useLayers = ({
       getWidth: 2,
       widthUnits: 'pixels',
       viewId: 'tree-time',
-      updateTriggers: {
-        data: [debouncedZoomY]
-      }
+      // updateTriggers: {
+      //   data: [debouncedZoomY]
+      // }
       // pickable: true,
     })
     
@@ -565,7 +652,7 @@ const useLayers = ({
       getSize: 12,
     }) 
 
-return [...singleTreeLayers, coalescenceLayer, coalescenceTimeLabels, genomeGridLayer];
+return [...singleTreeLayers, coalescenceLayer, coalescenceTimeLabels, genomeGridLayer, singleTreeHighlightLayer];
     // return [ ...singleTreeLayers,backgroundLayer];
 
   }, [data, deckRef, viewState.zoom, viewState['genome-positions'], hoverInfo, hoveredTreeIndex, settings, hideOrthoLayers]);

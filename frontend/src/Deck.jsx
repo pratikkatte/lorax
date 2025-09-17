@@ -84,6 +84,7 @@ function Deck({
   setHoveredTreeIndex,
   settings,
   config,
+  hoverDetails,
   // viewportSize,
   // setViewportSize,
   setViewPortCoords,
@@ -98,6 +99,8 @@ function Deck({
   const [hoveredKey, setHoveredKey] = useState(null);
   const [hoverInfo, setHoverInfoRaw] = useState(null);
   const [genomePositions, setGenomePositions] = useState([]);
+
+  const { hoveredInfo, setHoveredInfo } = hoverDetails;
 
 
   useEffect(()=> {
@@ -122,6 +125,7 @@ function Deck({
     (event) => {
       const reactEvent = event;
       if (event.buttons === 0 && reactEvent._reactName === "onPointerMove") {
+
         return false;
       }
       const pickInfo = deckRef.current?.pickObject({
@@ -179,43 +183,72 @@ function Deck({
     const [dummy, setDummy] = useState(0);
 
   const getLayerPixelPositions = useCallback((deckRef, layerId) => {
-    const spacing = 1.03;
+    const spacing = 1;
     
     if (!deckRef?.current?.deck) return;
     const deck = deckRef?.current?.deck;
     if (saveViewports && Object.keys(saveViewports).length > 0) {
       const targetLayer = deck?.layerManager?.layers?.find(l => l.id === "genome-positions-grid-lines");
+      const skipLayer = deck?.layerManager?.layers?.find(l => l.id === "main-layer-highlight");
+
       var genome_positions_pixels = []
       var main_positions_pixels = []
 
 
       if (targetLayer) {
+        let target_index = 0
 
-      targetLayer?.props?.data?.map((d, i) => {
-          // const coords = targetLayer.props.getPosition(d); // usually [x,y] or [lng,lat]
-
+      for (let i = 0; i < skipLayer?.props?.data?.length; i++) {
+        const skip_d = skipLayer?.props?.data[i]
+        if (skip_d.skip === 0) {
+          const d = targetLayer?.props?.data[target_index]
           const coords = [d.sourcePosition[0], d.sourcePosition[1]];
-          const pixel = saveViewports?.['ortho']?.project(coords);
-          genome_positions_pixels.push(pixel)
-
-          const [x0, y0] = saveViewports?.['ortho']?.project([i*spacing,0])
+          const pixel = saveViewports?.['genome-positions']?.project(coords);
+          genome_positions_pixels.push({pixel, index: d.index, highlight: (genome_positions_pixels.length-1)%2 === 0})
+          target_index++;
+          
+          
+        }
+        else {
+          const d = targetLayer?.props?.data[target_index]
+          const coords = [d.sourcePosition[0], d.sourcePosition[1]];
+          const pixel = saveViewports?.['genome-positions']?.project(coords);
+          genome_positions_pixels.push({pixel, index: d.index, highlight: (genome_positions_pixels.length-1)%2 === 0})
+          target_index += skip_d.skip;
+        }
+        const [x0, y0] = saveViewports?.['ortho']?.project([i*spacing,0])
           const [x1, y1] = saveViewports?.['ortho']?.project([i*spacing+1,1])
 
           main_positions_pixels.push([x0,y0,x1,y1])
-          // return {...d, pixel}; // attach pixel coords
-        });
+
       }
+      // targetLayer?.props?.data?.map((d, i) => {
+      //     // const coords = targetLayer.props.getPosition(d); // usually [x,y] or [lng,lat]
+
+      //     const coords = [d.sourcePosition[0], d.sourcePosition[1]];
+      //     const pixel = saveViewports?.['genome-positions']?.project(coords);
+      //     genome_positions_pixels.push({pixel, index: d.index})
+
+      //     const [x0, y0] = saveViewports?.['ortho']?.project([i*spacing,0])
+      //     const [x1, y1] = saveViewports?.['ortho']?.project([i*spacing+1,1])
+
+      //     main_positions_pixels.push([x0,y0,x1,y1])
+      //     // return {...d, pixel}; // attach pixel coords
+      //   });
+      }
+
       if (genome_positions_pixels.length > 0) {
         const pointsArray = [];
-        genome_positions_pixels.map((pixel, i) => {
-          if(i % 2 === 0){
+        genome_positions_pixels.map((object, i) => {
+          const {pixel, index, highlight} = object;
+          if(highlight) {
           var [x0, y0, x1, y1] = main_positions_pixels[i]
 
           if(genome_positions_pixels[i+1]) {
           pointsArray.push([
             [x0, y1*0.1],
             [pixel[0],0],
-            [genome_positions_pixels[i+1][0],0],
+            [genome_positions_pixels[i+1].pixel[0],0],
             [x1,y1*0.1],
             [x1,y1], 
             [x0,y1]
@@ -229,7 +262,7 @@ function Deck({
       }
     }
     return;
-  }, [deckRef, saveViewports, ]);
+  }, [deckRef, saveViewports, hoveredInfo ]);
   
 
   useEffect(()=> {
@@ -311,6 +344,9 @@ function Deck({
     <div className="w-full h-full flex justify-center items-center relative">
     <DeckGL
       ref={deckRef}
+      onHover={(info, event) => {
+        setHoveredInfo(info)
+      }}
       pickingRadius={10}
       layers={layers}
       layerFilter={layerFilter}
@@ -320,7 +356,7 @@ function Deck({
       onAfterRender={handleAfterRender}
     >
       <View id="ortho">
-        {no_data && <LoadingSpinner />}
+        {/* {no_data && <LoadingSpinner />} */}
 {dummy && dummy.pointsArray.length > 0 && viewPortCoords.ortho && viewPortCoords['genome-positions'] && (
               <GenomeVisualization pointsArray={dummy.pointsArray} />
             )}

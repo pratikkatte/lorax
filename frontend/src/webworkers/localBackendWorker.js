@@ -73,10 +73,57 @@ function findClosestBinIndices(globalBins, x0, x1) {
   return { i0, i1 };
 }
 
+function getGlobalBins_linear(data) {
+  const intervals = data.new_intervals;
+  const intervalsKeys = Object.keys(intervals);
+
+
+  const basepairPerUnit = 10000;
+
+  const list = new Array(intervalsKeys.length + 1);
+  list[0] = [0, 0];
+  for (let i = 0; i < intervalsKeys.length; i++) {
+    const k = intervalsKeys[i];
+    list[i + 1] = intervals[k];
+  }
+
+  const out = new Array(intervalsKeys.length);
+  let acc = 0;
+for (let i = 0; i < intervalsKeys.length; i++) {
+  
+    const [s, e] = list[i];
+    acc = (e/basepairPerUnit);
+    out[i] = {s,e,acc};
+  }
+  return out;
+
+}
+
 function getGlobalBins(data) {
 
   const intervals = data.new_intervals;
   const intervalsKeys = Object.keys(intervals);
+  // const genomeLength = intervals[intervalsKeys.length - 1][1];
+
+//   const basepairPerUnit = 30000;
+
+//   const list = new Array(intervalsKeys.length + 1);
+//   list[0] = [0, 0];
+//   for (let i = 0; i < intervalsKeys.length; i++) {
+//     const k = intervalsKeys[i];
+//     list[i + 1] = intervals[k];
+//   }
+
+//   const out = new Array(intervalsKeys.length);
+//   let acc = 0;
+// for (let i = 0; i < intervalsKeys.length; i++) {
+  
+//     const [s, e] = list[i];
+//     acc = (e/basepairPerUnit);
+//     out[i] = {s,e,acc};
+//   }
+//   return out;
+
   const widths = new Array(intervalsKeys.length+1);
   widths[0] = 0;
   for (let i = 0; i < intervalsKeys.length; i++) {
@@ -172,11 +219,15 @@ export const queryConfig = async (data) => {
   try {
     const global_bins = getGlobalBins(data.data);
 
-    globalBins = global_bins;
+    const global_bins_linear = getGlobalBins_linear(data.data);
+    console.log("global_bins", global_bins);
+    console.log("global_bins_linear", global_bins_linear);
 
-    return global_bins;
+    globalBins = global_bins_linear;
+
+    return globalBins;
   } catch (error) {
-    console.log("error")
+    console.log("error", error);
   }
 }
 
@@ -186,13 +237,14 @@ let cachedHi = null;
 
 function buildBins(globalBins, lo, hi) {
   const arr = [];
-  for (let i = lo; i <= hi; i++) arr.push(makeBin(globalBins[i]));
+  for (let i = lo; i <= hi; i++) arr.push(makeBin(globalBins[i], i));
   return arr;
 }
 
-function makeBin(bin) {
+function makeBin(bin, index) {
   return {
     start: bin.s,
+    index,
     end: bin.e,
     sourcePosition: [bin.acc, 0],
     targetPosition: [bin.acc, 2],
@@ -214,6 +266,7 @@ export const queryLocalBins = async (localBins, globalBinsIndexes) => {
   // const localBins = globalBins.slice(lo, hi+1);
   const interval = hi - lo + 1;
   const buffer = interval*2;
+  // const buffer = 0;
 
   const loBuffered = Math.max(0, lo - buffer);
   const hiBuffered = Math.min(globalBins.length - 1, hi + buffer);
@@ -227,12 +280,12 @@ export const queryLocalBins = async (localBins, globalBinsIndexes) => {
     // Expand left
     while (loBuffered < cachedLo) {
       cachedLo--;
-      cachedBins.unshift(makeBin(globalBins[cachedLo]));
+      cachedBins.unshift(makeBin(globalBins[cachedLo], cachedLo));
     }
     // Expand right
     while (hiBuffered > cachedHi) {
       cachedHi++;
-      cachedBins.push(makeBin(globalBins[cachedHi]));
+      cachedBins.push(makeBin(globalBins[cachedHi], cachedHi));
     }
     // Shrink left
     while (loBuffered > cachedLo) {
@@ -252,6 +305,21 @@ export const queryLocalBins = async (localBins, globalBinsIndexes) => {
   let maxX = globalBins[hi+1].acc
   let minX = globalBins[lo].acc
 
+  // Tag bins as visible:false if the difference between .end of consecutive bins is small
+  // We'll mark bins as visible:false if their .end is the same as the previous bin's .end
+  const skip_threshold = 10000;
+  if (cachedBins.length > 1) {
+    let prevEnd = cachedBins[0].end;
+    cachedBins[0].visible = true;
+    for (let i = 1; i < cachedBins.length; i++) {
+      if (cachedBins[i].end - prevEnd <= skip_threshold) {
+        cachedBins[i].visible = false;
+      } else {
+        cachedBins[i].visible = true;
+        prevEnd = cachedBins[i].end;
+      }
+    }
+  }
   return {local_bins: cachedBins, maxX, minX, loBuffered, hiBuffered};
 
 }
@@ -434,6 +502,7 @@ onmessage = async (event) => {
     if (data.type === "config") {
       console.log("config value: TO IMPLEMENT")
       const result = await queryConfig(data);
+      console.log("config result", result);
       postMessage({ type: "config", data: result });
     }
 

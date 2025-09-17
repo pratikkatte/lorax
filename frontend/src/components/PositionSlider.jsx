@@ -169,7 +169,7 @@ export default function PositionSlider( { config, setConfig, project, ucgbMode, 
           color: 'black'
         }}
       >
-        ↓
+        ←
       </button>
       {value && (
         <EditableRange value={value} onChange={onChange}/>
@@ -186,7 +186,7 @@ export default function PositionSlider( { config, setConfig, project, ucgbMode, 
           color: 'black'
         }}
       >
-        ↑
+        →
       </button>
   
       </div>

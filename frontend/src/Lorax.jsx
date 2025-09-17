@@ -4,16 +4,16 @@ import useView from "./hooks/useView";
 import useGetDynamicData from "./hooks/useGetDynamicData";
 import { useState, useRef, useEffect, useCallback } from "react";
 import PositionSlider from './components/PositionSlider'
+import useHoverDetails from "./hooks/useHoverDetails";
 
 
 function Lorax({backend, config, setConfig, settings, setSettings, project, ucgbMode, globalBins}) {
-
 
   const [mouseDownIsMinimap, setMouseDownIsMinimap] = useState(false);
   const [deckSize, setDeckSize] = useState(null); // idk the use of this?
   const [hoveredTreeIndex, setHoveredTreeIndex] = useState({path: null, node: null, treeIndex: null}); // this is for knowing which tree is hovered. 
   const deckRef = useRef(); // reference to the deck component. 
-  const [viewPortCoords, setViewPortCoords] = useState(null); // OBSOLETE. REDUNDANT. viewport coordinates of the genome-position window. 
+  const [viewPortCoords, setViewPortCoords] = useState(null); 
   const [value, setValue] = useState(null); // hook to know the genomic values displayed on the window. 
   const [dataExtractValues, setDataExtractValues] = useState(null); // hook to know how much data to extract from the backend. The range values are more than what viewed by the user. 
 
@@ -21,10 +21,11 @@ function Lorax({backend, config, setConfig, settings, setSettings, project, ucgb
     console.log("setGenomicoodinates", value)
     setValue(value)
   }, [])
-  // let hoverDetails = useHoverDetails();
+
+  let hoverDetails = useHoverDetails();
   
   // const settings = useSettings({ query, updateQuery });
-  const view = useView({backend, config, settings, setSettings, viewPortCoords, globalBins, setGenomicoodinates});
+  const view = useView({backend, config, settings, setSettings, viewPortCoords, globalBins, setGenomicoodinates, hoverDetails});
 
   const { data } = useGetDynamicData(backend, config, dataExtractValues, setDataExtractValues)
 
@@ -60,6 +61,7 @@ function Lorax({backend, config, setConfig, settings, setSettings, project, ucgb
               value={value}
               dataExtractValues={dataExtractValues}
               setDataExtractValues={setDataExtractValues}
+              hoverDetails={hoverDetails}
             />
           </div>
         </div>

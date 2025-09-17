@@ -151,7 +151,7 @@ function useConnect({ setGettingDetails, settings }) {
     onValueChangedReceipt = (receivedData) => {
       console.log("valueChanged result", receivedData);
       setResult([receivedData.data.i0, receivedData.data.i1]);
-      setGenomicoodinates([globalBins[receivedData.data.i0].s, globalBins[receivedData.data.i1].e]);
+      // setGenomicoodinates([globalBins[receivedData.data.i0].s, globalBins[receivedData.data.i1].e]);
     };
 
   })
@@ -175,13 +175,12 @@ function useConnect({ setGettingDetails, settings }) {
   const queryNodes = useCallback((boundsForQueries, setResult, value) => {
 
     console.log("querying nodes", boundsForQueries, value);
-    sendMessage({
-      type: "viz",
-      role: "query",
-      bounds: boundsForQueries,
-      value,
-    });
-
+    // sendMessage({
+    //   type: "viz",
+    //   role: "query",
+    //   bounds: boundsForQueries,
+    //   value,
+    // });
     onQueryReceipt = (receivedData) => {
       console.log("got query result", receivedData);
       setResult(receivedData);

@@ -105,13 +105,14 @@ class MyOrthographicController extends OrthographicController {
   }
 }
 
-  const useView = ({backend, config, settings, setSettings, viewPortCoords, globalBins, setGenomicoodinates}) => {
+  const useView = ({backend, config, settings, setSettings, viewPortCoords, globalBins, setGenomicoodinates, hoverDetails}) => {
   const [zoomAxis, setZoomAxis] = useState("Y");
   const [panDirection, setPanDirection] = useState(null);
   const [xzoom, setXzoom] = useState(window.screen.width < 600 ? -1 : 0);
 
   const { valueChanged } = backend;
 
+const { hoveredInfo, setHoveredInfo } = hoverDetails;
 
   const [viewState, setViewState] = useState({
     // target: [0, 0, 0],
@@ -171,6 +172,7 @@ class MyOrthographicController extends OrthographicController {
   const [mouseXY, setMouseXY] = useState(false);
 
   const [globalBinsIndexes, setGlobalBinsIndexes] = useState(null);
+  const basepairPerUnit = 10000;
 
   useEffect(() => {
     if (!viewPortCoords || !globalBins) return;
@@ -178,8 +180,11 @@ class MyOrthographicController extends OrthographicController {
     if (!globalBins === undefined || globalBins === null) return;
     var {x0, x1} = viewPortCoords['genome-positions']?.coordinates;
 
-    valueChanged(globalBins, [x0, x1], setGlobalBinsIndexes, setGenomicoodinates)
 
+    valueChanged(globalBins, [x0, x1], setGlobalBinsIndexes, setGenomicoodinates)
+    setGenomicoodinates([Math.round(x0*basepairPerUnit)>0 ? Math.round(x0*basepairPerUnit) : 0, Math.round(x1*basepairPerUnit)>0 ? Math.round(x1*basepairPerUnit) : 0])
+
+    console.log("viewState", viewState)
   }, [viewState, globalBins])
 
   const setView = useCallback((targetView) => {
@@ -209,7 +214,6 @@ class MyOrthographicController extends OrthographicController {
       let zoom = [...oldViewState.zoom];
       let target = [...oldViewState.target];
 
-      let genome_position_view = prev['genome-positions'] || {};
 
       if(panDirection === null){
       if(zoomAxis==='Y'){
@@ -257,16 +261,32 @@ class MyOrthographicController extends OrthographicController {
       };
 
       if (prev['genome-positions']) {
+        let coords = hoveredInfo?.coordinate ? hoveredInfo?.coordinate : null;
+        let genomic_target = null;
+        if (coords && globalBins) {
+          genomic_target = globalBins[Math.round(coords[0])]
+        }
+
+        let new_genomic_target = null;
+        let maxZoom = 11;
+        // const t = zoom[0] / maxZoom;   // goes from 0 → 1
+        const t = Math.pow(zoom[0]/maxZoom, 2);
+          // new_genomic_target = genomic_target?.acc * (1 - t) + target[0] * t;
+          new_genomic_target = target[0] + (genomic_target?.acc - newViewState.target[0]) * t;
+          // new_genomic_target = genomic_target?.acc + (target[0] - genomic_target?.acc) * t;
+
+          console.log("useViewnew_genomic_target",t, new_genomic_target, zoom[0], genomic_target)
         newViewStates['genome-positions'] = {
           ...prev['genome-positions'],
-          target: settings.vertical_mode ? [prev['genome-positions'].target?.[0] || 0, target[1]] : [target[0], prev['genome-positions'].target?.[1] || 0],
-          zoom: settings.vertical_mode ? [prev['genome-positions'].zoom?.[0], zoom[1]] : [zoom[0], prev['genome-positions'].zoom?.[1]]  
+          // target: [target[0], prev['genome-positions'].target?.[1] || 0],
+          target: [new_genomic_target ? new_genomic_target : target[0], prev['genome-positions'].target?.[1] || 0],
+          zoom: [zoom[0], prev['genome-positions'].zoom?.[1]]  
         };
       }
       return newViewStates;
     });
     
-  }, [zoomAxis, settings, panDirection])
+  }, [zoomAxis, settings, panDirection, hoveredInfo])
 
   const output = useMemo(() => {
     return {
