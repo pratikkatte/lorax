@@ -19,31 +19,6 @@ function getXArray(globalBins) {
   return globalBins.map(b => b.acc);
 }
 
-function logNormalize(arr, targetTotal) {
-  // log10(x+1) to compress range; shift positive; scale to targetTotal
-  const n = arr.length;
-  if (n === 0) return [];
-  const shifted = new Array(n);
-  let min = Infinity;
-  for (let i = 0; i < n; i++) {
-    const v = Math.max(0, arr[i]); // guard negatives
-    const s = Math.log10(v + 1);
-    shifted[i] = s;
-    if (s < min) min = s;
-  }
-  let sum = 0;
-  for (let i = 0; i < n; i++) {
-    shifted[i] -= min;
-    sum += shifted[i];
-  }
-  if (sum === 0) {
-    const equal = targetTotal / n;
-    return new Array(n).fill(equal);
-  }
-  const scale = targetTotal / sum;
-  for (let i = 0; i < n; i++) shifted[i] *= scale;
-  return shifted;
-}
 
 function lowerBound(arr, x) {
   let lo = 0, hi = arr.length - 1, ans = arr.length;
@@ -73,103 +48,38 @@ function findClosestBinIndices(globalBins, x0, x1) {
   return { i0, i1 };
 }
 
-function getGlobalBins_linear(data) {
+let basepairPerUnit = 1000;
+
+let ts_intervals = [];
+
+function getGlobalBins_linear(data, globalBpPerUnit) {
+  // basepairPerUnit = globalBpPerUnit;
+  basepairPerUnit = 1;
+
   const intervals = data.new_intervals;
+  ts_intervals = intervals;
   const intervalsKeys = Object.keys(intervals);
 
 
-  const basepairPerUnit = 10000;
-
   const list = new Array(intervalsKeys.length + 1);
-  list[0] = [0, 0];
+  // list[0] = [0, 0];
   for (let i = 0; i < intervalsKeys.length; i++) {
     const k = intervalsKeys[i];
-    list[i + 1] = intervals[k];
+    list[i] = intervals[k];
   }
-
   const out = new Array(intervalsKeys.length);
   let acc = 0;
 for (let i = 0; i < intervalsKeys.length; i++) {
   
     const [s, e] = list[i];
     acc = (e/basepairPerUnit);
-    out[i] = {s,e,acc};
-  }
-  return out;
-
-}
-
-function getGlobalBins(data) {
-
-  const intervals = data.new_intervals;
-  const intervalsKeys = Object.keys(intervals);
-  // const genomeLength = intervals[intervalsKeys.length - 1][1];
-
-//   const basepairPerUnit = 30000;
-
-//   const list = new Array(intervalsKeys.length + 1);
-//   list[0] = [0, 0];
-//   for (let i = 0; i < intervalsKeys.length; i++) {
-//     const k = intervalsKeys[i];
-//     list[i + 1] = intervals[k];
-//   }
-
-//   const out = new Array(intervalsKeys.length);
-//   let acc = 0;
-// for (let i = 0; i < intervalsKeys.length; i++) {
-  
-//     const [s, e] = list[i];
-//     acc = (e/basepairPerUnit);
-//     out[i] = {s,e,acc};
-//   }
-//   return out;
-
-  const widths = new Array(intervalsKeys.length+1);
-  widths[0] = 0;
-  for (let i = 0; i < intervalsKeys.length; i++) {
-    const [s, e] = intervals[intervalsKeys[i]];
-    widths[i + 1] = Math.max(0, e - s);
-  }
-  const weights = logNormalize(widths, intervalsKeys.length);
-  const list = new Array(intervalsKeys.length + 1);
-  list[0] = [0, 0];
-  for (let i = 0; i < intervalsKeys.length; i++) {
-    const k = intervalsKeys[i];
-    list[i + 1] = intervals[k];
-  }
-  const out = new Array(intervalsKeys.length);
-  let acc = 0;
-  for (let i = 0; i < intervalsKeys.length; i++) {
-    acc += weights[i];
-    const [s, e] = list[i];
-    out[i] = {s,e,acc
-      // start: s,
-      // end: e,
-      // sourcePosition: [acc, 0],
-      // targetPosition: [acc, 2],
-    };
+    out[i] = {s, e, acc};
   }
   return out;
 }
 
 const the_cache = {};
-let vertical_mode = true;
 
-function getYExtent(node) {
-  const ys = [];
-
-  function collectY(n) {
-    ys.push(n.y);
-    if (n.child) n.child.forEach(collectY);
-  }
-
-  collectY(node);
-  return {
-    minY: Math.min(...ys),
-    maxY: Math.max(...ys),
-    height: Math.max(...ys) - Math.min(...ys),
-  };
-}
 
 function extractSquarePaths(node, vertical_mode) {
   const segments = [];
@@ -203,8 +113,6 @@ function extractSquarePaths(node, vertical_mode) {
 }
 
 
-
-
 const sendStatusMessage = (status_obj) => {
   postMessage({
     type: "status",
@@ -217,15 +125,14 @@ let globalBins = [];
 export const queryConfig = async (data) => {
   
   try {
-    const global_bins = getGlobalBins(data.data);
 
-    const global_bins_linear = getGlobalBins_linear(data.data);
-    console.log("global_bins", global_bins);
-    console.log("global_bins_linear", global_bins_linear);
+    if (data.globalBpPerUnit) {
+    }
+    const global_bins_linear = getGlobalBins_linear(data.data, data.globalBpPerUnit);
 
     globalBins = global_bins_linear;
 
-    return globalBins;
+    return global_bins_linear;
   } catch (error) {
     console.log("error", error);
   }
@@ -251,21 +158,105 @@ function makeBin(bin, index) {
   };  
 }
 
+const skip_threshold = 1000;
+const new_skip_threshold = 100;
+
+
+// function optimized_new_buildBins(globalBins, lo, hi, skip_threshold) {
+
+//   const arr = [];
+//   let prevEnd = null;
+
+//   let skipBuffer = [];
+//   let groupStart = null; 
+//   let groupEnd = null;  
+//   let j = lo;
+//   for (let i = lo; i <= hi; i++) {
+    
+//     const bin = globalBins[i];
+//     const end = bin.e;
+//     const start = bin.s;
+
+//     const diff = prevEnd !== null ? end - prevEnd : Infinity;
+//     const visible = diff >= new_skip_threshold;
+
+//     if (visible) {
+//       if (skipBuffer.length > 0 && arr.length > 0) {
+//         const last = arr[arr.length - 1];
+//         last.trees_index = [...skipBuffer];
+//         last.number_of_skips = skipBuffer.length;
+//         last.visibility = false;
+//         last.end = groupEnd; // extend the end of the last group
+//         skipBuffer = [];
+//       }
+
+//       arr.push({
+//         start,
+//         end,
+//         trees_index: [],
+//         number_of_skips: 0,
+//         visibility: true,
+//         index: j,
+//         global_index: i,
+//       });
+//       j++;
+
+//       groupStart = start;
+      
+//     } else {
+//       if (skipBuffer.length == 0) {
+//         arr.push({
+//           start,
+//           end,
+//           trees_index: [i],
+//           number_of_skips: 1,
+//           visibility: false,
+//           global_index: null,
+//           index: j,
+//         })
+//         j++;
+//         groupStart = start;
+//         skipBuffer.push(i);
+//       } 
+//       else {
+//         skipBuffer.push(i);
+//       }
+      
+//     }
+//     groupEnd = end;
+//     prevEnd = end;
+//   }
+
+//   return arr;
+// }
+
 export const queryValueChanged = async (value) => {
   const [x0, x1] = value;
   const { i0, i1 } = findClosestBinIndices(globalBins, x0, x1);
   return { i0, i1 };
 }
 
-export const queryLocalBins = async (localBins, globalBinsIndexes) => {
+export const queryLocalBins = async (value) => {
 
-  let [lo, hi] = globalBinsIndexes;
+  // let [lo, hi] = globalBinsIndexes;
 
+  let new_exp_local_bins = queryExperimental(value)
+  console.log("queryLocalBins new_exp_local_bins", new_exp_local_bins);
+
+  let { i0, i1 } = findClosestBinIndices(globalBins, value[0]/basepairPerUnit, value[1]/basepairPerUnit);
+
+  let lo = i0;
+  let hi = i1;
+  
+
+  // const new_bins = optimized_new_buildBins(globalBins, lo, hi, new_skip_threshold);
+
+  // TODO optimize on this for increasing and decreasing local bins based on user interaction
   if (lo > hi) return [];
 
   // const localBins = globalBins.slice(lo, hi+1);
   const interval = hi - lo + 1;
-  const buffer = interval*2;
+  const buffer = interval;
   // const buffer = 0;
 
   const loBuffered = Math.max(0, lo - buffer);
@@ -276,6 +267,7 @@ export const queryLocalBins = async (localBins, globalBinsIndexes) => {
     cachedBins = buildBins(globalBins, loBuffered, hiBuffered);
     cachedLo = loBuffered;
     cachedHi = hiBuffered;
+
   } else {
     // Expand left
     while (loBuffered < cachedLo) {
@@ -307,7 +299,7 @@ export const queryLocalBins = async (localBins, globalBinsIndexes) => {
 
   // Tag bins as visible:false if the difference between .end of consecutive bins is small
   // We'll mark bins as visible:false if their .end is the same as the previous bin's .end
-  const skip_threshold = 10000;
+  
   if (cachedBins.length > 1) {
     let prevEnd = cachedBins[0].end;
     cachedBins[0].visible = true;
@@ -320,7 +312,9 @@ export const queryLocalBins = async (localBins, globalBinsIndexes) => {
       }
     }
   }
-  return {local_bins: cachedBins, maxX, minX, loBuffered, hiBuffered};
+  // return {local_bins: cachedBins, new_bins: new_bins};
+  // return {local_bins: new_bins};
+  return {local_bins: new_exp_local_bins};
 
 }
 export const queryNodes = async (data, vertical_mode) => {
@@ -405,6 +399,96 @@ function processNewick(nwk_str, mutations, globalMinTime, globalMaxTime, times) 
   return tree
 }
 
+function downSample(i0, i1, n_trees, skip_frac=0.3){
+
+  const total = i1 - i0 + 1
+  const keep_total = Math.round(total * (1 - skip_frac))
+  
+  const step = n_trees > 1 ? keep_total / (n_trees - 1) : 1
+    
+    let indices = [];
+    for (let i = 0; i < n_trees; i++) {
+      indices.push(i0 + Math.round(i * step));
+    }
+    indices[indices.length-1] = i1;
+    return indices
+}
+
+//function to find the closes the genomic interval in the ts_intervals. Returns indices.  
+
+function findClosestGenomicInterval(genomic_coords) {
+
+  const xs = Object.keys(ts_intervals);
+  const first_genomic_index = nearestIndex(xs, genomic_coords[0]);
+  const last_genomic_index = nearestIndex(xs, genomic_coords[1]);
+
+  return { first_genomic_index, last_genomic_index };
+}
+
+export function queryExperimental(data) {
+  
+
+  // work with the genomic coodinates itself, insteaed of world-coordinates. 
+
+  var {first_genomic_index, last_genomic_index} = findClosestGenomicInterval(data);
+
+  // var local_bins = globalBins.slice(first_genomic_index, last_genomic_index+1);
+
+  // for (let i = first_genomic_index; i <= last_genomic_index; i++) {
+  //   local_bins.push(globalBins[i]);
+  // }
+  return [first_genomic_index, last_genomic_index];
+  // return [local_bins];
+   
+//   // last_genomic_index > possible_num_trees? possible_num_trees : last_genomic_index
+//   let possible_num_trees = (data[1]/basepairPerUnit) - ((data[0]/basepairPerUnit) > 0? (data[0]/basepairPerUnit) : 0);
+//   possible_num_trees = last_genomic_index > possible_num_trees? Math.round(possible_num_trees * 0.5) : last_genomic_index;
+
+//   const indices = downSample(first_genomic_index, last_genomic_index, possible_num_trees);
+
+//   let local_bins = [];
+//   let prev_ind = null;
+//   let tree_index = (globalBins[indices[0]].s)/basepairPerUnit;
+//   for (let i = 0; i < indices.length; i++) {
+//     let bins = globalBins[indices[i]];
+
+//     if (i>0 ) {
+//       let num_skips = (indices[i]-1 - prev_ind)
+//       num_skips = prev_ind !== null ? num_skips > 1 ? num_skips : 0 : 0
+//       local_bins.push({
+//         start: globalBins[prev_ind+1].s,
+//         end: globalBins[indices[i]-1].e,
+//         trees_index: Array.from(
+//           { length: indices[i]-1 - prev_ind },
+//           (_, k) => prev_ind + k + 1
+//         ),
+//         number_of_skips: num_skips,
+//         visibility: num_skips > 0 ? false : true,
+//         global_index: null,
+//         index: tree_index,
+//       })
+//       tree_index++;
+//     }
+    
+//     local_bins.push({
+//       start: bins.s,
+//       end: bins.e,
+//       trees_index: [],
+//       number_of_skips: 0,
+//       visibility: true,
+//       global_index: indices[i],
+//       index: tree_index,
+//     })
+//     tree_index++;
+//     prev_ind = indices[i];
+//   }
+// // last genomic index should be greater than possible_num_trees, else genomic_index
+// let world_coords = [data[0]/basepairPerUnit, data[1]/basepairPerUnit];
+// console.log("queryExperimental", local_bins, data,world_coords, indices, first_genomic_index, last_genomic_index);
+
+//   return local_bins;
+
+}
 
 export async function globalCleanup(allTrees) {
   const emptyList = []; // Define your default mutation list or placeholder
@@ -500,17 +584,15 @@ onmessage = async (event) => {
       console.log("search : TO IMPLEMENT")
     }
     if (data.type === "config") {
-      console.log("config value: TO IMPLEMENT")
       const result = await queryConfig(data);
       console.log("config result", result);
       postMessage({ type: "config", data: result });
     }
 
     if (data.type === "local-bins") {
-      const result = await queryLocalBins(data.data.globalBins, data.data.globalBinsIndexes);
-      console.log("local bins result", result);
+      const result = await queryLocalBins(data.data);
       postMessage({ type: "local-bins", data: result });
-    }
+  }
 
     if (data.type === "value-changed") {
       const result = await queryValueChanged(data.data);
@@ -520,6 +602,11 @@ onmessage = async (event) => {
     if (data.type === "details") {
       console.log("data details value: TO IMPLEMENT")
     }
-
+  
+    if (data.type === "experimental"){
+      const result = await queryExperimental(data.data);
+      console.log("experimental result", result);
+      // postMessage({ type: "experimental", data: result });
+    }
   }
 };

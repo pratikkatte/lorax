@@ -14,7 +14,7 @@ const INITIAL_VIEW_STATE = {
   'genome_positions':{
     target: [2,1],
     zoom: [8,8],
-    minZoom: 3,
+    minZoom: 1,
     // padding: '5%',
   },
   'tree-time':{
@@ -26,7 +26,7 @@ const INITIAL_VIEW_STATE = {
   'ortho': {
     target: [2,0],
     zoom: [8,8],
-    minZoom: 3,
+    minZoom: 1,
     
   }
 }
@@ -105,12 +105,23 @@ class MyOrthographicController extends OrthographicController {
   }
 }
 
-  const useView = ({backend, config, settings, setSettings, viewPortCoords, globalBins, setGenomicoodinates, hoverDetails}) => {
+  const useView = ({backend, config, settings, setSettings, viewPortCoords, setValue, hoverDetails}) => {
+
+  const {globalBins, globalBpPerUnit} = config;
   const [zoomAxis, setZoomAxis] = useState("Y");
   const [panDirection, setPanDirection] = useState(null);
   const [xzoom, setXzoom] = useState(window.screen.width < 600 ? -1 : 0);
 
-  const { valueChanged } = backend;
+  const { valueChanged, queryExperimental } = backend;
+
+  let basepairPerUnit = 1000;
+
+  useEffect(() => {
+    if (globalBpPerUnit) {
+      console.log("globalBpPerUnit", globalBpPerUnit)
+      basepairPerUnit = globalBpPerUnit;
+    }
+  }, [globalBpPerUnit])
 
 const { hoveredInfo, setHoveredInfo } = hoverDetails;
 
@@ -172,20 +183,32 @@ const { hoveredInfo, setHoveredInfo } = hoverDetails;
   const [mouseXY, setMouseXY] = useState(false);
 
   const [globalBinsIndexes, setGlobalBinsIndexes] = useState(null);
-  const basepairPerUnit = 10000;
+  
+
+  const [orthoStartEnd, setOrthoStartEnd] = useState(null);
+  const [genomeStartEnd, setGenomeStartEnd] = useState(null);
 
   useEffect(() => {
     if (!viewPortCoords || !globalBins) return;
 
-    if (!globalBins === undefined || globalBins === null) return;
+    if (!globalBins == undefined || globalBins == null || !globalBpPerUnit) return;
     var {x0, x1} = viewPortCoords['genome-positions']?.coordinates;
+    var {x0Ortho, x1Ortho} = viewPortCoords['ortho']?.coordinates;
+      setGenomeStartEnd([x0, x1])
+      setOrthoStartEnd([x0Ortho, x1Ortho])
 
 
-    valueChanged(globalBins, [x0, x1], setGlobalBinsIndexes, setGenomicoodinates)
-    setGenomicoodinates([Math.round(x0*basepairPerUnit)>0 ? Math.round(x0*basepairPerUnit) : 0, Math.round(x1*basepairPerUnit)>0 ? Math.round(x1*basepairPerUnit) : 0])
 
-    console.log("viewState", viewState)
-  }, [viewState, globalBins])
+    // valueChanged([x0, x1], setGlobalBinsIndexes)
+
+if (globalBpPerUnit) {
+    const newValue = [Math.round(x0*globalBpPerUnit) > 0 ? Math.round(x0*globalBpPerUnit) : 0, Math.round(x1*globalBpPerUnit)>0 ? Math.round(x1*globalBpPerUnit) : 0]
+    setValue(newValue)
+}
+
+    // queryExperimental({'genomic_coords': [x0, x1]})
+
+  }, [viewState, globalBins, globalBpPerUnit])
 
   const setView = useCallback((targetView) => {
 
@@ -211,36 +234,36 @@ const { hoveredInfo, setHoveredInfo } = hoverDetails;
     if (!viewId || !newViewState) return;
     
     setViewState((prev) => {
+      console.log("handleViewStateChange", newViewState, oldViewState, prev)
       let zoom = [...oldViewState.zoom];
       let target = [...oldViewState.target];
+      let panStep = 0;
 
+      if(panDirection === null) {
 
-      if(panDirection === null){
-      if(zoomAxis==='Y'){
-        zoom[1] = newViewState.zoom[1] <= maxZoom ? newViewState.zoom[1] : maxZoom; 
-        target[1] = zoom[1] >= maxZoom ? oldViewState.target[1] : newViewState.target[1]; 
-        zoom[0] = oldViewState.zoom[0];
-        target[0] = oldViewState.target[0];
-      }
-      else if (zoomAxis=='X'){
-        zoom[0] = newViewState.zoom[0] <= maxZoom ? newViewState.zoom[0] : maxZoom; 
-        target[0] = zoom[0] >= maxZoom ? oldViewState.target[0] : newViewState.target[0]; 
-        zoom[1] = oldViewState.zoom[1];
-        target[1] = oldViewState.target[1];
-      }
-
+        if(zoomAxis==='Y'){
+          zoom[1] = newViewState.zoom[1] <= maxZoom ? newViewState.zoom[1] : maxZoom; 
+          target[1] = zoom[1] >= maxZoom ? oldViewState.target[1] : newViewState.target[1]; 
+          zoom[0] = oldViewState.zoom[0];
+          target[0] = oldViewState.target[0];
+        }
+        else if (zoomAxis=='X'){
+          zoom[0] = newViewState.zoom[0] <= maxZoom ? newViewState.zoom[0] : maxZoom; 
+          target[0] = zoom[0] >= maxZoom ? oldViewState.target[0] : newViewState.target[0]; 
+          zoom[1] = oldViewState.zoom[1];
+          target[1] = oldViewState.target[1];
+        }
       } else if (panDirection === "L"){
         // Adjust pan step according to zoom level
         // The step size decreases as zoom increases (zoom[0] is log2 scale)
-        var panStep = zoom[0]**2 / Math.pow(2, zoom[0]);
-        // panStep = 0.2
+        panStep = zoom[0] / Math.pow(2, zoom[0]);
         target[0] = target[0] - panStep;
       }
 
       else if (panDirection === "R"){
-        var panStep = zoom[0]*2 / Math.pow(2, zoom[0]);
-        // panStep = 0.2
-        target[0] = target[0] + panStep
+        
+         panStep = zoom[0] / Math.pow(2, zoom[0]);
+         target[0] = target[0] + panStep;
       }
       
       else {
@@ -261,25 +284,9 @@ const { hoveredInfo, setHoveredInfo } = hoverDetails;
       };
 
       if (prev['genome-positions']) {
-        let coords = hoveredInfo?.coordinate ? hoveredInfo?.coordinate : null;
-        let genomic_target = null;
-        if (coords && globalBins) {
-          genomic_target = globalBins[Math.round(coords[0])]
-        }
-
-        let new_genomic_target = null;
-        let maxZoom = 11;
-        // const t = zoom[0] / maxZoom;   // goes from 0 → 1
-        const t = Math.pow(zoom[0]/maxZoom, 2);
-          // new_genomic_target = genomic_target?.acc * (1 - t) + target[0] * t;
-          new_genomic_target = target[0] + (genomic_target?.acc - newViewState.target[0]) * t;
-          // new_genomic_target = genomic_target?.acc + (target[0] - genomic_target?.acc) * t;
-
-          console.log("useViewnew_genomic_target",t, new_genomic_target, zoom[0], genomic_target)
         newViewStates['genome-positions'] = {
           ...prev['genome-positions'],
-          // target: [target[0], prev['genome-positions'].target?.[1] || 0],
-          target: [new_genomic_target ? new_genomic_target : target[0], prev['genome-positions'].target?.[1] || 0],
+            target: [target[0], prev['genome-positions'].target?.[1] || 0],
           zoom: [zoom[0], prev['genome-positions'].zoom?.[1]]  
         };
       }
@@ -287,6 +294,21 @@ const { hoveredInfo, setHoveredInfo } = hoverDetails;
     });
     
   }, [zoomAxis, settings, panDirection, hoveredInfo])
+
+
+  const moveLeftView = useCallback((value) => {
+
+    console.log("moveLeft", value[0])
+    
+  })
+
+  const moveRightView = useCallback((value) => {
+    console.log("moveRight", value[1])
+  })
+  
+  const changeView = useCallback((value) => {
+    console.log("changeView", value)
+  })
 
   const output = useMemo(() => {
     return {
@@ -301,7 +323,10 @@ const { hoveredInfo, setHoveredInfo } = hoverDetails;
       mouseXY,
       handleViewStateChange,
       globalBinsIndexes,
-      setGlobalBinsIndexes
+      setGlobalBinsIndexes,
+      moveLeftView,
+      moveRightView,
+      changeView
     };
   }, [
     viewState,
@@ -317,7 +342,10 @@ const { hoveredInfo, setHoveredInfo } = hoverDetails;
     panDirection,
    handleViewStateChange,
    globalBinsIndexes,
-   setGlobalBinsIndexes
+   setGlobalBinsIndexes,
+   moveLeftView,
+   moveRightView,
+   changeView
   ]);
 
   return output;

@@ -85,16 +85,16 @@ function Deck({
   settings,
   config,
   hoverDetails,
-  // viewportSize,
-  // setViewportSize,
   setViewPortCoords,
   viewPortCoords,
-  globalBins,
-  setGenomicoodinates,
   value,
   dataExtractValues,
-  setDataExtractValues
+  setDataExtractValues,
+  saveViewports,
+  setSaveViewports
 }) {
+
+  const {tsconfig, globalBins, setWidth, globalBpPerUnit} = config;
   
   const [hoveredKey, setHoveredKey] = useState(null);
   const [hoverInfo, setHoverInfoRaw] = useState(null);
@@ -102,15 +102,12 @@ function Deck({
 
   const { hoveredInfo, setHoveredInfo } = hoverDetails;
 
-
   useEffect(()=> {
     if (data.status === "loading") {
     console.log("statusMessage", data)
     }
   },[data])
-
   
-  const [hideOrthoLayers, setHideOrthoLayers] = useState(false);
   // const no_data = !data || data.status === "loading"
 
   const no_data = useMemo(() => !data || data.status === "loading", [data]);
@@ -119,7 +116,9 @@ function Deck({
 
   const {queryDetails} = backend;
 
-  const { bins } = useRegions({config, globalBins, setView, viewPortCoords, setGenomicoodinates, value, dataExtractValues, setDataExtractValues, globalBinsIndexes, setGlobalBinsIndexes, backend});
+  const regions = useRegions({tsconfig, viewState, globalBins, setView, viewPortCoords, value, dataExtractValues, setDataExtractValues, globalBinsIndexes, setGlobalBinsIndexes, backend, saveViewports,globalBpPerUnit});
+
+  const {bins}  = regions;
 
   const onClickOrMouseMove = useCallback(
     (event) => {
@@ -162,25 +161,22 @@ function Deck({
       setHoveredTreeIndex,
       queryDetails,
       settings,
-      hideOrthoLayers,
       deckRef, 
       genomePositions,
       setGenomePositions,
       setViewState,
-      config,
-      // viewportSize,
-      // setViewportSize,
+      tsconfig,
+      globalBpPerUnit,
       globalBins,
       setView,
       viewPortCoords,
-      setGenomicoodinates, 
+      backend,
       value,
-      bins
+      regions
     });
 
-    const [saveViewports, setSaveViewports] = useState({});
 
-    const [dummy, setDummy] = useState(0);
+    const [dummy, setDummy] = useState(null);
 
   const getLayerPixelPositions = useCallback((deckRef, layerId) => {
     const spacing = 1;
@@ -194,30 +190,21 @@ function Deck({
       var genome_positions_pixels = []
       var main_positions_pixels = []
 
-
       if (targetLayer) {
-        let target_index = 0
 
       for (let i = 0; i < skipLayer?.props?.data?.length; i++) {
         const skip_d = skipLayer?.props?.data[i]
-        if (skip_d.skip === 0) {
-          const d = targetLayer?.props?.data[target_index]
-          const coords = [d.sourcePosition[0], d.sourcePosition[1]];
-          const pixel = saveViewports?.['genome-positions']?.project(coords);
-          genome_positions_pixels.push({pixel, index: d.index, highlight: (genome_positions_pixels.length-1)%2 === 0})
-          target_index++;
-          
-          
-        }
-        else {
-          const d = targetLayer?.props?.data[target_index]
-          const coords = [d.sourcePosition[0], d.sourcePosition[1]];
-          const pixel = saveViewports?.['genome-positions']?.project(coords);
-          genome_positions_pixels.push({pixel, index: d.index, highlight: (genome_positions_pixels.length-1)%2 === 0})
-          target_index += skip_d.skip;
-        }
-        const [x0, y0] = saveViewports?.['ortho']?.project([i*spacing,0])
-          const [x1, y1] = saveViewports?.['ortho']?.project([i*spacing+1,1])
+        const d = globalBins[skip_d.global_index]
+        const coords_s = [d.s/globalBpPerUnit, 0];
+        const coords_e = [d.e/globalBpPerUnit, 0];
+        
+        const pixel_s = saveViewports?.['genome-positions']?.project(coords_s);
+        const pixel_e = saveViewports?.['genome-positions']?.project(coords_e);
+        genome_positions_pixels.push({pixels: [pixel_s, pixel_e], highlight: skip_d.step%2 == 0})
+        // target_index++;          
+        
+        const [x0, y0] = saveViewports?.['ortho']?.project([skip_d.position[0]-0.5,0])
+          const [x1, y1] = saveViewports?.['ortho']?.project([skip_d.position[0]+0.5,1])
 
           main_positions_pixels.push([x0,y0,x1,y1])
 
@@ -240,15 +227,15 @@ function Deck({
       if (genome_positions_pixels.length > 0) {
         const pointsArray = [];
         genome_positions_pixels.map((object, i) => {
-          const {pixel, index, highlight} = object;
-          if(highlight) {
-          var [x0, y0, x1, y1] = main_positions_pixels[i]
+          const {pixels, highlight} = object;
 
-          if(genome_positions_pixels[i+1]) {
+          if(highlight) {
+            var [x0, y0, x1, y1] = main_positions_pixels[i]
+          if(pixels[0] && pixels[1]) {
           pointsArray.push([
             [x0, y1*0.1],
-            [pixel[0],0],
-            [genome_positions_pixels[i+1].pixel[0],0],
+            [pixels[0][0],0],
+            [pixels[1][0],0],
             [x1,y1*0.1],
             [x1,y1], 
             [x0,y1]
@@ -269,7 +256,14 @@ function Deck({
     // console.log('View port coords', viewPortCoords);
 
     getLayerPixelPositions(deckRef, "main-layer-0");
-  }, [deckRef,viewPortCoords, saveViewports]);
+  }, [deckRef, viewPortCoords, regions, saveViewports]);
+
+  useEffect(()=> {
+    if (!globalBpPerUnit, saveViewports?.ortho?.width) {
+      console.log("setting width", globalBpPerUnit);
+    setWidth(saveViewports.ortho.width, viewState?.ortho?.zoom[0]);
+    }
+  }, [saveViewports?.ortho?.width, viewState?.ortho?.zoom]);
   
 
   const handleAfterRender = useCallback(() => {
@@ -288,15 +282,14 @@ function Deck({
         'genome-positions': vpGenome
       }));
 
+
+
         const [x0Ortho, y0Ortho] = vpOrtho.project([0, 0]);
         const [x1Ortho, y1Ortho] = vpOrtho.project([vpOrtho.width, vpOrtho.height]);
         const [x0, y0] = vpGenome.unproject([0, 0]);
         const [x1, y1] = vpGenome.unproject([vpGenome.width, vpGenome.height]);
         const [x0genome, y0genome] = vpGenome.project([0, 0]);
         const [x1genome, y1genome] = vpGenome.project([vpGenome.width, vpGenome.height]);
-
-        // setGenomeViewportCoords([x0, x1]); // redundant. 
-        // setViewportSize([vpOrtho.width, vpOrtho.height]); // redundant. 
 
         setViewPortCoords({
           ['ortho']: {
@@ -332,7 +325,7 @@ function Deck({
             }
           }
         })
-      }, [deckRef, setSaveViewports, setViewPortCoords])
+      }, [deckRef])
 
   return (
     <div className="w-full"
@@ -360,6 +353,90 @@ function Deck({
 {dummy && dummy.pointsArray.length > 0 && viewPortCoords.ortho && viewPortCoords['genome-positions'] && (
               <GenomeVisualization pointsArray={dummy.pointsArray} />
             )}
+
+<div>
+              {bins && bins.length > 0 && saveViewports && saveViewports['ortho']?.width && (
+              <div>
+
+                <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                  {/* <span style={{ padding: '0.5rem', background: '#f0f4fa', borderRadius: '6px', fontWeight: 'bold' }}>
+                    {JSON.stringify(viewState['ortho'].target[0], null, 2)}
+                  </span> */}
+                  <span style={{ padding: '0.5rem', background: '#f0f4fa', borderRadius: '6px', fontWeight: 'bold' }}>
+                    {JSON.stringify((Math.ceil(saveViewports['ortho'].width/ 2**viewState['ortho'].zoom[0])), null, 2)}
+                  </span>
+                  {/* <span style={{ padding: '0.5rem', background: '#f0f4fa', borderRadius: '6px', fontWeight: 'bold' }}>
+                    {viewState['ortho'].zoom[0]}
+                  </span> */}
+                </div>
+                
+                coordinates && difference
+                <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                  <span style={{ padding: '0.5rem', background: '#f0f4fa', borderRadius: '6px', fontWeight: 'bold' }}>
+                    {JSON.stringify(value[0]/globalBpPerUnit, null, 2)}
+                  </span>
+                  <span style={{ padding: '0.5rem', background: '#f0f4fa', borderRadius: '6px', fontWeight: 'bold' }}>
+                    {JSON.stringify(value[1]/globalBpPerUnit, null, 2)}
+                  </span>
+                  <span style={{ padding: '0.5rem', background: '#f0f4fa', borderRadius: '6px', fontWeight: 'bold' }}>
+                    {JSON.stringify(value[1]/globalBpPerUnit - value[0]/globalBpPerUnit, null, 2)}
+                  </span>
+                </div>
+                </div>
+              )}
+            </div>
+
+            {/* <div>
+              {bins && bins.length > 0 && saveViewports && saveViewports['ortho']?.width && (
+              <div>
+                coordinates && difference
+                <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                  <span style={{ padding: '0.5rem', background: '#f0f4fa', borderRadius: '6px', fontWeight: 'bold' }}>
+                    {JSON.stringify(value[0]/globalBpPerUnit, null, 2)}
+                  </span>
+                  <span style={{ padding: '0.5rem', background: '#f0f4fa', borderRadius: '6px', fontWeight: 'bold' }}>
+                    {JSON.stringify(value[1]/globalBpPerUnit, null, 2)}
+                  </span>
+                  <span style={{ padding: '0.5rem', background: '#f0f4fa', borderRadius: '6px', fontWeight: 'bold' }}>
+                    {JSON.stringify(value[1]/globalBpPerUnit - value[0]/globalBpPerUnit, null, 2)}
+                  </span>
+                </div>
+
+                bins
+                <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                  <span style={{ padding: '0.5rem', background: '#f0f4fa', borderRadius: '6px', fontWeight: 'bold' }}>
+                    {JSON.stringify(bins[0], null, 2)}
+                  </span>
+                  <span style={{ padding: '0.5rem', background: '#f0f4fa', borderRadius: '6px', fontWeight: 'bold' }}>
+                    {JSON.stringify(bins[1], null, 2)}
+                  </span>
+                </div>
+                showing trees.
+                <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                  <span style={{ padding: '0.5rem', background: '#f0f4fa', borderRadius: '6px', fontWeight: 'bold' }}>
+                    {JSON.stringify(globalBins[bins[0]].s, null, 2)}
+                  </span>
+                  <span style={{ padding: '0.5rem', background: '#f0f4fa', borderRadius: '6px', fontWeight: 'bold' }}>
+                    {JSON.stringify(globalBins[bins[1]].e, null, 2)}
+                  </span>
+                </div>
+
+                ortho view && possible trees && zoom level
+                <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                  <span style={{ padding: '0.5rem', background: '#f0f4fa', borderRadius: '6px', fontWeight: 'bold' }}>
+                    {JSON.stringify(viewState['ortho'].target[0], null, 2)}
+                  </span>
+                  <span style={{ padding: '0.5rem', background: '#f0f4fa', borderRadius: '6px', fontWeight: 'bold' }}>
+                    {JSON.stringify((Math.ceil(saveViewports['ortho'].width/ 2**viewState['ortho'].zoom[0])), null, 2)}
+                  </span>
+                  <span style={{ padding: '0.5rem', background: '#f0f4fa', borderRadius: '6px', fontWeight: 'bold' }}>
+                    {viewState['ortho'].zoom[0]}
+                  </span>
+                </div>
+              </div>
+            )}
+            </div> */}
+            
       </View>
       <View id="genome-positions">
       </View>

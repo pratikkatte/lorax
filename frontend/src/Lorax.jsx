@@ -7,8 +7,9 @@ import PositionSlider from './components/PositionSlider'
 import useHoverDetails from "./hooks/useHoverDetails";
 
 
-function Lorax({backend, config, setConfig, settings, setSettings, project, ucgbMode, globalBins}) {
+function Lorax({backend, config, settings, setSettings, project, ucgbMode, saveViewports, setSaveViewports}) {
 
+  const {tsconfig, setConfig} = config;
   const [mouseDownIsMinimap, setMouseDownIsMinimap] = useState(false);
   const [deckSize, setDeckSize] = useState(null); // idk the use of this?
   const [hoveredTreeIndex, setHoveredTreeIndex] = useState({path: null, node: null, treeIndex: null}); // this is for knowing which tree is hovered. 
@@ -17,25 +18,22 @@ function Lorax({backend, config, setConfig, settings, setSettings, project, ucgb
   const [value, setValue] = useState(null); // hook to know the genomic values displayed on the window. 
   const [dataExtractValues, setDataExtractValues] = useState(null); // hook to know how much data to extract from the backend. The range values are more than what viewed by the user. 
 
-  const setGenomicoodinates = useCallback((value) => {
-    console.log("setGenomicoodinates", value)
-    setValue(value)
-  }, [])
-
   let hoverDetails = useHoverDetails();
   
   // const settings = useSettings({ query, updateQuery });
-  const view = useView({backend, config, settings, setSettings, viewPortCoords, globalBins, setGenomicoodinates, hoverDetails});
+  
+  const view = useView({backend, config, settings, setSettings, viewPortCoords, setValue, hoverDetails});
 
-  const { data } = useGetDynamicData(backend, config, dataExtractValues, setDataExtractValues)
+  const { data } = useGetDynamicData(backend, tsconfig, dataExtractValues, setDataExtractValues)
+
 
   return (
     <>
-      {backend.isConnected && config && (
+      {backend.isConnected && tsconfig && (
         <div className="flex flex-col h-screen bg-white">
           {(!ucgbMode.current) && (
           <div className="flex justify-center items-center py-2 bg-white border-b border-gray-200">
-            <PositionSlider config={config} setConfig={setConfig} project={project} ucgbMode={ucgbMode} value={value} setValue={setValue} />
+            <PositionSlider config={tsconfig} setConfig={setConfig} project={project} ucgbMode={ucgbMode} value={value} setValue={setValue} view={view} />
           </div>
           )}
           <div className="flex-1 flex justify-center">
@@ -56,12 +54,12 @@ function Lorax({backend, config, setConfig, settings, setSettings, project, ucgb
               config={config}
               setViewPortCoords={setViewPortCoords}
               viewPortCoords={viewPortCoords}
-              globalBins={globalBins}
-              setGenomicoodinates={setGenomicoodinates}
               value={value}
               dataExtractValues={dataExtractValues}
               setDataExtractValues={setDataExtractValues}
               hoverDetails={hoverDetails}
+              saveViewports={saveViewports}
+              setSaveViewports={setSaveViewports}
             />
           </div>
         </div>

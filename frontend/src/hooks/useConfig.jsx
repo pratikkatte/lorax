@@ -4,23 +4,38 @@ import { useNavigate } from "react-router-dom";
 
 
 function useConfig({backend}) {
-  const [config, setConfig] = useState(null);
+  const [tsconfig, setConfig] = useState(null);
   const {isConnected, queryConfig} = backend;
 
   const [globalBins, setGlobalBins] = useState(null);
 
+  const [globalBpPerUnit, setGlobalBpPerUnit] = useState(null);
+
+  const setWidth = useCallback((width, zoom) => {
+    if (width && tsconfig){
+      const genome_length = tsconfig.intervals[tsconfig.intervals.length - 1][1];
+      setGlobalBpPerUnit((genome_length/tsconfig.intervals.length - 1));
+      // setGlobalBpPerUnit(genome_length/tsconfig.intervals.length-1)
+    } 
+  }, [tsconfig, globalBpPerUnit]);
 
   const handleConfigUpdate = useCallback((data) => {
     if (data.role === "config") {
-      setConfig({...config, ...data.data});
+      setConfig({...tsconfig, ...data.data});
     }
-  }, [config]);
+  }, [tsconfig]);
 
   const handleConfigGlobalBins = useCallback((data) => {
     if (data.role === "config-global-bins") {
       setGlobalBins(data.data.data);
     }
-  }, [config]);
+  }, [tsconfig]);
+
+  useEffect(() => {
+    if (globalBpPerUnit) {
+      queryConfig(tsconfig, globalBpPerUnit);
+    }
+  }, [globalBpPerUnit]);
 
   useEffect(() => {
     if (!isConnected) return;
@@ -37,10 +52,12 @@ function useConfig({backend}) {
 
   
   return useMemo(() => ({
-    config, 
+    tsconfig, 
     setConfig,
-    globalBins
-  }), [config, setConfig, globalBins]);
+    globalBins,
+    setWidth,
+    globalBpPerUnit
+  }), [tsconfig, setConfig, globalBins, setWidth, globalBpPerUnit]);
 };
 
 export default useConfig;

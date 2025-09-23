@@ -20,16 +20,16 @@ function App() {
   const [project, setProject] = useState();
   const ucgbMode = useRef(false);
 
-
   const {settings, setSettings} = useSettings();
   const [gettingDetails, setGettingDetails] = useState(false);
   const backend = useConnect({setGettingDetails, settings});
-  const {config, setConfig, globalBins} = useConfig({backend});
+  const [saveViewports, setSaveViewports] = useState({});
+  const config = useConfig({backend, saveViewports, setSaveViewports});
+
 
 
   const upload = useFileUpload({
     config,
-    setConfig,
     setProject,
   });
 
@@ -52,14 +52,13 @@ function App() {
           <LoraxViewer
             backend={backend}
             config={config}
-            setConfig={setConfig}
             settings={settings}
             setSettings={setSettings}
             project={project}
             setProject={setProject}
             ucgbMode={ucgbMode}
-            globalBins={globalBins}
-            
+            saveViewports={saveViewports}
+            setSaveViewports={setSaveViewports}
           />
         }
       />

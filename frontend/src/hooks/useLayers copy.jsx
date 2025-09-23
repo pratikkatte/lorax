@@ -153,7 +153,7 @@ const useLayers = ({
     );
   }, [settings]);
   
-    const genome_length = 10000;
+    const genome_length = 1000;
 
     // const { genomeGridLines } = genomeCoordinates({genome_length, viewState, config})
 

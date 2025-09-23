@@ -60,12 +60,12 @@ function useConnect({ setGettingDetails, settings }) {
       }
       if (message.type === "viz" && message.role === "config") {
 
-        queryConfig(message.data);
+        // queryConfig(message.data);
 
-        worker.postMessage({
-          type: "config",
-          data: message.data,
-        });
+        // worker.postMessage({
+        //   type: "config",
+        //   data: message.data,
+        // });
       }
     };
 
@@ -121,13 +121,17 @@ function useConnect({ setGettingDetails, settings }) {
   }, []);
 
 
-  const queryConfig = useCallback((configData) => {
+  const queryConfig = useCallback((configData, globalBpPerUnit=null) => {
 
-    console.log("querying config", configData);
     // sendMessage({
     //   type: "config",
     //   data: configData,
     // });
+    worker.postMessage({
+      type: "config",
+      data: configData,
+      globalBpPerUnit: globalBpPerUnit,
+    })
 
     onConfigReceipt = (receivedData) => {
       console.log("got config result", receivedData);
@@ -141,7 +145,7 @@ function useConnect({ setGettingDetails, settings }) {
   }, []);
 
   
-  const valueChanged = useCallback((globalBins, value, setResult, setGenomicoodinates) => {
+  const valueChanged = useCallback((value, setResult) => {
 
     worker.postMessage({
       type: "value-changed",
@@ -151,24 +155,31 @@ function useConnect({ setGettingDetails, settings }) {
     onValueChangedReceipt = (receivedData) => {
       console.log("valueChanged result", receivedData);
       setResult([receivedData.data.i0, receivedData.data.i1]);
-      // setGenomicoodinates([globalBins[receivedData.data.i0].s, globalBins[receivedData.data.i1].e]);
     };
 
   })
 
-  const queryLocalBins = useCallback((globalBins, globalBinsIndexes, setResult) => {
+  const queryLocalBins = useCallback((value, setResult) => {
     
     worker.postMessage({
       type: "local-bins",
-      data: {globalBins, globalBinsIndexes},
+      data: value,
     });
 
     onLocalBinsReceipt = (receivedData) => {
-      console.log("got local bins result", receivedData);
-      setResult(receivedData);
+      setResult(receivedData.data.local_bins);
       
     };    
   }, []);
+
+const queryExperimental = useCallback((value) => {
+
+  worker.postMessage({
+    type: "experimental",
+    data: value,
+  });
+  
+});
 
 
   /** Exposed methods */
@@ -215,8 +226,9 @@ function useConnect({ setGettingDetails, settings }) {
     isConnected,
     checkConnection,
     queryLocalBins,
-    valueChanged  
-  }), [statusMessage, queryNodes, queryDetails, isConnected, checkConnection, queryConfig, queryLocalBins, valueChanged]);
+    valueChanged,
+    queryExperimental
+  }), [statusMessage, queryNodes, queryDetails, isConnected, checkConnection, queryConfig, queryLocalBins, valueChanged, queryExperimental]);
 }
 
 export default useConnect;

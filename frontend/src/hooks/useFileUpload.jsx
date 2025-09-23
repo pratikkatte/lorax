@@ -24,7 +24,6 @@ import { useNavigate } from "react-router-dom";
  * @returns helpers and state for wiring inputs and dropzones
  */
 export default function useFileUpload({
-  setConfig,
   config,
   mapResponseToConfig,
   onError,
@@ -34,6 +33,8 @@ export default function useFileUpload({
 } = {}) {
   const { API_BASE } = useLoraxConfig();
   const navigate = useNavigate(); 
+
+  const {tsconfig, setConfig} = config;
 
   const inputRef = useRef(null);
   const [isUploading, setIsUploading] = useState(false);

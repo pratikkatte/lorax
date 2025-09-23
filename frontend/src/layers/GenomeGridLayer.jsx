@@ -1,36 +1,6 @@
 import {CompositeLayer} from '@deck.gl/core';
 import {LineLayer, TextLayer} from '@deck.gl/layers';
-
-    // INSERT_YOUR_CODE
-    // Densify the data array by inserting additional points between each pair
-function densifyData(data, y0, y1) {
-    let densifiedData = [];
-    if (Array.isArray(data) && data.length > 1) {
-        for (let i = 0; i < data.length - 1; i++) {
-        const d1 = data[i];
-        const start = d1.start;
-        const end = d1.end;
-
-        const nbins = (end - start) >=5000 ? 10 : 5;
-        
-        densifiedData.push(d1);
-        for (let j = 1; j <= nbins; j++) {
-            const t = j / (nbins);
-            
-            const newData = {
-                sourcePosition: [d1.sourcePosition[0] + (t), y0],
-                targetPosition: [d1.targetPosition[0] + (j / (nbins)), y1],
-            }
-            densifiedData.push(newData);
-        }
-    }
-
-        // densifiedData.push(data[data.length - 1]);
-    } else {
-        densifiedData = data;
-    }
-    return densifiedData;
-    }
+import memoizeOne from 'memoize-one';
 
 export class GenomeGridLayer extends CompositeLayer {
   static defaultProps = {
@@ -43,9 +13,76 @@ export class GenomeGridLayer extends CompositeLayer {
     getText: d => `${d.start}`,     // label content
     showLabels: true,
     modelMatrix: null,
-    viewId: null
+    viewId: null,
+    globalBins: [],
+    backend: null,
+    globalBpPerUnit: null
   };
 
+  initializeState() {
+    this._localBins = [];
+    this._lastStart = null;
+    this._lastEnd = null;
+  }
+
+  getLocalData(data, globalBins) {
+    if (!Array.isArray(data) || data.length < 2) {
+      return [];
+    }
+    if (!globalBins || globalBins.length === 0) {
+      return [];
+    }
+  
+    const start = data[0];
+    const end = data[1];
+    if (typeof start !== "number" || typeof end !== "number") {
+      console.warn("GenomeGridLayer: data is not [start, end]", data);
+      return [];
+    }
+
+    const buffer = 0.5;
+    const bufferStart = Math.max(0, start - (start* buffer));
+    const bufferEnd = Math.min(globalBins.length - 1, end + (end* buffer));
+  
+    // First time or empty cache → slice directly
+    if (this._lastStart == null || this._lastEnd == null) {
+    
+      this._localBins = globalBins.slice(start, end + 1);
+      // if (start == 0) {
+      //   this._localBins.unshift({s: 0, e: 0, acc: 0});
+      // }
+      // if (end == globalBins.length - 1) {
+      //   this._localBins.push({s: globalBins[globalBins.length - 1].e, e: globalBins[globalBins.length - 1].e, acc: globalBins[globalBins.length - 1].acc});
+      // }
+    } else {
+      const prevStart = this._lastStart;
+      const prevEnd = this._lastEnd;
+  
+      if (bufferEnd < prevStart || bufferStart > prevEnd) {
+        // no overlap, reset
+        this._localBins = globalBins.slice(start, end + 1);
+      } else {
+        // adjust left
+        if (bufferStart > prevStart) {
+          this._localBins.splice(0, bufferStart - prevStart);
+        } else if (bufferStart < prevStart) {
+          this._localBins.unshift(...globalBins.slice(bufferStart, prevStart));
+        }
+  
+        // adjust right
+        if (bufferEnd > prevEnd) {
+          this._localBins.push(...globalBins.slice(prevEnd + 1, bufferEnd + 1));
+        } else if (bufferEnd < prevEnd) {
+          this._localBins.splice(this._localBins.length - (prevEnd - bufferEnd), prevEnd - bufferEnd);
+        }
+      }
+    }
+  
+    this._lastStart = bufferStart;
+    this._lastEnd = bufferEnd;
+
+    return this._localBins;
+  }
   
 
   renderLayers() {
@@ -53,52 +90,102 @@ export class GenomeGridLayer extends CompositeLayer {
     const {
       data, y0, y1, labelOffset,
       getColor, getTextColor, getText,
-      modelMatrix, viewId, showLabels
+      modelMatrix, viewId, showLabels, globalBins, globalBpPerUnit
     } = this.props;
 
-    // Accessors that gracefully fall back to i-based positions if not provided
-    const getX = d => (d.sourcePosition ? d.sourcePosition[0] : d.i);
 
-    let densifiedData = densifyData(data, y0, y1);
+    const localBins = this.getLocalData(data, globalBins); // precomputed once
 
+    console.log("localBins", localBins)
 
-      
+    if (!localBins.length) return [];
+
     return [
       new LineLayer({
-        id: `${this.props.id}-lines`,
-        data: data,
-        getSourcePosition: d => d.sourcePosition ?? [getX(d), y0],
-        getTargetPosition: d => d.targetPosition ?? [getX(d), y1],
-        getColor,
-        // modelMatrix,
-        viewId,
-        pickable: false,
-        updateTriggers: {
-          getSourcePosition: [y0],
-          getTargetPosition: [y1],
-          getColor
-        }
-      }),
-      showLabels &&
-        new TextLayer({
-          id: `${this.props.id}-labels`,
-          data,
-          getPosition: d => [getX(d), 1],
-          getText,
-          getColor: getTextColor,
-          sizeUnits: 'pixels',
-          getSize: 9,
-          // billboard: true,
-          // modelMatrix,
-          viewId,
-          pickable: false,
-          background: false,
-          updateTriggers: {
-            getPosition: [y1, labelOffset],
-            getText,
-            getColor: getTextColor
-          }
-        })
-    ].filter(Boolean);
+      id: `${this.props.id}-lines`,
+      data: localBins,
+      getSourcePosition: d => [d.acc/globalBpPerUnit, y0],
+      getTargetPosition: d => [d.acc/globalBpPerUnit, y1],
+      getColor,
+      viewId,
+      pickable: false,
+      updateTriggers: {
+        getSourcePosition: [y0],
+        getTargetPosition: [y1],
+        data,
+        globalBins,
+        localBins
+      }
+    })
+    ]
+    // return [
+    //   new LineLayer({
+    //     id: `${this.props.id}-lines`,
+    //     data: data ? data.flatMap(d => {
+    //       if (d.visibility) {
+    //         const globalBin = globalBins[d.global_index];
+    //         return [{
+    //           ...globalBin,
+    //           start: globalBin.s,
+    //           end: globalBin.e,
+    //           sourcePosition: [globalBin?.acc, y0],
+    //           targetPosition: [globalBin?.acc, y1]
+    //         }];
+    //       } else {
+    //         // If d.trees_index is an array of indices to globalBins, return a line for each skip
+    //         if (d.trees_index && d.trees_index.length > 0) {
+
+    //           return d.trees_index.map(idx => {
+    //             const globalBin = globalBins[idx];
+    //             return {
+    //               ...globalBin,
+    //               start: globalBin?.s,
+    //               end: globalBin?.e,
+    //               sourcePosition: [globalBin?.acc, y0],
+    //               targetPosition: [globalBin?.acc, y1]
+    //             };
+    //           });
+    //         }
+    //         else {
+    //         }
+    //       }
+    //     }) : [],
+    //     getSourcePosition: d => d.sourcePosition ?? [getX(d), y0],
+    //     getTargetPosition: d => d.targetPosition ?? [getX(d), y1],
+    //     getColor,
+    //     // modelMatrix,
+    //     viewId,
+    //     pickable: false,
+    //     updateTriggers: {
+    //       getSourcePosition: [y0],
+    //       getTargetPosition: [y1],
+    //       getColor,
+    //       data,
+    //       globalBins
+    //     }
+    //   }),
+    //   showLabels &&
+    //     new TextLayer({
+    //       id: `${this.props.id}-labels`,
+    //       data,
+    //       getPosition: d => [getX(d), 1],
+    //       getText,
+    //       getColor: getTextColor,
+    //       sizeUnits: 'pixels',
+    //       getSize: 9,
+    //       // billboard: true,
+    //       // modelMatrix,
+    //       viewId,
+    //       pickable: false,
+    //       background: false,
+    //       updateTriggers: {
+    //         getPosition: [y1, labelOffset],
+    //         getText,
+    //         getColor: getTextColor,
+    //         data,
+    //         globalBins
+    //       }
+    //     })
+    // ].filter(Boolean);
   }
 }
