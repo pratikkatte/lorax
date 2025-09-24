@@ -1,7 +1,7 @@
 # handlers.py
 import json
 # from lorax.chat.langgraph_tskit import api_interface
-from lorax.viz.trees_to_taxonium import start_end, new_tree_samples
+from lorax.viz.trees_to_taxonium import new_tree_samples
 import tskit
 import tszip
 import numpy as np
