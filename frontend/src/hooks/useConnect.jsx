@@ -183,13 +183,14 @@ const queryExperimental = useCallback((value) => {
 
 
   /** Exposed methods */
-  const queryNodes = useCallback((boundsForQueries, setResult, value) => {
+  const queryNodes = useCallback((value, localTrees, setResult) => {
 
-    console.log("querying nodes", boundsForQueries, value);
+    console.log("querying nodes", value,localTrees);
     sendMessage({
       type: "viz",
       role: "query",
-      bounds: boundsForQueries,
+      bounds: null,
+      localTrees: localTrees,
       value,
     });
     onQueryReceipt = (receivedData) => {

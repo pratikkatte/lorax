@@ -21,8 +21,10 @@ function useGetDynamicData({ backend, value, setValue }) {
     if (debounceTimer.current) {
       clearTimeout(debounceTimer.current);
     }
-
+    
     if (value) {
+      return;
+
       setDynamicData((prev) => ({ ...prev, status: "loading" }));
 
       debounceTimer.current = setTimeout(() => {

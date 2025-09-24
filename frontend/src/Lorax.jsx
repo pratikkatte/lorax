@@ -40,7 +40,6 @@ function Lorax({backend, config, settings, setSettings, project, ucgbMode, saveV
               backend={backend}
               hoveredTreeIndex={hoveredTreeIndex}
               setHoveredTreeIndex={setHoveredTreeIndex}
-              data={data}
               view={view}
               ariaHideApp={false} 
               setDeckSize={setDeckSize}

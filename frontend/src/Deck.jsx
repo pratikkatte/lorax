@@ -77,7 +77,6 @@ const GenomeVisualization = React.memo(({ pointsArray }) => (
 
 function Deck({
   backend,
-  data,
   view,
   deckRef,
   hoveredTreeIndex,
@@ -100,24 +99,28 @@ function Deck({
 
   const { hoveredInfo, setHoveredInfo } = hoverDetails;
 
-  useEffect(()=> {
-    if (data.status === "loading") {
-    console.log("statusMessage", data)
-    }
-  },[data])
+
   
 
   // const no_data = !data || data.status === "loading"
 
-  const no_data = useMemo(() => !data || data.status === "loading", [data]);
 
   const {views, setView, viewState, setViewState, handleViewStateChange, globalBinsIndexes, setGlobalBinsIndexes} = view
 
   const {queryDetails} = backend;
 
-  const regions = useRegions({viewState, globalBins, value, backend, saveViewports,globalBpPerUnit});
 
-  const {bins}  = regions;
+  const regions = useRegions({backend, viewState, globalBins, value, saveViewports,globalBpPerUnit});
+
+  const {bins, data }  = regions;
+
+  useEffect(()=> {
+    if (data.status === "loading") {
+    console.log("statusMessage", data)
+    }
+  },[data])
+
+  const no_data = useMemo(() => !data || data.status === "loading", [data]);
 
   const onClickOrMouseMove = useCallback(
     (event) => {

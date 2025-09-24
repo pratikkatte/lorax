@@ -320,22 +320,19 @@ export const queryLocalBins = async (value) => {
 export const queryNodes = async (data, vertical_mode) => {
   try {
     const received_data = JSON.parse(data);
-    const nwk = received_data.nwk;
-    const mutations = received_data.mutations;
-    const times = received_data.global_times;
-    const tree_index = received_data.tree_index;
 
-    const processed_data = await processData(nwk, mutations, times, sendStatusMessage, vertical_mode)
+    const localTrees = received_data.tree_dict;
+    const processed_data = await processData(localTrees, sendStatusMessage, vertical_mode)
     const result = {
       paths: processed_data,
-      genome_positions: received_data.genome_positions,
-      tree_index: tree_index,
-      times: times
+      // genome_positions: received_data.genome_positions,
+      // tree_index: tree_index,
+      // times: times
     }
 
     return result;
   } catch (error) {
-    console.log("error")
+    console.log("error", error)
     // console.error("Error in queryNodes: ", error);
   }
 };
@@ -545,24 +542,21 @@ export async function globalCleanup(allTrees) {
   }
 }
 
-async function processData(data, mutations, times, sendStatusMessage, vertical_mode){
+async function processData(localTrees,sendStatusMessage, vertical_mode){
 
   // const trees = data
   // .split(';')
   // .filter(Boolean)
-  const trees = data
-  .map((str, index) => {
-    return processNewick(str, mutations[index], times['min_time'], times['max_time'], times['times'][index]);
-  });
+  const graph_trees = localTrees ? localTrees.map((tree, index) => {
+    return processNewick(tree.newick, tree.mutations, tree.max_time, tree.min_time, tree.time_range);
+  }) : [];
 
   const paths = []
-  trees.map((tree, i) => {
+  graph_trees.map((tree, i) => {
     paths.push(extractSquarePaths(tree.root, vertical_mode))
   })
   return paths
 }
-
-
 
 onmessage = async (event) => {
   //Process uploaded data:
@@ -575,9 +569,7 @@ onmessage = async (event) => {
 
   } else {
     if (data.type === "query") {
-      console.log("data query value")
       const result = await queryNodes(data.data, data.vertical_mode);
-
       postMessage({ type: "query", data: result });
     }
     if (data.type === "search") {

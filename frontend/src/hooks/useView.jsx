@@ -13,7 +13,7 @@ let globalPanDirection = () => {};
 const INITIAL_VIEW_STATE = {
   'genome_positions':{
     target: [2,1],
-    zoom: [8,8],
+    zoom: [6,6],
     minZoom: 1,
     // padding: '5%',
   },
@@ -21,11 +21,10 @@ const INITIAL_VIEW_STATE = {
     target: [0.5 ,0],
     zoom: [8,8],
     minZoom: 7,
-    
   },
   'ortho': {
     target: [2,0],
-    zoom: [8,8],
+    zoom: [6,6],
     minZoom: 1,
     
   }

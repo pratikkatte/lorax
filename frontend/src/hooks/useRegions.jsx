@@ -1,30 +1,6 @@
-import { useMemo, useEffect, useState } from "react";
+import { useMemo, useEffect, useState, useRef } from "react";
 import debounce from "lodash.debounce";
 
-// function sampleTrees(globalBins, lo, hi, nTrees) {
-//   if (nTrees <= 1) return [Math.floor((lo + hi) / 2)];
-  
-//   const step = (hi - lo) / (nTrees - 1);
-//   const targets = Array.from({ length: nTrees }, (_, k) => lo + k * step);
-
-//   const indices = targets.map(pos => {
-//     // binary search in globalBins
-//     let loIdx = 0, hiIdx = globalBins.length - 1, ans = hiIdx;
-//     while (loIdx <= hiIdx) {
-//       const mid = (loIdx + hiIdx) >> 1;
-//       if (globalBins[mid].end >= pos) {
-//         ans = mid;
-//         hiIdx = mid - 1;
-//       } else {
-//         loIdx = mid + 1;
-//       }
-//     }
-//     return ans;
-//   });
-
-//   return Array.from(new Set(indices)); // dedup if targets land in same bin
-// }
-// const genome_length = globalBins[globalBins.length - 1].end;
 function lowerBound(arr, x) {
   let lo = 0, hi = arr.length - 1, ans = arr.length;
   while (lo <= hi) {
@@ -47,7 +23,7 @@ function getXArray(globalBins) {
   return globalBins.map(b => b.acc);
 }
 
-function sampleTrees(globalBins, localBins, lo, hi, nTrees, globalBpPerUnit) {
+function sampleTrees(globalBins, lo, hi, nTrees, globalBpPerUnit) {
   
   var sampled_trees = [];
   var lowest_step = Math.floor(lo/globalBpPerUnit);
@@ -65,27 +41,39 @@ function sampleTrees(globalBins, localBins, lo, hi, nTrees, globalBpPerUnit) {
   return sampled_trees;
 }
 
-const useRegions = ({ globalBins, value, backend, viewState, saveViewports, globalBpPerUnit}) => {
-  const { queryLocalBins } = backend;
+const useRegions = ({ backend, globalBins, value, viewState, saveViewports, globalBpPerUnit}) => {
+  const { queryLocalBins, queryNodes } = backend;
+
   const [localBins, setLocalBins] = useState([]);
   const [localTrees, setLocalTrees] = useState([]);
-
+  const [localNodes, setLocalNodes] = useState([]);
+  const sampleTreesRef = useRef([]);
 
   
   // create a stable debounced function
   const debouncedQuery = useMemo(
     () =>
-      debounce((val) => {
+      debounce((val, sample_trees) => {
         queryLocalBins(val, setLocalBins);
+        queryNodes(val, sample_trees, (result) => {
+          setLocalNodes((prevData) => {
+            const new_result = {
+              ...prevData,
+              status: "loaded",
+              data: result
+            };
+            return new_result;
+          });
+        });
       }, 100), // delay in ms; tweak as needed
     [queryLocalBins]
   );
 
   useEffect(() => {
     if (globalBins && value) {
-      debouncedQuery(value);
+      debouncedQuery(value, sampleTreesRef.current);
     }
-  }, [globalBins, value, debouncedQuery]);
+  }, [globalBins, value, debouncedQuery, sampleTreesRef]);
 
   // cleanup on unmount (important!)
   useEffect(() => {
@@ -100,14 +88,14 @@ const useRegions = ({ globalBins, value, backend, viewState, saveViewports, glob
     let width = saveViewports['ortho']?.width;
     if (zoom && width && globalBpPerUnit, globalBins) {
       const localBpPerUnit = Math.ceil(width / Math.pow(2, zoom));
-      console.log("localBpPerUnit",localBpPerUnit, value[0], value[1], globalBpPerUnit)
-      const sampledTrees = sampleTrees(getXArray(globalBins),localBins, value[0], value[1], localBpPerUnit, globalBpPerUnit);
-      // console.log("sampledTrees", sampledTrees, sampledTrees[0].position, sampledTrees[sampledTrees.length-1].position)
+      const sampledTrees = sampleTrees(getXArray(globalBins), value[0], value[1], localBpPerUnit, globalBpPerUnit);
+      console.log("sampledTrees", sampledTrees)
+      sampleTreesRef.current = sampledTrees;
       setLocalTrees(sampledTrees);
     }
   }, [localBins, globalBpPerUnit])
 
-  const output = useMemo(() => ({ bins: localBins, trees: localTrees }), [localBins, localTrees]);
+  const output = useMemo(() => ({ bins: localBins, trees: localTrees, data: localNodes }), [localBins, localTrees, localNodes]);
 
   return output;
 };

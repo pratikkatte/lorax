@@ -1,7 +1,7 @@
 # handlers.py
 import json
 # from lorax.chat.langgraph_tskit import api_interface
-from lorax.viz.trees_to_taxonium import start_end
+from lorax.viz.trees_to_taxonium import start_end, new_tree_samples
 import tskit
 import tszip
 import numpy as np
@@ -46,26 +46,19 @@ class LoraxHandler:
             return json.dumps({"error": "Tree sequence (ts) is not set. Please upload a file first."})
 
         try:
-            start, end = message.get("value")
-            print("start", start,end)
-            nwk_string, genome_positions, mutations, times, tree_index = start_end(start, end, self.ts)
+            localTrees = message.get("localTrees")
+            # nwk_string, genome_positions, mutations, times, tree_index = start_end(start, end, self.ts)
+            tree_dict = new_tree_samples(localTrees, self.ts)
 
-            self.viz_snapshot = {'window': [0, start, end, self.ts.sequence_length], 'sample_sets':'ts.get_samples()'}
+            # self.viz_snapshot = {'window': [0, start, end, self.ts.sequence_length], 'sample_sets':'ts.get_samples()'}
 
             # self.global_context['viz_snapshot'] = self.viz_snapshot
             data = json.dumps({
-                "nwk": nwk_string,
-                "genome_positions": genome_positions, 
-                "mutations": mutations,
-                "global_times": {
-                    'min_time': times[0],
-                    'max_time': times[1],
-                    'times': times[2]
-                },
-                "tree_index": tree_index
+                "tree_dict": tree_dict
             })
             return data
         except Exception as e:
+            print("Error in handle_query", e)
             return json.dumps({"error": f"Error processing query: {str(e)}"})
 
     def get_config(self):

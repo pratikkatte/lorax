@@ -15,7 +15,6 @@ function useConfig({backend}) {
     if (width && tsconfig){
       const genome_length = tsconfig.intervals[tsconfig.intervals.length - 1][1];
       setGlobalBpPerUnit((genome_length/tsconfig.intervals.length - 1));
-      // setGlobalBpPerUnit(genome_length/tsconfig.intervals.length-1)
     } 
   }, [tsconfig, globalBpPerUnit]);
 

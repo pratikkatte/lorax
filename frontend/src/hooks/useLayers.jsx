@@ -159,7 +159,6 @@ globalBpPerUnit
     const genomeGridLayer = new GenomeGridLayer({
       backend: backend,
       id: 'genome-positions-grid',
-      // data: genomeGridLines,
       data: bins,
       globalBpPerUnit: globalBpPerUnit,
       globalBins: globalBins,
@@ -173,47 +172,6 @@ globalBpPerUnit
       viewId: 'genome-positions',
       showLabels: false,
     });
-
-    // const spacing = 1.0;
-    // const singleTreeHighlightLayer = bins && bins.length > 0 ? new TextLayer({
-    //   id: `main-layer-highlight`,
-    //   data: (() => {
-    //     if (!bins || bins.length === 0) return [];
-    //     const result = [];
-    //     for (let i = 0; i < bins.length; i++) {
-    //       const bin = bins[i];
-    //       const visible = bin.visibility;
-    //       if (visible) {
-    //         result.push({
-    //           position: [bin.index + 0.5, 0.5],
-    //           i,
-    //           text: bin.end.toLocaleString("en-US", { maximumFractionDigits: 0 }) + `\n ${bin.index}`,
-    //           skip: bin.number_of_skips
-    //         });
-    //       } else {
-    //         result.push({
-    //           position: [bin.index + 0.5, 0.5],
-    //           i,
-    //           text: `skip ${bin.number_of_skips} tree \n ${bin.index}`,
-    //           skip: bin.number_of_skips
-    //         });
-    //       }
-    //     }
-    //     return result;
-    //   })(),
-    //   getPosition: d => d.position,
-    //   getText: d => d.text,
-    //   getColor: [0, 0, 0, 255],
-    //   sizeUnits: 'pixels',
-    //   getSize: 12,
-    //   getTextAnchor: 'middle',
-    //   getAlignmentBaseline: 'bottom',
-    //   // modelMatrix: d => new Matrix4().translate([d.i * spacing,0, 0]),
-    //   viewId: 'ortho',
-    //   // updateTriggers: {
-    //   //   data: [bins]
-    //   // }
-    // }) : null;
 
     const singleTreeHighlightLayer = trees && trees.length > 0 ? new TextLayer({
       id: `main-layer-highlight`,
@@ -247,41 +205,14 @@ globalBpPerUnit
     const singleTreeLayers = (!data?.data?.paths)? [] : data.data.paths.flatMap((tree, i) => {
       const spacing = 1.03;
 
-      const genomePos = data.data.genome_positions[i];
-      const treeIndex = data.data.tree_index[i];
+      // const genomePos = data.data.genome_positions[i];
+      // const treeIndex = data.data.tree_index[i];
       const modelMatrix = settings.vertical_mode ? new Matrix4().translate([0, i * spacing, 0]) : new Matrix4().translate([i * spacing,0, 0]);
       const pathData = tree.filter(d => d.path);
       const nodeData = tree.filter(d => d.position);
-// var bin = bins[i]
-// var nextbin = bins[i+1]
-      // const mutationData = tree.filter(d => 'mutations' in d);
-      // const boxLayer = new SolidPolygonLayer({
-      //   id: `main-box-${i}`,
-      //   data: [{
-      //     // left top, right top, right bottom, left bottom
-      //     // polygon: [[0, 0], [1, 0], [1, 1], [0, 1]],
-      //     polygon: [
-      //       [bin.sourcePosition[0], bin.sourcePosition[1]],
-      //        [nextbin.sourcePosition[0]-0.02, nextbin.sourcePosition[1]],
-      //        [nextbin.targetPosition[0]-0.02, nextbin.targetPosition[1]],
-      //        [bin.targetPosition[0], bin.targetPosition[1]],
-      //       ],
-      //     color: [255, 124, 200, 100]
-      //   }],
-      //   getPolygon: d => d.polygon,
-      //   getFillColor: d => d.color,
-      //   stroked: true,
-      //   filled: true,
-      //   lineWidthUnits: "pixels",
-      //   lineWidthScale: 1,
-      //   getLineWidth: 1,
-      //   borderColor: [0, 0, 0, 255],
-      //   borderWidth: 1,
-      //   // modelMatrix
-      // })
 
       let divide_pos = trees[i]?.position / globalBpPerUnit;
-      console.log("pathLayer", "divide_pos", treeIndex,trees, "globalBpPerUnit", globalBpPerUnit, "divide_pos", divide_pos)
+      // console.log("pathLayer", "divide_pos", treeIndex,trees, "globalBpPerUnit", globalBpPerUnit, "divide_pos", divide_pos)
       
       const pathLayer = new PathLayer({
         id: `main-layer-${i}`,
@@ -312,14 +243,14 @@ globalBpPerUnit
         viewId: 'ortho',
         zOffset: -1,
         pickable: true,
-        onHover: ({object, picked}) => {
-          if (picked && object) {
-            setHoveredTreeIndex({...hoveredTreeIndex, path: object.path, treeIndex: treeIndex, node: null});
-          }
-          else{
-            setHoveredTreeIndex({...hoveredTreeIndex,treeIndex:null, path: null, node: null});
-          }
-        },
+        // onHover: ({object, picked}) => {
+        //   if (picked && object) {
+        //     setHoveredTreeIndex({...hoveredTreeIndex, path: object.path, treeIndex: treeIndex, node: null});
+        //   }
+        //   else{
+        //     setHoveredTreeIndex({...hoveredTreeIndex,treeIndex:null, path: null, node: null});
+        //   }
+        // },
         updateTriggers: {
           getWidth: [hoveredTreeIndex]
         },
