@@ -16,7 +16,6 @@ function Lorax({backend, config, settings, setSettings, project, ucgbMode, saveV
   const deckRef = useRef(); // reference to the deck component. 
   const [viewPortCoords, setViewPortCoords] = useState(null); 
   const [value, setValue] = useState(null); // hook to know the genomic values displayed on the window. 
-  const [dataExtractValues, setDataExtractValues] = useState(null); // hook to know how much data to extract from the backend. The range values are more than what viewed by the user. 
 
   let hoverDetails = useHoverDetails();
   
@@ -24,7 +23,7 @@ function Lorax({backend, config, settings, setSettings, project, ucgbMode, saveV
   
   const view = useView({backend, config, settings, setSettings, viewPortCoords, setValue, hoverDetails});
 
-  const { data } = useGetDynamicData(backend, tsconfig, dataExtractValues, setDataExtractValues)
+  const { data } = useGetDynamicData({backend, value, setValue})
 
 
   return (
@@ -55,8 +54,6 @@ function Lorax({backend, config, settings, setSettings, project, ucgbMode, saveV
               setViewPortCoords={setViewPortCoords}
               viewPortCoords={viewPortCoords}
               value={value}
-              dataExtractValues={dataExtractValues}
-              setDataExtractValues={setDataExtractValues}
               hoverDetails={hoverDetails}
               saveViewports={saveViewports}
               setSaveViewports={setSaveViewports}

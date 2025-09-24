@@ -88,8 +88,6 @@ function Deck({
   setViewPortCoords,
   viewPortCoords,
   value,
-  dataExtractValues,
-  setDataExtractValues,
   saveViewports,
   setSaveViewports
 }) {
@@ -108,6 +106,7 @@ function Deck({
     }
   },[data])
   
+
   // const no_data = !data || data.status === "loading"
 
   const no_data = useMemo(() => !data || data.status === "loading", [data]);
@@ -116,7 +115,7 @@ function Deck({
 
   const {queryDetails} = backend;
 
-  const regions = useRegions({tsconfig, viewState, globalBins, setView, viewPortCoords, value, dataExtractValues, setDataExtractValues, globalBinsIndexes, setGlobalBinsIndexes, backend, saveViewports,globalBpPerUnit});
+  const regions = useRegions({viewState, globalBins, value, backend, saveViewports,globalBpPerUnit});
 
   const {bins}  = regions;
 
@@ -255,7 +254,7 @@ function Deck({
   useEffect(()=> {
     // console.log('View port coords', viewPortCoords);
 
-    getLayerPixelPositions(deckRef, "main-layer-0");
+    // getLayerPixelPositions(deckRef, "main-layer-0");
   }, [deckRef, viewPortCoords, regions, saveViewports]);
 
   useEffect(()=> {

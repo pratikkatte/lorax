@@ -186,12 +186,12 @@ const queryExperimental = useCallback((value) => {
   const queryNodes = useCallback((boundsForQueries, setResult, value) => {
 
     console.log("querying nodes", boundsForQueries, value);
-    // sendMessage({
-    //   type: "viz",
-    //   role: "query",
-    //   bounds: boundsForQueries,
-    //   value,
-    // });
+    sendMessage({
+      type: "viz",
+      role: "query",
+      bounds: boundsForQueries,
+      value,
+    });
     onQueryReceipt = (receivedData) => {
       console.log("got query result", receivedData);
       setResult(receivedData);

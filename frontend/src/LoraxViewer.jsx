@@ -32,11 +32,6 @@ export default function LoraxViewer({ backend, config, settings, setSettings, pr
     ucgbMode.current = true;
   }
 
-  // useEffect(() => {
-  //   while (!backend.isConnected) {
-  //     // console.log("backend", backend)
-  //   }
-  // }, [backend])
 
   const qp = {
     file: file,

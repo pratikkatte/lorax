@@ -174,7 +174,7 @@ globalBpPerUnit
       showLabels: false,
     });
 
-    const spacing = 1.03;
+    // const spacing = 1.0;
     // const singleTreeHighlightLayer = bins && bins.length > 0 ? new TextLayer({
     //   id: `main-layer-highlight`,
     //   data: (() => {
@@ -230,6 +230,7 @@ globalBpPerUnit
         }
           return result;
       })(),
+      visible: false,
       getPosition: d => d.position,
       getText: d => d.text,
       sizeUnits: 'pixels',
@@ -244,7 +245,7 @@ globalBpPerUnit
     }) : null;
             
     const singleTreeLayers = (!data?.data?.paths)? [] : data.data.paths.flatMap((tree, i) => {
-      // const spacing = 1.03;
+      const spacing = 1.03;
 
       const genomePos = data.data.genome_positions[i];
       const treeIndex = data.data.tree_index[i];
@@ -279,11 +280,18 @@ globalBpPerUnit
       //   // modelMatrix
       // })
 
+      let divide_pos = trees[i]?.position / globalBpPerUnit;
+      console.log("pathLayer", "divide_pos", treeIndex,trees, "globalBpPerUnit", globalBpPerUnit, "divide_pos", divide_pos)
+      
       const pathLayer = new PathLayer({
         id: `main-layer-${i}`,
         // visible: !hideOrthoLayers,
         data: pathData,
-        getPath: d => d.path,
+        getPath: d => d.path.map(([x, y]) => {
+          return [
+          x + divide_pos,
+          y 
+        ]}),
         getColor: d => {
           if (hoveredTreeIndex && d.path === hoveredTreeIndex.path) {
             return [0,0,0, 255]
@@ -597,7 +605,7 @@ globalBpPerUnit
 
 // return [...singleTreeLayers, coalescenceLayer, coalescenceTimeLabels, genomeGridLayer, singleTreeHighlightLayer];
 // return [...singleTreeLayers, coalescenceLayer, coalescenceTimeLabels, genomeGridLayer];
-return [genomeGridLayer, singleTreeHighlightLayer];
+return [...singleTreeLayers,genomeGridLayer, singleTreeHighlightLayer];
     // return [ ...singleTreeLayers,backgroundLayer];
 
   }, [data, globalBins, bins, deckRef, viewState.zoom, viewState['genome-positions'], hoverInfo, hoveredTreeIndex, settings]);
