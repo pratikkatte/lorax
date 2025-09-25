@@ -12,13 +12,16 @@ function parse(str) {
   return Number(str.replace(/,/g, ""));
 }
 
-export default function EditableRange({ value, onChange }) {
-  const [startStr, setStartStr] = useState(value[0].toString());
-  const [endStr, setEndStr] = useState(value[1].toString());
+export default function EditableRange({ valueRef, onChange }) {
+  const [startStr, setStartStr] = useState(valueRef?.current?.[0].toString());
+  const [endStr, setEndStr] = useState(valueRef?.current?.[1].toString());
 
   // Keep local state in sync with prop
-  useEffect(() => { setStartStr(value[0].toString()); }, [value[0]]);
-  useEffect(() => { setEndStr(value[1].toString()); }, [value[1]]);
+  useEffect(() => { 
+    setStartStr(valueRef?.current?.[0].toString());     
+  }, [valueRef?.current?.[0]]);
+
+  useEffect(() => { setEndStr(valueRef?.current?.[1].toString()); }, [valueRef?.current?.[1]]);
 
   return (
     <Box
@@ -43,12 +46,15 @@ export default function EditableRange({ value, onChange }) {
         onChange={e => {
           const raw = e.target.value.replace(/[^\d,]/g, "");
           setStartStr(raw);
-          // Only fire onChange (parent) if the input parses cleanly
-          const num = parse(raw);
-          if (!isNaN(num) && num !== value[0]) {
-            // Format after change
-            setStartStr(format(num));
-            onChange([num, value[1]]);
+        }}
+        onKeyDown={e => {
+          if (e.key === "Enter") {
+            const raw = e.target.value.replace(/[^\d,]/g, "");
+            const num = parse(raw);
+            if (!isNaN(num) && num !== valueRef?.current?.[0]) {
+              setStartStr(format(num));
+              onChange([num, valueRef?.current?.[1]]);
+            }
           }
         }}
         inputProps={{ inputMode: "numeric", pattern: "[0-9,]*" }}
@@ -86,9 +92,9 @@ export default function EditableRange({ value, onChange }) {
           const raw = e.target.value.replace(/[^\d,]/g, "");
           setEndStr(raw);
           const num = parse(raw);
-          if (!isNaN(num) && num !== value[1]) {
+          if (!isNaN(num) && num !== valueRef?.current?.[1]) {
             setEndStr(format(num));
-            onChange([value[0], num]);
+            onChange([valueRef?.current?.[0], num]);
           }
         }}
         inputProps={{ inputMode: "numeric", pattern: "[0-9,]*" }}

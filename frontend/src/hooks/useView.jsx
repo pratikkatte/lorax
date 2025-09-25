@@ -104,7 +104,7 @@ class MyOrthographicController extends OrthographicController {
   }
 }
 
-  const useView = ({backend, config, settings, setSettings, viewPortCoords, setValue, hoverDetails}) => {
+  const useView = ({backend, config, settings, setSettings, viewPortCoords, setValue, hoverDetails, value}) => {
 
   const {globalBins, globalBpPerUnit} = config;
   const [zoomAxis, setZoomAxis] = useState("Y");
@@ -184,8 +184,8 @@ const { hoveredInfo, setHoveredInfo } = hoverDetails;
   const [globalBinsIndexes, setGlobalBinsIndexes] = useState(null);
   
 
-  const [orthoStartEnd, setOrthoStartEnd] = useState(null);
-  const [genomeStartEnd, setGenomeStartEnd] = useState(null);
+  // const [orthoStartEnd, setOrthoStartEnd] = useState(null);
+  // const [genomeStartEnd, setGenomeStartEnd] = useState(null);
 
   useEffect(() => {
     if (!viewPortCoords || !globalBins) return;
@@ -193,8 +193,8 @@ const { hoveredInfo, setHoveredInfo } = hoverDetails;
     if (!globalBins == undefined || globalBins == null || !globalBpPerUnit) return;
     var {x0, x1} = viewPortCoords['genome-positions']?.coordinates;
     var {x0Ortho, x1Ortho} = viewPortCoords['ortho']?.coordinates;
-      setGenomeStartEnd([x0, x1])
-      setOrthoStartEnd([x0Ortho, x1Ortho])
+      // setGenomeStartEnd([x0, x1])
+      // setOrthoStartEnd([x0Ortho, x1Ortho])
 
 
 
@@ -239,14 +239,13 @@ if (globalBpPerUnit) {
       let panStep = 0;
 
       if(panDirection === null) {
-
         if(zoomAxis==='Y'){
           zoom[1] = newViewState.zoom[1] <= maxZoom ? newViewState.zoom[1] : maxZoom; 
           target[1] = zoom[1] >= maxZoom ? oldViewState.target[1] : newViewState.target[1]; 
           zoom[0] = oldViewState.zoom[0];
           target[0] = oldViewState.target[0];
         }
-        else if (zoomAxis=='X'){
+        else if (zoomAxis=='X') {
           zoom[0] = newViewState.zoom[0] <= maxZoom ? newViewState.zoom[0] : maxZoom; 
           target[0] = zoom[0] >= maxZoom ? oldViewState.target[0] : newViewState.target[0]; 
           zoom[1] = oldViewState.zoom[1];
@@ -297,19 +296,64 @@ if (globalBpPerUnit) {
   }, [zoomAxis, settings, panDirection, hoveredInfo])
 
 
-  const moveLeftView = useCallback((value) => {
+  const moveLeftView = useCallback((val) => {
 
-    console.log("moveLeft", value[0])
-    
+    setViewState((prev) => {
+      return {
+        ...prev,
+      ['ortho']: {
+        ...prev['ortho'],
+        'target': [prev['ortho'].target[0]- (100/globalBpPerUnit), prev['ortho'].target[1]],
+      },
+      ['genome-positions']: {
+        ...prev['genome-positions'],
+        'target': [prev['genome-positions'].target[0]-(100/globalBpPerUnit), prev['genome-positions'].target[1]],
+      }
+    }
+  })
   })
 
-  const moveRightView = useCallback((value) => {
-    console.log("moveRight", value[1])
+  const moveRightView = useCallback((val) => {
+    setViewState((prev) => {
+      return {
+        ...prev,
+      ['ortho']: {
+        ...prev['ortho'],
+        'target': [prev['ortho'].target[0]+ (100/globalBpPerUnit), prev['ortho'].target[1]],
+      },
+      ['genome-positions']: {
+        ...prev['genome-positions'],
+        'target': [prev['genome-positions'].target[0]+ (100/globalBpPerUnit), prev['genome-positions'].target[1]],
+      }
+    }
   })
+  }, [value, globalBpPerUnit])
   
-  const changeView = useCallback((value) => {
-    console.log("changeView", value)
-  })
+  const changeView = useCallback((val) => {
+
+    let [x0, x1] = [val[0]/globalBpPerUnit, val[1]/globalBpPerUnit];
+
+    console.log("zoom level", viewPortCoords['ortho']['viewport'].width)
+
+    const Z = Math.log2((viewPortCoords['ortho']['viewport'].width * globalBpPerUnit) / (val[1] - val[0]))
+
+    setViewState((prev) => {
+      return {
+        ...prev,
+        ['ortho']: {
+          ...prev['ortho'],
+          'target': [Math.abs(x1)-Math.abs(x0)/2, prev['ortho'].target[1]],
+          'zoom': [Z>=1 ? Z : 1, prev['ortho'].zoom[1]],
+        },
+        ['genome-positions']: {
+          ...prev['genome-positions'],
+          'target': [Math.abs(x1)-Math.abs(x0)/2, prev['genome-positions'].target[1]],
+          'zoom': [Z>=1 ? Z : 1, prev['genome-positions'].zoom[1]],
+        }
+      }
+    })
+
+  }, [value, globalBpPerUnit])
 
   const output = useMemo(() => {
     return {

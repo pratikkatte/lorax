@@ -21,7 +21,7 @@ function Lorax({backend, config, settings, setSettings, project, ucgbMode, saveV
   
   // const settings = useSettings({ query, updateQuery });
   
-  const view = useView({backend, config, settings, setSettings, viewPortCoords, setValue, hoverDetails});
+  const view = useView({backend, config, settings, setSettings, viewPortCoords, setValue, hoverDetails, value});
 
   const { data } = useGetDynamicData({backend, value, setValue})
 
