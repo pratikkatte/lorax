@@ -108,6 +108,8 @@ const useDebouncedValue = (value, delay) => {
 
 const useLayers = ({
   data,
+  xzoom,
+  value,
   viewState,
   setViewState,
   setHoverInfo,
@@ -123,7 +125,6 @@ const useLayers = ({
   globalBins,
   setView,
   viewPortCoords,
-  value,
   regions,
 globalBpPerUnit  
 }) => {
@@ -158,6 +159,8 @@ globalBpPerUnit
 // console.log("uselayers bins", bins, globalBins)
     const genomeGridLayer = new GenomeGridLayer({
       backend: backend,
+      value: value,
+      xzoom: xzoom,
       id: 'genome-positions-grid',
       data: bins,
       globalBpPerUnit: globalBpPerUnit,
@@ -170,7 +173,7 @@ globalBpPerUnit
       getText: d => d.end.toLocaleString("en-US", { maximumFractionDigits: 0 }),
       modelMatrix: new Matrix4().translate([0, 0, 0]),
       viewId: 'genome-positions',
-      showLabels: false,
+      showLabels: true,
     });
 
     const singleTreeHighlightLayer = trees && trees.length > 0 ? new TextLayer({

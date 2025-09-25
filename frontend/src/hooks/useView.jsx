@@ -282,6 +282,8 @@ if (globalBpPerUnit) {
         }
       };
 
+      setXzoom(zoom[0])
+
       if (prev['genome-positions']) {
         newViewStates['genome-positions'] = {
           ...prev['genome-positions'],

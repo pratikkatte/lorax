@@ -105,7 +105,7 @@ function Deck({
   // const no_data = !data || data.status === "loading"
 
 
-  const {views, setView, viewState, setViewState, handleViewStateChange, globalBinsIndexes, setGlobalBinsIndexes} = view
+  const {views, xzoom, setView, viewState, setViewState, handleViewStateChange, globalBinsIndexes, setGlobalBinsIndexes} = view
 
   const {queryDetails} = backend;
 
@@ -155,6 +155,7 @@ function Deck({
     },[]);
     const { layers, layerFilter } = useLayers({
       data,
+      xzoom,
       viewState,
       setHoverInfo,
       hoverInfo,
@@ -355,89 +356,6 @@ function Deck({
 {dummy && dummy.pointsArray.length > 0 && viewPortCoords.ortho && viewPortCoords['genome-positions'] && (
               <GenomeVisualization pointsArray={dummy.pointsArray} />
             )}
-
-<div>
-              {bins && bins.length > 0 && saveViewports && saveViewports['ortho']?.width && (
-              <div>
-
-                <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                  {/* <span style={{ padding: '0.5rem', background: '#f0f4fa', borderRadius: '6px', fontWeight: 'bold' }}>
-                    {JSON.stringify(viewState['ortho'].target[0], null, 2)}
-                  </span> */}
-                  <span style={{ padding: '0.5rem', background: '#f0f4fa', borderRadius: '6px', fontWeight: 'bold' }}>
-                    {JSON.stringify((Math.ceil(saveViewports['ortho'].width/ 2**viewState['ortho'].zoom[0])), null, 2)}
-                  </span>
-                  {/* <span style={{ padding: '0.5rem', background: '#f0f4fa', borderRadius: '6px', fontWeight: 'bold' }}>
-                    {viewState['ortho'].zoom[0]}
-                  </span> */}
-                </div>
-                
-                coordinates && difference
-                <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                  <span style={{ padding: '0.5rem', background: '#f0f4fa', borderRadius: '6px', fontWeight: 'bold' }}>
-                    {JSON.stringify(value[0]/globalBpPerUnit, null, 2)}
-                  </span>
-                  <span style={{ padding: '0.5rem', background: '#f0f4fa', borderRadius: '6px', fontWeight: 'bold' }}>
-                    {JSON.stringify(value[1]/globalBpPerUnit, null, 2)}
-                  </span>
-                  <span style={{ padding: '0.5rem', background: '#f0f4fa', borderRadius: '6px', fontWeight: 'bold' }}>
-                    {JSON.stringify(value[1]/globalBpPerUnit - value[0]/globalBpPerUnit, null, 2)}
-                  </span>
-                </div>
-                </div>
-              )}
-            </div>
-
-            {/* <div>
-              {bins && bins.length > 0 && saveViewports && saveViewports['ortho']?.width && (
-              <div>
-                coordinates && difference
-                <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                  <span style={{ padding: '0.5rem', background: '#f0f4fa', borderRadius: '6px', fontWeight: 'bold' }}>
-                    {JSON.stringify(value[0]/globalBpPerUnit, null, 2)}
-                  </span>
-                  <span style={{ padding: '0.5rem', background: '#f0f4fa', borderRadius: '6px', fontWeight: 'bold' }}>
-                    {JSON.stringify(value[1]/globalBpPerUnit, null, 2)}
-                  </span>
-                  <span style={{ padding: '0.5rem', background: '#f0f4fa', borderRadius: '6px', fontWeight: 'bold' }}>
-                    {JSON.stringify(value[1]/globalBpPerUnit - value[0]/globalBpPerUnit, null, 2)}
-                  </span>
-                </div>
-
-                bins
-                <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                  <span style={{ padding: '0.5rem', background: '#f0f4fa', borderRadius: '6px', fontWeight: 'bold' }}>
-                    {JSON.stringify(bins[0], null, 2)}
-                  </span>
-                  <span style={{ padding: '0.5rem', background: '#f0f4fa', borderRadius: '6px', fontWeight: 'bold' }}>
-                    {JSON.stringify(bins[1], null, 2)}
-                  </span>
-                </div>
-                showing trees.
-                <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                  <span style={{ padding: '0.5rem', background: '#f0f4fa', borderRadius: '6px', fontWeight: 'bold' }}>
-                    {JSON.stringify(globalBins[bins[0]].s, null, 2)}
-                  </span>
-                  <span style={{ padding: '0.5rem', background: '#f0f4fa', borderRadius: '6px', fontWeight: 'bold' }}>
-                    {JSON.stringify(globalBins[bins[1]].e, null, 2)}
-                  </span>
-                </div>
-
-                ortho view && possible trees && zoom level
-                <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                  <span style={{ padding: '0.5rem', background: '#f0f4fa', borderRadius: '6px', fontWeight: 'bold' }}>
-                    {JSON.stringify(viewState['ortho'].target[0], null, 2)}
-                  </span>
-                  <span style={{ padding: '0.5rem', background: '#f0f4fa', borderRadius: '6px', fontWeight: 'bold' }}>
-                    {JSON.stringify((Math.ceil(saveViewports['ortho'].width/ 2**viewState['ortho'].zoom[0])), null, 2)}
-                  </span>
-                  <span style={{ padding: '0.5rem', background: '#f0f4fa', borderRadius: '6px', fontWeight: 'bold' }}>
-                    {viewState['ortho'].zoom[0]}
-                  </span>
-                </div>
-              </div>
-            )}
-            </div> */}
             
       </View>
       <View id="genome-positions">

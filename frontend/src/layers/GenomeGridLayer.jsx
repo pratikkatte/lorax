@@ -16,7 +16,8 @@ export class GenomeGridLayer extends CompositeLayer {
     viewId: null,
     globalBins: [],
     backend: null,
-    globalBpPerUnit: null
+    globalBpPerUnit: null,
+    xzoom: null
   };
 
   initializeState() {
@@ -24,6 +25,43 @@ export class GenomeGridLayer extends CompositeLayer {
     this._lastStart = null;
     this._lastEnd = null;
   }
+
+niceStep(step) {
+    // round step to a "nice" number (1, 2, or 5 × 10^n)
+    const exp = Math.floor(Math.log10(step));
+    const base = Math.pow(10, exp);
+    const multiples = [1, 2, 5, 10];
+  
+    let nice = multiples[0] * base;
+    for (let m of multiples) {
+      if (step <= m * base) {
+        nice = m * base;
+        break;
+      }
+    }
+    return nice;
+  }
+  
+  getLocalCoordinates(lo, hi) {
+    const range = hi - lo;
+    const divisions = range > 1000 ? 5 : 10;
+  
+    const rawStep = range / divisions;
+    const stepSize = this.niceStep(rawStep);  // round to nice step
+  
+    // Align the first tick at the nearest multiple of stepSize >= lo
+    const start = Math.ceil(lo / stepSize) * stepSize;
+    const end   = Math.floor(hi / stepSize) * stepSize;
+  
+    let coordinates = [];
+    for (let x = start; x <= end; x += stepSize) {
+      coordinates.push({ x, y: 0, text: x });
+    }
+  
+    return coordinates;
+  }
+  
+
 
   getLocalData(data, globalBins) {
     if (!Array.isArray(data) || data.length < 2) {
@@ -90,13 +128,15 @@ export class GenomeGridLayer extends CompositeLayer {
     const {
       data, y0, y1, labelOffset,
       getColor, getTextColor, getText,
-      modelMatrix, viewId, showLabels, globalBins, globalBpPerUnit
+      modelMatrix, viewId, showLabels, globalBins, globalBpPerUnit, value, xzoom
     } = this.props;
 
 
     const localBins = this.getLocalData(data, globalBins); // precomputed once
 
-    console.log("localBins", localBins)
+    
+    const localCoordinates = this.getLocalCoordinates(value[0], value[1]);
+    console.log("localCoordinates", localCoordinates)
 
     if (!localBins.length) return [];
 
@@ -116,8 +156,23 @@ export class GenomeGridLayer extends CompositeLayer {
         globalBins,
         localBins
       }
-    })
-    ]
+    }),
+    showLabels &&
+      new TextLayer({
+        id: `${this.props.id}-labels`,
+        data: localCoordinates,
+        getPosition: d => [d.x/globalBpPerUnit, 1],
+        getText: d => d.text.toLocaleString("en-US", { maximumFractionDigits: 0 }),
+        getColor: [0,10,0,255],
+        sizeUnits: 'pixels',
+        getSize: 12,
+        viewId,
+        pickable: false,
+        updateTriggers: {
+          data: [localCoordinates]
+        }
+      })
+    ].filter(Boolean);
     // return [
     //   new LineLayer({
     //     id: `${this.props.id}-lines`,
