@@ -4,7 +4,6 @@ import {
   OrthographicController,
   //OrthographicViewport,
 } from "@deck.gl/core";
-import useRegions from "./useRegions";
 
 let globalSetZoomAxis = () => {};
 let globalPanDirection = () => {};
@@ -28,39 +27,6 @@ const INITIAL_VIEW_STATE = {
     minZoom: 1,
     
   }
-}
-
-// Main helper: returns the two indices (i0 for x0, i1 for x1)
-function findClosestBinIndices(globalBins, x0, x1) {
-  const xs = getXArray(globalBins);
-  const i0 = nearestIndex(xs, x0);
-  const i1 = nearestIndex(xs, x1);
-  return { i0, i1 };
-}
-
-function nearestIndex(arr, x) {
-  if (arr.length === 0) return -1;
-  if (x <= arr[0]) return 0;
-  if (x >= arr[arr.length - 1]) return arr.length - 1;
-
-  const i = lowerBound(arr, x);
-  // i is first >= x, so candidate neighbors are i-1 and i
-  const prev = i - 1;
-  return (x - arr[prev] <= arr[i] - x) ? prev : i;
-}
-
-// Extract the sorted x-array once
-function getXArray(globalBins) {
-  return globalBins.map(b => b.acc);
-}
-
-function lowerBound(arr, x) {
-  let lo = 0, hi = arr.length - 1, ans = arr.length;
-  while (lo <= hi) {
-    const mid = (lo + hi) >> 1;
-    if (arr[mid] >= x) { ans = mid; hi = mid - 1; } else { lo = mid + 1; }
-  }
-  return ans;
 }
 
 class MyOrthographicController extends OrthographicController {
@@ -104,29 +70,16 @@ class MyOrthographicController extends OrthographicController {
   }
 }
 
-  const useView = ({backend, config, settings, setSettings, viewPortCoords, setValue, hoverDetails, value}) => {
+  const useView = ({ config, viewPortCoords, hoverDetails, valueRef}) => {
 
   const {globalBins, globalBpPerUnit} = config;
   const [zoomAxis, setZoomAxis] = useState("Y");
   const [panDirection, setPanDirection] = useState(null);
   const [xzoom, setXzoom] = useState(window.screen.width < 600 ? -1 : 0);
 
-  const { valueChanged, queryExperimental } = backend;
-
-  let basepairPerUnit = 1000;
-
-  useEffect(() => {
-    if (globalBpPerUnit) {
-      console.log("globalBpPerUnit", globalBpPerUnit)
-      basepairPerUnit = globalBpPerUnit;
-    }
-  }, [globalBpPerUnit])
-
 const { hoveredInfo, setHoveredInfo } = hoverDetails;
 
   const [viewState, setViewState] = useState({
-    // target: [0, 0, 0],
-    // zoom: 6,
     'ortho': INITIAL_VIEW_STATE['ortho'],
     'genome-positions': INITIAL_VIEW_STATE['genome_positions'],
     'tree-time': INITIAL_VIEW_STATE['tree-time']
@@ -140,34 +93,31 @@ const { hoveredInfo, setHoveredInfo } = hoverDetails;
   const views = useMemo(() => {
     return [
         new OrthographicView({
-          x: settings.vertical_mode ? '10%' : '10%',
-          y:settings.vertical_mode ? '1%' : '8%',
+          x: '10%',
+          y: '8%',
           height: '80%',
           width:'80%',
           id: "ortho",
-          minZoom: [3,3],
           controller: {
             type: MyOrthographicController,
             scrollZoom: { smooth: true, zoomAxis: zoomAxis },
             dragPan:true,
-            
           },
-
           initialViewState: INITIAL_VIEW_STATE.ortho
         }),
         new OrthographicView({
-          x: settings.vertical_mode ? '5%' : '10%',
-          y: settings.vertical_mode ? '5%' : '5%',
-          height: settings.vertical_mode ? '90%' : '3%',
-          width: settings.vertical_mode ? '5%' : '80%',
+          x: '10%',
+          y: '5%',
+          height: '3%',
+          width: '80%',
           id: "genome-positions",
           controller:false,
         }),
         new OrthographicView({
-          x: settings.vertical_mode ? '10%' : '5%',
-          y: settings.vertical_mode ? '80%' : '8%',
-          height: settings.vertical_mode ? '9%' : '80%',
-          width: settings.vertical_mode ? '80%' : '5%',
+          x: '5%',
+          y: '8%',
+          height: '80%',
+          width: '5%',
           id: "tree-time",
           controller:false,
         }),
@@ -175,38 +125,23 @@ const { hoveredInfo, setHoveredInfo } = hoverDetails;
     viewState,
     zoomAxis,
     xzoom,
-    settings,
     panDirection
   ]);
 
   const [mouseXY, setMouseXY] = useState(false);
 
   const [globalBinsIndexes, setGlobalBinsIndexes] = useState(null);
-  
-
-  // const [orthoStartEnd, setOrthoStartEnd] = useState(null);
-  // const [genomeStartEnd, setGenomeStartEnd] = useState(null);
 
   useEffect(() => {
     if (!viewPortCoords || !globalBins) return;
-
     if (!globalBins == undefined || globalBins == null || !globalBpPerUnit) return;
+    
     var {x0, x1} = viewPortCoords['genome-positions']?.coordinates;
-    var {x0Ortho, x1Ortho} = viewPortCoords['ortho']?.coordinates;
-      // setGenomeStartEnd([x0, x1])
-      // setOrthoStartEnd([x0Ortho, x1Ortho])
-
-
-
-    // valueChanged([x0, x1], setGlobalBinsIndexes)
-
-if (globalBpPerUnit) {
-    const newValue = [Math.round(x0*globalBpPerUnit) > 0 ? Math.round(x0*globalBpPerUnit) : 0, Math.round(x1*globalBpPerUnit)>0 ? Math.round(x1*globalBpPerUnit) : 0]
-    setValue(newValue)
-}
-
-    // queryExperimental({'genomic_coords': [x0, x1]})
-
+    
+    if (globalBpPerUnit) {
+      const newValue = [Math.round(x0*globalBpPerUnit) > 0 ? Math.round(x0*globalBpPerUnit) : 0, Math.round(x1*globalBpPerUnit)>0 ? Math.round(x1*globalBpPerUnit) : 0]
+      valueRef.current = newValue
+    }
   }, [viewState, globalBins, globalBpPerUnit])
 
   const setView = useCallback((targetView) => {
@@ -226,14 +161,12 @@ if (globalBpPerUnit) {
         }
       }
     })
-
   },[]);
   
   const handleViewStateChange = useCallback(({viewState:newViewState, viewId, oldViewState}) => {
     if (!viewId || !newViewState) return;
     
     setViewState((prev) => {
-      console.log("handleViewStateChange", newViewState, oldViewState, prev)
       let zoom = [...oldViewState.zoom];
       let target = [...oldViewState.target];
       let panStep = 0;
@@ -293,24 +226,23 @@ if (globalBpPerUnit) {
       return newViewStates;
     });
     
-  }, [zoomAxis, settings, panDirection, hoveredInfo])
+  }, [zoomAxis, panDirection, hoveredInfo])
 
 
   const moveLeftView = useCallback((val) => {
-
     setViewState((prev) => {
       return {
         ...prev,
-      ['ortho']: {
-        ...prev['ortho'],
-        'target': [prev['ortho'].target[0]- (100/globalBpPerUnit), prev['ortho'].target[1]],
-      },
-      ['genome-positions']: {
-        ...prev['genome-positions'],
-        'target': [prev['genome-positions'].target[0]-(100/globalBpPerUnit), prev['genome-positions'].target[1]],
+        ['ortho']: {
+          ...prev['ortho'],
+          'target': [prev['ortho'].target[0]- (100/globalBpPerUnit), prev['ortho'].target[1]],
+        },
+        ['genome-positions']: {
+          ...prev['genome-positions'],
+          'target': [prev['genome-positions'].target[0]-(100/globalBpPerUnit), prev['genome-positions'].target[1]],
+        }
       }
-    }
-  })
+    })
   })
 
   const moveRightView = useCallback((val) => {
@@ -327,14 +259,11 @@ if (globalBpPerUnit) {
       }
     }
   })
-  }, [value, globalBpPerUnit])
+  }, [valueRef, globalBpPerUnit])
   
   const changeView = useCallback((val) => {
 
     let [x0, x1] = [val[0]/globalBpPerUnit, val[1]/globalBpPerUnit];
-
-    console.log("zoom level", viewPortCoords['ortho']['viewport'].width)
-
     const Z = Math.log2((viewPortCoords['ortho']['viewport'].width * globalBpPerUnit) / (val[1] - val[0]))
 
     setViewState((prev) => {
@@ -353,7 +282,7 @@ if (globalBpPerUnit) {
       }
     })
 
-  }, [value, globalBpPerUnit])
+  }, [valueRef, globalBpPerUnit])
 
   const output = useMemo(() => {
     return {
@@ -383,7 +312,6 @@ if (globalBpPerUnit) {
     xzoom,
     setMouseXY,
     mouseXY,
-    settings,
     panDirection,
    handleViewStateChange,
    globalBinsIndexes,

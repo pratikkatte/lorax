@@ -181,23 +181,22 @@ const queryExperimental = useCallback((value) => {
   
 });
 
-
-  /** Exposed methods */
-  const queryNodes = useCallback((value, localTrees, setResult) => {
-
-    console.log("querying nodes", value,localTrees);
+const queryNodes = useCallback((value, localTrees) => {
+  return new Promise((resolve) => {
     sendMessage({
       type: "viz",
       role: "query",
       bounds: null,
-      localTrees: localTrees,
-      value,
+      localTrees,
+      value
     });
+
     onQueryReceipt = (receivedData) => {
       console.log("got query result", receivedData);
-      setResult(receivedData);
+      resolve(receivedData);
     };
-  }, [sendMessage]);
+  });
+}, [sendMessage]);
 
   const queryDetails = useCallback((clickedObject) => {
     sendMessage({

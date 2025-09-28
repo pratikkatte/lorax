@@ -2,28 +2,27 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import EditableRange from './EditableRange';
 import { useSearchParams } from 'react-router-dom';
 
-export default function PositionSlider({ config, project, ucgbMode, value, setValue, view }) {
+export default function PositionSlider({ config, project, ucgbMode, view, valueRef }) {
+  
+  const { tsconfig, intervals } = config;
+  
   const [genomeLength, setGenomeLength] = useState([]);
   const [searchParams, setSearchParams] = useSearchParams();
   const { moveLeftView, moveRightView, changeView } = view;
 
-  const valueRef = useRef(null);
-
   // Initialize value if missing
   useEffect(() => {
-    if (!value) {
-      valueRef.current = config.value;
-      setValue(config.value);
-
+    if (!valueRef.current) {
+      // valueRef.current = tsconfig.value;
     }
-  }, [value, config.value, setValue]);
+  }, [tsconfig.value]);
 
   // Keep ref and search params in sync with React state
   useEffect(() => {
     if (valueRef.current) {
       if (ucgbMode.current) {
         setSearchParams({
-          chrom: config.chrom,
+          chrom: tsconfig.chrom,
           genomiccoordstart: valueRef.current[0],
           genomiccoordend: valueRef.current[1],
         });
@@ -35,9 +34,8 @@ export default function PositionSlider({ config, project, ucgbMode, value, setVa
         });
       }
     }
-  }, [valueRef, config.chrom, project, ucgbMode, setSearchParams]);
+  }, [valueRef, tsconfig.chrom, project, ucgbMode, setSearchParams]);
 
-  const { intervals } = config;
 
   // Track min/max genome length
   useEffect(() => {
@@ -53,7 +51,7 @@ export default function PositionSlider({ config, project, ucgbMode, value, setVa
     if (newLeft >= genomeLength[0]) {
       const newVal = [newLeft, newRight];
       valueRef.current = newVal;
-      setValue(newVal);
+      // setValue(newVal);
       moveLeftView(newVal);
     } else {
       alert(`ERROR: cannot move more left`);
@@ -67,7 +65,7 @@ export default function PositionSlider({ config, project, ucgbMode, value, setVa
     if (newRight <= genomeLength[1]) {
       const newVal = [newLeft, newRight];
       valueRef.current = newVal;
-      setValue(newVal);
+      // setValue(newVal);
       moveRightView(newVal);
     } else {
       alert(`ERROR: cannot move more right`);
@@ -80,11 +78,11 @@ export default function PositionSlider({ config, project, ucgbMode, value, setVa
         console.log('onChange input_values', input_values);
         const newVal = [input_values[0], input_values[1]];
         valueRef.current = newVal;
-        setValue(newVal);
+        // setValue(newVal);
         changeView(newVal); // always call when user changes
       }
     },
-    [intervals, setValue, changeView]
+    [intervals, changeView]
   );
 
   return (

@@ -4,6 +4,7 @@ import memoizeOne from 'memoize-one';
 
 export class GenomeGridLayer extends CompositeLayer {
   static defaultProps = {
+    localCoordinates: [],
     data: [],
     y0: 0,
     y1: 2,
@@ -26,136 +27,29 @@ export class GenomeGridLayer extends CompositeLayer {
     this._lastEnd = null;
   }
 
-niceStep(step) {
-    // round step to a "nice" number (1, 2, or 5 × 10^n)
-    const exp = Math.floor(Math.log10(step));
-    const base = Math.pow(10, exp);
-    const multiples = [1, 2, 5, 10];
-  
-    let nice = multiples[0] * base;
-    for (let m of multiples) {
-      if (step <= m * base) {
-        nice = m * base;
-        break;
-      }
-    }
-    return nice;
-  }
-  
-  getLocalCoordinates(lo, hi) {
-    const range = hi - lo;
-    const divisions = range > 1000 ? 5 : 10;
-  
-    const rawStep = range / divisions;
-    const stepSize = this.niceStep(rawStep);  // round to nice step
-  
-    // Align the first tick at the nearest multiple of stepSize >= lo
-    const start = Math.ceil(lo / stepSize) * stepSize;
-    const end   = Math.floor(hi / stepSize) * stepSize;
-  
-    let coordinates = [];
-    for (let x = start; x <= end; x += stepSize) {
-      coordinates.push({ x, y: 0, text: x });
-    }
-  
-    return coordinates;
-  }
-  
-
-
-  getLocalData(data, globalBins) {
-    if (!Array.isArray(data) || data.length < 2) {
-      return [];
-    }
-    if (!globalBins || globalBins.length === 0) {
-      return [];
-    }
-  
-    const start = data[0];
-    const end = data[1];
-    if (typeof start !== "number" || typeof end !== "number") {
-      console.warn("GenomeGridLayer: data is not [start, end]", data);
-      return [];
-    }
-
-    const buffer = 0.5;
-    const bufferStart = Math.max(0, start - (start* buffer));
-    const bufferEnd = Math.min(globalBins.length - 1, end + (end* buffer));
-  
-    // First time or empty cache → slice directly
-    if (this._lastStart == null || this._lastEnd == null) {
-    
-      this._localBins = globalBins.slice(start, end + 1);
-      // if (start == 0) {
-      //   this._localBins.unshift({s: 0, e: 0, acc: 0});
-      // }
-      // if (end == globalBins.length - 1) {
-      //   this._localBins.push({s: globalBins[globalBins.length - 1].e, e: globalBins[globalBins.length - 1].e, acc: globalBins[globalBins.length - 1].acc});
-      // }
-    } else {
-      const prevStart = this._lastStart;
-      const prevEnd = this._lastEnd;
-  
-      if (bufferEnd < prevStart || bufferStart > prevEnd) {
-        // no overlap, reset
-        this._localBins = globalBins.slice(start, end + 1);
-      } else {
-        // adjust left
-        if (bufferStart > prevStart) {
-          this._localBins.splice(0, bufferStart - prevStart);
-        } else if (bufferStart < prevStart) {
-          this._localBins.unshift(...globalBins.slice(bufferStart, prevStart));
-        }
-  
-        // adjust right
-        if (bufferEnd > prevEnd) {
-          this._localBins.push(...globalBins.slice(prevEnd + 1, bufferEnd + 1));
-        } else if (bufferEnd < prevEnd) {
-          this._localBins.splice(this._localBins.length - (prevEnd - bufferEnd), prevEnd - bufferEnd);
-        }
-      }
-    }
-  
-    this._lastStart = bufferStart;
-    this._lastEnd = bufferEnd;
-
-    return this._localBins;
-  }
-  
-
   renderLayers() {
     
     const {
-      data, y0, y1, labelOffset,
-      getColor, getTextColor, getText,
-      modelMatrix, viewId, showLabels, globalBins, globalBpPerUnit, value, xzoom
+      data, y0, y1,
+      getColor, viewId, showLabels, globalBpPerUnit, localCoordinates
     } = this.props;
 
+    if (!Object.keys(data).length) return [];
 
-    const localBins = this.getLocalData(data, globalBins); // precomputed once
 
-    
-    const localCoordinates = this.getLocalCoordinates(value[0], value[1]);
-    console.log("localCoordinates", localCoordinates)
-
-    if (!localBins.length) return [];
 
     return [
       new LineLayer({
       id: `${this.props.id}-lines`,
-      data: localBins,
-      getSourcePosition: d => [d.acc/globalBpPerUnit, y0],
-      getTargetPosition: d => [d.acc/globalBpPerUnit, y1],
+      data: Object.values(data).map(d => d.acc),
+      getSourcePosition: d => {
+        const pos = [d / globalBpPerUnit, y0];
+        return pos;
+      },
+      getTargetPosition: d => [d /globalBpPerUnit, y1],
       getColor,
       viewId,
-      pickable: false,
-      updateTriggers: {
-        getSourcePosition: [y0],
-        getTargetPosition: [y1],
-        data,
-        globalBins,
-        localBins
-      }
+      pickable: false
     }),
     showLabels &&
       new TextLayer({
@@ -169,7 +63,9 @@ niceStep(step) {
         viewId,
         pickable: false,
         updateTriggers: {
-          data: [localCoordinates]
+          data: localCoordinates,
+          getPosition: [globalBpPerUnit],
+          getText: [localCoordinates]   
         }
       })
     ].filter(Boolean);

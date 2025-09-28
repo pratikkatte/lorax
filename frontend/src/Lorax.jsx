@@ -9,22 +9,18 @@ import useHoverDetails from "./hooks/useHoverDetails";
 
 function Lorax({backend, config, settings, setSettings, project, ucgbMode, saveViewports, setSaveViewports}) {
 
-  const {tsconfig, setConfig} = config;
+  const {tsconfig} = config;
   const [mouseDownIsMinimap, setMouseDownIsMinimap] = useState(false);
   const [deckSize, setDeckSize] = useState(null); // idk the use of this?
   const [hoveredTreeIndex, setHoveredTreeIndex] = useState({path: null, node: null, treeIndex: null}); // this is for knowing which tree is hovered. 
   const deckRef = useRef(); // reference to the deck component. 
   const [viewPortCoords, setViewPortCoords] = useState(null); 
   const [value, setValue] = useState(null); // hook to know the genomic values displayed on the window. 
+  const valueRef = useRef(null);
 
   let hoverDetails = useHoverDetails();
-  
-  // const settings = useSettings({ query, updateQuery });
-  
-  const view = useView({backend, config, settings, setSettings, viewPortCoords, setValue, hoverDetails, value});
-
-  const { data } = useGetDynamicData({backend, value, setValue})
-
+    
+  const view = useView({config, viewPortCoords, hoverDetails, valueRef});
 
   return (
     <>
@@ -32,7 +28,7 @@ function Lorax({backend, config, settings, setSettings, project, ucgbMode, saveV
         <div className="flex flex-col h-screen bg-white">
           {(!ucgbMode.current) && (
           <div className="flex justify-center items-center py-2 bg-white border-b border-gray-200">
-            <PositionSlider config={tsconfig} setConfig={setConfig} project={project} ucgbMode={ucgbMode} value={value} setValue={setValue} view={view} />
+            <PositionSlider config={config} project={project} ucgbMode={ucgbMode} view={view} valueRef={valueRef} />
           </div>
           )}
           <div className="flex-1 flex justify-center">
@@ -52,10 +48,10 @@ function Lorax({backend, config, settings, setSettings, project, ucgbMode, saveV
               config={config}
               setViewPortCoords={setViewPortCoords}
               viewPortCoords={viewPortCoords}
-              value={value}
               hoverDetails={hoverDetails}
               saveViewports={saveViewports}
               setSaveViewports={setSaveViewports}
+              valueRef={valueRef}
             />
           </div>
         </div>

@@ -62,10 +62,10 @@ function getGlobalBins_linear(data, globalBpPerUnit) {
 
 
   const list = new Array(intervalsKeys.length + 1);
-  // list[0] = [0, 0];
+  list[0] = [0, 0];
   for (let i = 0; i < intervalsKeys.length; i++) {
     const k = intervalsKeys[i];
-    list[i] = intervals[k];
+    list[i+1] = intervals[k];
   }
   const out = new Array(intervalsKeys.length);
   let acc = 0;
@@ -241,14 +241,12 @@ export const queryLocalBins = async (value) => {
   // let [lo, hi] = globalBinsIndexes;
 
   let new_exp_local_bins = queryExperimental(value)
-  console.log("queryLocalBins new_exp_local_bins", new_exp_local_bins);
 
   let { i0, i1 } = findClosestBinIndices(globalBins, value[0]/basepairPerUnit, value[1]/basepairPerUnit);
 
   let lo = i0;
   let hi = i1;
   
-
   // const new_bins = optimized_new_buildBins(globalBins, lo, hi, new_skip_threshold);
 
   // TODO optimize on this for increasing and decreasing local bins based on user interaction
@@ -290,7 +288,6 @@ export const queryLocalBins = async (value) => {
       cachedHi--;
     }
   }
-
 
   // const local_bins = globalBins.slice(loBuffered, hiBuffered);
 
@@ -396,20 +393,7 @@ function processNewick(nwk_str, mutations, globalMinTime, globalMaxTime, times) 
   return tree
 }
 
-function downSample(i0, i1, n_trees, skip_frac=0.3){
 
-  const total = i1 - i0 + 1
-  const keep_total = Math.round(total * (1 - skip_frac))
-  
-  const step = n_trees > 1 ? keep_total / (n_trees - 1) : 1
-    
-    let indices = [];
-    for (let i = 0; i < n_trees; i++) {
-      indices.push(i0 + Math.round(i * step));
-    }
-    indices[indices.length-1] = i1;
-    return indices
-}
 
 //function to find the closes the genomic interval in the ts_intervals. Returns indices.  
 
@@ -542,21 +526,26 @@ export async function globalCleanup(allTrees) {
   }
 }
 
-async function processData(localTrees,sendStatusMessage, vertical_mode){
+function processData(localTrees, sendStatusMessage, vertical_mode) {
+  const paths = {};
 
-  // const trees = data
-  // .split(';')
-  // .filter(Boolean)
-  const graph_trees = localTrees ? localTrees.map((tree, index) => {
-    return processNewick(tree.newick, tree.mutations, tree.max_time, tree.min_time, tree.time_range);
-  }) : [];
+  if (Array.isArray(localTrees)) {
+    localTrees.forEach((tree, index) => {
+      const processedTree = processNewick(
+        tree.newick,
+        tree.mutations,
+        tree.max_time,
+        tree.min_time,
+        tree.time_range
+      );
 
-  const paths = []
-  graph_trees.map((tree, i) => {
-    paths.push(extractSquarePaths(tree.root, vertical_mode))
-  })
-  return paths
+      paths[tree.global_index] = extractSquarePaths(processedTree.root, vertical_mode);
+    });
+  }
+
+  return paths;
 }
+
 
 onmessage = async (event) => {
   //Process uploaded data:

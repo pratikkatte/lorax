@@ -86,9 +86,9 @@ function Deck({
   hoverDetails,
   setViewPortCoords,
   viewPortCoords,
-  value,
   saveViewports,
-  setSaveViewports
+  setSaveViewports,
+  valueRef
 }) {
 
   const {tsconfig, globalBins, setWidth, globalBpPerUnit} = config;
@@ -96,31 +96,23 @@ function Deck({
   const [hoveredKey, setHoveredKey] = useState(null);
   const [hoverInfo, setHoverInfoRaw] = useState(null);
   const [genomePositions, setGenomePositions] = useState([]);
-
   const { hoveredInfo, setHoveredInfo } = hoverDetails;
 
-
-  
-
-  // const no_data = !data || data.status === "loading"
-
-
-  const {views, xzoom, setView, viewState, setViewState, handleViewStateChange, globalBinsIndexes, setGlobalBinsIndexes} = view
+  const {views, xzoom, setView, viewState, setViewState, handleViewStateChange} = view
 
   const {queryDetails} = backend;
 
 
-  const regions = useRegions({backend, viewState, globalBins, value, saveViewports,globalBpPerUnit});
+  const regions = useRegions({backend, viewState, globalBins, valueRef, saveViewports, globalBpPerUnit, tsconfig});
 
-  const {bins, data }  = regions;
 
-  useEffect(()=> {
-    if (data.status === "loading") {
-    console.log("statusMessage", data)
-    }
-  },[data])
+  // useEffect(()=> {
+  //   if (data.status === "loading") {
+  //   console.log("statusMessage", data)
+  //   }
+  // },[data])
 
-  const no_data = useMemo(() => !data || data.status === "loading", [data]);
+  // const no_data = useMemo(() => !data || data.status === "loading", [data]);
 
   const onClickOrMouseMove = useCallback(
     (event) => {
@@ -154,28 +146,14 @@ function Deck({
       setHoverInfoRaw(info);
     },[]);
     const { layers, layerFilter } = useLayers({
-      data,
       xzoom,
-      viewState,
-      setHoverInfo,
-      hoverInfo,
-      hoveredKey,
+      valueRef,
       hoveredTreeIndex,
-      setHoveredTreeIndex,
-      queryDetails,
-      settings,
-      deckRef, 
-      genomePositions,
-      setGenomePositions,
-      setViewState,
-      tsconfig,
-      globalBpPerUnit,
-      globalBins,
-      setView,
-      viewPortCoords,
+      deckRef,
       backend,
-      value,
-      regions
+      globalBins,
+      regions,
+      globalBpPerUnit  
     });
 
 
@@ -256,14 +234,11 @@ function Deck({
   
 
   useEffect(()=> {
-    // console.log('View port coords', viewPortCoords);
-
-    // getLayerPixelPositions(deckRef, "main-layer-0");
+    //pass
   }, [deckRef, viewPortCoords, regions, saveViewports]);
 
   useEffect(()=> {
     if (!globalBpPerUnit, saveViewports?.ortho?.width) {
-      console.log("setting width", globalBpPerUnit);
     setWidth(saveViewports.ortho.width, viewState?.ortho?.zoom[0]);
     }
   }, [saveViewports?.ortho?.width, viewState?.ortho?.zoom]);

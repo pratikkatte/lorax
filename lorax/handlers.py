@@ -1,7 +1,7 @@
 # handlers.py
 import json
 # from lorax.chat.langgraph_tskit import api_interface
-from lorax.viz.trees_to_taxonium import new_tree_samples
+from lorax.viz.trees_to_taxonium import new_tree_samples,old_new_tree_samples
 import tskit
 import tszip
 import numpy as np
@@ -48,7 +48,7 @@ class LoraxHandler:
         try:
             localTrees = message.get("localTrees")
             # nwk_string, genome_positions, mutations, times, tree_index = start_end(start, end, self.ts)
-            tree_dict = new_tree_samples(localTrees, self.ts)
+            tree_dict = old_new_tree_samples(localTrees, self.ts)
 
             # self.viz_snapshot = {'window': [0, start, end, self.ts.sequence_length], 'sample_sets':'ts.get_samples()'}
 
@@ -66,7 +66,6 @@ class LoraxHandler:
         # intervals = {tree.interval[0]: [tree.interval[0], tree.interval[1]] for tree in self.ts.trees()}
         new_intervals = {int(tree.interval[0]): [int(tree.interval[0]), int(tree.interval[1])] for tree in self.ts.trees()}
         self.ts_intervals = intervals[1:]
-
         config = {'intervals':intervals, 'value': [intervals[0][0], intervals[9][1]], 'new_intervals':new_intervals,'filename': str(self.file_path).split('/')[-1]}
         return config
     

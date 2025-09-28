@@ -1,4 +1,8 @@
 import datetime
+import numpy as np
+from concurrent.futures import ProcessPoolExecutor, as_completed
+
+
 
 def get_config(total_tips, all_content_positions,total_nodes, genomic_position_minmax, all_mutations, tree_min_max):
     config = {}
@@ -17,15 +21,75 @@ def get_config(total_tips, all_content_positions,total_nodes, genomic_position_m
     }
     return first_json
 
-def new_tree_samples(tree_indexes, ts):
+def _process_single_tree(global_index, ts):
+    try:
+        tree = ts.at_index(global_index)
+        node_ids = list(tree.nodes())
+
+        # ✅ NumPy fast min/max
+        node_times = np.fromiter((ts.node(u).time for u in node_ids), dtype=np.float64)
+        start_time = node_times.min()
+        end_time = -node_times.max()
+
+        # ✅ Labels only if needed
+        labels = {u: str(u) for u in node_ids}
+        if tree.num_roots > 1:
+            tree_newick = "".join(tree.as_newick(root=root, node_labels=labels) for root in tree.roots)
+        else:
+            tree_newick = tree.as_newick(node_labels=labels)
+
+        positions = {"start": int(tree.interval.left), "end": int(tree.interval.right)}
+
+        # ✅ Mutations
+        mut_map = {}
+        for site in tree.sites():
+            pos = int(site.position)
+            ancestral = site.ancestral_state
+            for mut in site.mutations:
+                mut_map.setdefault(str(mut.node), []).append(
+                    f"{ancestral}{pos}{mut.derived_state}"
+                )
+
+        return {
+            "newick": tree_newick,
+            "time_range": {"start": float(start_time), "end": float(end_time)},
+            "positions": positions,
+            "mutations": mut_map,
+        }
+
+    except Exception as e:
+        return {"error": str(e), "index": global_index}
+
+
+def new_tree_samples(tree_indexes, ts, n_jobs=4):
+    tree_dict = []
+
+    with ProcessPoolExecutor(max_workers=n_jobs) as executor:
+        futures = [executor.submit(_process_single_tree, t["global_index"], ts)
+                   for t in tree_indexes]
+
+        for future in as_completed(futures):
+            result = future.result()
+            if "error" in result:
+                print(f"Error in new_tree_samples: {result['error']} (index {result['index']})")
+                continue
+
+            # add shared info from ts
+            result["min_time"] = ts.min_time
+            result["max_time"] = -ts.max_time
+            tree_dict.append(result)
+
+    return tree_dict
+
+def old_new_tree_samples(tree_indexes, ts):
 
     tree_dict = []
     min_time = float('inf')
     max_time = float('-inf')
 
-
     for i, tree in enumerate(tree_indexes):
         try:
+            global_index = tree['global_index']
             tree = ts.at_index(tree['global_index'])
             node_ids = list(tree.nodes())
             node_times = [ts.node(u).time for u in node_ids]
@@ -58,7 +122,8 @@ def new_tree_samples(tree_indexes, ts):
                 'positions': positions,
                 'mutations': mut_map,
                 'min_time': ts.min_time,
-                'max_time': -ts.max_time
+                'max_time': -ts.max_time,
+                'global_index': global_index
             })
         except Exception as e:
             print(f"Error in new_tree_samples: {e}")

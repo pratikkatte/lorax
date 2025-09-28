@@ -23,7 +23,7 @@ import { GenomeGridLayer } from "../layers/GenomeGridLayer";
 //     }
 
 //     // const divisions = bucketZoom <= 9 ? 10 : 20
-//     const getDivisions = (zoom) => {
+//     const getDivisions = (zoom) =>get {
 //       if (zoom <= 8) return 10;
 //       return (zoom) * 2;
 //     };
@@ -57,89 +57,22 @@ import { GenomeGridLayer } from "../layers/GenomeGridLayer";
 //   };
 // })();
 
-const getCoalescenceLinesCached = (() => {
-  const cache = new Map();
-  return (coalescencePos, zoom) => {
-    const bucketZoom = Math.ceil(zoom); // integer bucket
-    const cacheKey = `${coalescencePos.start}-${coalescencePos.end}-${bucketZoom}`;
-    if (cache.has(cacheKey)) {
-      return cache.get(cacheKey);
-    }
-
-    const lines = [];
-    const getDivisions = (zoom) => {
-      if (zoom <= 8) return 10;
-      return (zoom-8) * 2 + 10;
-    };
-    const divisions = getDivisions(bucketZoom);
-    let stepsize = (coalescencePos.max_time - coalescencePos.min_time) / divisions;
-    for (let i = 0; i <= divisions; i++) {
-      const yPosition = i / divisions;
-      const time = coalescencePos.min_time + (stepsize * i);
-      lines.push({
-        sourcePosition: [0.5, yPosition],
-        targetPosition: [1, yPosition],
-        time: Math.round(time * 10) / 10
-      })
-    }
-    cache.set(cacheKey, lines);
-    return lines;
-  }
-}
-)()
-
-function formatBp(n) {
-  if (n >= 1e9) return `${(n/1e9).toFixed(2)} Gbp`;
-  if (n >= 1e6) return `${(n/1e6).toFixed(1)} Mbp`;
-  if (n >= 1e3) return `${(n/1e3).toFixed(1)} kbp`;
-  return `${Math.round(n)} bp`;
-}
-
-
-
-const useDebouncedValue = (value, delay) => {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const t = setTimeout(() => setDebounced(value), delay);
-    return () => clearTimeout(t);
-  }, [value, delay]);
-  return debounced;
-};
 
 const useLayers = ({
-  data,
   xzoom,
-  value,
-  viewState,
-  setViewState,
-  setHoverInfo,
-  hoverInfo,
+  valueRef,
   hoveredTreeIndex,
-  setHoveredTreeIndex,
-  settings,
   deckRef,
-  config, 
   backend,
-  // viewportSize,
-  // setViewportSize,
   globalBins,
-  setView,
-  viewPortCoords,
   regions,
 globalBpPerUnit  
 }) => {
 
-  const {bins, trees} = regions;
-  
-  const debouncedZoomX = useDebouncedValue(
-    Array.isArray(viewState.ortho.zoom) ? viewState.ortho.zoom[0] : viewState.ortho.zoom,
-    50 // ms debounce
-  );
-  const debouncedZoomY = useDebouncedValue(
-    Array.isArray(viewState.ortho.zoom) ? viewState.ortho.zoom[1] : viewState.ortho.zoom,
-    50 // ms debounce
-  );
+  const {bins, localCoordinates} = regions;
 
+  const data = {};
+  
   const layerFilter = useCallback(({ layer, viewport }) => {
     const isOrtho = viewport.id === 'ortho'
     const isGenome = viewport.id === 'genome-positions';
@@ -150,17 +83,18 @@ globalBpPerUnit
       (isGenome && layer.id.startsWith('genome-positions')) ||
       (isTreeTime && layer.id.startsWith('tree-time'))
     );
-  }, [settings]);
+  }, []);
 
   const layers = useMemo(() => {
     // if (!data?.data?.paths) return [];
 
-    const times = data.data?.times || {};
+    const times = data?.data?.times || {};
 // console.log("uselayers bins", bins, globalBins)
     const genomeGridLayer = new GenomeGridLayer({
       backend: backend,
-      value: value,
+      value: valueRef.current,
       xzoom: xzoom,
+      localCoordinates: localCoordinates,
       id: 'genome-positions-grid',
       data: bins,
       globalBpPerUnit: globalBpPerUnit,
@@ -176,88 +110,196 @@ globalBpPerUnit
       showLabels: true,
     });
 
-    const singleTreeHighlightLayer = trees && trees.length > 0 ? new TextLayer({
-      id: `main-layer-highlight`,
-      data: (() => {
-        const result = [];
-        for (let i = 0; i < trees.length; i++) {
-          const globalBin = globalBins[trees[i].global_index];
-          result.push({
-            position: [trees[i].position/globalBpPerUnit, 0.5],
-            text: `${globalBin.acc.toLocaleString("en-US", { maximumFractionDigits: 2 })}`,
-            step: trees[i].index,
-            global_index: trees[i].global_index,
-          })  
-        }
-          return result;
-      })(),
-      visible: false,
-      getPosition: d => d.position,
-      getText: d => d.text,
-      sizeUnits: 'pixels',
-      getColor: [0, 0, 0, 255],
-      getSize: 10,
-      highlightColor: [0, 100, 100, 255],
-      getTextAnchor: 'middle',
-      getAlignmentBaseline: 'bottom',
-      updateTriggers: {
-        data: [bins]
-      }
-    }) : null;
+    // const singleTreeHighlightLayer = bins && bins.length > 0 ? new TextLayer({
+    //   id: `main-layer-highlight`,
+    //   data: (() => {
+    //     const result = [];
+    //     for (let i = 0; i < trees.length; i++) {
+    //       const globalBin = globalBins[trees[i].global_index];
+    //       result.push({
+    //         position: [trees[i].position/globalBpPerUnit, 0.5],
+    //         text: `${globalBin.acc.toLocaleString("en-US", { maximumFractionDigits: 2 })}`,
+    //         step: trees[i].index,
+    //         global_index: trees[i].global_index,
+    //       })  
+    //     }
+    //       return result;
+    //   })(),
+    //   visible: false,
+    //   getPosition: d => d.position,
+    //   getText: d => d.text,
+    //   sizeUnits: 'pixels',
+    //   getColor: [0, 0, 0, 255],
+    //   getSize: 10,
+    //   highlightColor: [0, 100, 100, 255],
+    //   getTextAnchor: 'middle',
+    //   getAlignmentBaseline: 'bottom',
+    //   updateTriggers: {
+    //     data: [bins]
+    //   }
+    // }) : null;
             
-    const singleTreeLayers = (!data?.data?.paths)? [] : data.data.paths.flatMap((tree, i) => {
-      const spacing = 1.03;
 
-      // const genomePos = data.data.genome_positions[i];
-      // const treeIndex = data.data.tree_index[i];
-      const modelMatrix = settings.vertical_mode ? new Matrix4().translate([0, i * spacing, 0]) : new Matrix4().translate([i * spacing,0, 0]);
-      const pathData = tree.filter(d => d.path);
-      const nodeData = tree.filter(d => d.position);
+    // const [validBins, setValidBins] = useState([]);
+    // useEffect(() => {
 
-      let divide_pos = trees[i]?.position / globalBpPerUnit;
-      // console.log("pathLayer", "divide_pos", treeIndex,trees, "globalBpPerUnit", globalBpPerUnit, "divide_pos", divide_pos)
-      
-      const pathLayer = new PathLayer({
-        id: `main-layer-${i}`,
-        // visible: !hideOrthoLayers,
-        data: pathData,
-        getPath: d => d.path.map(([x, y]) => {
-          return [
-          x + divide_pos,
-          y 
-        ]}),
+    //   setValidBins(Array.isArray(bins) ? bins.filter(d => Array.isArray(d.path) && d.path.length >= 2) : []);
+
+    // }, [bins]);
+
+
+    // const validBins = Array.isArray(bins) ? bins.filter(d => Array.isArray(d.path) && d.path.length >= 2): [];
+
+    // console.log("validBins", validBins)
+
+    const singleTreeLayers = bins && Object.keys(bins).length > 0 ? Object.values(bins).filter(bin => bin?.path !== null && bin.visible).map((bin, i) => {
+
+      // if (!bin.path) return null; // don't add to array if no path
+
+      let divide_pos = bin.acc / globalBpPerUnit;
+
+      return new PathLayer({
+        id: `main-layer-${bin.global_index}`,
+        data: bin.path,
+        getPath: d => d?.path?.map(([x, y]) => {
+              return [
+              x + divide_pos,
+              y 
+            ]}),
         getColor: d => {
           if (hoveredTreeIndex && d.path === hoveredTreeIndex.path) {
             return [0,0,0, 255]
           }
-
           return [150, 150, 150, 255];
         },
-        // () => [255, 80, 200],
         getWidth: d => {
           if (hoveredTreeIndex && d.path === hoveredTreeIndex.path) {
             return 3
           }
           return 2;
         },
-        // visible: !hideOrthoLayers,
         widthUnits: 'pixels',
-        modelMatrix,
         viewId: 'ortho',
         zOffset: -1,
         pickable: true,
-        // onHover: ({object, picked}) => {
-        //   if (picked && object) {
-        //     setHoveredTreeIndex({...hoveredTreeIndex, path: object.path, treeIndex: treeIndex, node: null});
-        //   }
-        //   else{
-        //     setHoveredTreeIndex({...hoveredTreeIndex,treeIndex:null, path: null, node: null});
-        //   }
-        // },
         updateTriggers: {
-          getWidth: [hoveredTreeIndex]
+          getWidth: [hoveredTreeIndex],
+          data: [bins]
         },
       });
+    }) : [];
+    // const treeLayers = bins && bins.length > 0 ? new PathLayer({
+    //   id: `main-layer`,
+    //   data: Array.isArray(bins) ? bins.filter(d => Array.isArray(d.path) && d.path.length >= 2) : [],
+    //   // getPath: d => d.path?.map(([x, y]) => {
+    //   //   let position = d.acc / globalBpPerUnit;
+    //   //   return [x+position, y]
+    //   // }),
+    //   // getPath: d => (Array.isArray(d.path) ? d.path.map(([x, y]) => [x + d.acc/globalBpPerUnit, y]) : null),
+    //   getPath: d => {
+    //     if (!Array.isArray(d.path)) return null;
+    //     let position = d.acc / globalBpPerUnit;
+      
+    //     const coords = d.path
+    //       .map(p => {
+    //         if (Array.isArray(p)) {
+    //           // Case: already [x, y]
+    //           return [p[0] + position, p[1]];
+    //         }
+    //         if (p.path && Array.isArray(p.path)) {
+    //           // Case: {path: [x, y]}
+    //           return [p.path[0] + position, p.path[1]];
+    //         }
+    //         if (p.position && Array.isArray(p.position)) {
+    //           // Case: {name: '10', position: [x, y]}
+    //           return [p.position[0] + position, p.position[1]];
+    //         }
+    //         return null; // unknown format
+    //       })
+    //       .filter(Boolean);
+      
+    //     return coords.length >= 2 ? coords : null;
+    //   },
+    //   getColor: d => {
+    //     if (hoveredTreeIndex && d.path === hoveredTreeIndex.path) {
+    //       return [0,0,0, 255]
+    //     }
+    //     return [150, 150, 150, 255];
+    //   },
+    //   getWidth: d => {
+    //     if (hoveredTreeIndex && d.path === hoveredTreeIndex.path) {
+    //       return 3
+    //     }
+    //     return 2;
+    //   },
+    //   // visible: !hideOrthoLayers,
+    //   widthUnits: 'pixels',
+    //   // modelMatrix,
+    //   viewId: 'ortho',
+    //   zOffset: -1,
+    //   pickable: true,
+    //   updateTriggers: {
+    //     getWidth: [hoveredTreeIndex],
+    //     data: [bins]
+    //   },
+    // }) : [];
+
+    return [...singleTreeLayers, genomeGridLayer];
+
+    // const singleTreeLayers = (!bins?.data?.paths)? [] : data.data.paths.flatMap((tree, i) => {
+      
+      // const singleTreeLayers = bins && bins.length > 0 ? bins.flatMap((tree, i) => {
+      // const spacing = 1.03;
+
+      // // const genomePos = data.data.genome_positions[i];
+      // // const treeIndex = data.data.tree_index[i];
+      // const modelMatrix = new Matrix4().translate([i * spacing,0, 0]);
+      // // const pathData = tree.filter(d => d.path);
+
+      // // let divide_pos = globalBins[trees[i]?.global_index]?.acc / globalBpPerUnit;
+      // let divide_pos = tree?.acc / globalBpPerUnit;
+      // // console.log("pathLayer", "divide_pos", treeIndex,trees, "globalBpPerUnit", globalBpPerUnit, "divide_pos", divide_pos)
+      // console.log("pathLayer", "bins", tree)
+      // const pathLayer = new PathLayer({
+      //   id: `main-layer-${i}`,
+      //   // visible: !hideOrthoLayers,
+      //   data: tree,
+      //   getPath: d => d?.path?.map(([x, y]) => {
+      //     return [
+      //     x + divide_pos,
+      //     y 
+      //   ]}),
+      //   getColor: d => {
+      //     if (hoveredTreeIndex && d.path === hoveredTreeIndex.path) {
+      //       return [0,0,0, 255]
+      //     }
+      //     return [150, 150, 150, 255];
+      //   },
+      //   getWidth: d => {
+      //     if (hoveredTreeIndex && d.path === hoveredTreeIndex.path) {
+      //       return 3
+      //     }
+      //     return 2;
+      //   },
+      //   // visible: !hideOrthoLayers,
+      //   widthUnits: 'pixels',
+      //   modelMatrix,
+      //   viewId: 'ortho',
+      //   zOffset: -1,
+      //   pickable: true,
+      //   // onHover: ({object, picked}) => {
+      //   //   if (picked && object) {
+      //   //     setHoveredTreeIndex({...hoveredTreeIndex, path: object.path, treeIndex: treeIndex, node: null});
+      //   //   }
+      //   //   else{
+      //   //     setHoveredTreeIndex({...hoveredTreeIndex,treeIndex:null, path: null, node: null});
+      //   //   }
+      //   // },
+      //   updateTriggers: {
+      //     getWidth: [hoveredTreeIndex],
+      //     data: [tree]
+      //   },
+      // });
 
       // const nodeLayer = new ScatterplotLayer({
       //   id: `main-dots-${i}`,
@@ -486,7 +528,7 @@ globalBpPerUnit
       // });
 
       return [
-        pathLayer,
+        // pathLayer,
         // boxLayer,
         // nodeLayer,
         // mutationLayer,
@@ -499,50 +541,50 @@ globalBpPerUnit
         // middleGenomePosition
       ].filter(Boolean);
 
-    });
+    // }) : [];
 
     
-    const coalescenceLayer = new LineLayer({
-      id: `tree-time-layer`,
-      data: getCoalescenceLinesCached(times, debouncedZoomY),
-      getSourcePosition: d => d.sourcePosition,
-      getTargetPosition: d => d.targetPosition,
-      getColor: [100, 100, 100, 100],
-      getWidth: 2,
-      widthUnits: 'pixels',
-      viewId: 'tree-time',
-      // updateTriggers: {
-      //   data: [debouncedZoomY]
-      // }
-      // pickable: true,
-    })
+    // const coalescenceLayer = new LineLayer({
+    //   id: `tree-time-layer`,
+    //   data: getCoalescenceLinesCached(times, debouncedZoomY),
+    //   getSourcePosition: d => d.sourcePosition,
+    //   getTargetPosition: d => d.targetPosition,
+    //   getColor: [100, 100, 100, 100],
+    //   getWidth: 2,
+    //   widthUnits: 'pixels',
+    //   viewId: 'tree-time',
+    //   // updateTriggers: {
+    //   //   data: [debouncedZoomY]
+    //   // }
+    //   // pickable: true,
+    // })
     
-    const coalescenceTimeLabels = new TextLayer({
-      id: `tree-time-labels`,
-      data: (() => {
-        return coalescenceLayer.props.data.map(m => ({ position: [0.5, m.sourcePosition[1]], text: String(m.time) }));
-      })(),
-      getPosition: d => d.position,
-      getText: d => d.text,
-      sizeUnits: 'pixels',
-      getTextAnchor: 'middle',
-      getColor: [50, 50, 50, 255],
-      viewId: 'tree-time',
-      getBackgroundColor: [255, 255, 255, 220], 
-      backgroundPadding: [4, 2, 4, 2],
-      getBorderColor: [150, 150, 150, 255],
-      getBorderWidth: 1,
-      fontFamily: 'Arial, sans-serif',
-      fontWeight: 'bold',
-      getSize: 12,
-    }) 
+    // const coalescenceTimeLabels = new TextLayer({
+    //   id: `tree-time-labels`,
+    //   data: (() => {
+    //     return coalescenceLayer.props.data.map(m => ({ position: [0.5, m.sourcePosition[1]], text: String(m.time) }));
+    //   })(),
+    //   getPosition: d => d.position,
+    //   getText: d => d.text,
+    //   sizeUnits: 'pixels',
+    //   getTextAnchor: 'middle',
+    //   getColor: [50, 50, 50, 255],
+    //   viewId: 'tree-time',
+    //   getBackgroundColor: [255, 255, 255, 220], 
+    //   backgroundPadding: [4, 2, 4, 2],
+    //   getBorderColor: [150, 150, 150, 255],
+    //   getBorderWidth: 1,
+    //   fontFamily: 'Arial, sans-serif',
+    //   fontWeight: 'bold',
+    //   getSize: 12,
+    // }) 
 
 // return [...singleTreeLayers, coalescenceLayer, coalescenceTimeLabels, genomeGridLayer, singleTreeHighlightLayer];
 // return [...singleTreeLayers, coalescenceLayer, coalescenceTimeLabels, genomeGridLayer];
-return [...singleTreeLayers,genomeGridLayer, singleTreeHighlightLayer];
+  
     // return [ ...singleTreeLayers,backgroundLayer];
 
-  }, [data, globalBins, bins, deckRef, viewState.zoom, viewState['genome-positions'], hoverInfo, hoveredTreeIndex, settings]);
+  }, [bins, localCoordinates, hoveredTreeIndex]);
 
 
 
