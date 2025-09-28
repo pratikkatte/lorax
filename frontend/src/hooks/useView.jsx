@@ -14,7 +14,6 @@ const INITIAL_VIEW_STATE = {
     target: [2,1],
     zoom: [6,6],
     minZoom: 1,
-    // padding: '5%',
   },
   'tree-time':{
     target: [0.5 ,0],
@@ -25,7 +24,6 @@ const INITIAL_VIEW_STATE = {
     target: [2,0],
     zoom: [6,6],
     minZoom: 1,
-    
   }
 }
 
@@ -112,6 +110,7 @@ const { hoveredInfo, setHoveredInfo } = hoverDetails;
           width: '80%',
           id: "genome-positions",
           controller:false,
+          initialViewState: INITIAL_VIEW_STATE['genome-positions']
         }),
         new OrthographicView({
           x: '5%',
@@ -210,7 +209,8 @@ const { hoveredInfo, setHoveredInfo } = hoverDetails;
         [viewId]: {
           ...prev[viewId],
           zoom,
-          target
+          target,
+          padding: '1%'
         }
       };
 

@@ -2,13 +2,6 @@ import { useMemo, useEffect, useState, useRef } from "react";
 import debounce from "lodash.debounce";
 import memoizeOne from "memoize-one";
 
-// ---------- helpers ----------
-function getSubset(sampleTrees, prevSampleTrees) {
-  if (!sampleTrees || !prevSampleTrees) return null;
-  const prevSet = new Set(prevSampleTrees.map(t => t.global_index));
-  return sampleTrees.every(t => prevSet.has(t.global_index)) ? sampleTrees : null;
-}
-
 function niceStep(step) {
   const exp = Math.floor(Math.log10(step));
   const base = Math.pow(10, exp);
@@ -53,27 +46,50 @@ function getXArray(globalBins) {
   return globalBins.map(b => b.acc);
 }
 
-function sampleTrees(globalBins, lo, hi, nTrees, globalBpPerUnit) {
-  const sampled_trees = [];
-  const lowest_step = Math.floor(lo / globalBpPerUnit);
-  const highest_step = Math.ceil(hi / globalBpPerUnit);
+function modified_sampleTrees(globalBins, lo, hi, globalBpPerUnit) {
+  const sampled_trees = {};
+  let i = lo;
 
-  // const step = Math.max(globalBpPerUnit, Math.floor( Math.pow(2, 17) / Math.pow(2, zoom)));
+  while (i <= hi) {
+    const startBin = globalBins[i];
+    let groupStart = startBin.s;
+    let groupEnd = startBin.e;
+    const skip_index = [];
+    let j = i; // index of the representative bin
 
-  for (let i = lowest_step; i < highest_step; i++) {
-    const genomic_val = i * globalBpPerUnit;
-    const tree_index = nearestIndex(globalBins, genomic_val);
-    if (tree_index !== sampled_trees[sampled_trees.length - 1]?.global_index) {
-      sampled_trees.push({ index: i, global_index: tree_index, position: genomic_val });
+    i++;
+
+    // Keep merging bins as long as the group span ≤ globalBpPerUnit
+    while (i <= hi) {
+      const nextBin = globalBins[i];
+      const span = nextBin.s - groupStart;
+
+      if (span > globalBpPerUnit) break;
+
+      groupEnd = nextBin.e;
+      skip_index.push(i);
+      i++;
     }
+
+    sampled_trees[j] = {
+      index: j,
+      global_index: j,
+      position: groupStart,
+      span: groupEnd - groupStart,
+      skip_index,
+      skip_count: skip_index.length
+    };
   }
+
+  // console.log("sampled_trees", sampled_trees);
   return sampled_trees;
 }
-function new_sampleTrees(globalBins, lo, hi, globalBpPerUnit) {
+
+function new_sampleTrees(globalBins, lo, hi, globalBpPerUnit, nTrees) {
   const sampled_trees = {};
   const lowest_step = Math.floor(lo / globalBpPerUnit);
   const highest_step = Math.ceil(hi / globalBpPerUnit);
-
+  
   for (let i = lowest_step; i <= highest_step; i++) {
     const genomic_val = i * globalBpPerUnit;
     const tree_index = nearestIndex(globalBins, genomic_val);
@@ -99,6 +115,8 @@ function makeGetLocalData() {
   let lastStart = null;
   let lastEnd = null;
   let localBins = {};
+  let globalbufferStart = null;
+  let globalbufferEnd = null;
 
   return async function getLocalData(
     start,
@@ -106,37 +124,57 @@ function makeGetLocalData() {
     globalBins,
     config_intervals,
     queryNodes,
-    globalBpPerUnit
+    globalBpPerUnit,
+    nTrees
   ) {
     const buffer = 0.1;
     const bufferStart = Math.max(0, start - start * buffer);
     const bufferEnd = Math.min(globalBins.length - 1, end + end * buffer);
 
+    if (globalbufferStart == null || globalbufferEnd == null) {
+      globalbufferStart = bufferStart;
+      globalbufferEnd = bufferEnd;
+    } else {
+      if(globalbufferStart < start && globalbufferEnd > end) {
+        // TODO adjust sampled trees based on zoom. 
+        return localBins;
+      }
+      else {
+        globalbufferStart = bufferStart;
+        globalbufferEnd = bufferEnd;
+      }
+    }
+
     const intervalKeys = Object.keys(config_intervals.new_intervals);
-    const sampledTrees = new_sampleTrees(
-      intervalKeys,
-      bufferStart,
-      bufferEnd,
-      globalBpPerUnit
-    );
+    
+    // const sampledTrees = new_sampleTrees(
+    //   intervalKeys,
+    //   bufferStart,
+    //   bufferEnd,
+    //   globalBpPerUnit,
+    //   nTrees
+    // );
 
     const lower_bound = lowerBound(intervalKeys, bufferStart);
     const upper_bound = upperBound(intervalKeys, bufferEnd);
+    const sampledTrees = modified_sampleTrees(globalBins, lower_bound, upper_bound, globalBpPerUnit, nTrees);
 
-    console.log("lower_bound", lower_bound, "upper_bound", upper_bound)
     // collect all new bins to query in one pass
     const rangeArray = [];
 
     const addBins = (lo, hi) => {
       for (let i = lo; i <= hi; i++) {
         const temp_bin = globalBins[i];
-        const visible = !!sampledTrees[i];
+        const visible = sampledTrees[i] ? true : false;
 
         localBins[i] = {
           ...temp_bin,
           visible,
           path: null, // will hydrate below if visible
           global_index: i,
+          skip_index: sampledTrees[i]?.skip_index,
+          skip_count: sampledTrees[i]?.skip_count,
+          span: sampledTrees[i]?.span,
         };
 
         if (visible) {
@@ -193,7 +231,7 @@ function makeGetLocalData() {
     lastStart = lower_bound;
     lastEnd = upper_bound;
 
-    console.log("localBins", localBins);
+    // console.log("localBins", localBins);
     return localBins;
   };
 }
@@ -215,15 +253,13 @@ const useRegions = ({ backend, globalBins, valueRef, viewState, saveViewports, g
         const zoom = viewState["ortho"]?.zoom?.[0];
         const width = saveViewports["ortho"]?.width;
         const nTrees = Math.floor(width / Math.pow(2, zoom));
-        console.log("nTrees", nTrees, zoom, width)
         // compute and set bins directly
-        getLocalData(lo, hi, globalBins, tsconfig, queryNodes, globalBpPerUnit ).then(
+        getLocalData(lo, hi, globalBins, tsconfig, queryNodes, globalBpPerUnit, nTrees ).then(
           (bins) => {
             setLocalBins((prev) => {
               if (Object.keys(prev).length === Object.keys(bins).length ) {
                 return prev;
               }
-              console.log("bins", bins);
               return bins; 
             });
           });
@@ -246,23 +282,6 @@ const useRegions = ({ backend, globalBins, valueRef, viewState, saveViewports, g
     const range = hi - lo;
     return getLocalCoordinates(lo - bufferFrac * range, hi + bufferFrac * range);
   }, [valueRef.current?.[0], valueRef.current?.[1]]);
-
-  // useEffect(() => {
-  //   const zoom = viewState["ortho"]?.zoom?.[0];
-  //   const width = saveViewports["ortho"]?.width;
-  //   if (zoom && width && globalBpPerUnit && globalBins) {
-  //     const [lo, hi] = valueRef.current;
-
-  //     const sampledTrees = sampleTrees(
-  //       getXArray(globalBins),
-  //       lo,
-  //       hi,
-  //       globalBpPerUnit
-  //     );
-  //     sampleTreesRef.current = sampledTrees;
-  //     setLocalTrees(sampledTrees);
-  //   }
-  // }, [globalBins, globalBpPerUnit, valueRef.current, viewState, saveViewports]);
 
   return useMemo(
     () => ({

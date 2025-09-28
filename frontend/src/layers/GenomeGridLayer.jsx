@@ -1,6 +1,7 @@
 import {CompositeLayer} from '@deck.gl/core';
 import {LineLayer, TextLayer} from '@deck.gl/layers';
 import memoizeOne from 'memoize-one';
+import { Matrix4, Vector3 } from "@math.gl/core";
 
 export class GenomeGridLayer extends CompositeLayer {
   static defaultProps = {
@@ -36,12 +37,14 @@ export class GenomeGridLayer extends CompositeLayer {
 
     if (!Object.keys(data).length) return [];
 
-
+    const treeSpacing = 1.03;
+    const modelMatrix = new Matrix4().translate([treeSpacing, 0, 0]);
+    // const modelMatrix = null;
 
     return [
       new LineLayer({
       id: `${this.props.id}-lines`,
-      data: Object.values(data).map(d => d.acc),
+      data: Object.values(data).map(d => d.s),
       getSourcePosition: d => {
         const pos = [d / globalBpPerUnit, y0];
         return pos;
@@ -49,7 +52,8 @@ export class GenomeGridLayer extends CompositeLayer {
       getTargetPosition: d => [d /globalBpPerUnit, y1],
       getColor,
       viewId,
-      pickable: false
+      pickable: false,
+      modelMatrix
     }),
     showLabels &&
       new TextLayer({
@@ -62,6 +66,7 @@ export class GenomeGridLayer extends CompositeLayer {
         getSize: 12,
         viewId,
         pickable: false,
+        modelMatrix,
         updateTriggers: {
           data: localCoordinates,
           getPosition: [globalBpPerUnit],

@@ -156,9 +156,9 @@ globalBpPerUnit
 
       // if (!bin.path) return null; // don't add to array if no path
 
-      let divide_pos = bin.acc / globalBpPerUnit;
-
-      return new PathLayer({
+      let divide_pos = bin.s / globalBpPerUnit;
+      const treeSpacing = 1.03;
+      const pathLayer = new PathLayer({
         id: `main-layer-${bin.global_index}`,
         data: bin.path,
         getPath: d => d?.path?.map(([x, y]) => {
@@ -178,6 +178,7 @@ globalBpPerUnit
           }
           return 2;
         },
+        modelMatrix: new Matrix4().translate([treeSpacing, 0, 0]),
         widthUnits: 'pixels',
         viewId: 'ortho',
         zOffset: -1,
@@ -187,6 +188,8 @@ globalBpPerUnit
           data: [bins]
         },
       });
+
+      return [pathLayer];
     }) : [];
     // const treeLayers = bins && bins.length > 0 ? new PathLayer({
     //   id: `main-layer`,
