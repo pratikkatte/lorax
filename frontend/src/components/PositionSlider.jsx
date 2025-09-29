@@ -34,7 +34,7 @@ export default function PositionSlider({ config, project, ucgbMode, view, valueR
         });
       }
     }
-  }, [valueRef, tsconfig.chrom, project, ucgbMode, setSearchParams]);
+  }, [valueRef.current, tsconfig.chrom, project, ucgbMode, setSearchParams]);
 
 
   // Track min/max genome length

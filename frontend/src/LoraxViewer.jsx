@@ -14,6 +14,7 @@ import axios from 'axios';
 export default function LoraxViewer({ backend, config, settings, setSettings, project, setProject, ucgbMode, saveViewports, setSaveViewports}) {
 
 
+
   const {tsconfig, setConfig} = config;
   const { file } = useParams();
   const {API_BASE} = useLoraxConfig();
@@ -30,6 +31,9 @@ export default function LoraxViewer({ backend, config, settings, setSettings, pr
 
   if (file==='ucgb') {
     ucgbMode.current = true;
+  } else {
+    console.log("load config", tsconfig);
+    ucgbMode.current = false;
   }
 
 
@@ -80,11 +84,13 @@ export default function LoraxViewer({ backend, config, settings, setSettings, pr
           setConfig({...tsconfig, chrom: qp.chrom, value: [qp.genomiccoordstart,qp.genomiccoordend]});
         }
       })
-
-    }else {
+    }
+    else {
       if (qp.project && (qp.genomiccoordstart && qp.genomiccoordend) && !tsconfig) {
 
         setProject(qp.project);
+
+        console.log("load config", qp);
 
         axios.get(`${API_BASE}/${file}?project=${qp.project}&genomiccoordstart=${qp.genomiccoordstart}&genomiccoordend=${qp.genomiccoordend}`).then(response => {
           console.log("response", response)

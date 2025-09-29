@@ -4,6 +4,7 @@ import {
   OrthographicController,
   //OrthographicViewport,
 } from "@deck.gl/core";
+import { Matrix4 } from "@math.gl/core";
 
 let globalSetZoomAxis = () => {};
 let globalPanDirection = () => {};
@@ -131,14 +132,17 @@ const { hoveredInfo, setHoveredInfo } = hoverDetails;
 
   const [globalBinsIndexes, setGlobalBinsIndexes] = useState(null);
 
+
   useEffect(() => {
     if (!viewPortCoords || !globalBins) return;
     if (!globalBins == undefined || globalBins == null || !globalBpPerUnit) return;
     
     var {x0, x1} = viewPortCoords['genome-positions']?.coordinates;
+
+    let treeSpacing = 1.03;
     
     if (globalBpPerUnit) {
-      const newValue = [Math.round(x0*globalBpPerUnit) > 0 ? Math.round(x0*globalBpPerUnit) : 0, Math.round(x1*globalBpPerUnit)>0 ? Math.round(x1*globalBpPerUnit) : 0]
+      const newValue = [Math.max(0, Math.round((x0-treeSpacing)*globalBpPerUnit)), Math.max(0, Math.round((x1-treeSpacing)*globalBpPerUnit))]
       valueRef.current = newValue
     }
   }, [viewState, globalBins, globalBpPerUnit])

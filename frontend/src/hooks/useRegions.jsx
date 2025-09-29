@@ -46,9 +46,14 @@ function getXArray(globalBins) {
   return globalBins.map(b => b.acc);
 }
 
-function modified_sampleTrees(globalBins, lo, hi, globalBpPerUnit) {
-  const sampled_trees = {};
+function modified_sampleTrees(globalBins, lo, hi, globalBpPerUnit, nTrees) {
+  let sampled_trees = {};
   let i = lo;
+
+  let moving = false;
+  if (nTrees <= 2) {
+    moving = true;
+  }
 
   while (i <= hi) {
     const startBin = globalBins[i];
@@ -60,7 +65,7 @@ function modified_sampleTrees(globalBins, lo, hi, globalBpPerUnit) {
     i++;
 
     // Keep merging bins as long as the group span ≤ globalBpPerUnit
-    while (i <= hi) {
+    while (i <= hi ) {
       const nextBin = globalBins[i];
       const span = nextBin.s - groupStart;
 
@@ -70,18 +75,19 @@ function modified_sampleTrees(globalBins, lo, hi, globalBpPerUnit) {
       skip_index.push(i);
       i++;
     }
-
     sampled_trees[j] = {
       index: j,
       global_index: j,
       position: groupStart,
       span: groupEnd - groupStart,
       skip_index,
-      skip_count: skip_index.length
+      skip_count: skip_index.length,
+      position: groupStart,
     };
   }
-
-  // console.log("sampled_trees", sampled_trees);
+  if (true) {
+    console.log("sampled_trees", nTrees, sampled_trees);
+  }
   return sampled_trees;
 }
 
@@ -130,6 +136,12 @@ function makeGetLocalData() {
     const buffer = 0.1;
     const bufferStart = Math.max(0, start - start * buffer);
     const bufferEnd = Math.min(globalBins.length - 1, end + end * buffer);
+    const intervalKeys = Object.keys(config_intervals.new_intervals);
+
+    const lower_bound = lowerBound(intervalKeys, bufferStart);
+    const upper_bound = upperBound(intervalKeys, bufferEnd);
+    const sampledTrees = modified_sampleTrees(globalBins, lower_bound, upper_bound, globalBpPerUnit, nTrees);
+
 
     if (globalbufferStart == null || globalbufferEnd == null) {
       globalbufferStart = bufferStart;
@@ -145,7 +157,6 @@ function makeGetLocalData() {
       }
     }
 
-    const intervalKeys = Object.keys(config_intervals.new_intervals);
     
     // const sampledTrees = new_sampleTrees(
     //   intervalKeys,
@@ -155,9 +166,7 @@ function makeGetLocalData() {
     //   nTrees
     // );
 
-    const lower_bound = lowerBound(intervalKeys, bufferStart);
-    const upper_bound = upperBound(intervalKeys, bufferEnd);
-    const sampledTrees = modified_sampleTrees(globalBins, lower_bound, upper_bound, globalBpPerUnit, nTrees);
+    
 
     // collect all new bins to query in one pass
     const rangeArray = [];
@@ -170,11 +179,12 @@ function makeGetLocalData() {
         localBins[i] = {
           ...temp_bin,
           visible,
-          path: null, // will hydrate below if visible
+          path: null,
           global_index: i,
           skip_index: sampledTrees[i]?.skip_index,
           skip_count: sampledTrees[i]?.skip_count,
           span: sampledTrees[i]?.span,
+          
         };
 
         if (visible) {
@@ -231,7 +241,7 @@ function makeGetLocalData() {
     lastStart = lower_bound;
     lastEnd = upper_bound;
 
-    // console.log("localBins", localBins);
+    console.log("localBins", localBins);
     return localBins;
   };
 }
@@ -260,6 +270,7 @@ const useRegions = ({ backend, globalBins, valueRef, viewState, saveViewports, g
               if (Object.keys(prev).length === Object.keys(bins).length ) {
                 return prev;
               }
+
               return bins; 
             });
           });
