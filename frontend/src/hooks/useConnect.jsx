@@ -58,15 +58,6 @@ function useConnect({ setGettingDetails, settings }) {
           vertical_mode: settings.vertical_mode,
         });
       }
-      if (message.type === "viz" && message.role === "config") {
-
-        // queryConfig(message.data);
-
-        // worker.postMessage({
-        //   type: "config",
-        //   data: message.data,
-        // });
-      }
     };
 
     ws.onerror = (err) => {
@@ -119,29 +110,21 @@ function useConnect({ setGettingDetails, settings }) {
     }, 3000);
     return () => clearInterval(pingInterval);
   }, []);
-
-
+  
   const queryConfig = useCallback((configData, globalBpPerUnit=null) => {
 
-    // sendMessage({
-    //   type: "config",
-    //   data: configData,
-    // });
-    worker.postMessage({
-      type: "config",
-      data: configData,
-      globalBpPerUnit: globalBpPerUnit,
-    })
-
-    onConfigReceipt = (receivedData) => {
-      console.log("got config result", receivedData);
-      // setResult(receivedData);
-      websocketEvents.emit("viz", {
-        type: "viz",
-        role: "config-global-bins",
-        data: receivedData,
+    return new Promise ((resolve) => {
+      worker.postMessage({
+        type: "config",
+        data: configData,
+        globalBpPerUnit: globalBpPerUnit,
       });
-    };
+
+      onConfigReceipt = (receivedData) => {
+        console.log("got query config result", receivedData);
+        resolve(receivedData);
+      };
+    })
   }, []);
 
   

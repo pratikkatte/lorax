@@ -11,11 +11,11 @@ function useConfig({backend}) {
 
   const [globalBpPerUnit, setGlobalBpPerUnit] = useState(null);
 
-  const setWidth = useCallback((width, zoom) => {
-    if (width && tsconfig){
+  const setWidth = useCallback((width) => {
+    if (width && tsconfig.intervals){
       const genome_length = tsconfig.intervals[tsconfig.intervals.length - 1][1];
       setGlobalBpPerUnit(genome_length/(tsconfig.intervals.length));
-    } 
+    }
   }, [tsconfig, globalBpPerUnit]);
 
   const handleConfigUpdate = useCallback((data) => {
@@ -25,24 +25,27 @@ function useConfig({backend}) {
     }
   }, [tsconfig]);
 
-  const handleConfigGlobalBins = useCallback((data) => {
-    if (data.role === "config-global-bins") {
-      setGlobalBins(data.data.data);
-    }
-  }, [tsconfig]);
-
   useEffect(() => {
     if (globalBpPerUnit) {
-      queryConfig(tsconfig, globalBpPerUnit);
+      queryConfig(tsconfig, globalBpPerUnit).then((data) => {
+        console.log("useConfig queryConfig", data.data);
+        setGlobalBins(data.data);
+      });
     }
   }, [globalBpPerUnit]);
+
+
+  useEffect(() => {
+    if (globalBins) {
+      console.log("useConfig globalBins", globalBins);
+    }
+  }, [globalBins]);
 
   useEffect(() => {
     if (!isConnected) return;
     // Subscribe to config updates
     websocketEvents.on("viz", handleConfigUpdate);
 
-    websocketEvents.on("viz", handleConfigGlobalBins);
     // Cleanup subscription on unmount or disconnect
     return () => {
       console.log("unmounting")

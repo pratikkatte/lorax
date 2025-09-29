@@ -71,7 +71,7 @@ class MyOrthographicController extends OrthographicController {
 
   const useView = ({ config, viewPortCoords, hoverDetails, valueRef}) => {
 
-  const {globalBins, globalBpPerUnit} = config;
+  const {globalBins, globalBpPerUnit, tsconfig} = config;
   const [zoomAxis, setZoomAxis] = useState("Y");
   const [panDirection, setPanDirection] = useState(null);
   const [xzoom, setXzoom] = useState(window.screen.width < 600 ? -1 : 0);
@@ -90,6 +90,10 @@ const { hoveredInfo, setHoveredInfo } = hoverDetails;
   const maxZoom = 17;
 
   const views = useMemo(() => {
+    if (!valueRef.current && tsconfig){
+      // TODO: set initial view state based on tsconfig.value. for direct url access.
+      console.log("alter initial view state", tsconfig.value)
+    }
     return [
         new OrthographicView({
           x: '10%',
@@ -122,16 +126,16 @@ const { hoveredInfo, setHoveredInfo } = hoverDetails;
           controller:false,
         }),
       ]}, [
-    viewState,
-    zoomAxis,
-    xzoom,
-    panDirection
+        tsconfig
+    // viewState,
+    // zoomAxis,
+    // xzoom,
+    // panDirection
   ]);
 
   const [mouseXY, setMouseXY] = useState(false);
 
   const [globalBinsIndexes, setGlobalBinsIndexes] = useState(null);
-
 
   useEffect(() => {
     if (!viewPortCoords || !globalBins) return;
@@ -145,7 +149,7 @@ const { hoveredInfo, setHoveredInfo } = hoverDetails;
       const newValue = [Math.max(0, Math.round((x0-treeSpacing)*globalBpPerUnit)), Math.max(0, Math.round((x1-treeSpacing)*globalBpPerUnit))]
       valueRef.current = newValue
     }
-  }, [viewState, globalBins, globalBpPerUnit])
+  }, [viewState])
 
   const setView = useCallback((targetView) => {
 
