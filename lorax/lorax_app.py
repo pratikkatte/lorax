@@ -108,11 +108,17 @@ async def get_file(
             viz_config, chat_config = await lorax_handler.handle_upload(file_path)
         else:
             viz_config, chat_config = {"data": "no file"}, {"data": "no file"}  # Or handle differently
+        
+        await manager.send_to_component("viz", {
+            "type": "viz", 
+            "role": "config",
+            "data": viz_config,
+        })
+        
     except Exception as e:
         print(f"Error loading file: {e}")
         return {"error": str(e)}  
 
-    print("viz_config", file_path)
     return {
         "file_path": str(file_path) if file_path else None,
         "project": project,

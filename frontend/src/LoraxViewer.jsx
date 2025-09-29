@@ -81,7 +81,7 @@ export default function LoraxViewer({ backend, config, settings, setSettings, pr
         if (response.data.error) {
           console.log("error", response.data.error)
         } else {
-          setConfig({...tsconfig, chrom: qp.chrom, value: [qp.genomiccoordstart,qp.genomiccoordend]});
+          setConfig({...tsconfig, chrom: qp.chrom, value: [qp.genomiccoordstart, qp.genomiccoordend]});
         }
       })
     }
@@ -90,26 +90,26 @@ export default function LoraxViewer({ backend, config, settings, setSettings, pr
 
         setProject(qp.project);
 
-        console.log("load config", qp);
-
         axios.get(`${API_BASE}/${file}?project=${qp.project}&genomiccoordstart=${qp.genomiccoordstart}&genomiccoordend=${qp.genomiccoordend}`).then(response => {
-          console.log("response", response)
 
+          console.log("config response", response.data, tsconfig)
           if (response.data.error) {
             console.log("error", response.data.error)
           } else {
-            setConfig({...tsconfig, project: qp.project, value: [qp.genomiccoordstart,qp.genomiccoordend]});
+            // console.log("config set", tsconfig, qp.project, qp.genomiccoordstart, qp.genomiccoordend)
+            // setConfig({...tsconfig, project: qp.project, value: [qp.genomiccoordstart,qp.genomiccoordend]});
           }
         })
 
       }
       if (tsconfig && tsconfig.value && !qp.project && !qp.genomiccoordstart && !qp.genomiccoordend) {
+        console.log("search params set", tsconfig.value)
         setSearchParams(...searchParams, { project: qp.project, genomiccoordstart: tsconfig.value[0], genomiccoordend: tsconfig.value[1]});
     }
 
   }
 
-  }, [file, ucgbMode]);
+  }, [file, ucgbMode, tsconfig]);
 
 
 
@@ -141,7 +141,7 @@ export default function LoraxViewer({ backend, config, settings, setSettings, pr
           <Lorax backend={backend} config={config} settings={settings} setSettings={setSettings} project={project} ucgbMode={ucgbMode} saveViewports={saveViewports} setSaveViewports={setSaveViewports} />
         </div>
         <div className={`transition-all relative ${showInfo ? '' : 'hidden'} shadow-2xl bg-gray-100 duration-200 ${showSidebar ? 'w-[25%]' : 'w-1/4'}`}>
-            <Info backend={backend} gettingDetails={gettingDetails} setGettingDetails={setGettingDetails} setShowInfo={setShowInfo} config={tsconfig} setConfig={setConfig} selectedFileName={selectedFileName} setSelectedFileName={setSelectedFileName}/>
+            {/* <Info backend={backend} gettingDetails={gettingDetails} setGettingDetails={setGettingDetails} setShowInfo={setShowInfo} config={tsconfig} setConfig={setConfig} selectedFileName={selectedFileName} setSelectedFileName={setSelectedFileName}/> */}
         </div>
         <div className={`transition-all relative ${showSettings ? '' : 'hidden'} shadow-2xl bg-gray-100 duration-200 ${showSidebar ? 'w-[25%]' : 'w-1/4'}`}>
             <Settings settings={settings} setSettings={setSettings} showSettings={showSettings} setShowSettings={setShowSettings}/>

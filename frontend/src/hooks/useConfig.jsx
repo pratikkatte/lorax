@@ -20,6 +20,7 @@ function useConfig({backend}) {
 
   const handleConfigUpdate = useCallback((data) => {
     if (data.role === "config") {
+      console.log("handleConfigUpdate", data.data)
       setConfig({...tsconfig, ...data.data});
     }
   }, [tsconfig]);

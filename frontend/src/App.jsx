@@ -26,8 +26,6 @@ function App() {
   const [saveViewports, setSaveViewports] = useState({});
   const config = useConfig({backend, saveViewports, setSaveViewports});
 
-
-
   const upload = useFileUpload({
     config,
     setProject,
