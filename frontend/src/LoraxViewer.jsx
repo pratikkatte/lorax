@@ -1,8 +1,6 @@
 // src/components/ViewerScreen.jsx
-import { useEffect, useState } from "react";
+import { useEffect, useState , useCallback} from "react";
 import { useParams, useNavigate, useFetcher, useSearchParams, Navigate } from "react-router-dom";
-import Chatbot from './ChatBot.jsx'
-import { BsChatDots } from "react-icons/bs";
 import { BsFillKanbanFill } from "react-icons/bs";
 import { FaGear } from "react-icons/fa6";
 import Lorax from './Lorax.jsx'
@@ -19,7 +17,7 @@ export default function LoraxViewer({ backend, config, settings, setSettings, pr
   const { file } = useParams();
   const {API_BASE} = useLoraxConfig();
   const [searchParams, setSearchParams] = useSearchParams();
-  const navigate = useNavigate();
+  // const navigate = useNavigate();
 
   // UI state
   const [isChatbotVisible, setIsChatbotVisible] = useState(false);
@@ -29,12 +27,22 @@ export default function LoraxViewer({ backend, config, settings, setSettings, pr
   const [gettingDetails, setGettingDetails] = useState(false);
   const [selectedFileName, setSelectedFileName] = useState("");
 
-  if (file==='ucgb') {
-    ucgbMode.current = true;
-  } else {
-    console.log("load config", tsconfig);
-    ucgbMode.current = false;
-  }
+  useEffect(() => {
+    if (file && file === 'ucgb') {
+      ucgbMode.current = true;
+      handleUCGBMode();
+    }else{
+      ucgbMode.current = false;
+      handleNormalMode();
+    }
+  }, [file]);
+
+  // if (file==='ucgb') {
+  //   ucgbMode.current = true;
+  // } else {
+  //   console.log("load config", tsconfig);
+  //   ucgbMode.current = false;
+  // }
 
 
   const qp = {
@@ -62,13 +70,7 @@ export default function LoraxViewer({ backend, config, settings, setSettings, pr
     setShowSettings(true);
   };
 
-  useEffect(() => {
-
-    const fileName = decodeURIComponent(file || "");
-    if (!fileName) {
-      navigate("/", { replace: true });
-      return;
-    }
+  const handleUCGBMode = useCallback(() => {
     if (ucgbMode.current) {
       axios.get(`${API_BASE}/ucgb?chrom=${qp.chrom}&genomiccoordstart=${qp.genomiccoordstart}&genomiccoordend=${qp.genomiccoordend}`).then(response => {
         console.log("response", response)
@@ -85,35 +87,24 @@ export default function LoraxViewer({ backend, config, settings, setSettings, pr
         }
       })
     }
-    else {
-      if (qp.project && (qp.genomiccoordstart && qp.genomiccoordend) && !tsconfig) {
+  }, [ucgbMode]);
 
-        setProject(qp.project);
-
-        axios.get(`${API_BASE}/${file}?project=${qp.project}&genomiccoordstart=${qp.genomiccoordstart}&genomiccoordend=${qp.genomiccoordend}`).then(response => {
-
-          console.log("config response", response.data, tsconfig)
-          if (response.data.error) {
-            console.log("error", response.data.error)
-          } else {
-            // console.log("config set", tsconfig, qp.project, qp.genomiccoordstart, qp.genomiccoordend)
-            if (!tsconfig) {
-            setConfig({project: qp.project, value: [qp.genomiccoordstart,qp.genomiccoordend]});
-            }
+  const handleNormalMode = useCallback(() => {
+    if (qp.project && (qp.genomiccoordstart && qp.genomiccoordend) && !tsconfig) {
+      setProject(qp.project);
+      axios.get(`${API_BASE}/${file}?project=${qp.project}&genomiccoordstart=${qp.genomiccoordstart}&genomiccoordend=${qp.genomiccoordend}`).then(response => {
+        console.log("config response", response.data, tsconfig)
+        if (response.data.error) {
+          console.log("error", response.data.error)
+        } else {
+          // console.log("config set", tsconfig, qp.project, qp.genomiccoordstart, qp.genomiccoordend)
+          if (!tsconfig) {
+          setConfig({project: qp.project, value: [qp.genomiccoordstart,qp.genomiccoordend]});
           }
-        })
-
-      }
-      if (tsconfig && tsconfig.value && !qp.project && !qp.genomiccoordstart && !qp.genomiccoordend) {
-        console.log("search params set", tsconfig.value)
-        setSearchParams(...searchParams, { project: qp.project, genomiccoordstart: tsconfig.value[0], genomiccoordend: tsconfig.value[1]});
+        }
+      })
     }
-
-  }
-
-  }, [file, ucgbMode, tsconfig]);
-
-
+  }, [ucgbMode, tsconfig]);
 
   return (
     <>
@@ -143,7 +134,7 @@ export default function LoraxViewer({ backend, config, settings, setSettings, pr
           <Lorax backend={backend} config={config} settings={settings} setSettings={setSettings} project={project} ucgbMode={ucgbMode} saveViewports={saveViewports} setSaveViewports={setSaveViewports} />
         </div>
         <div className={`transition-all relative ${showInfo ? '' : 'hidden'} shadow-2xl bg-gray-100 duration-200 ${showSidebar ? 'w-[25%]' : 'w-1/4'}`}>
-            {/* <Info backend={backend} gettingDetails={gettingDetails} setGettingDetails={setGettingDetails} setShowInfo={setShowInfo} config={tsconfig} setConfig={setConfig} selectedFileName={selectedFileName} setSelectedFileName={setSelectedFileName}/> */}
+            <Info backend={backend} gettingDetails={gettingDetails} setGettingDetails={setGettingDetails} setShowInfo={setShowInfo} config={tsconfig} setConfig={setConfig} selectedFileName={selectedFileName} setSelectedFileName={setSelectedFileName}/>
         </div>
         <div className={`transition-all relative ${showSettings ? '' : 'hidden'} shadow-2xl bg-gray-100 duration-200 ${showSidebar ? 'w-[25%]' : 'w-1/4'}`}>
             <Settings settings={settings} setSettings={setSettings} showSettings={showSettings} setShowSettings={setShowSettings}/>
