@@ -11,17 +11,19 @@ function useConfig({backend}) {
 
   const [globalBpPerUnit, setGlobalBpPerUnit] = useState(null);
 
-  const setWidth = useCallback((width) => {
-    if (width && tsconfig.intervals){
-      const genome_length = tsconfig.intervals[tsconfig.intervals.length - 1][1];
-      setGlobalBpPerUnit(genome_length/(tsconfig.intervals.length));
-    }
-  }, [tsconfig, globalBpPerUnit]);
 
   const handleConfigUpdate = useCallback((data) => {
     if (data.role === "config") {
-      console.log("handleConfigUpdate", data.data)
+      console.log("handleConfigUpdate", data.data, tsconfig)
       setConfig({...tsconfig, ...data.data});
+      setGlobalBpPerUnit(data.data.genome_length/(Object.keys(data.data.new_intervals).length));
+      // setWidth(data.data.genome_length);
+    }
+  }, [tsconfig]);
+
+  useEffect(() => {
+    if (tsconfig) {
+      console.log("tsconfig", tsconfig)
     }
   }, [tsconfig]);
 
@@ -33,13 +35,6 @@ function useConfig({backend}) {
       });
     }
   }, [globalBpPerUnit]);
-
-
-  useEffect(() => {
-    if (globalBins) {
-      console.log("useConfig globalBins", globalBins);
-    }
-  }, [globalBins]);
 
   useEffect(() => {
     if (!isConnected) return;
@@ -58,9 +53,8 @@ function useConfig({backend}) {
     tsconfig, 
     setConfig,
     globalBins,
-    setWidth,
     globalBpPerUnit
-  }), [tsconfig, setConfig, globalBins, setWidth, globalBpPerUnit]);
+  }), [tsconfig, setConfig, globalBins, globalBpPerUnit]);
 };
 
 export default useConfig;

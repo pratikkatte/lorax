@@ -90,6 +90,7 @@ export default function LoraxViewer({ backend, config, settings, setSettings, pr
   }, [ucgbMode]);
 
   const handleNormalMode = useCallback(() => {
+    console.log("in handleNormalMode")
     if (qp.project && (qp.genomiccoordstart && qp.genomiccoordend) && !tsconfig) {
       setProject(qp.project);
       axios.get(`${API_BASE}/${file}?project=${qp.project}&genomiccoordstart=${qp.genomiccoordstart}&genomiccoordend=${qp.genomiccoordend}`).then(response => {
@@ -98,13 +99,13 @@ export default function LoraxViewer({ backend, config, settings, setSettings, pr
           console.log("error", response.data.error)
         } else {
           // console.log("config set", tsconfig, qp.project, qp.genomiccoordstart, qp.genomiccoordend)
-          if (!tsconfig) {
-          setConfig({project: qp.project, value: [qp.genomiccoordstart,qp.genomiccoordend]});
-          }
+          // if (!tsconfig) {
+          // setConfig({project: qp.project, value: [qp.genomiccoordstart,qp.genomiccoordend]});
+          // }
         }
       })
     }
-  }, [ucgbMode, tsconfig]);
+  }, [ucgbMode]);
 
   return (
     <>

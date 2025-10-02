@@ -106,6 +106,7 @@ async def get_file(
     try:
         if file_path:
             viz_config, chat_config = await lorax_handler.handle_upload(file_path)
+            viz_config['value'] = [genomiccoordstart, genomiccoordend]
         else:
             viz_config, chat_config = {"data": "no file"}, {"data": "no file"}  # Or handle differently
         

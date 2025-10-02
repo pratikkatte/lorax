@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import {
   OrthographicView,
   OrthographicController,
@@ -76,6 +76,13 @@ class MyOrthographicController extends OrthographicController {
   const [panDirection, setPanDirection] = useState(null);
   const [xzoom, setXzoom] = useState(window.screen.width < 600 ? -1 : 0);
 
+  const viewPortCoordsRef = useRef();
+
+
+  useEffect(() => {
+    viewPortCoordsRef.current = viewPortCoords;
+  }, [viewPortCoords])
+
 const { hoveredInfo, setHoveredInfo } = hoverDetails;
 
   const [viewState, setViewState] = useState({
@@ -89,11 +96,50 @@ const { hoveredInfo, setHoveredInfo } = hoverDetails;
 
   const maxZoom = 17;
 
-  const views = useMemo(() => {
-    if (!valueRef.current && tsconfig){
-      // TODO: set initial view state based on tsconfig.value. for direct url access.
-      console.log("alter initial view state", tsconfig.value)
+  const updateValueRef = useCallback(() => {
+    
+    let treeSpacing = 1.03;
+    var {x0, x1} = viewPortCoords['genome-positions']?.coordinates;
+    if (globalBpPerUnit) {
+      const newValue = [
+        Math.max(0, Math.round((x0 - treeSpacing) * globalBpPerUnit)),
+        Math.max(0, Math.round((x1 - treeSpacing) * globalBpPerUnit))
+      ];
+      return newValue;
     }
+  }, [viewPortCoords, globalBpPerUnit, valueRef]);
+
+  useEffect(() => {
+    console.log("valueRef", valueRef.current)
+  }, [valueRef.current])
+
+  const changeView = useCallback((val) => {
+  
+    if (!val) return;
+    valueRef.current = val;
+    if (globalBpPerUnit && viewPortCoordsRef?.current) {
+      let [x0, x1] = [val[0]/globalBpPerUnit, val[1]/globalBpPerUnit];
+      const Z = Math.log2((viewPortCoordsRef.current['ortho']['viewport'].width * globalBpPerUnit) / (val[1] - val[0]))
+      setViewState((prev) => {
+        return {
+          ...prev,
+          ['ortho']: {
+            ...prev['ortho'],
+           'target': [((x1+1.03)+(x0+1.03))/2, prev['ortho'].target[1]],
+            'zoom': [Z>=1 ? Z : 1, prev['ortho'].zoom[1]],
+          },
+          ['genome-positions']: {
+            ...prev['genome-positions'],
+            'target': [((x1+1.03)+(x0+1.03))/2, prev['genome-positions'].target[1]],
+            'zoom': [Z>=1 ? Z : 1, prev['genome-positions'].zoom[1]],
+          }
+        }
+      })
+    }
+  }, [globalBpPerUnit, viewPortCoordsRef, viewState])
+
+  const views = useMemo(() => {
+
     return [
         new OrthographicView({
           x: '10%',
@@ -125,50 +171,23 @@ const { hoveredInfo, setHoveredInfo } = hoverDetails;
           id: "tree-time",
           controller:false,
         }),
-      ]}, [
-        tsconfig
-    // viewState,
-    // zoomAxis,
-    // xzoom,
-    // panDirection
-  ]);
+      ]}, [tsconfig]);
 
   const [mouseXY, setMouseXY] = useState(false);
 
   const [globalBinsIndexes, setGlobalBinsIndexes] = useState(null);
 
   useEffect(() => {
-    if (!viewPortCoords || !globalBins) return;
-    if (!globalBins == undefined || globalBins == null || !globalBpPerUnit) return;
-    
-    var {x0, x1} = viewPortCoords['genome-positions']?.coordinates;
+    if (!viewPortCoords || !globalBins || !tsconfig) return;
 
-    let treeSpacing = 1.03;
-    
-    if (globalBpPerUnit) {
-      const newValue = [Math.max(0, Math.round((x0-treeSpacing)*globalBpPerUnit)), Math.max(0, Math.round((x1-treeSpacing)*globalBpPerUnit))]
-      valueRef.current = newValue
+    if (tsconfig?.value && !valueRef.current){
+      console.log("in this if condition", tsconfig.value)
+      changeView(tsconfig.value);
+    }else{
+      const newValue = updateValueRef();
+      valueRef.current = newValue;
     }
-  }, [viewState])
-
-  const setView = useCallback((targetView) => {
-
-    setViewState((prev) => {
-      return {
-        ...prev,
-        'ortho': {
-          ...prev['ortho'],
-          target: [targetView['ortho']['target'],prev['ortho']['target'][1]],
-          zoom: [targetView['ortho']['zoom'],prev['ortho']['zoom'][1]]
-        },
-        'genome-positions': {
-          ...prev['genome-positions'],
-          target: [targetView['genome-positions']['target'],prev['genome-positions']['target'][1]],
-          zoom: [targetView['genome-positions']['zoom'],prev['genome-positions']['zoom'][1]]
-        }
-      }
-    })
-  },[]);
+  }, [viewState, tsconfig, viewPortCoordsRef.current])
   
   const handleViewStateChange = useCallback(({viewState:newViewState, viewId, oldViewState}) => {
     if (!viewId || !newViewState) return;
@@ -234,7 +253,7 @@ const { hoveredInfo, setHoveredInfo } = hoverDetails;
       return newViewStates;
     });
     
-  }, [zoomAxis, panDirection, hoveredInfo])
+  }, [zoomAxis, panDirection, hoveredInfo, tsconfig])
 
 
   const moveLeftView = useCallback((val) => {
@@ -268,35 +287,11 @@ const { hoveredInfo, setHoveredInfo } = hoverDetails;
     }
   })
   }, [valueRef, globalBpPerUnit])
-  
-  const changeView = useCallback((val) => {
-
-    let [x0, x1] = [val[0]/globalBpPerUnit, val[1]/globalBpPerUnit];
-    const Z = Math.log2((viewPortCoords['ortho']['viewport'].width * globalBpPerUnit) / (val[1] - val[0]))
-
-    setViewState((prev) => {
-      return {
-        ...prev,
-        ['ortho']: {
-          ...prev['ortho'],
-          'target': [Math.abs(x1)-Math.abs(x0)/2, prev['ortho'].target[1]],
-          'zoom': [Z>=1 ? Z : 1, prev['ortho'].zoom[1]],
-        },
-        ['genome-positions']: {
-          ...prev['genome-positions'],
-          'target': [Math.abs(x1)-Math.abs(x0)/2, prev['genome-positions'].target[1]],
-          'zoom': [Z>=1 ? Z : 1, prev['genome-positions'].zoom[1]],
-        }
-      }
-    })
-
-  }, [valueRef, globalBpPerUnit])
 
   const output = useMemo(() => {
     return {
       viewState,
       setViewState,
-      setView,
       views,
       zoomAxis,
       setZoomAxis,
@@ -313,7 +308,6 @@ const { hoveredInfo, setHoveredInfo } = hoverDetails;
   }, [
     viewState,
     setViewState,
-    setView,
     views,
     zoomAxis,
     setZoomAxis,

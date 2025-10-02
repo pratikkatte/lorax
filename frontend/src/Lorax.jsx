@@ -19,7 +19,7 @@ function Lorax({backend, config, settings, setSettings, project, ucgbMode, saveV
   const valueRef = useRef(null);
 
   let hoverDetails = useHoverDetails();
-    
+
   const view = useView({config, viewPortCoords, hoverDetails, valueRef});
 
   return (

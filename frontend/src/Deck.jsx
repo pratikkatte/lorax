@@ -91,7 +91,7 @@ function Deck({
   valueRef
 }) {
 
-  const {tsconfig, globalBins, setWidth, globalBpPerUnit} = config;
+  const {tsconfig, globalBins, globalBpPerUnit} = config;
   
   const [hoveredKey, setHoveredKey] = useState(null);
   const [hoverInfo, setHoverInfoRaw] = useState(null);
@@ -231,17 +231,7 @@ function Deck({
     }
     return;
   }, [deckRef, saveViewports, hoveredInfo ]);
-  
 
-  useEffect(()=> {
-    //pass
-  }, [deckRef, viewPortCoords, regions, saveViewports]);
-
-  useEffect(()=> {
-    if (!globalBpPerUnit, saveViewports?.ortho?.width) {
-    setWidth(saveViewports.ortho.width, viewState?.ortho?.zoom[0]);
-    }
-  }, [saveViewports?.ortho?.width, viewState?.ortho?.zoom]);
   
 
   const handleAfterRender = useCallback(() => {
