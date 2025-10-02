@@ -30,7 +30,6 @@ function useConfig({backend}) {
   useEffect(() => {
     if (globalBpPerUnit) {
       queryConfig(tsconfig, globalBpPerUnit).then((data) => {
-        console.log("useConfig queryConfig", data.data);
         setGlobalBins(data.data);
       });
     }

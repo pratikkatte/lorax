@@ -7,9 +7,10 @@ import PositionSlider from './components/PositionSlider'
 import useHoverDetails from "./hooks/useHoverDetails";
 
 
-function Lorax({backend, config, settings, setSettings, project, ucgbMode, saveViewports, setSaveViewports}) {
+function Lorax({backend, config, settings, setSettings, project, ucgbMode}) {
 
   const {tsconfig} = config;
+
   const [mouseDownIsMinimap, setMouseDownIsMinimap] = useState(false);
   const [deckSize, setDeckSize] = useState(null); // idk the use of this?
   const [hoveredTreeIndex, setHoveredTreeIndex] = useState({path: null, node: null, treeIndex: null}); // this is for knowing which tree is hovered. 
@@ -49,8 +50,6 @@ function Lorax({backend, config, settings, setSettings, project, ucgbMode, saveV
               setViewPortCoords={setViewPortCoords}
               viewPortCoords={viewPortCoords}
               hoverDetails={hoverDetails}
-              saveViewports={saveViewports}
-              setSaveViewports={setSaveViewports}
               valueRef={valueRef}
             />
           </div>

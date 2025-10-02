@@ -65,7 +65,7 @@ function getGlobalBins_linear(data, globalBpPerUnit) {
   list[0] = [0, 0];
   for (let i = 0; i < intervalsKeys.length; i++) {
     const k = intervalsKeys[i];
-    list[i+1] = intervals[k];
+    list[i] = intervals[k];
   }
   const out = new Array(intervalsKeys.length);
   let acc = 0;

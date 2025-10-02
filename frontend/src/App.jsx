@@ -23,8 +23,7 @@ function App() {
   const {settings, setSettings} = useSettings();
   const [gettingDetails, setGettingDetails] = useState(false);
   const backend = useConnect({setGettingDetails, settings});
-  const [saveViewports, setSaveViewports] = useState({});
-  const config = useConfig({backend, saveViewports, setSaveViewports});
+  const config = useConfig({backend});
 
   const upload = useFileUpload({
     config,
@@ -55,8 +54,6 @@ function App() {
             project={project}
             setProject={setProject}
             ucgbMode={ucgbMode}
-            saveViewports={saveViewports}
-            setSaveViewports={setSaveViewports}
           />
         }
       />

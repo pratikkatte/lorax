@@ -12,8 +12,8 @@ let globalPanDirection = () => {};
 
 const INITIAL_VIEW_STATE = {
   'genome_positions':{
-    target: [2,1],
-    zoom: [6,6],
+    target: [961,1],
+    zoom: [8,8],
     minZoom: 1,
   },
   'tree-time':{
@@ -22,8 +22,8 @@ const INITIAL_VIEW_STATE = {
     minZoom: 7,
   },
   'ortho': {
-    target: [2,0],
-    zoom: [6,6],
+    target: [961,0],
+    zoom: [8,8],
     minZoom: 1,
   }
 }
@@ -139,13 +139,19 @@ const { hoveredInfo, setHoveredInfo } = hoverDetails;
   }, [globalBpPerUnit, viewPortCoordsRef, viewState])
 
   const views = useMemo(() => {
+///
+
+// top: '1%',
+// left: '1%',
+// height: '80%',
+// width: '99%',
 
     return [
         new OrthographicView({
-          x: '10%',
-          y: '8%',
-          height: '80%',
-          width:'80%',
+          x: '5%',
+          y: '4%',
+          height: '77%',
+          width:'99%',
           id: "ortho",
           controller: {
             type: MyOrthographicController,
@@ -155,10 +161,10 @@ const { hoveredInfo, setHoveredInfo } = hoverDetails;
           initialViewState: INITIAL_VIEW_STATE.ortho
         }),
         new OrthographicView({
-          x: '10%',
-          y: '5%',
+          x: '5%',
+          y: '1%',
           height: '3%',
-          width: '80%',
+          width: '99%',
           id: "genome-positions",
           controller:false,
           initialViewState: INITIAL_VIEW_STATE['genome-positions']
