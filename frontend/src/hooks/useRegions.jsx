@@ -85,9 +85,6 @@ function modified_sampleTrees(globalBins, lo, hi, globalBpPerUnit, nTrees) {
       position: groupStart,
     };
   }
-  if (true) {
-    console.log("sampled_trees", nTrees, sampled_trees);
-  }
   return sampled_trees;
 }
 

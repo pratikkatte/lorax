@@ -19,9 +19,8 @@ export default class TreeLayer extends CompositeLayer {
 
     const divide_pos = bin.s / globalBpPerUnit;
     const modelMatrix = new Matrix4().translate([treeSpacing, 0, 0]);
-
+    console.log("bin", bin.path.filter(d => d?.position !== undefined && d?.position !== null));
     return [
-      // Path layer for the tree
       new PathLayer({
         id: `${this.props.id}-path-${bin.global_index}`,
         data: bin.path,
@@ -41,7 +40,25 @@ export default class TreeLayer extends CompositeLayer {
           getWidth: [hoveredTreeIndex],
           data: [bin.path],
         },
-      })
+      }),
+
+      new ScatterplotLayer({
+        id: `${this.props.id}-smaples-${bin.global_index}`,
+        data: bin.path.filter(d => d?.position !== undefined && d?.position !== null),
+        getPosition: (d) => {
+          const pos = d.position[0] + divide_pos;
+          console.log("d", d, pos);
+          return [pos, d.position[1]];
+        },
+        getFillColor: [0, 0, 0, 255],
+        getLineColor: [80, 80, 180, 255],
+        getLineWidth: 1,
+        getRadius: 3,
+        radiusUnits: 'pixels',
+        modelMatrix,
+        viewId,
+      }),
+
     ];
   }
 }

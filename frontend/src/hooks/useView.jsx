@@ -109,10 +109,6 @@ const { hoveredInfo, setHoveredInfo } = hoverDetails;
     }
   }, [viewPortCoords, globalBpPerUnit, valueRef]);
 
-  useEffect(() => {
-    console.log("valueRef", valueRef.current)
-  }, [valueRef.current])
-
   const changeView = useCallback((val) => {
   
     if (!val) return;
