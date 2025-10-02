@@ -47,10 +47,9 @@ export default class TreeLayer extends CompositeLayer {
         data: bin.path.filter(d => d?.position !== undefined && d?.position !== null),
         getPosition: (d) => {
           const pos = d.position[0] + divide_pos;
-          console.log("d", d, pos);
           return [pos, d.position[1]];
         },
-        getFillColor: [0, 0, 0, 255],
+        getFillColor: [100, 200, 100, 255],
         getLineColor: [80, 80, 180, 255],
         getLineWidth: 1,
         getRadius: 3,

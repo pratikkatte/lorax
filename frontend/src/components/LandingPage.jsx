@@ -20,6 +20,8 @@ import useLoraxConfig from "../globalconfig.js";
 
 function DatasetFiles({ project, files = [], loadFile}) {
   const [q, setQ] = useState("");
+  const [loadingFile, setLoadingFile] = useState(null);
+  
   const visible = useMemo(() => {
     const sorted = [...files]
       .map(f => (typeof f === "string" ? f : f?.name ?? "unnamed"))
@@ -44,7 +46,13 @@ function DatasetFiles({ project, files = [], loadFile}) {
             <li key={name}>
               <FilePill
                 name={name}
-                onClick={() => loadFile?.({ project, file: name })} />
+                loading={loadingFile === name}
+                onClick={e => {
+                  e.currentTarget.disabled = true;
+                  setLoadingFile(name);
+                  loadFile?.({ project, file: name});
+                }}
+              />
               
             </li>
           ))}
@@ -56,7 +64,7 @@ function DatasetFiles({ project, files = [], loadFile}) {
   );
 }
 
-function FilePill({ name, onClick }) {
+function FilePill({ name, onClick, loading = false }) {
   return (
     <button
       onClick={onClick}
@@ -68,8 +76,8 @@ function FilePill({ name, onClick }) {
         </span>
         <span className="truncate">{name}</span>
       </span>
-      <span className="text-emerald-700 opacity-0 group-hover:opacity-100 text-xs">
-        Load
+      <span className={`text-emerald-700 text-xs ${!loading ? "opacity-0 group-hover:opacity-100" : ""}`}>
+        {loading ? "Loading…" : "Load"}
       </span>
     </button>
   );
