@@ -22,12 +22,6 @@ export class GenomeGridLayer extends CompositeLayer {
     xzoom: null
   };
 
-  initializeState() {
-    this._localBins = [];
-    this._lastStart = null;
-    this._lastEnd = null;
-  }
-
   renderLayers() {
     
     const {
@@ -39,23 +33,22 @@ export class GenomeGridLayer extends CompositeLayer {
 
     const treeSpacing = 1.03;
     const modelMatrix = new Matrix4().translate([treeSpacing, 0, 0]);
-    // const modelMatrix = null;
 
     return [
-      new LineLayer({
-      id: `${this.props.id}-lines`,
-      data: Object.values(data).map(d => d.s),
-      getSourcePosition: d => {
-        const pos = [d / globalBpPerUnit, y0];
-        return pos;
-      },
-      getTargetPosition: d => [d /globalBpPerUnit, y1],
-      getColor,
-      viewId,
-      pickable: false,
-      modelMatrix,
-      zOffset: -1,
-    }),
+    //   new LineLayer({
+    //   id: `${this.props.id}-lines`,
+    //   data: Object.values(data).map(d => d.s),
+    //   getSourcePosition: d => {
+    //     const pos = [d / globalBpPerUnit, y0];
+    //     return pos;
+    //   },
+    //   getTargetPosition: d => [d /globalBpPerUnit, y1],
+    //   getColor,
+    //   viewId,
+    //   pickable: false,
+    //   modelMatrix,
+    //   zOffset: -1,
+    // }),
     showLabels &&
       new TextLayer({
         id: `${this.props.id}-labels`,
@@ -75,95 +68,26 @@ export class GenomeGridLayer extends CompositeLayer {
         },
         zOffset: -1,
       }),
-      new TextLayer({
-        id: `${this.props.id}-skip-labels`,
-        data: Object.values(data).map(d => ({skip_position: (d.s+(d.span/2))/globalBpPerUnit, skip_count: d.skip_count? d.skip_count : 0})),
-        getPosition: d => [d.skip_position, 1],
-        getText: d => d.skip_count > 0 ? `${d.skip_count} skip trees` : '',
-        getColor: [0,10,0,255],
-        sizeUnits: 'pixels',
-        getSize: 12,
-        viewId,
-        pickable: false,
-        modelMatrix,
-        updateTriggers: {
-          data: localCoordinates,
-          getPosition: [globalBpPerUnit],
-          getText: [localCoordinates]   
-        },
-        zIndex: 1000,
-        // zOffset: -1,
+      // new TextLayer({
+      //   id: `${this.props.id}-skip-labels`,
+      //   data: Object.values(data).map(d => ({skip_position: (d.s+(d.span/2))/globalBpPerUnit, skip_count: d.skip_count? d.skip_count : 0})),
+      //   getPosition: d => [d.skip_position, 1],
+      //   getText: d => d.skip_count > 0 ? `${d.skip_count} skip trees` : '',
+      //   getColor: [0,10,0,255],
+      //   sizeUnits: 'pixels',
+      //   getSize: 12,
+      //   viewId,
+      //   pickable: false,
+      //   modelMatrix,
+      //   updateTriggers: {
+      //     data: localCoordinates,
+      //     getPosition: [globalBpPerUnit],
+      //     getText: [localCoordinates]   
+      //   },
+      //   zIndex: 1000,
+      //   // zOffset: -1,
 
-      })
+      // })
     ].filter(Boolean);
-    // return [
-    //   new LineLayer({
-    //     id: `${this.props.id}-lines`,
-    //     data: data ? data.flatMap(d => {
-    //       if (d.visibility) {
-    //         const globalBin = globalBins[d.global_index];
-    //         return [{
-    //           ...globalBin,
-    //           start: globalBin.s,
-    //           end: globalBin.e,
-    //           sourcePosition: [globalBin?.acc, y0],
-    //           targetPosition: [globalBin?.acc, y1]
-    //         }];
-    //       } else {
-    //         // If d.trees_index is an array of indices to globalBins, return a line for each skip
-    //         if (d.trees_index && d.trees_index.length > 0) {
-
-    //           return d.trees_index.map(idx => {
-    //             const globalBin = globalBins[idx];
-    //             return {
-    //               ...globalBin,
-    //               start: globalBin?.s,
-    //               end: globalBin?.e,
-    //               sourcePosition: [globalBin?.acc, y0],
-    //               targetPosition: [globalBin?.acc, y1]
-    //             };
-    //           });
-    //         }
-    //         else {
-    //         }
-    //       }
-    //     }) : [],
-    //     getSourcePosition: d => d.sourcePosition ?? [getX(d), y0],
-    //     getTargetPosition: d => d.targetPosition ?? [getX(d), y1],
-    //     getColor,
-    //     // modelMatrix,
-    //     viewId,
-    //     pickable: false,
-    //     updateTriggers: {
-    //       getSourcePosition: [y0],
-    //       getTargetPosition: [y1],
-    //       getColor,
-    //       data,
-    //       globalBins
-    //     }
-    //   }),
-    //   showLabels &&
-    //     new TextLayer({
-    //       id: `${this.props.id}-labels`,
-    //       data,
-    //       getPosition: d => [getX(d), 1],
-    //       getText,
-    //       getColor: getTextColor,
-    //       sizeUnits: 'pixels',
-    //       getSize: 9,
-    //       // billboard: true,
-    //       // modelMatrix,
-    //       viewId,
-    //       pickable: false,
-    //       background: false,
-    //       updateTriggers: {
-    //         getPosition: [y1, labelOffset],
-    //         getText,
-    //         getColor: getTextColor,
-    //         data,
-    //         globalBins
-    //       }
-    //     })
-    // ].filter(Boolean);
   }
 }

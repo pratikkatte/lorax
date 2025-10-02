@@ -11,6 +11,7 @@ import { Matrix4, Vector3 } from "@math.gl/core";
 import { useMemo, useCallback, useState, useEffect } from "react";
 import { GenomeGridLayer } from "../layers/GenomeGridLayer";
 import TreeLayer from '../layers/TreeLayer';
+import { GenomeInfoLayer } from '../layers/GenomeInfoLayer';
 
 const useLayers = ({
   xzoom,
@@ -32,10 +33,12 @@ globalBpPerUnit
     const isOrtho = viewport.id === 'ortho'
     const isGenome = viewport.id === 'genome-positions';
     const isTreeTime = viewport.id === 'tree-time';
+    const isGenomeInfo = viewport.id === 'genome-info';
 
     return (
       (isOrtho && layer.id.startsWith('main')) ||
       (isGenome && layer.id.startsWith('genome-positions')) ||
+      (isGenomeInfo && layer.id.startsWith('genome-info')) ||
       (isTreeTime && layer.id.startsWith('tree-time'))
     );
   }, []);
@@ -64,6 +67,24 @@ globalBpPerUnit
       viewId: 'genome-positions',
       showLabels: true,
     });
+
+    const genomeInfoLayer = new GenomeInfoLayer({
+      id: 'genome-info-grid',
+      data: bins,
+      viewId: 'genome-info',
+      backend: backend,
+      value: valueRef.current,
+      xzoom: xzoom,
+      globalBpPerUnit: globalBpPerUnit,
+      globalBins: globalBins,
+      y0: 0,
+      y1: 2,
+      labelOffset: 0.06,
+      getColor: [100, 100, 100, 255],
+      getTextColor: [0, 0,0, 255],
+      getText: d => d.end.toLocaleString("en-US", { maximumFractionDigits: 0 }),
+      modelMatrix: new Matrix4().translate([0, 0, 0]),
+    });
     
     const singleTreeLayers = bins && Object.keys(bins).length > 0
     ? Object.values(bins)
@@ -80,7 +101,7 @@ globalBpPerUnit
         })
     : [];
     
-    return [...singleTreeLayers, genomeGridLayer];
+    return [...singleTreeLayers, genomeGridLayer, genomeInfoLayer];
 
   }, [bins, localCoordinates, hoveredTreeIndex]);
 

@@ -24,8 +24,8 @@ const ViewportOverlay = React.memo(() => (
         position: 'absolute',
         top: '1%',
         left: '5%',
-        height: '80%',
-        width: '99%',
+        height: '82%',
+        width: '95%',
         zIndex: 10,
         pointerEvents: 'none',
         border: '2px solid #333333',
@@ -34,6 +34,7 @@ const ViewportOverlay = React.memo(() => (
         backgroundColor: 'transparent',
       }}
     />
+    {/* genome positions */}
     <div
       style={{
         display: 'flex',
@@ -44,7 +45,23 @@ const ViewportOverlay = React.memo(() => (
         top: '1%',
         left: '5%',
         height: '3%',
-        width: '99%',
+        width: '95%',
+        zIndex: '10',
+        pointerEvents: 'none'
+      }}
+    />
+    {/* genome info */}
+    <div
+      style={{
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        position: 'absolute',
+        border: '1px solid black',
+        top: '4%',
+        left: '5%',
+        height: '2%',
+        width: '95%',
         zIndex: '10',
         pointerEvents: 'none'
       }}

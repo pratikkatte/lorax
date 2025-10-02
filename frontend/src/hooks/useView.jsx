@@ -16,6 +16,11 @@ const INITIAL_VIEW_STATE = {
     zoom: [8,8],
     minZoom: 1,
   },
+  'genome-info':{
+    target: [961,1],
+    zoom: [8,8],
+    minZoom: 1,
+  },
   'tree-time':{
     target: [0.5 ,0],
     zoom: [8,8],
@@ -88,7 +93,8 @@ const { hoveredInfo, setHoveredInfo } = hoverDetails;
   const [viewState, setViewState] = useState({
     'ortho': INITIAL_VIEW_STATE['ortho'],
     'genome-positions': INITIAL_VIEW_STATE['genome_positions'],
-    'tree-time': INITIAL_VIEW_STATE['tree-time']
+    'tree-time': INITIAL_VIEW_STATE['tree-time'],
+    'genome-info': INITIAL_VIEW_STATE['genome-info']
   });
 
   globalSetZoomAxis = setZoomAxis;
@@ -128,6 +134,11 @@ const { hoveredInfo, setHoveredInfo } = hoverDetails;
             ...prev['genome-positions'],
             'target': [((x1+1.03)+(x0+1.03))/2, prev['genome-positions'].target[1]],
             'zoom': [Z>=1 ? Z : 1, prev['genome-positions'].zoom[1]],
+          },
+          ['genome-info']: {
+            ...prev['genome-info'],
+            'target': [((x1+1.03)+(x0+1.03))/2, prev['genome-info'].target[1]],
+            'zoom': [Z>=1 ? Z : 1, prev['genome-info'].zoom[1]],
           }
         }
       })
@@ -135,19 +146,12 @@ const { hoveredInfo, setHoveredInfo } = hoverDetails;
   }, [globalBpPerUnit, viewPortCoordsRef, viewState])
 
   const views = useMemo(() => {
-///
-
-// top: '1%',
-// left: '1%',
-// height: '80%',
-// width: '99%',
-
     return [
         new OrthographicView({
           x: '5%',
-          y: '4%',
+          y: '6%',
           height: '77%',
-          width:'99%',
+          width:'95%',
           id: "ortho",
           controller: {
             type: MyOrthographicController,
@@ -158,9 +162,18 @@ const { hoveredInfo, setHoveredInfo } = hoverDetails;
         }),
         new OrthographicView({
           x: '5%',
+          y: '4%',
+          height: '2%',
+          width: '95%',
+          id: "genome-info",
+          controller:false,
+          initialViewState: INITIAL_VIEW_STATE['genome-info']
+        }),
+        new OrthographicView({
+          x: '5%',
           y: '1%',
           height: '3%',
-          width: '99%',
+          width: '95%',
           id: "genome-positions",
           controller:false,
           initialViewState: INITIAL_VIEW_STATE['genome-positions']
@@ -183,7 +196,6 @@ const { hoveredInfo, setHoveredInfo } = hoverDetails;
     if (!viewPortCoords || !globalBins || !tsconfig) return;
 
     if (tsconfig?.value && !valueRef.current){
-      console.log("in this if condition", tsconfig.value)
       changeView(tsconfig.value);
     }else{
       const newValue = updateValueRef();
@@ -239,7 +251,6 @@ const { hoveredInfo, setHoveredInfo } = hoverDetails;
           ...prev[viewId],
           zoom,
           target,
-          padding: '1%'
         }
       };
 
@@ -252,6 +263,14 @@ const { hoveredInfo, setHoveredInfo } = hoverDetails;
           zoom: [zoom[0], prev['genome-positions'].zoom?.[1]]  
         };
       }
+      if (prev['genome-info']) {
+        newViewStates['genome-info'] = {
+          ...prev['genome-info'],
+          target: [target[0], prev['genome-info'].target?.[1] || 0],
+          zoom: [zoom[0], prev['genome-info'].zoom?.[1]]  
+        };
+      }
+
       return newViewStates;
     });
     
@@ -269,6 +288,10 @@ const { hoveredInfo, setHoveredInfo } = hoverDetails;
         ['genome-positions']: {
           ...prev['genome-positions'],
           'target': [prev['genome-positions'].target[0]-(100/globalBpPerUnit), prev['genome-positions'].target[1]],
+        },
+        ['genome-info']: {
+          ...prev['genome-info'],
+          'target': [prev['genome-info'].target[0]-(100/globalBpPerUnit), prev['genome-info'].target[1]],
         }
       }
     })

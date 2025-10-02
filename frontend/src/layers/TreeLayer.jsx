@@ -20,7 +20,6 @@ export default class TreeLayer extends CompositeLayer {
     const divide_pos = bin.s / globalBpPerUnit;
     const modelMatrix = new Matrix4().translate([treeSpacing, 0, 0]);
 
-    console.log("bin", bin.path.filter(d => d?.position !== undefined && d?.position !== null));
     return [
       new PathLayer({
         id: `${this.props.id}-path-${bin.global_index}`,
