@@ -19,6 +19,7 @@ export default class TreeLayer extends CompositeLayer {
 
     const divide_pos = bin.s / globalBpPerUnit;
     const modelMatrix = new Matrix4().translate([treeSpacing, 0, 0]);
+
     console.log("bin", bin.path.filter(d => d?.position !== undefined && d?.position !== null));
     return [
       new PathLayer({
@@ -44,20 +45,44 @@ export default class TreeLayer extends CompositeLayer {
 
       new ScatterplotLayer({
         id: `${this.props.id}-smaples-${bin.global_index}`,
-        data: bin.path.filter(d => d?.position !== undefined && d?.position !== null),
+        data: bin.path.filter(d => 
+          d?.position !== undefined && 
+          d?.position !== null && 
+          d?.mutations === undefined
+        ),
         getPosition: (d) => {
           const pos = d.position[0] + divide_pos;
           return [pos, d.position[1]];
         },
-        getFillColor: [100, 200, 100, 255],
+        getFillColor: [10, 10, 10, 255],
         getLineColor: [80, 80, 180, 255],
         getLineWidth: 1,
-        getRadius: 3,
-        radiusUnits: 'pixels',
+        getRadius: 0.005,
+        // radiusUnits: 'pixels',
+        radiusUnits: 'common',
         modelMatrix,
         viewId,
       }),
 
+      new IconLayer({
+        id: `${this.props.id}-icons-${bin.global_index}`,
+        data: bin.path.filter(d => d?.mutations !== undefined && d?.mutations !== null),
+        getPosition: (d) => [d.position[0] + divide_pos, d.position[1]],
+        getIcon: () => 'marker',
+        modelMatrix,
+        getColor: [255, 0, 0],
+        viewId,
+        getSize: 0.01,     
+        sizeUnits: 'common',
+        // sizeScale: 1,    
+        iconAtlas: '/X.png',
+        iconMapping: {
+          marker: {x: 0, y: 0, width: 128, height: 128, mask: true}
+        },
+        updateTriggers: {
+          data: [bin.path],
+        },
+      }),
     ];
   }
 }

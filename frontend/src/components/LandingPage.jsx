@@ -92,7 +92,6 @@ function getProjects(API_BASE) {
     });
 }
 
-
 export default function LandingPage({
   upload,
   version = "pre‑release",
