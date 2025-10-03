@@ -34,34 +34,26 @@ function lowerBound(arr, x) {
   }
   return ans;
 }
-function nearestIndex(arr, x) {
-  if (arr.length === 0) return -1;
-  if (x <= arr[0]) return 0;
-  if (x >= arr[arr.length - 1]) return arr.length - 1;
-  const i = lowerBound(arr, x);
-  const prev = i - 1;
-  return (x - arr[prev] <= arr[i] - x) ? prev : i;
-}
-function getXArray(globalBins) {
-  return globalBins.map(b => b.acc);
-}
 
 function modified_sampleTrees(globalBins, lo, hi, globalBpPerUnit, nTrees) {
   let sampled_trees = {};
   let i = lo;
 
   let moving = false;
+  
   if (nTrees <= 2) {
     moving = true;
   }
+  // there are two things I want to do here.
+  // 1. acccess the regions to show the trees that fit within the region. 
 
   while (i <= hi) {
     const startBin = globalBins[i];
     let groupStart = startBin.s;
     let groupEnd = startBin.e;
+
     const skip_index = [];
     let j = i; // index of the representative bin
-
     i++;
 
     // Keep merging bins as long as the group span ≤ globalBpPerUnit
@@ -70,11 +62,12 @@ function modified_sampleTrees(globalBins, lo, hi, globalBpPerUnit, nTrees) {
       const span = nextBin.s - groupStart;
 
       if (span > globalBpPerUnit) break;
-
       groupEnd = nextBin.e;
       skip_index.push(i);
       i++;
     }
+
+
     sampled_trees[j] = {
       index: j,
       global_index: j,
@@ -83,24 +76,31 @@ function modified_sampleTrees(globalBins, lo, hi, globalBpPerUnit, nTrees) {
       skip_index,
       skip_count: skip_index.length,
       position: groupStart,
+      visible: true,
+      padding: 0
     };
+        // check if the span is greater then skip_count*globalBpPerUnit
+        let span_total = groupEnd - groupStart;
+        if (span_total > (skip_index.length+1)*globalBpPerUnit) {
+          for (let k = 0; k < skip_index.length; k++) {
+            sampled_trees[skip_index[k]] = {
+              index: skip_index[k],
+              global_index: skip_index[k],
+              position: groupStart+(k+1)*globalBpPerUnit,
+              span: globalBins[skip_index[k]].e - globalBins[skip_index[k]].s,
+              skip_index: [],
+              skip_count: 0,
+              visible: true,
+              padding: 0.1 * (k+1)
+            };
+            delete sampled_trees[j].skip_index[k]
+            sampled_trees[j].skip_count--;
+            sampled_trees[j].span = globalBins[j].e - globalBins[j].s;
+         
+          }
+        }
   }
-  return sampled_trees;
-}
-
-function new_sampleTrees(globalBins, lo, hi, globalBpPerUnit, nTrees) {
-  const sampled_trees = {};
-  const lowest_step = Math.floor(lo / globalBpPerUnit);
-  const highest_step = Math.ceil(hi / globalBpPerUnit);
-  
-  for (let i = lowest_step; i <= highest_step; i++) {
-    const genomic_val = i * globalBpPerUnit;
-    const tree_index = nearestIndex(globalBins, genomic_val);
-    if (tree_index !== sampled_trees[sampled_trees.length - 1]?.global_index) {
-      sampled_trees[tree_index] = { index: i, global_index: tree_index, position: genomic_val };
-      // sampled_trees.push({ index: i, global_index: tree_index, position: genomic_val });
-    }
-  }
+  console.log("sampled_trees", sampled_trees);
   return sampled_trees;
 }
 
@@ -139,6 +139,14 @@ function makeGetLocalData() {
     const upper_bound = upperBound(intervalKeys, bufferEnd);
     const sampledTrees = modified_sampleTrees(globalBins, lower_bound, upper_bound, globalBpPerUnit, nTrees);
 
+    // Object.keys(sampledTrees)
+    //   .filter((key) => sampledTrees[key].visible)
+    //   .forEach((key) => {
+    //     if (localBins[key] && !localBins[key]?.path) {
+    //       // console.log("the key exists", localBins[key].path);
+    //       // console.log("the key exists", sampledTrees[key]);
+    //   }
+    // });
 
     if (globalbufferStart == null || globalbufferEnd == null) {
       globalbufferStart = bufferStart;
@@ -153,22 +161,11 @@ function makeGetLocalData() {
         globalbufferEnd = bufferEnd;
       }
     }
-
-    
-    // const sampledTrees = new_sampleTrees(
-    //   intervalKeys,
-    //   bufferStart,
-    //   bufferEnd,
-    //   globalBpPerUnit,
-    //   nTrees
-    // );
-
-    
-
     // collect all new bins to query in one pass
     const rangeArray = [];
 
     const addBins = (lo, hi) => {
+
       for (let i = lo; i <= hi; i++) {
         const temp_bin = globalBins[i];
         const visible = sampledTrees[i] ? true : false;
@@ -181,11 +178,13 @@ function makeGetLocalData() {
           skip_index: sampledTrees[i]?.skip_index,
           skip_count: sampledTrees[i]?.skip_count,
           span: sampledTrees[i]?.span,
-          
+          position: sampledTrees[i]?.position,
+          padding: sampledTrees[i]?.padding,
         };
 
         if (visible) {
           rangeArray.push({ global_index: i });
+          sampledTrees[i].visible = false;
         }
       }
     };
@@ -225,7 +224,7 @@ function makeGetLocalData() {
         }
       }
     }
-
+    
     // batch query once for all new bins
     if (rangeArray.length > 0) {
       const results = await queryNodes([], rangeArray);
@@ -237,8 +236,6 @@ function makeGetLocalData() {
 
     lastStart = lower_bound;
     lastEnd = upper_bound;
-
-    console.log("localBins", localBins);
     return localBins;
   };
 }

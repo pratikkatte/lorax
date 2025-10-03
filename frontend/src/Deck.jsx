@@ -186,8 +186,8 @@ function Deck({
         const pixel_e = saveViewports.current?.['genome-positions']?.project(coords_e);
         // genome_positions_pixels.push({pixels: [pixel_s, pixel_e], highlight: b.visible})
 
-        const [x0, y0] = saveViewports.current?.['ortho']?.project([(b.s/globalBpPerUnit)+1.03,0])
-        const [x1, y1] = saveViewports.current?.['ortho']?.project([((b.s+globalBpPerUnit)/globalBpPerUnit)+1.03,1])
+        const [x0, y0] = saveViewports.current?.['ortho']?.project([(b.position/globalBpPerUnit)+1.03,0])
+        const [x1, y1] = saveViewports.current?.['ortho']?.project([((b.position+globalBpPerUnit)/globalBpPerUnit)+1.03,1])
         // main_positions_pixels.push([x0,y0,x1,y1])
 
         pointsArray.push([

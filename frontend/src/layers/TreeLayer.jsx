@@ -17,8 +17,8 @@ export default class TreeLayer extends CompositeLayer {
     const { bin, globalBpPerUnit, hoveredTreeIndex, treeSpacing, viewId } = this.props;
     if (!bin || !bin.path) return null;
 
-    const divide_pos = bin.s / globalBpPerUnit;
-    const modelMatrix = new Matrix4().translate([treeSpacing, 0, 0]);
+    const divide_pos = bin.position / globalBpPerUnit;
+    const modelMatrix = new Matrix4().translate([treeSpacing+bin.padding, 0, 0]);
 
     return [
       new PathLayer({
