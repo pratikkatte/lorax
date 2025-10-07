@@ -1,7 +1,7 @@
 
 // TreeLayer.js
 import { CompositeLayer } from '@deck.gl/core';
-import { PathLayer, ScatterplotLayer, IconLayer } from '@deck.gl/layers';
+import { PathLayer, ScatterplotLayer, IconLayer, TextLayer } from '@deck.gl/layers';
 import { Matrix4 } from '@math.gl/core';
 
 export default class TreeLayer extends CompositeLayer {
@@ -13,9 +13,12 @@ export default class TreeLayer extends CompositeLayer {
     viewId: 'ortho',
   };
 
+
   renderLayers() {
     const { bin, globalBpPerUnit, hoveredTreeIndex, treeSpacing, viewId } = this.props;
     if (!bin || !bin.path) return null;
+
+    const animatedMatrix = new Matrix4().lerp(bin.prevModelMatrix || bin.modelMatrix, bin.modelMatrix, 0.2);
 
     return [
       new PathLayer({
@@ -30,7 +33,7 @@ export default class TreeLayer extends CompositeLayer {
           hoveredTreeIndex && d.path === hoveredTreeIndex.path ? 3 : 2,
         widthUnits: 'pixels',
         viewId,
-        modelMatrix:bin.modelMatrix,
+        modelMatrix:animatedMatrix,
         pickable: true,
         zOffset: -1,
         updateTriggers: {
@@ -38,6 +41,9 @@ export default class TreeLayer extends CompositeLayer {
           getColor: [hoveredTreeIndex],
           data: [bin.path, bin.modelMatrix],
         },
+        transitions: {
+          data: { duration: 600, easing: t => t * t * (3 - 2 * t) },
+        }
       }),
 
       new ScatterplotLayer({
@@ -54,7 +60,8 @@ export default class TreeLayer extends CompositeLayer {
         getRadius: 0.005,
         // radiusUnits: 'pixels',
         radiusUnits: 'common',
-        modelMatrix:bin.modelMatrix,
+        // modelMatrix:bin.modelMatrix,
+        modelMatrix:animatedMatrix,
         viewId,
         updateTriggers: {
           data: [bin.path, bin.modelMatrix],
@@ -66,7 +73,8 @@ export default class TreeLayer extends CompositeLayer {
         data: bin.path.filter(d => d?.mutations !== undefined && d?.mutations !== null),
         getPosition: d => d.position,
         getIcon: () => 'marker',
-        modelMatrix:bin.modelMatrix,
+        // modelMatrix:bin.modelMatrix,
+        modelMatrix:animatedMatrix,
         getColor: [255, 0, 0],
         viewId,
         getSize: 0.01,     

@@ -32,7 +32,6 @@ export class GenomeInfoLayer extends CompositeLayer {
     const treeSpacing = 0;
     const modelMatrix = new Matrix4().translate([treeSpacing, 0, 0]);
     // const modelMatrix = null;'
-
     return [
       new LineLayer({
       id: `${this.props.id}-lines`,
@@ -49,6 +48,25 @@ export class GenomeInfoLayer extends CompositeLayer {
       modelMatrix,
       zOffset: -1,
     }),
+    new TextLayer({
+      id: `${this.props.id}-labels`,
+      data: Object.values(data).map(d => ({global_index: d.global_index, position: d.s})),
+      getPosition: d => [d.position/globalBpPerUnit, 1],
+      getText: d => d.global_index,
+      getColor: [0,0,0,255],
+      sizeUnits: 'pixels',
+      getSize: 12,
+      viewId,
+      pickable: false,
+      modelMatrix: modelMatrix,
+      updateTriggers: {
+        data: [data],
+        getPosition: [globalBpPerUnit],
+        getText: [data],
+      },
+      zIndex: 1000,
+      zOffset: -1,
+    })
     // new TextLayer({
     //     id: `${this.props.id}-skip-labels`,
     //     data: Object.values(data).map(d => ({skip_position: (d.s+(d.span/2))/globalBpPerUnit, skip_count: d.skip_count? d.skip_count : 0})),

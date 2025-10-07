@@ -180,9 +180,11 @@ function Deck({
       Object.values(bins)
       .filter(b => b.visible).map((b, i) => {
         let modalMatrix = b.modelMatrix;
-        const coords_s = [modalMatrix[12], 0];
+        // const coords_s = [b.bin_start/globalBpPerUnit, 0];
+        const coords_s = [b.s/globalBpPerUnit, 0];
         // later todo : const coords_e = [(b.e/globalBpPerUnit), 0];
-        const coords_e = [((b.s+b.span)/globalBpPerUnit), 0];
+        const coords_e = [(b.e/globalBpPerUnit), 0];
+        // const coords_e = [((b.bin_start+b.span)/globalBpPerUnit), 0];
         const pixel_s = saveViewports.current?.['genome-positions']?.project(coords_s);
         const pixel_e = saveViewports.current?.['genome-positions']?.project(coords_e);
         // genome_positions_pixels.push({pixels: [pixel_s, pixel_e], highlight: b.visible})

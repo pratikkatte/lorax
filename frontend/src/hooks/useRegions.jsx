@@ -36,48 +36,233 @@ function lowerBound(arr, x) {
   return ans;
 }
 
+function distribute(total, spans, alpha = 0.5) {
+  const n = spans.length;
+  const spacing = 0.05
+  const S = spans.reduce((a, b) => a + b, 0);
+  return spans.map(s => (total *(alpha * (1 / n) + (1 - alpha) * (s / S))) - spacing
+  );
+}
+
 function complete_new_sampling(localBins, globalBpPerUnit, nTrees, new_globalBp) {
+
+
   const rangeArray = [];
 
 
   let prevBinEndIdx = null;
   let globalBin = null;
-  let globalBinIdx = null;
+
   let skipCount = 0;
   let binStart = 0;
   let binEnd = 0;
 
+  let scaleFactor = new_globalBp / globalBpPerUnit;
+  
+
+  let func_globalBpPerUnit = new_globalBp;
   const finalizeBin = () => {
+    try {
+
     if (!globalBin) return;
 
-    const span = binEnd - binStart;
-    globalBin.skip = skipCount;
-    globalBin.span = span;
-    globalBin.visible = span > globalBpPerUnit;
 
-    if (globalBin.visible && localBins[globalBinIdx]?.path == null) {
-      rangeArray.push({ global_index: parseInt(globalBinIdx) });
-    }
+    let bin_indexes = globalBin.skip_idx;
 
-    const centerX = 0;
-    const scaleX = skipCount == 0 ? span/(globalBpPerUnit*1.05) : 1;
-    const dividePos = binStart / globalBpPerUnit;
+    if (bin_indexes.length == 1) {
+      let global_index = bin_indexes[0];
 
-    const modelMatrix = new Matrix4()
+      let span = localBins[global_index].e - localBins[global_index].s;
+      // localBins[global_index].visible = true;
+      localBins[global_index]?.path == null && rangeArray.push({ global_index: parseInt(global_index) });
+      const centerX = 0;
+      const scaleX = span/(globalBpPerUnit*1.05);
+      const dividePos = localBins[global_index].s / globalBpPerUnit;
+
+      const modelMatrix = new Matrix4()
       .translate([dividePos, 0, 0])
       .translate([centerX, 0, 0])
       .scale([scaleX, 1, 1])
       .translate([-centerX, 0, 0]);
 
+      localBins[global_index] = {
+        ...localBins[global_index],
+        bin_start: binStart,
+        visible: true,
+        span: globalBin.span,
+        modelMatrix,
+        position: localBins[global_index].s,
+      };
+    } 
+    else {
 
-    localBins[globalBinIdx] = {
-      ...localBins[globalBinIdx],
-      ...globalBin,
-      modelMatrix,
-      position: binStart,
-    };
+      
+      let maxIndex = globalBin.skip_idx[globalBin.index_span.indexOf(Math.max(...globalBin.index_span))];
+      if (scaleFactor == 1){
+        let len_idx = bin_indexes.length;
+        let temp_span = globalBin.span;
+        let scaleX = temp_span/(globalBpPerUnit*1.05)/len_idx;
+        let temp_position = binStart;
+        let centerX = 0;
+        let temp_bin_start = binStart;
+
+        let dist_scales = distribute(temp_span/globalBpPerUnit, globalBin.index_span,  Math.min((nTrees/len_idx), 1));
+        // console.log("scalex", scaleX, bin_indexes, globalBin.index_span, temp_position, dist_span, nTrees, len_idx, Math.min(0.5 + (len_idx/nTrees), 1));
+        bin_indexes.forEach((idx, i) => {
+
+          const dividePos = temp_position / globalBpPerUnit;
+          localBins[idx]?.path == null && rangeArray.push({ global_index: parseInt(idx) });
+
+          const modelMatrix = new Matrix4()
+          .translate([dividePos, 0, 0])
+          .translate([centerX, 0, 0])
+          .scale([dist_scales[i], 1, 1])
+          .translate([-centerX, 0, 0]);
+
+          localBins[idx] = {
+            ...localBins[idx],
+            span: temp_span,
+            bin_start: temp_bin_start,
+            position: temp_position,
+            visible: true,
+            modelMatrix: modelMatrix,
+          };
+
+          temp_position += dist_scales[i]*globalBpPerUnit*1.05;
+
+        })
+      }
+      else{
+        
+
+      bin_indexes.forEach((idx) => {
+
+        if (idx == maxIndex) {
+
+          let temp_span = globalBin.span;
+          let temp_bin_start = binStart;
+          let temp_position = binStart;
+
+          let centerX = 0;
+          // let scaleX = (localBins[idx].e - localBins[idx].s)/(globalBpPerUnit*1.05);
+          // let scaleX = 0.6;
+          let scaleX = temp_span/(globalBpPerUnit*1.05);
+          const dividePos = temp_position / globalBpPerUnit;
+
+          localBins[idx]?.path == null && rangeArray.push({ global_index: parseInt(idx) });
+
+        const modelMatrix = new Matrix4()
+        .translate([dividePos, 0, 0])
+          .translate([centerX, 0, 0])
+          .scale([scaleX, 1, 1])
+          .translate([-centerX, 0, 0])
+          
+
+          localBins[idx] = {
+            ...localBins[idx],
+            span: temp_span,
+            bin_start: temp_bin_start,
+            position: temp_position,
+            visible: true,
+            modelMatrix: modelMatrix,
+          };
+        } else{
+
+          localBins[idx].visible = false;
+          localBins[idx].span = null;
+          localBins[idx].bin_start = null;
+          localBins[idx].position = null;
+          localBins[idx].modelMatrix = null;
+        }
+ 
+
+      });
+    }
+      // let maxIndex = globalBin.skip_idx[globalBin.index_span.indexOf(Math.max(...globalBin.index_span))];
+      
+      // globalBin.skip_idx.forEach((idx) => {
+      //   if (idx == maxIndex) {
+          
+      //     localBins[idx].visible = true;
+      //     localBins[idx]?.path == null && rangeArray.push({ global_index: parseInt(idx) });
+          
+      //     const centerX = 0;
+      //     let local_span = localBins[idx].e - localBins[idx].s;
+      //     const scaleX = local_span/(globalBpPerUnit*1.05);
+      //     const dividePos = localBins[idx].s / globalBpPerUnit;
+
+      //     const modelMatrix = new Matrix4()
+      //     .translate([dividePos, 0, 0])
+      //     .translate([centerX, 0, 0])
+      //     .scale([scaleX, 1, 1])
+      //     .translate([-centerX, 0, 0]);
+
+      //     localBins[idx] = {
+            
+      //       ...globalBin,
+      //       bin_start: binStart,
+      //       global_span: globalBin.span,
+      //       span: local_span,
+      //       skip_index: globalBin.skip_idx,
+
+      //       ...localBins[idx],
+            
+      //       modelMatrix,
+      //       position: localBins[idx].s,
+
+
+      //     };
+      //   }else{
+      //     localBins[idx].visible = false;
+      //     localBins[idx].parent_index = maxIndex;
+      //     localBins[idx].skip_index = [];
+          // localBins[idx].visible = false;
+          // localBins[idx].span = localBins[idx].e - localBins[idx].s;
+          // localBins[idx].position = localBins[idx].s;
+          // localBins[idx].modelMatrix = null;
+          
+        // }
+
+      // });
+    }
+
+    // globalBin.skip = skipCount;
+    // globalBin.span = span;
+    // // globalBin.visible = span > globalBpPerUnit;
+    // globalBin.visible = span > func_globalBpPerUnit;
+    
+    // // TODO: if all the skipped_indexes fit inside the span, then set the visible to true
+    // // TODO at scale factor 1 and based on nTrees, adjust the scaleX less than 1. 
+    
+
+    // if (globalBin.visible && localBins[globalBinIdx]?.path == null) {
+    //   rangeArray.push({ global_index: parseInt(globalBinIdx) });
+    // }
+
+    // const centerX = 0;
+    // const scaleX = skipCount == 1 ? span/(globalBpPerUnit*1.05) : 1;
+    // const dividePos = binStart / globalBpPerUnit;
+
+    // const modelMatrix = new Matrix4()
+    //   .translate([dividePos, 0, 0])
+    //   .translate([centerX, 0, 0])
+    //   .scale([scaleX, 1, 1])
+    //   .translate([-centerX, 0, 0]);
+
+
+    // localBins[globalBinIdx] = {
+    //   ...localBins[globalBinIdx],
+    //   ...globalBin,
+    //   modelMatrix,
+    //   position: binStart,
+    // };
+    }
+    catch (error) {
+      console.log("error in finalizeBin", error);
+    }
   };
 
+  
   for (const key in localBins) {
     if (!Object.prototype.hasOwnProperty.call(localBins, key)) continue;
 
@@ -89,24 +274,23 @@ function complete_new_sampling(localBins, globalBpPerUnit, nTrees, new_globalBp)
 
     if (prevBinEndIdx === null) {
       // first bin
-      globalBin = { skip: 0, skip_idx: [], span };
-      globalBinIdx = key;
+      globalBin = { skip: 0, skip_idx: [key], span, index_span: [span] };
       binStart = s;
       binEnd = e;
-    } else if (binIdxEnd === prevBinEndIdx || globalBin.span < globalBpPerUnit) {
+    } else if (binIdxEnd == prevBinEndIdx || globalBin.span < func_globalBpPerUnit) {
       // merge with current global bin
       skipCount++;
       globalBin.skip_idx.push(key);
-      localBins[key].visibility = false;
-      localBins[key].span = span;
+      globalBin.index_span.push(span)
+      // localBins[key].visible = false;
+      // localBins[key].span = span;
       binEnd = e;
       globalBin.span = binEnd - binStart;
     } else {
       // close out current bin and start a new one
       finalizeBin();
       skipCount = 0;
-      globalBin = { skip: 0, skip_idx: [], span };
-      globalBinIdx = key;
+      globalBin = { skip: 0, skip_idx: [key], span, index_span: [span] };
       binStart = s;
       binEnd = e;
     }
@@ -544,7 +728,7 @@ function getDynamicBpPerUnit(globalBpPerUnit, zoom, baseZoom = 8) {
 
   const zoomDiff = zoom - baseZoom;
   const scaleFactor = Math.max(1, Math.pow(2, -zoomDiff));
-  const new_globalBpPerUnit = globalBpPerUnit * scaleFactor;
+  const new_globalBpPerUnit = globalBpPerUnit * Math.floor(scaleFactor);
   return new_globalBpPerUnit;
 }
 
