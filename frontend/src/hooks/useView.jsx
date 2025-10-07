@@ -80,12 +80,12 @@ class MyOrthographicController extends OrthographicController {
   const [zoomAxis, setZoomAxis] = useState("Y");
   const [panDirection, setPanDirection] = useState(null);
   const [xzoom, setXzoom] = useState(window.screen.width < 600 ? -1 : 0);
-
   const viewPortCoordsRef = useRef();
 
 
   useEffect(() => {
     viewPortCoordsRef.current = viewPortCoords;
+
   }, [viewPortCoords])
 
 const { hoveredInfo, setHoveredInfo } = hoverDetails;
@@ -202,6 +202,11 @@ const { hoveredInfo, setHoveredInfo } = hoverDetails;
       valueRef.current = newValue;
     }
   }, [viewState, tsconfig, viewPortCoordsRef.current])
+
+
+  function getPanStep({zoomX, baseStep = 8, sensitivity = 0.5}) {
+    return baseStep / Math.pow(2, zoomX * sensitivity);
+  }
   
   const handleViewStateChange = useCallback(({viewState:newViewState, viewId, oldViewState}) => {
     if (!viewId || !newViewState) return;
@@ -227,13 +232,12 @@ const { hoveredInfo, setHoveredInfo } = hoverDetails;
       } else if (panDirection === "L"){
         // Adjust pan step according to zoom level
         // The step size decreases as zoom increases (zoom[0] is log2 scale)
-        panStep = zoom[0] / Math.pow(2, zoom[0]);
+        panStep = getPanStep({zoomX: zoom[0], baseStep: 8, sensitivity: zoom[0] >= 8 ? 0.9 : 0.7})
         target[0] = target[0] - panStep;
       }
 
       else if (panDirection === "R"){
-        
-         panStep = zoom[0] / Math.pow(2, zoom[0]);
+        panStep = getPanStep({zoomX: zoom[0], baseStep: 8, sensitivity: zoom[0] >= 8 ? 0.9 : 0.7})
          target[0] = target[0] + panStep;
       }
       

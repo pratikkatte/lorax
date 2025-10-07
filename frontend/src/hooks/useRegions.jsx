@@ -442,7 +442,6 @@ function upperBound(arr, x) {
   return lo;
 }
 
-// proportional scaling for multi-bin groups
 function distribute(total, spans, alpha = 0.5) {
   const n = spans.length;
   const spacing = 0.05;
@@ -498,8 +497,8 @@ function complete_new_sampling(localBins, globalBpPerUnit, nTrees, new_globalBp)
     if (scaleFactor === 1) {
       const temp_span = globalBin.span;
       let temp_position = binStart;
-      const dist_scales = distribute(temp_span / globalBpPerUnit, globalBin.index_span, 0.5);
-
+      const dist_scales = distribute(temp_span / globalBpPerUnit, globalBin.index_span, 1);
+      
       bin_indexes.forEach((idx, i) => {
         const dividePos = temp_position / globalBpPerUnit;
         if (!localBins[idx].path) rangeArray.push({ global_index: parseInt(idx) });
