@@ -121,7 +121,6 @@ function Deck({
 
   const regions = useRegions({backend, viewState, globalBins, valueRef, saveViewports: saveViewports.current, globalBpPerUnit, tsconfig});
 
-  const {scaleFactor} = regions;
 
   const onClickOrMouseMove = useCallback(
     (event) => {
@@ -168,7 +167,7 @@ function Deck({
 
     const [dummy, setDummy] = useState(null);
 
-  const getLayerPixelPositions = useCallback((deckRef, scaleFactor) => {
+  const getLayerPixelPositions = useCallback((deckRef) => {
 
     const {bins} = regions;
     if (!deckRef?.current?.deck) return;
@@ -214,8 +213,8 @@ function Deck({
 
   
 useEffect(() => {
-    getLayerPixelPositions(deckRef, scaleFactor)
-}, [saveViewports.current, scaleFactor])
+    getLayerPixelPositions(deckRef)
+}, [saveViewports.current])
 
   const handleAfterRender = useCallback(() => {
     
