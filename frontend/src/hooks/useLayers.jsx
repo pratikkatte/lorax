@@ -85,7 +85,7 @@ globalBpPerUnit
       getText: d => d.end.toLocaleString("en-US", { maximumFractionDigits: 0 }),
       modelMatrix: new Matrix4().translate([0, 0, 0]),
     });
-    
+
     const singleTreeLayers = bins && Object.keys(bins).length > 0
     ? Object.values(bins)
         .filter(bin => bin?.path !== null && bin.visible)

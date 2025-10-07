@@ -31,7 +31,7 @@ export class GenomeGridLayer extends CompositeLayer {
 
     if (!Object.keys(data).length) return [];
 
-    const treeSpacing = 1.03;
+    const treeSpacing = 0;
     const modelMatrix = new Matrix4().translate([treeSpacing, 0, 0]);
 
     return [

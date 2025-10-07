@@ -29,7 +29,7 @@ export class GenomeInfoLayer extends CompositeLayer {
 
     if (!Object.keys(data).length) return [];
 
-    const treeSpacing = 1.03;
+    const treeSpacing = 0;
     const modelMatrix = new Matrix4().translate([treeSpacing, 0, 0]);
     // const modelMatrix = null;'
 
@@ -49,22 +49,22 @@ export class GenomeInfoLayer extends CompositeLayer {
       modelMatrix,
       zOffset: -1,
     }),
-    new TextLayer({
-        id: `${this.props.id}-skip-labels`,
-        data: Object.values(data).map(d => ({skip_position: (d.s+(d.span/2))/globalBpPerUnit, skip_count: d.skip_count? d.skip_count : 0})),
-        getPosition: d => [d.skip_position, 1],
-        getText: d => d.skip_count > 0 ? `${d.skip_count} skip trees` : '',
-        getColor: [0,10,0,255],
-        sizeUnits: 'pixels',
-        getSize: 12,
-        viewId,
-        pickable: false,
-        modelMatrix,
-        updateTriggers: {
-        },
-        zIndex: 1000,
-        // zOffset: -1,
+    // new TextLayer({
+    //     id: `${this.props.id}-skip-labels`,
+    //     data: Object.values(data).map(d => ({skip_position: (d.s+(d.span/2))/globalBpPerUnit, skip_count: d.skip_count? d.skip_count : 0})),
+    //     getPosition: d => [d.skip_position, 1],
+    //     getText: d => d.skip_count > 0 ? `${d.skip_count} skip trees` : '',
+    //     getColor: [0,10,0,255],
+    //     sizeUnits: 'pixels',
+    //     getSize: 12,
+    //     viewId,
+    //     pickable: false,
+    //     modelMatrix,
+    //     updateTriggers: {
+    //     },
+    //     zIndex: 1000,
+    //     // zOffset: -1,
 
-      })
+    //   })
     ].filter(Boolean);  }
 }

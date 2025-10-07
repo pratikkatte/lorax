@@ -121,6 +121,7 @@ function Deck({
 
   const regions = useRegions({backend, viewState, globalBins, valueRef, saveViewports: saveViewports.current, globalBpPerUnit, tsconfig});
 
+  const {scaleFactor} = regions;
 
   const onClickOrMouseMove = useCallback(
     (event) => {
@@ -167,27 +168,28 @@ function Deck({
 
     const [dummy, setDummy] = useState(null);
 
-  const getLayerPixelPositions = useCallback((deckRef, layerId) => {
-    const spacing = 1;
+  const getLayerPixelPositions = useCallback((deckRef, scaleFactor) => {
+
     const {bins} = regions;
     if (!deckRef?.current?.deck) return;
     const deck = deckRef?.current?.deck;
-    var genome_positions_pixels = []
-    var main_positions_pixels = []
 
     const pointsArray = [];
 
     if (saveViewports.current && Object.keys(saveViewports.current).length > 0) {
       Object.values(bins)
       .filter(b => b.visible).map((b, i) => {
-        const coords_s = [(b.s/globalBpPerUnit)+1.03, 0];
-        const coords_e = [((b.s+b.span)/globalBpPerUnit)+1.03, 0];
+        let modalMatrix = b.modelMatrix;
+        const coords_s = [modalMatrix[12], 0];
+        // later todo : const coords_e = [(b.e/globalBpPerUnit), 0];
+        const coords_e = [((b.s+b.span)/globalBpPerUnit), 0];
         const pixel_s = saveViewports.current?.['genome-positions']?.project(coords_s);
         const pixel_e = saveViewports.current?.['genome-positions']?.project(coords_e);
         // genome_positions_pixels.push({pixels: [pixel_s, pixel_e], highlight: b.visible})
 
-        const [x0, y0] = saveViewports.current?.['ortho']?.project([(b.position/globalBpPerUnit)+1.03,0])
-        const [x1, y1] = saveViewports.current?.['ortho']?.project([((b.position+globalBpPerUnit)/globalBpPerUnit)+1.03,1])
+        const [x0, y0] = saveViewports.current?.['ortho']?.project([modalMatrix[12],0])
+        // const [x1, y1] = saveViewports.current?.['ortho']?.project([((b.position+ (scaleFactor * globalBpPerUnit))/globalBpPerUnit),1])
+        const [x1, y1] = saveViewports.current?.['ortho']?.project([(modalMatrix[12]+ modalMatrix[0]),1])
         // main_positions_pixels.push([x0,y0,x1,y1])
 
         pointsArray.push([
@@ -210,8 +212,8 @@ function Deck({
 
   
 useEffect(() => {
-    getLayerPixelPositions(deckRef, "genome-positions-grid")
-}, [saveViewports.current])
+    getLayerPixelPositions(deckRef, scaleFactor)
+}, [saveViewports.current, scaleFactor])
 
   const handleAfterRender = useCallback(() => {
     
@@ -227,9 +229,6 @@ useEffect(() => {
         'ortho': vpOrtho,
         'genome-positions': vpGenome
       };
-
-
-
         const [x0Ortho, y0Ortho] = vpOrtho.project([0, 0]);
         const [x1Ortho, y1Ortho] = vpOrtho.project([vpOrtho.width, vpOrtho.height]);
         const [x0, y0] = vpGenome.unproject([0, 0]);
