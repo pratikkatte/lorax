@@ -647,6 +647,7 @@ const useRegions = ({ backend, globalBins, valueRef, viewState, globalBpPerUnit,
   const [localBins, setLocalBins] = useState({});
   const localBinsRef = useRef(localBins);
   const isFetching = useRef(false);
+  const [times, setTimes] = useState([]);
   const getLocalData = useMemo(() => new_makeGetLocalData(), []);
 
   // keep latest localBins for stable debounced callback
@@ -666,6 +667,7 @@ const useRegions = ({ backend, globalBins, valueRef, viewState, globalBpPerUnit,
 
       if (rangeArray.length > 0) {
         const results = await queryNodes([], rangeArray);
+        console.log("results", results);
         rangeArray.forEach(({ global_index }) => {
           local_bins[global_index].path = results.paths[global_index] || null;
         });
@@ -691,10 +693,30 @@ const useRegions = ({ backend, globalBins, valueRef, viewState, globalBpPerUnit,
     return getLocalCoordinates(lo - bufferFrac * range, hi + bufferFrac * range);
   }, [valueRef.current?.[0], valueRef.current?.[1]]);
 
+  useEffect(() => {
+    if (tsconfig && tsconfig?.times){
+      setTimes((prev) => {
+        let newTime = [];
+        const maxTime = tsconfig.times[1];
+        const minTime = tsconfig.times[0];
+        for (let i = tsconfig.times[1]; i >= minTime; i--){
+          if (i % 500 == 0) {
+          let position = (maxTime - i) / (maxTime - minTime);
+          newTime.push({position, text: i})
+          }
+
+      }
+      console.log('newTime', newTime);
+      return newTime;
+    })
+    }
+  }, [tsconfig]);
+
   return useMemo(() => ({
     bins: localBins,
     localCoordinates,
-  }), [localBins, localCoordinates]);
+    times
+  }), [localBins, localCoordinates, times]);
 };
 
 export default useRegions;

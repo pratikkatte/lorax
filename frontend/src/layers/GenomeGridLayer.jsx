@@ -1,7 +1,6 @@
 import {CompositeLayer} from '@deck.gl/core';
-import {LineLayer, TextLayer} from '@deck.gl/layers';
-import memoizeOne from 'memoize-one';
-import { Matrix4, Vector3 } from "@math.gl/core";
+import {TextLayer} from '@deck.gl/layers';
+import { Matrix4 } from "@math.gl/core";
 
 export class GenomeGridLayer extends CompositeLayer {
   static defaultProps = {

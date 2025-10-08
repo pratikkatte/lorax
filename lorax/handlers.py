@@ -66,7 +66,8 @@ class LoraxHandler:
         # intervals = {tree.interval[0]: [tree.interval[0], tree.interval[1]] for tree in self.ts.trees()}
         new_intervals = {int(tree.interval[0]): [int(tree.interval[0]), int(tree.interval[1])] for tree in self.ts.trees()}
         self.ts_intervals = new_intervals
-        config = {'genome_length': self.ts.sequence_length, 'new_intervals':new_intervals,'filename': str(self.file_path).split('/')[-1]}
+        times = [self.ts.min_time, self.ts.max_time]
+        config = {'genome_length': self.ts.sequence_length, 'times':times, 'new_intervals':new_intervals,'filename': str(self.file_path).split('/')[-1]}
         return config
     
     def get_tree_details(self, tree_index):

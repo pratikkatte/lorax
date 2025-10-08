@@ -337,7 +337,6 @@ export const queryNodes = async (data, vertical_mode) => {
 function processNewick(nwk_str, mutations, globalMinTime, globalMaxTime, times) {
   let ladderize = true;
   let start_time = times['end']
-
   
   // const tree = kn_parse(nwk_str)
   const tree = kn_parse_auto(nwk_str)

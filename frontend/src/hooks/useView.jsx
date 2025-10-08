@@ -24,7 +24,7 @@ const INITIAL_VIEW_STATE = {
   'tree-time':{
     target: [0.5 ,0],
     zoom: [8,8],
-    minZoom: 7,
+    minZoom: 1,
   },
   'ortho': {
     target: [961,0],
@@ -150,7 +150,7 @@ const { hoveredInfo, setHoveredInfo } = hoverDetails;
         new OrthographicView({
           x: '5%',
           y: '6%',
-          height: '77%',
+          height: '80%',
           width:'95%',
           id: "ortho",
           controller: {
@@ -179,12 +179,13 @@ const { hoveredInfo, setHoveredInfo } = hoverDetails;
           initialViewState: INITIAL_VIEW_STATE['genome-positions']
         }),
         new OrthographicView({
-          x: '5%',
-          y: '8%',
+          x: '2%',
+          y: '6%',
           height: '80%',
-          width: '5%',
+          width: '3%',
           id: "tree-time",
-          controller:false,
+          // controller:false,
+          initialViewState: INITIAL_VIEW_STATE['tree-time']
         }),
       ]}, [tsconfig]);
 
@@ -216,7 +217,7 @@ const { hoveredInfo, setHoveredInfo } = hoverDetails;
       let target = [...oldViewState.target];
       let panStep = 0;
 
-      if(panDirection === null) {
+      if(panDirection === null) { 
         if(zoomAxis==='Y'){
           zoom[1] = newViewState.zoom[1] <= maxZoom ? newViewState.zoom[1] : maxZoom; 
           target[1] = zoom[1] >= maxZoom ? oldViewState.target[1] : newViewState.target[1]; 
@@ -230,8 +231,6 @@ const { hoveredInfo, setHoveredInfo } = hoverDetails;
           target[1] = oldViewState.target[1];
         }
       } else if (panDirection === "L"){
-        // Adjust pan step according to zoom level
-        // The step size decreases as zoom increases (zoom[0] is log2 scale)
         panStep = getPanStep({zoomX: zoom[0], baseStep: 8, sensitivity: zoom[0] >= 8 ? 0.9 : 0.7})
         target[0] = target[0] - panStep;
       }
@@ -272,6 +271,13 @@ const { hoveredInfo, setHoveredInfo } = hoverDetails;
           ...prev['genome-info'],
           target: [target[0], prev['genome-info'].target?.[1] || 0],
           zoom: [zoom[0], prev['genome-info'].zoom?.[1]]  
+        };
+      }
+      if (prev['tree-time']) {
+        newViewStates['tree-time'] = {
+          ...prev['tree-time'],
+          target: [prev['tree-time'].target?.[0], target[1]],
+          zoom: [prev['tree-time'].zoom?.[1], zoom[1]]  
         };
       }
 

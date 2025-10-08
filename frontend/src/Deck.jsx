@@ -24,7 +24,7 @@ const ViewportOverlay = React.memo(() => (
         position: 'absolute',
         top: '1%',
         left: '5%',
-        height: '82%',
+        height: '85%',
         width: '95%',
         zIndex: 10,
         pointerEvents: 'none',
@@ -62,6 +62,22 @@ const ViewportOverlay = React.memo(() => (
         left: '5%',
         height: '2%',
         width: '95%',
+        zIndex: '10',
+        pointerEvents: 'none'
+      }}
+    />
+    {/* tree time */}
+    <div
+      style={{
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        position: 'absolute',
+        border: '1px solid black',
+        top: '6%',
+        left: '2%',
+        height: '80%',
+        width: '3%',
         zIndex: '10',
         pointerEvents: 'none'
       }}
@@ -111,7 +127,6 @@ function Deck({
 
   const [hoveredKey, setHoveredKey] = useState(null);
   const [hoverInfo, setHoverInfoRaw] = useState(null);
-  const [genomePositions, setGenomePositions] = useState([]);
   const { hoveredInfo, setHoveredInfo } = hoverDetails;
 
   const {views, xzoom, setView, viewState, setViewState, handleViewStateChange} = view

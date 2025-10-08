@@ -1,17 +1,11 @@
-import {
-  LineLayer,
-  ScatterplotLayer,
-  TextLayer,
-  PathLayer,
-  IconLayer,
-  SolidPolygonLayer
-} from "@deck.gl/layers";
+
 import { Matrix4, Vector3 } from "@math.gl/core";
 // import genomeCoordinates from "../layers/genomeCoordinates";
-import { useMemo, useCallback, useState, useEffect } from "react";
+import { useMemo, useCallback } from "react";
 import { GenomeGridLayer } from "../layers/GenomeGridLayer";
 import TreeLayer from '../layers/TreeLayer';
 import { GenomeInfoLayer } from '../layers/GenomeInfoLayer';
+import { TimeGridLayer } from '../layers/TimeGridLayer';
 
 const useLayers = ({
   xzoom,
@@ -25,9 +19,7 @@ globalBpPerUnit
 
 }) => {
 
-  const {bins, localCoordinates} = regions;
-
-  const data = {};
+  const {bins, localCoordinates, times} = regions;
   
   const layerFilter = useCallback(({ layer, viewport }) => {
     const isOrtho = viewport.id === 'ortho'
@@ -44,9 +36,14 @@ globalBpPerUnit
   }, []);
 
   const layers = useMemo(() => {
-    // if (!data?.data?.paths) return [];
 
-    const times = data?.data?.times || {};
+    const timeGridLayer = times.length > 0
+    ? new TimeGridLayer({
+      id: 'tree-time-ticks',
+      data: times,
+      viewId: 'tree-time',
+    })
+    : [];
 
     const genomeGridLayer = new GenomeGridLayer({
       backend: backend,
@@ -101,9 +98,9 @@ globalBpPerUnit
         })
     : [];
     
-    return [...singleTreeLayers, genomeGridLayer, genomeInfoLayer];
+    return [...singleTreeLayers, genomeGridLayer, genomeInfoLayer, timeGridLayer];
 
-  }, [bins, localCoordinates, hoveredTreeIndex]);
+  }, [bins, localCoordinates, hoveredTreeIndex, times]);
 
   return { layers, layerFilter };
 };

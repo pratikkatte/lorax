@@ -26,7 +26,6 @@ def _process_single_tree(global_index, ts):
         tree = ts.at_index(global_index)
         node_ids = list(tree.nodes())
 
-        # ✅ NumPy fast min/max
         node_times = np.fromiter((ts.node(u).time for u in node_ids), dtype=np.float64)
         start_time = node_times.min()
         end_time = -node_times.max()
