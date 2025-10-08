@@ -11,14 +11,14 @@ export default class TreeLayer extends CompositeLayer {
     hoveredTreeIndex: null,
     treeSpacing: 1.03,
     viewId: 'ortho',
+    hoveredTreeIndex: null,
+    setHoveredTreeIndex: null,
   };
 
 
   renderLayers() {
-    const { bin, globalBpPerUnit, hoveredTreeIndex, treeSpacing, viewId } = this.props;
+    const { bin, viewId, hoveredTreeIndex, setHoveredTreeIndex } = this.props;
     if (!bin || !bin.path) return null;
-
-    const animatedMatrix = new Matrix4().lerp(bin.prevModelMatrix || bin.modelMatrix, bin.modelMatrix, 0.2);
 
     return [
       new PathLayer({
@@ -33,7 +33,7 @@ export default class TreeLayer extends CompositeLayer {
           hoveredTreeIndex && d.path === hoveredTreeIndex.path ? 3 : 2,
         widthUnits: 'pixels',
         viewId,
-        modelMatrix:animatedMatrix,
+        modelMatrix:bin.modelMatrix,
         pickable: true,
         zOffset: -1,
         updateTriggers: {
@@ -41,9 +41,6 @@ export default class TreeLayer extends CompositeLayer {
           getColor: [hoveredTreeIndex],
           data: [bin.path, bin.modelMatrix],
         },
-        transitions: {
-          data: { duration: 600, easing: t => t * t * (3 - 2 * t) },
-        }
       }),
 
       new ScatterplotLayer({
@@ -61,7 +58,7 @@ export default class TreeLayer extends CompositeLayer {
         // radiusUnits: 'pixels',
         radiusUnits: 'common',
         // modelMatrix:bin.modelMatrix,
-        modelMatrix:animatedMatrix,
+        modelMatrix:bin.modelMatrix,
         viewId,
         updateTriggers: {
           data: [bin.path, bin.modelMatrix],
@@ -74,7 +71,7 @@ export default class TreeLayer extends CompositeLayer {
         getPosition: d => d.position,
         getIcon: () => 'marker',
         // modelMatrix:bin.modelMatrix,
-        modelMatrix:animatedMatrix,
+        modelMatrix:bin.modelMatrix,
         getColor: [255, 0, 0],
         viewId,
         getSize: 0.01,     

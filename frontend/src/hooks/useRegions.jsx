@@ -591,7 +591,7 @@ function new_makeGetLocalData() {
   return async function getLocalData(
     start, end, localBins, config_intervals, globalBpPerUnit, nTrees, new_globalBp
   ) {
-    const bins = { ...localBins }; // safe copy
+    const bins = localBins;
     const buffer = 0.1;
     const bufferStart = Math.max(0, start - start * buffer);
     const intervalKeys = Object.keys(config_intervals.new_intervals)

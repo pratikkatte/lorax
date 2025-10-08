@@ -1,11 +1,8 @@
 import "./App.css";
 import Deck from "./Deck";
 import useView from "./hooks/useView";
-import useGetDynamicData from "./hooks/useGetDynamicData";
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef } from "react";
 import PositionSlider from './components/PositionSlider'
-import useHoverDetails from "./hooks/useHoverDetails";
-
 
 function Lorax({backend, config, settings, setSettings, project, ucgbMode}) {
 
@@ -16,12 +13,9 @@ function Lorax({backend, config, settings, setSettings, project, ucgbMode}) {
   const [hoveredTreeIndex, setHoveredTreeIndex] = useState({path: null, node: null, treeIndex: null}); // this is for knowing which tree is hovered. 
   const deckRef = useRef(); // reference to the deck component. 
   const [viewPortCoords, setViewPortCoords] = useState(null); 
-  const [value, setValue] = useState(null); // hook to know the genomic values displayed on the window. 
   const valueRef = useRef(null);
 
-  let hoverDetails = useHoverDetails();
-
-  const view = useView({config, viewPortCoords, hoverDetails, valueRef});
+  const view = useView({config, viewPortCoords, valueRef});
 
   return (
     <>
@@ -49,7 +43,6 @@ function Lorax({backend, config, settings, setSettings, project, ucgbMode}) {
               config={config}
               setViewPortCoords={setViewPortCoords}
               viewPortCoords={viewPortCoords}
-              hoverDetails={hoverDetails}
               valueRef={valueRef}
             />
           </div>

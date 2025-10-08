@@ -11,96 +11,119 @@ const useLayers = ({
   xzoom,
   valueRef,
   hoveredTreeIndex,
-  deckRef,
   backend,
   globalBins,
   regions,
+  setHoveredTreeIndex,
 globalBpPerUnit 
 
 }) => {
 
-  const {bins, localCoordinates, times} = regions;
+  const { bins = {}, localCoordinates = [], times = [] } = regions;
   
+  
+  /** Filter visible layers by viewId (deck.gl native optimization) */
   const layerFilter = useCallback(({ layer, viewport }) => {
-    const isOrtho = viewport.id === 'ortho'
-    const isGenome = viewport.id === 'genome-positions';
-    const isTreeTime = viewport.id === 'tree-time';
-    const isGenomeInfo = viewport.id === 'genome-info';
+    const vid = viewport.id;
+    const lid = layer.id;
 
     return (
-      (isOrtho && layer.id.startsWith('main')) ||
-      (isGenome && layer.id.startsWith('genome-positions')) ||
-      (isGenomeInfo && layer.id.startsWith('genome-info')) ||
-      (isTreeTime && layer.id.startsWith('tree-time'))
+      (vid === "ortho" && lid.startsWith("main")) ||
+      (vid === "genome-positions" && lid.startsWith("genome-positions")) ||
+      (vid === "genome-info" && lid.startsWith("genome-info")) ||
+      (vid === "tree-time" && lid.startsWith("tree-time"))
     );
   }, []);
 
-  const layers = useMemo(() => {
+    const timeGridLayer = useMemo(() => {
+      if (!times?.length) return null;
+      return new TimeGridLayer({
+        id: "tree-time-ticks",
+        data: times,
+        viewId: "tree-time",
+      });
+    }, [times]);
 
-    const timeGridLayer = times.length > 0
-    ? new TimeGridLayer({
-      id: 'tree-time-ticks',
-      data: times,
-      viewId: 'tree-time',
-    })
-    : [];
+    const genomeGridLayer = useMemo(() => {
+      return new GenomeGridLayer({
+        id: "genome-positions-grid",
+        backend,
+        data: localCoordinates,
+        globalBpPerUnit,
+        globalBins,
+        y0: 0,
+        y1: 2,
+        labelOffset: 0.06,
+        getColor: [100, 100, 100, 255],
+        getTextColor: [0, 0, 0, 255],
+        getText: d =>
+          d.end.toLocaleString("en-US", { maximumFractionDigits: 0 }),
+        viewId: "genome-positions",
+        showLabels: true,
+      });
+    }, [localCoordinates, globalBpPerUnit]);
 
-    const genomeGridLayer = new GenomeGridLayer({
-      backend: backend,
-      value: valueRef.current,
-      xzoom: xzoom,
-      localCoordinates: localCoordinates,
-      id: 'genome-positions-grid',
-      data: bins,
-      globalBpPerUnit: globalBpPerUnit,
-      globalBins: globalBins,
-      y0: 0,
-      y1: 2,
-      labelOffset: 0.06,
-      getColor: [100, 100, 100, 255],
-      getTextColor: [0, 0,0, 255],
-      getText: d => d.end.toLocaleString("en-US", { maximumFractionDigits: 0 }),
-      modelMatrix: new Matrix4().translate([0, 0, 0]),
-      viewId: 'genome-positions',
-      showLabels: true,
-    });
+    const genomeInfoLayer = useMemo(() => {
+      return new GenomeInfoLayer({
+        id: "genome-info-grid",
+        data: bins,
+        globalBpPerUnit: globalBpPerUnit,
+        y0: 0,
+        y1: 2,
+        labelOffset: 0.06,
+        getColor: [100, 100, 100, 255],
+        getTextColor: [0, 0, 0, 255],
+        getText: d =>
+          d.end.toLocaleString("en-US", { maximumFractionDigits: 0 }),
+        viewId: "genome-info",
+      });
+    }, [bins, globalBpPerUnit]);
 
-    const genomeInfoLayer = new GenomeInfoLayer({
-      id: 'genome-info-grid',
-      data: bins,
-      viewId: 'genome-info',
-      backend: backend,
-      value: valueRef.current,
-      xzoom: xzoom,
-      globalBpPerUnit: globalBpPerUnit,
-      globalBins: globalBins,
-      y0: 0,
-      y1: 2,
-      labelOffset: 0.06,
-      getColor: [100, 100, 100, 255],
-      getTextColor: [0, 0,0, 255],
-      getText: d => d.end.toLocaleString("en-US", { maximumFractionDigits: 0 }),
-      modelMatrix: new Matrix4().translate([0, 0, 0]),
-    });
+    const treeLayers = useMemo(() => {
 
-    const singleTreeLayers = bins && Object.keys(bins).length > 0
-    ? Object.values(bins)
-        .filter(bin => bin?.path !== null && bin.visible)
-        .map((bin, i) => {
-          return new TreeLayer({
-            id: `main-layer-${bin.global_index}`,
-            bin,
-            globalBpPerUnit,
-            hoveredTreeIndex,
-            treeSpacing: 1.03,
-            viewId: 'ortho',
-          });
-        })
-    : [];
+      if (!bins || Object.keys(bins).length === 0) return [];
+
+      return Object.values(bins)
+      .filter(bin => bin?.path && bin.visible)
+      .map(bin => {
+        return new TreeLayer({
+          id: `main-layer-${bin.global_index}`,
+          bin,
+          globalBpPerUnit,
+          treeSpacing: 1.03,
+          viewId: "ortho",
+          hoveredTreeIndex,
+        });
+      });
+
+    }, [bins]);
+
+    // const singleTreeLayers = bins && Object.keys(bins).length > 0
+    // ? Object.values(bins)
+    //     .filter(bin => bin?.path !== null && bin.visible)
+    //     .map((bin, i) => {
+    //       return new TreeLayer({
+    //         id: `main-layer-${bin.global_index}`,
+    //         bin,
+    //         globalBpPerUnit,
+    //         treeSpacing: 1.03,
+    //         viewId: 'ortho',
+    //         hoveredTreeIndex,
+    //         setHoveredTreeIndex,
+    //       });
+    //     })
+    // : [];
     
-    return [...singleTreeLayers, genomeGridLayer, genomeInfoLayer, timeGridLayer];
 
-  }, [bins, localCoordinates, hoveredTreeIndex, times]);
+    const layers = useMemo(() => {
+      const all = [...treeLayers];
+      if (genomeGridLayer) all.push(genomeGridLayer);
+      if (genomeInfoLayer) all.push(genomeInfoLayer);
+      if (timeGridLayer) all.push(timeGridLayer);
+      return all;
+    }, [treeLayers, genomeGridLayer, genomeInfoLayer, timeGridLayer]);
+
+    // return [...singleTreeLayers, genomeGridLayer, genomeInfoLayer, timeGridLayer];
 
   return { layers, layerFilter };
 };

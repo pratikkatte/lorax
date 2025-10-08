@@ -74,7 +74,7 @@ class MyOrthographicController extends OrthographicController {
   }
 }
 
-  const useView = ({ config, viewPortCoords, hoverDetails, valueRef}) => {
+  const useView = ({ config, viewPortCoords, valueRef}) => {
 
   const {globalBins, globalBpPerUnit, tsconfig} = config;
   const [zoomAxis, setZoomAxis] = useState("Y");
@@ -88,7 +88,6 @@ class MyOrthographicController extends OrthographicController {
 
   }, [viewPortCoords])
 
-const { hoveredInfo, setHoveredInfo } = hoverDetails;
 
   const [viewState, setViewState] = useState({
     'ortho': INITIAL_VIEW_STATE['ortho'],
@@ -284,7 +283,7 @@ const { hoveredInfo, setHoveredInfo } = hoverDetails;
       return newViewStates;
     });
     
-  }, [zoomAxis, panDirection, hoveredInfo, tsconfig])
+  }, [zoomAxis, panDirection, tsconfig])
 
   const panInterval = useRef(null);
 

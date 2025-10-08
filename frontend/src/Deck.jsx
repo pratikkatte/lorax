@@ -26,7 +26,7 @@ const ViewportOverlay = React.memo(() => (
         width: '98%',
         zIndex: 10,
         pointerEvents: 'none',
-        border: '3px solid #b5b5b5',
+        border: '2px solid #b5b5b5',
         borderRadius: '8px',
         boxShadow: '0 0 0 2px #f8f8f8, 0 2px 6px rgba(0,0,0,0.1)',
         backgroundColor: 'transparent',
@@ -90,13 +90,13 @@ const ViewportOverlay = React.memo(() => (
       {/* vertical label */}
       <div
         style={{
+          display: 'flex',
           transform: 'rotate(-90deg)',
           whiteSpace: 'nowrap',
-          fontSize: '14px',
+          fontSize: '12px',
           color: '#333',
           fontWeight: 500,
-          letterSpacing: '0.4px',
-          
+          letterSpacing: '2px',
         }}
       >
         Coalescent time
@@ -136,20 +136,16 @@ function Deck({
   setHoveredTreeIndex,
   settings,
   config,
-  hoverDetails,
   setViewPortCoords,
   viewPortCoords,
-  valueRef
+  valueRef,
 }) {
 
   const {tsconfig, globalBins, globalBpPerUnit} = config;
   const saveViewports = useRef({});
+  const clickedTree = useRef(null);
 
-  const [hoveredKey, setHoveredKey] = useState(null);
-  const [hoverInfo, setHoverInfoRaw] = useState(null);
-  const { hoveredInfo, setHoveredInfo } = hoverDetails;
-
-  const {views, xzoom, setView, viewState, setViewState, handleViewStateChange} = view
+  const {views, xzoom, viewState, handleViewStateChange} = view
 
   const {queryDetails} = backend;
 
@@ -176,27 +172,29 @@ function Deck({
         reactEvent._reactName === "onClick"
       ) {
         if (pickInfo.layer.id.includes("main")) {
-          queryDetails(hoveredTreeIndex)
+          console.log("clickedTree",clickedTree.current)
+          queryDetails({treeIndex: clickedTree.current})
           // setHoveredTreeIndex({...hoveredTreeIndex, path: pickInfo.object?.path})
         }
       }
     },
-    [hoveredTreeIndex]
+    [clickedTree.current]
   )
  
-  const setHoverInfo = useCallback(
-    (info) => {
-      setHoverInfoRaw(info);
-    },[]);
+  // const setHoverInfo = useCallback(
+  //   (info) => {
+  //     setHoverInfoRaw(info);
+  //   },[]);
     const { layers, layerFilter } = useLayers({
       xzoom,
       valueRef,
-      hoveredTreeIndex,
       deckRef,
       backend,
       globalBins,
       regions,
-      globalBpPerUnit  
+      globalBpPerUnit,
+      hoveredTreeIndex,
+      setHoveredTreeIndex,
     });
 
 
@@ -244,7 +242,7 @@ function Deck({
           })
     }
     return;
-  }, [deckRef, saveViewports.current, hoveredInfo ]);
+  }, [deckRef, saveViewports.current ]);
 
   
 useEffect(() => {
@@ -311,15 +309,22 @@ useEffect(() => {
   return (
     <div className="w-full"
     onClick={onClickOrMouseMove}
-    onPointerMove={onClickOrMouseMove}
-    onPointerDown={onClickOrMouseMove}
+    // onPointerMove={onClickOrMouseMove}
+    // onPointerDown={onClickOrMouseMove}
     > 
     <>
     <div className="w-full h-full flex justify-center items-center relative">
     <DeckGL
       ref={deckRef}
       onHover={(info, event) => {
-        setHoveredInfo(info)
+        if(info.object) {
+        setHoveredTreeIndex({path: info.object?.path})
+        }
+      }}
+      onClick={(info, event) => {
+        console.log("deck click",info)
+        clickedTree.current = info.layer.props.bin.global_index
+
       }}
       pickingRadius={10}
       layers={layers}
