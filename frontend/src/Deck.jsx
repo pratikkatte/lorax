@@ -19,19 +19,16 @@ const ViewportOverlay = React.memo(() => (
     {/* Outer border */}
     <div
       style={{
-        display: 'flex',
-        justifyContent: 'center',
-        alignItems: 'center',
         position: 'absolute',
         top: '1%',
-        left: '5%',
+        left: '2%',
         height: '85%',
-        width: '95%',
+        width: '98%',
         zIndex: 10,
         pointerEvents: 'none',
-        border: '2px solid #333333',
-        borderRadius: '6px',
-        boxShadow: '0 0 4px rgba(0,0,0,0.15)',
+        border: '3px solid #b5b5b5',
+        borderRadius: '8px',
+        boxShadow: '0 0 0 2px #f8f8f8, 0 2px 6px rgba(0,0,0,0.1)',
         backgroundColor: 'transparent',
       }}
     />
@@ -39,34 +36,34 @@ const ViewportOverlay = React.memo(() => (
     {/* genome positions */}
     <div
       style={{
-        display: 'flex',
-        justifyContent: 'center',
-        alignItems: 'center',
         position: 'absolute',
-        border: '1px solid black',
         top: '1%',
         left: '5%',
         height: '3%',
         width: '95%',
         zIndex: 10,
-        pointerEvents: 'none'
+        pointerEvents: 'none',
+        // border: '1px solid #d0d0d0',
+        borderBottom: '1px solid #cccccc',
+        borderTopLeftRadius: '6px',
+        borderTopRightRadius: '6px',
+        boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
       }}
     />
 
     {/* genome info */}
     <div
       style={{
-        display: 'flex',
-        justifyContent: 'center',
-        alignItems: 'center',
         position: 'absolute',
-        border: '1px solid black',
         top: '4%',
         left: '5%',
         height: '2%',
         width: '95%',
         zIndex: 10,
-        pointerEvents: 'none'
+        pointerEvents: 'none',
+        // border: '1px solid #d0d0d0',
+        borderBottom: '1px solid #d0d0d0',
+        boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
       }}
     />
 
@@ -74,13 +71,16 @@ const ViewportOverlay = React.memo(() => (
     <div
       style={{
         position: 'absolute',
-        top: '6%',
+        top: '1%',
         left: '2%',
-        height: '80%',
+        height: '85%',
         width: '3%',
-        border: '1px solid black',
         zIndex: 10,
         pointerEvents: 'none',
+        // border: '1px solid #d0d0d0',
+        borderRight: '1px solid rgba(232, 226, 226, 0.96)',
+        borderRadius: '6px',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
         display: 'flex',
         justifyContent: 'center',
         alignItems: 'center',
@@ -94,6 +94,8 @@ const ViewportOverlay = React.memo(() => (
           whiteSpace: 'nowrap',
           fontSize: '14px',
           color: '#333',
+          fontWeight: 500,
+          letterSpacing: '0.4px',
           
         }}
       >
