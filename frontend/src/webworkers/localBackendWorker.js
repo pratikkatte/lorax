@@ -88,12 +88,15 @@ function extractSquarePaths(node, vertical_mode) {
     node.child.forEach(child => {
       // Horizontal segment from parent to child x at parent y
       // Vertical drop to child's y
+      // segments.push({
+      //   path: vertical_mode ? [[node.x, node.y], [node.x, child.y]] : [[node.y, node.x], [child.y, node.x]]
+      // });
+      // segments.push({
+      //   path: vertical_mode ?[[node.x, child.y],[child.x, child.y]]: [[child.y, node.x],[child.y, child.x]]
+      // });
       segments.push({
-        path: vertical_mode ? [[node.x, node.y], [node.x, child.y]] : [[node.y, node.x], [child.y, node.x]]
-      });
-      segments.push({
-        path: vertical_mode ?[[node.x, child.y],[child.x, child.y]]: [[child.y, node.x],[child.y, child.x]]
-      });
+        path: [[node.y, node.x], [child.y, node.x], [child.y, node.x],[child.y, child.x]]
+      })
       segments.push(...extractSquarePaths(child, vertical_mode));
     });
   } else {

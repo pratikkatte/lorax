@@ -318,6 +318,7 @@ useEffect(() => {
       ref={deckRef}
       onHover={(info, event) => {
         if(info.object) {
+          console.log("info", info)
         setHoveredTreeIndex({path: info.object?.path})
         }
       }}

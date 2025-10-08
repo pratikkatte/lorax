@@ -2,7 +2,6 @@
 // TreeLayer.js
 import { CompositeLayer } from '@deck.gl/core';
 import { PathLayer, ScatterplotLayer, IconLayer, TextLayer } from '@deck.gl/layers';
-import { Matrix4 } from '@math.gl/core';
 
 export default class TreeLayer extends CompositeLayer {
   static defaultProps = {
@@ -18,7 +17,8 @@ export default class TreeLayer extends CompositeLayer {
 
   renderLayers() {
     const { bin, viewId, hoveredTreeIndex, setHoveredTreeIndex } = this.props;
-    if (!bin || !bin.path) return null;
+    if (!bin || !bin.path) return null
+
 
     return [
       new PathLayer({
