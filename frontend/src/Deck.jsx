@@ -16,6 +16,7 @@ const LoadingSpinner = React.memo(() => (
 
 const ViewportOverlay = React.memo(() => (
   <>
+    {/* Outer border */}
     <div
       style={{
         display: 'flex',
@@ -34,6 +35,7 @@ const ViewportOverlay = React.memo(() => (
         backgroundColor: 'transparent',
       }}
     />
+
     {/* genome positions */}
     <div
       style={{
@@ -46,10 +48,11 @@ const ViewportOverlay = React.memo(() => (
         left: '5%',
         height: '3%',
         width: '95%',
-        zIndex: '10',
+        zIndex: 10,
         pointerEvents: 'none'
       }}
     />
+
     {/* genome info */}
     <div
       style={{
@@ -62,26 +65,41 @@ const ViewportOverlay = React.memo(() => (
         left: '5%',
         height: '2%',
         width: '95%',
-        zIndex: '10',
+        zIndex: 10,
         pointerEvents: 'none'
       }}
     />
+
     {/* tree time */}
     <div
       style={{
-        display: 'flex',
-        justifyContent: 'center',
-        alignItems: 'center',
         position: 'absolute',
-        border: '1px solid black',
         top: '6%',
         left: '2%',
         height: '80%',
         width: '3%',
-        zIndex: '10',
-        pointerEvents: 'none'
+        border: '1px solid black',
+        zIndex: 10,
+        pointerEvents: 'none',
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        justifyContent: 'flex-end',
       }}
-    />
+    >
+      {/* vertical label */}
+      <div
+        style={{
+          transform: 'rotate(-90deg)',
+          whiteSpace: 'nowrap',
+          fontSize: '14px',
+          color: '#333',
+          
+        }}
+      >
+        Coalescent time
+      </div>
+    </div>
   </>
 ));
 
