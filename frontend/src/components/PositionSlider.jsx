@@ -8,7 +8,7 @@ export default function PositionSlider({ config, project, ucgbMode, view, valueR
   const { genome_length } = tsconfig;
   
   const [searchParams, setSearchParams] = useSearchParams();
-  const { moveLeftView, moveRightView, changeView } = view;
+  const { changeView , startPan, stopPan} = view;
 
   // Initialize value if missing
   useEffect(() => {
@@ -40,10 +40,9 @@ export default function PositionSlider({ config, project, ucgbMode, view, valueR
     const [left, right] = valueRef.current ?? [];
     const newLeft = left - 100;
     const newRight = right - 100;
-    console.log('moveLeft newLeft', newLeft, newRight, genome_length);
     if (newLeft >= 0) {
       const newVal = [newLeft, newRight];
-      valueRef.current = newVal;
+      // valueRef.current = newVal;
       moveLeftView(newVal);
     } else {
       alert(`ERROR: cannot move more left`);
@@ -57,7 +56,7 @@ export default function PositionSlider({ config, project, ucgbMode, view, valueR
   
     if (newRight <= genome_length) {
       const newVal = [newLeft, newRight];
-      valueRef.current = newVal;
+      // valueRef.current = newVal;
       moveRightView(newVal);
     } else {
       alert(`ERROR: cannot move more right`);
@@ -89,7 +88,9 @@ export default function PositionSlider({ config, project, ucgbMode, view, valueR
       }}
     >
       <button
-        onClick={moveLeft}
+        onMouseDown={() => startPan('L')}
+        onMouseUp={stopPan}
+        onMouseLeave={stopPan}
         style={{
           background: 'none',
           border: 'none',
@@ -105,7 +106,9 @@ export default function PositionSlider({ config, project, ucgbMode, view, valueR
         <EditableRange valueRef={valueRef} onChange={onChange} />
       )}
       <button
-        onClick={moveRight}
+        onMouseDown={() => startPan('R')}
+        onMouseUp={stopPan}
+        onMouseLeave={stopPan}
         style={{
           background: 'none',
           border: 'none',

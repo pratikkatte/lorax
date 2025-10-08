@@ -286,42 +286,38 @@ const { hoveredInfo, setHoveredInfo } = hoverDetails;
     
   }, [zoomAxis, panDirection, hoveredInfo, tsconfig])
 
+  const panInterval = useRef(null);
 
-  const moveLeftView = useCallback((val) => {
-    setViewState((prev) => {
+const startPan = useCallback((direction) => {
+  if (panInterval.current) return;
+  const stepDir = direction === 'L' ? -1 : 1;
+  panInterval.current = setInterval(() => {
+    setViewState(prev => {
+      const zoom = prev['ortho'].zoom[0];
+      const panStep = getPanStep({ zoomX: zoom, baseStep: 8, sensitivity: zoom >= 8 ? 0.9 : 0.7 });
+      const delta = panStep * stepDir;
+      const new_target = [...prev['ortho'].target];
+      new_target[0] += delta;
       return {
         ...prev,
-        ['ortho']: {
-          ...prev['ortho'],
-          'target': [prev['ortho'].target[0]- (100/globalBpPerUnit), prev['ortho'].target[1]],
-        },
+        ['ortho']: { ...prev['ortho'], target: new_target },
         ['genome-positions']: {
           ...prev['genome-positions'],
-          'target': [prev['genome-positions'].target[0]-(100/globalBpPerUnit), prev['genome-positions'].target[1]],
+          target: [new_target[0], prev['genome-positions'].target[1]],
         },
         ['genome-info']: {
           ...prev['genome-info'],
-          'target': [prev['genome-info'].target[0]-(100/globalBpPerUnit), prev['genome-info'].target[1]],
-        }
-      }
-    })
-  })
+          target: [new_target[0], prev['genome-info'].target[1]],
+        },
+      };
+    });
+  }, 16); // ~60 FPS
+}, []);
 
-  const moveRightView = useCallback((val) => {
-    setViewState((prev) => {
-      return {
-        ...prev,
-      ['ortho']: {
-        ...prev['ortho'],
-        'target': [prev['ortho'].target[0]+ (100/globalBpPerUnit), prev['ortho'].target[1]],
-      },
-      ['genome-positions']: {
-        ...prev['genome-positions'],
-        'target': [prev['genome-positions'].target[0]+ (100/globalBpPerUnit), prev['genome-positions'].target[1]],
-      }
-    }
-  })
-  }, [valueRef, globalBpPerUnit])
+const stopPan = useCallback(() => {
+  clearInterval(panInterval.current);
+  panInterval.current = null;
+}, []);
 
   const output = useMemo(() => {
     return {
@@ -336,9 +332,9 @@ const { hoveredInfo, setHoveredInfo } = hoverDetails;
       handleViewStateChange,
       globalBinsIndexes,
       setGlobalBinsIndexes,
-      moveLeftView,
-      moveRightView,
-      changeView
+      changeView,
+      startPan,
+      stopPan
     };
   }, [
     viewState,
@@ -353,9 +349,9 @@ const { hoveredInfo, setHoveredInfo } = hoverDetails;
    handleViewStateChange,
    globalBinsIndexes,
    setGlobalBinsIndexes,
-   moveLeftView,
-   moveRightView,
-   changeView
+   changeView,
+   startPan,
+   stopPan
   ]);
 
   return output;
