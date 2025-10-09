@@ -18,7 +18,6 @@ export class TimeGridLayer extends CompositeLayer {
     showLabels: true,
     modelMatrix: null,
     viewId: null,
-    globalBins: [],
     backend: null,
     globalBpPerUnit: null,
     xzoom: null

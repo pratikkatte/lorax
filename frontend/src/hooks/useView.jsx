@@ -76,7 +76,7 @@ class MyOrthographicController extends OrthographicController {
 
   const useView = ({ config, viewPortCoords, valueRef}) => {
 
-  const {globalBins, globalBpPerUnit, tsconfig} = config;
+  const {globalBpPerUnit, tsconfig} = config;
   const [zoomAxis, setZoomAxis] = useState("Y");
   const [panDirection, setPanDirection] = useState(null);
   const [xzoom, setXzoom] = useState(window.screen.width < 600 ? -1 : 0);
@@ -190,10 +190,8 @@ class MyOrthographicController extends OrthographicController {
 
   const [mouseXY, setMouseXY] = useState(false);
 
-  const [globalBinsIndexes, setGlobalBinsIndexes] = useState(null);
-
   useEffect(() => {
-    if (!viewPortCoords || !globalBins || !tsconfig) return;
+    if (!viewPortCoords || !tsconfig) return;
 
     if (tsconfig?.value && !valueRef.current){
       changeView(tsconfig.value);
@@ -329,8 +327,6 @@ const stopPan = useCallback(() => {
       setMouseXY,
       mouseXY,
       handleViewStateChange,
-      globalBinsIndexes,
-      setGlobalBinsIndexes,
       changeView,
       startPan,
       stopPan
@@ -346,8 +342,6 @@ const stopPan = useCallback(() => {
     mouseXY,
     panDirection,
    handleViewStateChange,
-   globalBinsIndexes,
-   setGlobalBinsIndexes,
    changeView,
    startPan,
    stopPan

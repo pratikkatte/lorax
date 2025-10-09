@@ -11,7 +11,6 @@ export class GenomeGridLayer extends CompositeLayer {
     getTextColor: [60, 60, 60, 255],
     getText: d => `${d.start}`,     // label content
     viewId: null,
-    globalBins: [],
     globalBpPerUnit: null,
   };
 

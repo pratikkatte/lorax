@@ -9,10 +9,10 @@ import { TimeGridLayer } from '../layers/TimeGridLayer';
 
 const useLayers = ({
   xzoom,
+  tsconfig,
   valueRef,
   hoveredTreeIndex,
   backend,
-  globalBins,
   regions,
   setHoveredTreeIndex,
 globalBpPerUnit 
@@ -50,7 +50,6 @@ globalBpPerUnit
         backend,
         data: localCoordinates,
         globalBpPerUnit,
-        globalBins,
         y0: 0,
         y1: 2,
         labelOffset: 0.06,
@@ -66,7 +65,7 @@ globalBpPerUnit
     const genomeInfoLayer = useMemo(() => {
       return new GenomeInfoLayer({
         id: "genome-info-grid",
-        data: bins,
+        data: Object.keys(tsconfig.new_intervals).map(key => ({ position: Number(key) })),
         globalBpPerUnit: globalBpPerUnit,
         y0: 0,
         y1: 2,
@@ -76,6 +75,7 @@ globalBpPerUnit
         getText: d =>
           d.end.toLocaleString("en-US", { maximumFractionDigits: 0 }),
         viewId: "genome-info",
+        filterRange: valueRef?.current ? [valueRef?.current?.[0] - valueRef?.current?.[0]*0.1, valueRef?.current?.[1] + valueRef?.current?.[1]*0.1] :[],
       });
     }, [bins, globalBpPerUnit]);
 

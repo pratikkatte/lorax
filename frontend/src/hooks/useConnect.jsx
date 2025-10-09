@@ -142,17 +142,20 @@ function useConnect({ setGettingDetails, settings }) {
 
   })
 
-  const queryLocalBins = useCallback((value, setResult) => {
+  const queryLocalBins = useCallback((start, end, localBins, config_intervals, globalBpPerUnit, nTrees, new_globalBp) => {
+    return new Promise((resolve) => {
     
     worker.postMessage({
       type: "local-bins",
-      data: value,
+      data: {start, end, localBins, config_intervals, globalBpPerUnit, nTrees, new_globalBp},
     });
 
     onLocalBinsReceipt = (receivedData) => {
-      setResult(receivedData.data.local_bins);
+      console.log("got queryLocalBins result", receivedData);
+      resolve(receivedData.data);
       
     };    
+  });
   }, []);
 
 const queryExperimental = useCallback((value) => {

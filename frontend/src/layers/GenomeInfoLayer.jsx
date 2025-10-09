@@ -1,6 +1,7 @@
 import {CompositeLayer} from '@deck.gl/core';
 import {LineLayer, TextLayer} from '@deck.gl/layers';
-import { Matrix4 } from "@math.gl/core";
+import {DataFilterExtension} from '@deck.gl/extensions';
+
 
 export class GenomeInfoLayer extends CompositeLayer {
   static defaultProps = {
@@ -13,53 +14,40 @@ export class GenomeInfoLayer extends CompositeLayer {
     getText: d => `${d.start}`,     // label content
     showLabels: true,
     viewId: null,
-    globalBins: [],
     backend: null,
     globalBpPerUnit: null,
-    xzoom: null
+    xzoom: null,
+    filterRange: null,
   };
 
   renderLayers() {
     
     const {
       data, y0, y1,
-      getColor, viewId, showLabels, globalBpPerUnit
+      getColor, viewId, showLabels, globalBpPerUnit, filterRange
     } = this.props;
-
+    
     if (!Object.keys(data).length) return [];
 
     return [
       new LineLayer({
       id: `${this.props.id}-lines`,
-      data: Object.values(data).map(d => d.s),
-      getSourcePosition: d => {
+      // data: Object.values(data).map(d => d.s),
+      data: data,
+      getSourcePosition: d => [d.position / globalBpPerUnit, y0],
+      // getSourcePosition: d => {
         
-        const pos = [d / globalBpPerUnit, y0];
-        return pos;
-      },
-      getTargetPosition: d => [d /globalBpPerUnit, y1],
+      //   const pos = [d / globalBpPerUnit, y0];
+      //   return pos;
+      // },
+      getTargetPosition: d => [d.position /globalBpPerUnit, y1],
       getColor,
       viewId,
       pickable: false,
+      getFilterValue: d => d.position,
+      filterRange,
+      extensions: [new DataFilterExtension({filterSize: 1})],
       zOffset: -1,
     }),
-    new TextLayer({
-      id: `${this.props.id}-labels`,
-      data: Object.values(data).map(d => ({global_index: d.global_index, position: d.s})),
-      getPosition: d => [d.position/globalBpPerUnit, 1],
-      getText: d => d.global_index,
-      getColor: [0,0,0,255],
-      sizeUnits: 'pixels',
-      getSize: 12,
-      viewId,
-      pickable: false,
-      updateTriggers: {
-        data: [data],
-        getPosition: [globalBpPerUnit],
-        getText: [data],
-      },
-      zIndex: 1000,
-      zOffset: -1,
-    })
-    ].filter(Boolean);  }
+  ].filter(Boolean);  }
 }

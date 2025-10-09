@@ -141,7 +141,7 @@ function Deck({
   valueRef,
 }) {
 
-  const {tsconfig, globalBins, globalBpPerUnit} = config;
+  const {tsconfig, globalBpPerUnit} = config;
   const saveViewports = useRef({});
   const clickedTree = useRef(null);
 
@@ -150,7 +150,7 @@ function Deck({
   const {queryDetails} = backend;
 
 
-  const regions = useRegions({backend, viewState, globalBins, valueRef, saveViewports: saveViewports.current, globalBpPerUnit, tsconfig});
+  const regions = useRegions({backend, viewState, valueRef, saveViewports: saveViewports.current, globalBpPerUnit, tsconfig});
 
 
   const onClickOrMouseMove = useCallback(
@@ -187,10 +187,10 @@ function Deck({
   //   },[]);
     const { layers, layerFilter } = useLayers({
       xzoom,
+      tsconfig,
       valueRef,
       deckRef,
       backend,
-      globalBins,
       regions,
       globalBpPerUnit,
       hoveredTreeIndex,
@@ -318,13 +318,12 @@ useEffect(() => {
       ref={deckRef}
       onHover={(info, event) => {
         if(info.object) {
-          console.log("info", info)
         setHoveredTreeIndex({path: info.object?.path})
         }
       }}
       onClick={(info, event) => {
-        console.log("deck click",info)
-        clickedTree.current = info.layer.props.bin.global_index
+        // console.log("deck click",info)
+        // clickedTree.current = info.layer.props.bin.global_index
 
       }}
       pickingRadius={10}

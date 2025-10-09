@@ -5,12 +5,9 @@ import { useNavigate } from "react-router-dom";
 
 function useConfig({backend}) {
   const [tsconfig, setConfig] = useState(null);
-  const {isConnected, queryConfig} = backend;
-
-  const [globalBins, setGlobalBins] = useState(null);
-
+  const {isConnected} = backend;
+  
   const [globalBpPerUnit, setGlobalBpPerUnit] = useState(null);
-
 
   const handleConfigUpdate = useCallback((data) => {
     if (data.role === "config") {
@@ -21,19 +18,6 @@ function useConfig({backend}) {
     }
   }, [tsconfig]);
 
-  useEffect(() => {
-    if (tsconfig) {
-      console.log("tsconfig", tsconfig)
-    }
-  }, [tsconfig]);
-
-  useEffect(() => {
-    if (globalBpPerUnit) {
-      queryConfig(tsconfig, globalBpPerUnit).then((data) => {
-        setGlobalBins(data.data);
-      });
-    }
-  }, [globalBpPerUnit]);
 
   useEffect(() => {
     if (!isConnected) return;
@@ -51,9 +35,8 @@ function useConfig({backend}) {
   return useMemo(() => ({
     tsconfig, 
     setConfig,
-    globalBins,
     globalBpPerUnit
-  }), [tsconfig, setConfig, globalBins, globalBpPerUnit]);
+  }), [tsconfig, setConfig, globalBpPerUnit]);
 };
 
 export default useConfig;
