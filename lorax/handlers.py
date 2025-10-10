@@ -68,7 +68,14 @@ class LoraxHandler:
         self.ts_intervals = new_intervals
         times = [self.ts.min_time, self.ts.max_time]
         populations = {}
-        for s in self.ts.populations(): populations[str(s.id)] = json.loads(s.metadata)['name']
+        # for s in self.ts.populations(): populations[str(s.id)] = str(json.loads(s.metadata)['name'])
+        for s in self.ts.populations():
+            meta = json.loads(s.metadata)
+            populations[str(s.id)] = {
+                "population": meta.get("name"),
+                "description": meta.get("description"),
+                "super_population": meta.get("super_population")
+                }
         nodes_population = [n.population for n in self.ts.nodes()]
 
         config = {'genome_length': self.ts.sequence_length, 'times':times, 'new_intervals':new_intervals,'filename': str(self.file_path).split('/')[-1], 'populations':populations, 'nodes_population':nodes_population}
@@ -125,7 +132,6 @@ class LoraxHandler:
                 self.ts = tszip.load(file_path)
                 self.file_path = file_path
                 self.global_context = self.file_path
-            
             else:
                 self.ts = tskit.load(file_path)
                 self.file_path = file_path

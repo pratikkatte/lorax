@@ -48,10 +48,17 @@ function useConfig({backend}) {
           ];
         };
 
-        return keys.reduce((acc, key, idx) => {
-          acc[key] = Object.assign({}, dict[key], { color: getColor(idx, keys.length) });
-          return acc;
-        }, {});
+        for (const key in dict) {
+            dict[key] = {
+              ...dict[key],
+              "color": getColor(keys.indexOf(key), keys.length)};
+        }
+        return dict;
+        
+        // return keys.reduce((acc, key, idx) => {
+        //   acc[key] = Object.assign({}, dict[key], { color: getColor(idx, keys.length) });
+        //   return acc;
+        // }, {});
       };
       
       setPopulations({'populations': assignUniqueColors(data.data.populations), 'nodes_population': data.data.nodes_population});
