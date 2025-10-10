@@ -12,10 +12,9 @@ function Lorax({backend, config, settings, setSettings, project, ucgbMode}) {
   const [deckSize, setDeckSize] = useState(null); // idk the use of this?
   const [hoveredTreeIndex, setHoveredTreeIndex] = useState({path: null, node: null, treeIndex: null}); // this is for knowing which tree is hovered. 
   const deckRef = useRef(); // reference to the deck component. 
-  const [viewPortCoords, setViewPortCoords] = useState(null); 
   const valueRef = useRef(null);
 
-  const view = useView({config, viewPortCoords, valueRef});
+  const view = useView({config, valueRef});
 
   return (
     <>
@@ -41,8 +40,6 @@ function Lorax({backend, config, settings, setSettings, project, ucgbMode}) {
               settings={settings}
               setSettings={setSettings}
               config={config}
-              setViewPortCoords={setViewPortCoords}
-              viewPortCoords={viewPortCoords}
               valueRef={valueRef}
             />
           </div>

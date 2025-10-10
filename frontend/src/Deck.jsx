@@ -137,11 +137,10 @@ function Deck({
   settings,
   config,
   setViewPortCoords,
-  viewPortCoords,
   valueRef,
 }) {
 
-  const {tsconfig, globalBpPerUnit} = config;
+  const {tsconfig, globalBpPerUnit, populations} = config;
   const saveViewports = useRef({});
   const clickedTree = useRef(null);
 
@@ -151,7 +150,6 @@ function Deck({
 
 
   const regions = useRegions({backend, viewState, valueRef, saveViewports: saveViewports.current, globalBpPerUnit, tsconfig});
-
 
   const onClickOrMouseMove = useCallback(
     (event) => {
@@ -172,8 +170,7 @@ function Deck({
         reactEvent._reactName === "onClick"
       ) {
         if (pickInfo.layer.id.includes("main")) {
-          console.log("clickedTree",clickedTree.current)
-          queryDetails({treeIndex: clickedTree.current})
+          queryDetails(clickedTree.current)
           // setHoveredTreeIndex({...hoveredTreeIndex, path: pickInfo.object?.path})
         }
       }
@@ -195,6 +192,7 @@ function Deck({
       globalBpPerUnit,
       hoveredTreeIndex,
       setHoveredTreeIndex,
+      populations,
     });
 
 
@@ -246,64 +244,27 @@ function Deck({
 
   
 useEffect(() => {
-    getLayerPixelPositions(deckRef)
-}, [saveViewports.current])
+    // getLayerPixelPositions(deckRef)
+
+}, [regions])
 
   const handleAfterRender = useCallback(() => {
     
       const deck = deckRef?.current?.deck;
       if (!deck) return;
 
+      // if (saveViewports.current) return;
+
       const vpGenome = deck.getViewports().find(v => v.id === 'genome-positions');
       const vpOrtho = deck.getViewports().find(v => v.id === 'ortho');
 
       if (!vpGenome || !vpOrtho) return;
 
+      
       saveViewports.current = {
         'ortho': vpOrtho,
         'genome-positions': vpGenome
       };
-        const [x0Ortho, y0Ortho] = vpOrtho.project([0, 0]);
-        const [x1Ortho, y1Ortho] = vpOrtho.project([vpOrtho.width, vpOrtho.height]);
-        const [x0, y0] = vpGenome.unproject([0, 0]);
-        const [x1, y1] = vpGenome.unproject([vpGenome.width, vpGenome.height]);
-        const [x0genome, y0genome] = vpGenome.project([0, 0]);
-        const [x1genome, y1genome] = vpGenome.project([vpGenome.width, vpGenome.height]);
-
-        setViewPortCoords({
-          ['ortho']: {
-            pixels: {
-              x0: x0Ortho,
-              y0: y0Ortho,
-              x1: x1Ortho,
-              y1: y1Ortho
-            },
-            viewport: {
-              width: vpOrtho.width,
-              height: vpOrtho.height
-            },
-            coordinates: {
-            }
-          },
-          ['genome-positions']: {
-            coordinates: {
-              x0: x0,
-              y0: y0,
-              x1: x1,
-              y1: y1
-            },
-            viewport: {
-              width: vpGenome.width,
-              height: vpGenome.height
-            },
-            pixels: {
-              x0: x0genome,
-              y0: y0genome,
-              x1: x1genome,
-              y1: y1genome
-            }
-          }
-        })
       }, [deckRef])
 
   return (
@@ -322,8 +283,8 @@ useEffect(() => {
         }
       }}
       onClick={(info, event) => {
-        // console.log("deck click",info)
-        // clickedTree.current = info.layer.props.bin.global_index
+        console.log("deck click",info, info.object)
+        clickedTree.current = {treeIndex: info.layer.props.bin.global_index, node: info.object?.name}
 
       }}
       pickingRadius={10}
@@ -336,7 +297,7 @@ useEffect(() => {
     >
       <View id="ortho">
         {/* {no_data && <LoadingSpinner />} */}
-      {dummy && dummy.pointsArray.length > 0 && viewPortCoords.ortho && viewPortCoords['genome-positions'] && (
+      {dummy && dummy.pointsArray.length > 0 && (
               <GenomeVisualization pointsArray={dummy.pointsArray} skipArray={dummy.skipArray} />
             )}
             

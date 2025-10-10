@@ -1,32 +1,28 @@
 
-import { Matrix4, Vector3 } from "@math.gl/core";
 // import genomeCoordinates from "../layers/genomeCoordinates";
-import { useMemo, useCallback } from "react";
+import { useMemo, useCallback, useRef, useEffect } from "react";
 import { GenomeGridLayer } from "../layers/GenomeGridLayer";
 import TreeLayer from '../layers/TreeLayer';
 import { GenomeInfoLayer } from '../layers/GenomeInfoLayer';
 import { TimeGridLayer } from '../layers/TimeGridLayer';
 
 const useLayers = ({
-  xzoom,
-  tsconfig,
   valueRef,
   hoveredTreeIndex,
   backend,
   regions,
-  setHoveredTreeIndex,
-globalBpPerUnit 
-
+globalBpPerUnit,
+populations,
 }) => {
 
   const { bins = {}, localCoordinates = [], times = [] } = regions;
-  
-  
+  const layerCacheRef = useRef(new Map());
+
+  console.log("populations", populations);
   /** Filter visible layers by viewId (deck.gl native optimization) */
   const layerFilter = useCallback(({ layer, viewport }) => {
     const vid = viewport.id;
     const lid = layer.id;
-
     return (
       (vid === "ortho" && lid.startsWith("main")) ||
       (vid === "genome-positions" && lid.startsWith("genome-positions")) ||
@@ -65,7 +61,8 @@ globalBpPerUnit
     const genomeInfoLayer = useMemo(() => {
       return new GenomeInfoLayer({
         id: "genome-info-grid",
-        data: Object.keys(tsconfig.new_intervals).map(key => ({ position: Number(key) })),
+        // data: Object.keys(tsconfig.new_intervals).map(key => ({ position: Number(key) })),
+        data: bins,
         globalBpPerUnit: globalBpPerUnit,
         y0: 0,
         y1: 2,
@@ -80,44 +77,91 @@ globalBpPerUnit
     }, [bins, globalBpPerUnit]);
 
     const treeLayers = useMemo(() => {
-
       if (!bins || Object.keys(bins).length === 0) return [];
-
-      return Object.values(bins)
-      .filter(bin => bin?.path && bin.visible)
-      .map(bin => {
-        return new TreeLayer({
-          id: `main-layer-${bin.global_index}`,
-          bin,
-          globalBpPerUnit,
-          treeSpacing: 1.03,
-          viewId: "ortho",
-          hoveredTreeIndex,
-        });
-      });
-
-    }, [bins]);
-
-    // const singleTreeLayers = bins && Object.keys(bins).length > 0
-    // ? Object.values(bins)
-    //     .filter(bin => bin?.path !== null && bin.visible)
-    //     .map((bin, i) => {
-    //       return new TreeLayer({
-    //         id: `main-layer-${bin.global_index}`,
-    //         bin,
-    //         globalBpPerUnit,
-    //         treeSpacing: 1.03,
-    //         viewId: 'ortho',
-    //         hoveredTreeIndex,
-    //         setHoveredTreeIndex,
-    //       });
-    //     })
-    // : [];
     
+      const layerCache = layerCacheRef.current;
+      const newLayers = [];
+    
+      for (const bin of Object.values(bins)) {
+
+        const id = `main-layer-${bin.global_index}`;
+        const existing = layerCache.get(id);
+
+        if (!bin?.path || !bin.visible) {
+          if (existing) {
+            layerCache.delete(id);
+          }
+          continue;
+        }
+    
+    
+        if (existing) {
+          // ✅ Update existing layer’s props instead of recreating
+          
+          const sameMatrix = existing.props.bin?.modelMatrix === bin.modelMatrix;
+          // console.log("existing",existing, sameMatrix, bin.global_index)
+
+if (!sameMatrix) {
+        // ⚡ clone with new matrix
+        const updatedLayer = existing.clone({ bin });
+        layerCache.set(id, updatedLayer);
+        newLayers.push(updatedLayer);
+      } else {
+        // ✅ reuse same layer
+        newLayers.push(existing);
+      }
+        } else {
+          // 🆕 Create new layer if it doesn’t exist
+          const newLayer = new TreeLayer({
+            id,
+            bin,
+            globalBpPerUnit,
+            treeSpacing: 1.03,
+            viewId: "ortho",
+            hoveredTreeIndex,
+            populations,
+          });
+          layerCache.set(id, newLayer);
+          newLayers.push(newLayer);
+        }
+      }
+    
+      // 🧹 Remove layers for bins no longer visible
+      for (const key of layerCache.keys()) {
+        if (!bins[key.replace("main-layer-", "")]) {
+          console.log("key", key)
+          layerCache.delete(key);
+        }
+      }
+    
+      return newLayers;
+    }, [bins, globalBpPerUnit]);
+    
+    // const treeLayers = useMemo(() => {
+    //   if (!bins || Object.keys(bins).length === 0) return [];
+    
+    //   return [
+    //     new TreeLayer({
+    //       id: 'main-layer',
+    //       bins,
+    //       viewId: 'ortho',
+    //       globalBpPerUnit,
+    //       hoveredTreeIndex,
+    //       treeSpacing: 1.03,
+    //     }),
+    //   ];
+    // }, [bins, hoveredTreeIndex]);
+
+    useEffect(() => {
+      console.log("Tree layer count:", layerCacheRef.current.size);
+    }, [treeLayers]);
 
     const layers = useMemo(() => {
       const all = [...treeLayers];
+      // const all = [];
       if (genomeGridLayer) all.push(genomeGridLayer);
+      // if (treeLayers) all.push(treeLayers);
+      // console.log("treeLayers",treeLayers)
       if (genomeInfoLayer) all.push(genomeInfoLayer);
       if (timeGridLayer) all.push(timeGridLayer);
       return all;

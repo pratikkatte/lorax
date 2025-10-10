@@ -1,9 +1,8 @@
 import { useState , useMemo, useEffect} from "react";
-import { BsCloudUpload,BsArrowDown, BsGithub } from "react-icons/bs";
+import { BsCloudUpload, BsGithub } from "react-icons/bs";
 import { LuFileText } from "react-icons/lu";
-import { FaMagnifyingGlassChart } from "react-icons/fa6";
 import { LuTreePine } from "react-icons/lu";
-import { RiRobot2Line } from "react-icons/ri";
+
 import { BsChevronDown } from "react-icons/bs";
 import axios from "axios";
 import useLoraxConfig from "../globalconfig.js";
@@ -359,12 +358,15 @@ function ARGIillustrationSkeleton() {
 
 function ARGIillustrationWrapper() {
   const [mounted, setMounted] = useState(false);
-  // avoid hydration mismatch if used in SSR later
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useState(() => { setMounted(true); });
+
+  useEffect(() => {
+    setMounted(true);
+  }, []); // run only once after mount
+
   if (!mounted) return <ARGIillustrationSkeleton />;
   return <ARGIillustrationInner />;
 }
+
 
 // alias used above
 function ARGIllustration() { return <ARGIillustrationWrapper />; }

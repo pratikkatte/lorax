@@ -1,6 +1,6 @@
 // src/components/ViewerScreen.jsx
 import { useEffect, useState , useCallback} from "react";
-import { useParams, useNavigate, useFetcher, useSearchParams, Navigate } from "react-router-dom";
+import { useParams, useSearchParams, Navigate } from "react-router-dom";
 import { BsFillKanbanFill } from "react-icons/bs";
 import { FaGear } from "react-icons/fa6";
 import Lorax from './Lorax.jsx'
@@ -20,7 +20,6 @@ export default function LoraxViewer({ backend, config, settings, setSettings, pr
   // const navigate = useNavigate();
 
   // UI state
-  const [isChatbotVisible, setIsChatbotVisible] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showSidebar, setShowSidebar] = useState(true);
@@ -131,7 +130,7 @@ export default function LoraxViewer({ backend, config, settings, setSettings, pr
         </div>
       
       <div className="flex flex-row h-screen w-full z-40">
-        <div className={`${(isChatbotVisible || showInfo || showSettings) ? (showSidebar ? 'w-[73%]' : 'w-3/4') :  (showSidebar ? 'w-[97%]' : 'w-full')} transition-all duration-200`}>
+        <div className={`${(showInfo || showSettings) ? (showSidebar ? 'w-[73%]' : 'w-3/4') :  (showSidebar ? 'w-[97%]' : 'w-full')} transition-all duration-200`}>
           <Lorax backend={backend} config={config} settings={settings} setSettings={setSettings} project={project} ucgbMode={ucgbMode} />
         </div>
         <div className={`transition-all relative ${showInfo ? '' : 'hidden'} shadow-2xl bg-gray-100 duration-200 ${showSidebar ? 'w-[25%]' : 'w-1/4'}`}>

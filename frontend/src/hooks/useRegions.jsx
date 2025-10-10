@@ -2,7 +2,6 @@
 import { useMemo, useEffect, useState, useRef, useCallback } from "react";
 import debounce from "lodash.debounce";
 import memoizeOne from "memoize-one";
-import { Matrix4 } from "@math.gl/core";
 
 // ────────────────────────────────
 // Utility functions
@@ -57,6 +56,7 @@ const useRegions = ({ backend, valueRef, viewState, globalBpPerUnit, tsconfig })
   const debouncedQuery = useMemo(
     () => debounce(async (val) => {
       if (isFetching.current) return;
+      console.log("inside here")
       const [lo, hi] = val;
       const zoom = viewState["ortho"]?.zoom?.[0] ?? 8;
       const new_globalBp = getDynamicBpPerUnit(globalBpPerUnit, zoom);
@@ -64,7 +64,7 @@ const useRegions = ({ backend, valueRef, viewState, globalBpPerUnit, tsconfig })
       isFetching.current = true;
 
       const { local_bins, rangeArray } = await queryLocalBins(
-        lo, hi, localBinsRef.current, tsconfig, globalBpPerUnit, null, new_globalBp
+        lo, hi, localBinsRef.current, globalBpPerUnit, null, new_globalBp
       );
 
       if (rangeArray.length > 0) {
@@ -75,22 +75,22 @@ const useRegions = ({ backend, valueRef, viewState, globalBpPerUnit, tsconfig })
         });
       }
 
-      setLocalBins({ ...local_bins });
+      setLocalBins({...local_bins});
       isFetching.current = false;
     }, 400, { leading: false, trailing: true }),
-    [queryNodes, viewState]
+    [isFetching.current]
   );
 
   useEffect(() => {
     if (valueRef.current) debouncedQuery(valueRef.current);
-  }, [valueRef.current, debouncedQuery]);
+  }, [valueRef.current]);
 
   useEffect(() => () => debouncedQuery.cancel(), [debouncedQuery]);
 
   const localCoordinates = useMemo(() => {
     if (!valueRef.current) return [];
     const [lo, hi] = valueRef.current;
-    const bufferFrac = 0.2;
+    const bufferFrac = 0.01;
     const range = hi - lo;
     return getLocalCoordinates(lo - bufferFrac * range, hi + bufferFrac * range);
   }, [valueRef.current?.[0], valueRef.current?.[1]]);
@@ -122,4 +122,3 @@ const useRegions = ({ backend, valueRef, viewState, globalBpPerUnit, tsconfig })
 };
 
 export default useRegions;
-

@@ -24,30 +24,26 @@ export class GenomeInfoLayer extends CompositeLayer {
     
     const {
       data, y0, y1,
-      getColor, viewId, showLabels, globalBpPerUnit, filterRange
+      getColor, viewId, globalBpPerUnit, filterRange
     } = this.props;
-    
+
     if (!Object.keys(data).length) return [];
 
     return [
       new LineLayer({
       id: `${this.props.id}-lines`,
-      // data: Object.values(data).map(d => d.s),
-      data: data,
-      getSourcePosition: d => [d.position / globalBpPerUnit, y0],
-      // getSourcePosition: d => {
-        
-      //   const pos = [d / globalBpPerUnit, y0];
-      //   return pos;
-      // },
-      getTargetPosition: d => [d.position /globalBpPerUnit, y1],
+      data: Object.values(data).map(d => d.s),
+      // data: data,
+      getSourcePosition: d => [d / globalBpPerUnit, y0],
+      getTargetPosition: d => [d /globalBpPerUnit, y1],
       getColor,
       viewId,
       pickable: false,
-      getFilterValue: d => d.position,
-      filterRange,
-      extensions: [new DataFilterExtension({filterSize: 1})],
+      // getFilterValue: d => d.position,
+      // filterRange,
+      // extensions: [new DataFilterExtension({filterSize: 1})],
       zOffset: -1,
     }),
-  ].filter(Boolean);  }
+  ].filter(Boolean);  
+}
 }

@@ -1,10 +1,9 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
+import { debounce } from "lodash";
 import {
   OrthographicView,
   OrthographicController,
-  //OrthographicViewport,
 } from "@deck.gl/core";
-import { Matrix4 } from "@math.gl/core";
 
 let globalSetZoomAxis = () => {};
 let globalPanDirection = () => {};
@@ -74,20 +73,12 @@ class MyOrthographicController extends OrthographicController {
   }
 }
 
-  const useView = ({ config, viewPortCoords, valueRef}) => {
+  const useView = ({ config, valueRef}) => {
 
   const {globalBpPerUnit, tsconfig} = config;
   const [zoomAxis, setZoomAxis] = useState("Y");
   const [panDirection, setPanDirection] = useState(null);
   const [xzoom, setXzoom] = useState(window.screen.width < 600 ? -1 : 0);
-  const viewPortCoordsRef = useRef();
-
-
-  useEffect(() => {
-    viewPortCoordsRef.current = viewPortCoords;
-
-  }, [viewPortCoords])
-
 
   const [viewState, setViewState] = useState({
     'ortho': INITIAL_VIEW_STATE['ortho'],
@@ -101,10 +92,20 @@ class MyOrthographicController extends OrthographicController {
 
   const maxZoom = 17;
 
+  const decksize = useRef({});
+
   const updateValueRef = useCallback(() => {
     
     let treeSpacing = 1.03;
-    var {x0, x1} = viewPortCoords['genome-positions']?.coordinates;
+    let width = decksize.current.width;
+
+    let tzoom = viewState['ortho'].zoom[0];
+    const W_w = width/ (Math.pow(2, tzoom));
+
+    let x0 = viewState['ortho'].target[0] - W_w / 2;
+    let x1 = viewState['ortho'].target[0] + W_w / 2;
+
+
     if (globalBpPerUnit) {
       const newValue = [
         Math.max(0, Math.round((x0 - treeSpacing) * globalBpPerUnit)),
@@ -112,15 +113,17 @@ class MyOrthographicController extends OrthographicController {
       ];
       return newValue;
     }
-  }, [viewPortCoords, globalBpPerUnit, valueRef]);
+  }, [globalBpPerUnit, viewState]);
 
   const changeView = useCallback((val) => {
   
     if (!val) return;
     valueRef.current = val;
-    if (globalBpPerUnit && viewPortCoordsRef?.current) {
+    if (globalBpPerUnit) {
+      
       let [x0, x1] = [val[0]/globalBpPerUnit, val[1]/globalBpPerUnit];
-      const Z = Math.log2((viewPortCoordsRef.current['ortho']['viewport'].width * globalBpPerUnit) / (val[1] - val[0]))
+      // const Z = Math.log2((viewPortCoords['ortho']['viewport'].width * globalBpPerUnit) / (val[1] - val[0]))
+      const Z = Math.log2((decksize.current.width * globalBpPerUnit) / (val[1] - val[0]))
       setViewState((prev) => {
         return {
           ...prev,
@@ -142,7 +145,7 @@ class MyOrthographicController extends OrthographicController {
         }
       })
     }
-  }, [globalBpPerUnit, viewPortCoordsRef, viewState])
+  }, [globalBpPerUnit, viewState])
 
   const views = useMemo(() => {
     return [
@@ -190,17 +193,24 @@ class MyOrthographicController extends OrthographicController {
 
   const [mouseXY, setMouseXY] = useState(false);
 
+  const debouncedUpdateRef = useMemo(
+    () => debounce((newValue) => {
+        valueRef.current = newValue;
+      }, 
+      100 // Adjust this delay (in milliseconds) to control frequency
+    ),
+    [valueRef, viewState]
+  );
   useEffect(() => {
-    if (!viewPortCoords || !tsconfig) return;
+    if (!tsconfig) return;
 
     if (tsconfig?.value && !valueRef.current){
       changeView(tsconfig.value);
     }else{
       const newValue = updateValueRef();
-      valueRef.current = newValue;
+      debouncedUpdateRef(newValue);
     }
-  }, [viewState, tsconfig, viewPortCoordsRef.current])
-
+  }, [viewState, tsconfig])
 
   function getPanStep({zoomX, baseStep = 8, sensitivity = 0.5}) {
     return baseStep / Math.pow(2, zoomX * sensitivity);
@@ -208,6 +218,11 @@ class MyOrthographicController extends OrthographicController {
   
   const handleViewStateChange = useCallback(({viewState:newViewState, viewId, oldViewState}) => {
     if (!viewId || !newViewState) return;
+
+    decksize.current = {
+      width: newViewState.width,
+      height: newViewState.height
+    }
     
     setViewState((prev) => {
       let zoom = [...oldViewState.zoom];

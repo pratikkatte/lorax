@@ -86,10 +86,10 @@ def old_new_tree_samples(tree_indexes, ts):
     min_time = float('inf')
     max_time = float('-inf')
 
-    for i, tree in enumerate(tree_indexes):
+    for i, treee in enumerate(tree_indexes):
         try:
-            global_index = tree['global_index']
-            tree = ts.at_index(tree['global_index'])
+            global_index = treee['global_index']
+            tree = ts.at_index(global_index)
             node_ids = list(tree.nodes())
             node_times = [ts.node(u).time for u in node_ids]
             start_time = min(node_times)
@@ -114,6 +114,7 @@ def old_new_tree_samples(tree_indexes, ts):
                     mut_str = f"{ancestral}{pos}{mut.derived_state}"
                     key = str(mut.node)
                     mut_map.setdefault(key, []).append(mut_str)
+            populations = [{"id": str(ts.node(n).id), "population": ts.node(n).population} for n in ts.samples()]
 
             tree_dict.append({
                 'newick': tree_newick,
@@ -122,7 +123,8 @@ def old_new_tree_samples(tree_indexes, ts):
                 'mutations': mut_map,
                 'min_time': ts.min_time,
                 'max_time': -ts.max_time,
-                'global_index': global_index
+                'global_index': global_index,
+                'populations': populations
             })
         except Exception as e:
             print(f"Error in new_tree_samples: {e}")

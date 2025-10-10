@@ -142,12 +142,12 @@ function useConnect({ setGettingDetails, settings }) {
 
   })
 
-  const queryLocalBins = useCallback((start, end, localBins, config_intervals, globalBpPerUnit, nTrees, new_globalBp) => {
+  const queryLocalBins = useCallback((start, end, localBins, globalBpPerUnit, nTrees, new_globalBp) => {
     return new Promise((resolve) => {
     
     worker.postMessage({
       type: "local-bins",
-      data: {start, end, localBins, config_intervals, globalBpPerUnit, nTrees, new_globalBp},
+      data: {start, end, localBins, globalBpPerUnit, nTrees, new_globalBp},
     });
 
     onLocalBinsReceipt = (receivedData) => {
