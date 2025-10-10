@@ -6,9 +6,9 @@ import { useNavigate } from "react-router-dom";
 function useConfig({backend}) {
   const [tsconfig, setConfig] = useState(null);
   const {isConnected, queryConfig} = backend;
-  const [populations, setPopulations] = useState(null);
+  const [populations, setPopulations] = useState({"populations": null, "nodes_population": null});
   const [globalBpPerUnit, setGlobalBpPerUnit] = useState(null);
-
+  const [populationFilter, setPopulationFilter] = useState(null);
   
   const handleConfigUpdate = useCallback((data) => {
     if (data.role === "config") {
@@ -87,8 +87,10 @@ function useConfig({backend}) {
     tsconfig, 
     setConfig,
     globalBpPerUnit,
-    populations
-  }), [tsconfig, setConfig, globalBpPerUnit, populations]);
+    populations,
+    populationFilter,
+    setPopulationFilter
+  }), [tsconfig, setConfig, globalBpPerUnit, populations, populationFilter, setPopulationFilter]);
 };
 
 export default useConfig;

@@ -140,7 +140,7 @@ function Deck({
   valueRef,
 }) {
 
-  const {tsconfig, globalBpPerUnit, populations} = config;
+  const {tsconfig, globalBpPerUnit, populations, populationFilter} = config;
   const saveViewports = useRef({});
   const clickedTree = useRef(null);
 
@@ -193,6 +193,7 @@ function Deck({
       hoveredTreeIndex,
       setHoveredTreeIndex,
       populations,
+      populationFilter,
     });
 
 
@@ -244,9 +245,9 @@ function Deck({
 
   
 useEffect(() => {
-    // getLayerPixelPositions(deckRef)
+    getLayerPixelPositions(deckRef)
 
-}, [regions])
+}, [regions, saveViewports.current])
 
   const handleAfterRender = useCallback(() => {
     

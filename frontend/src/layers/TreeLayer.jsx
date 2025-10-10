@@ -11,15 +11,16 @@ export default class TreeLayer extends CompositeLayer {
     treeSpacing: 1.03,
     viewId: 'ortho',
     hoveredTreeIndex: null,
-    setHoveredTreeIndex: null,
     populations: null,
+    populationFilter: null,
   };
 
 
   renderLayers() {
     const id_populations = this.props.populations.populations;
     const nodes_population = this.props.populations.nodes_population;
-    const { bin, viewId, hoveredTreeIndex, setHoveredTreeIndex, } = this.props;
+
+    const { bin, viewId, hoveredTreeIndex, populationFilter } = this.props;
     if (!bin || !bin.path) return null
 
 
@@ -55,12 +56,14 @@ export default class TreeLayer extends CompositeLayer {
         ),
         getPosition: d => d.position,
         getFillColor: d => { 
+          const sample_population = nodes_population[parseInt(d.name)];
+
+          if (populationFilter.enabledValues.includes(sample_population)) {
+            return id_populations[sample_population].color
+          } else {
+            return [200, 200, 200, 100]
+          }
           
-          if (id_populations.hasOwnProperty(String(nodes_population[parseInt(d.name)]))) {
-            return id_populations[nodes_population[parseInt(d.name)]].color
-          } else{
-            console.log("scatterplot", d.name );
-              return [10, 10, 10, 255]}
         },
         getLineColor: [80, 80, 180, 255],
         getLineWidth: 1,
@@ -72,6 +75,7 @@ export default class TreeLayer extends CompositeLayer {
         modelMatrix:bin.modelMatrix,
         viewId,
         updateTriggers: {
+          getFillColor: [populationFilter.colorBy, populationFilter.enabledValues],
           data: [bin.path, bin.modelMatrix],
         },
       }),

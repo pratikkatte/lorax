@@ -13,12 +13,12 @@ const useLayers = ({
   regions,
 globalBpPerUnit,
 populations,
+populationFilter,
 }) => {
 
   const { bins = {}, localCoordinates = [], times = [] } = regions;
   const layerCacheRef = useRef(new Map());
 
-  console.log("populations", populations);
   /** Filter visible layers by viewId (deck.gl native optimization) */
   const layerFilter = useCallback(({ layer, viewport }) => {
     const vid = viewport.id;
@@ -77,6 +77,7 @@ populations,
     }, [bins, globalBpPerUnit]);
 
     const treeLayers = useMemo(() => {
+      console.log("populationFilter", populationFilter)
       if (!bins || Object.keys(bins).length === 0) return [];
     
       const layerCache = layerCacheRef.current;
@@ -85,7 +86,8 @@ populations,
       for (const bin of Object.values(bins)) {
 
         const id = `main-layer-${bin.global_index}`;
-        const existing = layerCache.get(id);
+        // const existing = layerCache.get(id);
+        const existing = false;
 
         if (!bin?.path || !bin.visible) {
           if (existing) {
@@ -96,14 +98,13 @@ populations,
     
     
         if (existing) {
-          // ✅ Update existing layer’s props instead of recreating
           
           const sameMatrix = existing.props.bin?.modelMatrix === bin.modelMatrix;
-          // console.log("existing",existing, sameMatrix, bin.global_index)
 
-if (!sameMatrix) {
+          if (!sameMatrix) {
         // ⚡ clone with new matrix
-        const updatedLayer = existing.clone({ bin });
+        const updatedLayer = existing.clone({ bin});
+      
         layerCache.set(id, updatedLayer);
         newLayers.push(updatedLayer);
       } else {
@@ -120,6 +121,7 @@ if (!sameMatrix) {
             viewId: "ortho",
             hoveredTreeIndex,
             populations,
+            populationFilter,
           });
           layerCache.set(id, newLayer);
           newLayers.push(newLayer);
@@ -129,13 +131,12 @@ if (!sameMatrix) {
       // 🧹 Remove layers for bins no longer visible
       for (const key of layerCache.keys()) {
         if (!bins[key.replace("main-layer-", "")]) {
-          console.log("key", key)
           layerCache.delete(key);
         }
       }
     
       return newLayers;
-    }, [bins, globalBpPerUnit]);
+    }, [bins, globalBpPerUnit, populationFilter]);
     
     // const treeLayers = useMemo(() => {
     //   if (!bins || Object.keys(bins).length === 0) return [];
