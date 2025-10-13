@@ -1,18 +1,13 @@
 import { useState, useEffect, useRef } from 'react'
 import './App.css'
-import Lorax from './Lorax.jsx'
-
-import Info from './components/Info.jsx'
 import useConfig from "./hooks/useConfig";
 import useLoraxConfig from './globalconfig.js'
 import useConnect from './hooks/useConnect.jsx'
 import useSettings from './hooks/useSettings.jsx'
-import Settings from './components/Settings.jsx'
 import LandingPage from "./components/LandingPage.jsx";
 import useFileUpload from './hooks/useFileUpload.jsx'
-import { Routes, Route, useSearchParams, useParams } from 'react-router-dom'
+import { Routes, Route} from 'react-router-dom'
 import LoraxViewer from './LoraxViewer.jsx'
-import axios from 'axios';
 
 function App() {
 

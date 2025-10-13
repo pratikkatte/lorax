@@ -151,7 +151,7 @@ function useConnect({ setGettingDetails, settings }) {
     });
 
     onLocalBinsReceipt = (receivedData) => {
-      console.log("got queryLocalBins result", receivedData);
+      // console.log("got queryLocalBins result", receivedData);
       resolve(receivedData.data);
       
     };    
@@ -178,7 +178,7 @@ const queryNodes = useCallback((value, localTrees) => {
     });
 
     onQueryReceipt = (receivedData) => {
-      console.log("got query result", receivedData);
+      // console.log("got query result", receivedData);
       resolve(receivedData);
     };
   });
@@ -192,9 +192,9 @@ const queryNodes = useCallback((value, localTrees) => {
     });
     setGettingDetails(true);
 
-    console.log("queryDetails", clickedObject)
+    // console.log("queryDetails", clickedObject)
     onDetailsReceipt = (receivedData) => {
-      console.log("got details result", receivedData);
+      // console.log("got details result", receivedData);
       setGettingDetails(false);
     };
   }, [sendMessage, setGettingDetails]);

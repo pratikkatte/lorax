@@ -37,7 +37,6 @@ const handleDetails = useCallback((incoming_data) => {
     if (incoming_data.role === "details-result") {
       
       var data = JSON.parse(incoming_data.data)
-      console.log("data", data)
       setShowInfo(true);
       setTreeDetails(data?.tree? data.tree : null);
       setNodeDetails(data?.node? data.node : null);

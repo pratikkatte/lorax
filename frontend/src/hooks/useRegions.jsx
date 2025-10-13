@@ -69,13 +69,13 @@ const useRegions = ({ backend, valueRef, viewState, globalBpPerUnit, tsconfig })
 
       if (rangeArray.length > 0) {
         const results = await queryNodes([], rangeArray);
-        console.log("results", results);
+        // console.log("results", results);
         rangeArray.forEach(({ global_index }) => {
           local_bins[global_index].path = results.paths[global_index] || null;
         });
       }
 
-      setLocalBins({...local_bins});
+      setLocalBins(local_bins);
       isFetching.current = false;
     }, 400, { leading: false, trailing: true }),
     [isFetching.current]
@@ -108,7 +108,7 @@ const useRegions = ({ backend, valueRef, viewState, globalBpPerUnit, tsconfig })
           }
 
       }
-      console.log('newTime', newTime);
+      // console.log('newTime', newTime);
       return newTime;
     })
     }

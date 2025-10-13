@@ -79,29 +79,74 @@ for (let i = 0; i < intervalsKeys.length; i++) {
 const the_cache = {};
 
 
-function extractSquarePaths(node, vertical_mode, populations) {
-  const segments = [];
+// function extractSquarePaths(node, vertical_mode) {
+//   const segments = [];
 
-  if (node.child.length>0) {
-    node.child.forEach(child => {
+//   if (node.child.length>0) {
+//     node.child.forEach(child => {
+//       segments.push({
+//         path: [[node.y, node.x], [child.y, node.x], [child.y, node.x],[child.y, child.x]],
+//       })
+//       segments.push(...extractSquarePaths(child, vertical_mode));
+//     });
+//   } else {
+//     segments.push({
+//       name: node.name,
+//       position: vertical_mode ? [node.x, node.y] : [node.y, node.x],
+//     })
+//   }
+//   if(node.mutations) {
+//     if(vertical_mode){
+//       segments.push({ mutations: node.mutations,name: node.name, position:[node.x, node.y]})
+//     }else{
+//       segments.push({ mutations: node.mutations,name: node.name, position:[node.y, node.x]})
+//     }
+//   } 
+//   return segments;
+// }
+
+function extractSquarePaths(node, vertical_mode, segments = []) {
+  const isVertical = vertical_mode; // cache to avoid repeated lookups
+
+  const nodeX = node.x;
+  const nodeY = node.y;
+
+  const children = node.child;
+  const nChildren = children?.length || 0;
+
+  if (nChildren > 0) {
+    for (let i = 0; i < nChildren; i++) {
+      const child = children[i];
+
+      const cX = child.x;
+      const cY = child.y;
+
+      // Preallocate small arrays directly; no nested spread copies
       segments.push({
-        path: [[node.y, node.x], [child.y, node.x], [child.y, node.x],[child.y, child.x]]
-      })
-      segments.push(...extractSquarePaths(child, vertical_mode));
-    });
+        path: isVertical
+          ? [[nodeX, nodeY], [nodeX, cY], [nodeX, cY], [cX, cY]]
+          : [[nodeY, nodeX], [cY, nodeX], [cY, nodeX], [cY, cX]],
+      });
+
+      extractSquarePaths(child, isVertical, segments);
+    }
   } else {
+    // Leaf node marker
     segments.push({
       name: node.name,
-      position: vertical_mode ? [node.x, node.y] : [node.y, node.x],
-    })
+      position: isVertical ? [node.x, node.y] : [node.y, node.x],
+    });
   }
-  if(node.mutations) {
-    if(vertical_mode){
-      segments.push({ mutations: node.mutations,name: node.name, position:[node.x, node.y]})
-    }else{
-      segments.push({ mutations: node.mutations,name: node.name, position:[node.y, node.x]})
-    }
-  } 
+
+  // Mutations marker
+  if (node.mutations) {
+    segments.push({
+      mutations: node.mutations,
+      name: node.name,
+      position: isVertical ? [node.x, node.y] : [node.y, node.x],
+    });
+  }
+
   return segments;
 }
 
@@ -909,7 +954,6 @@ function processData(localTrees, sendStatusMessage, vertical_mode) {
   return paths;
 }
 
-
 onmessage = async (event) => {
   //Process uploaded data:
   console.log("Worker onmessage");
@@ -929,7 +973,7 @@ onmessage = async (event) => {
     }
     if (data.type === "config") {
       const result = await queryConfig(data);
-      console.log("config result", result);
+      // console.log("config result", result);
       postMessage({ type: "config", data: result });
     }
 
@@ -949,7 +993,7 @@ onmessage = async (event) => {
   
     if (data.type === "experimental"){
       const result = await queryExperimental(data.data);
-      console.log("experimental result", result);
+      // console.log("experimental result", result);
       // postMessage({ type: "experimental", data: result });
     }
   }

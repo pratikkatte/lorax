@@ -77,10 +77,10 @@ populationFilter,
     }, [bins, globalBpPerUnit]);
 
     const treeLayers = useMemo(() => {
-      console.log("populationFilter", populationFilter)
+      // console.log("populationFilter", populationFilter)
       if (!bins || Object.keys(bins).length === 0) return [];
     
-      const layerCache = layerCacheRef.current;
+      // const layerCache = layerCacheRef.current;
       const newLayers = [];
     
       for (const bin of Object.values(bins)) {
@@ -89,29 +89,29 @@ populationFilter,
         // const existing = layerCache.get(id);
         const existing = false;
 
-        if (!bin?.path || !bin.visible) {
-          if (existing) {
-            layerCache.delete(id);
-          }
-          continue;
-        }
+        // if (!bin?.path || !bin.visible) {
+        //   if (existing) {
+        //     layerCache.delete(id);
+        //   }
+        //   continue;
+        // }
     
     
-        if (existing) {
+      //   if (existing) {
           
-          const sameMatrix = existing.props.bin?.modelMatrix === bin.modelMatrix;
+      // //   //   const sameMatrix = existing.props.bin?.modelMatrix === bin.modelMatrix;
 
-          if (!sameMatrix) {
-        // ⚡ clone with new matrix
-        const updatedLayer = existing.clone({ bin});
+      // //   //   if (!sameMatrix) {
+      // //   // // ⚡ clone with new matrix
+      // //   // const updatedLayer = existing.clone({ bin});
       
-        layerCache.set(id, updatedLayer);
-        newLayers.push(updatedLayer);
-      } else {
-        // ✅ reuse same layer
-        newLayers.push(existing);
-      }
-        } else {
+      // //   // layerCache.set(id, updatedLayer);
+      // //   // newLayers.push(updatedLayer);
+      // // } else {
+      // //   // ✅ reuse same layer
+      // //   newLayers.push(existing);
+      // }
+      //   } else 
           // 🆕 Create new layer if it doesn’t exist
           const newLayer = new TreeLayer({
             id,
@@ -123,20 +123,19 @@ populationFilter,
             populations,
             populationFilter,
           });
-          layerCache.set(id, newLayer);
+          // layerCache.set(id, newLayer); 
           newLayers.push(newLayer);
-        }
       }
     
       // 🧹 Remove layers for bins no longer visible
-      for (const key of layerCache.keys()) {
-        if (!bins[key.replace("main-layer-", "")]) {
-          layerCache.delete(key);
-        }
-      }
+      // for (const key of layerCache.keys()) {
+      //   if (!bins[key.replace("main-layer-", "")]) {
+      //     layerCache.delete(key);
+      //   }
+      // }
     
       return newLayers;
-    }, [bins, globalBpPerUnit, populationFilter]);
+    }, [bins, globalBpPerUnit, hoveredTreeIndex, populations, populationFilter]);
     
     // const treeLayers = useMemo(() => {
     //   if (!bins || Object.keys(bins).length === 0) return [];
@@ -153,9 +152,6 @@ populationFilter,
     //   ];
     // }, [bins, hoveredTreeIndex]);
 
-    useEffect(() => {
-      console.log("Tree layer count:", layerCacheRef.current.size);
-    }, [treeLayers]);
 
     const layers = useMemo(() => {
       const all = [...treeLayers];

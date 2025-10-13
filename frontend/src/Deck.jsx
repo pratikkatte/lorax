@@ -254,6 +254,13 @@ useEffect(() => {
       const deck = deckRef?.current?.deck;
       if (!deck) return;
 
+      console.log("Live layers:", deck.props.layers.length);
+
+      if (performance.memory) {
+        const mem = (performance.memory.usedJSHeapSize / 1048576).toFixed(1);
+        console.log(`💾 JS heap: ${mem} MB`);
+      }
+
       // if (saveViewports.current) return;
 
       const vpGenome = deck.getViewports().find(v => v.id === 'genome-positions');
@@ -284,7 +291,6 @@ useEffect(() => {
         }
       }}
       onClick={(info, event) => {
-        console.log("deck click",info, info.object)
         clickedTree.current = {treeIndex: info.layer.props.bin.global_index, node: info.object?.name}
 
       }}
@@ -301,7 +307,6 @@ useEffect(() => {
       {dummy && dummy.pointsArray.length > 0 && (
               <GenomeVisualization pointsArray={dummy.pointsArray} skipArray={dummy.skipArray} />
             )}
-            
       </View>
       <View id="genome-positions">
       </View>

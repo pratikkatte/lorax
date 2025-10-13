@@ -71,7 +71,7 @@ class LoraxHandler:
         # for s in self.ts.populations(): populations[str(s.id)] = str(json.loads(s.metadata)['name'])
         for s in self.ts.populations():
             meta = json.loads(s.metadata)
-            populations[str(s.id)] = {
+            populations[int(s.id)] = {
                 "population": meta.get("name"),
                 "description": meta.get("description"),
                 "super_population": meta.get("super_population")

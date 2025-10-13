@@ -72,7 +72,7 @@ export default function LoraxViewer({ backend, config, settings, setSettings, pr
   const handleUCGBMode = useCallback(() => {
     if (ucgbMode.current) {
       axios.get(`${API_BASE}/ucgb?chrom=${qp.chrom}&genomiccoordstart=${qp.genomiccoordstart}&genomiccoordend=${qp.genomiccoordend}`).then(response => {
-        console.log("response", response)
+        // console.log("response", response)
         console.log(parseInt(qp.genomiccoordend) - parseInt(qp.genomiccoordstart))
         if (parseInt(qp.genomiccoordend) - parseInt(qp.genomiccoordstart) > 1000) {
           alert("Please try a genomic coordinate range less than 10kb");
@@ -89,11 +89,11 @@ export default function LoraxViewer({ backend, config, settings, setSettings, pr
   }, [ucgbMode]);
 
   const handleNormalMode = useCallback(() => {
-    console.log("in handleNormalMode")
+    // console.log("in handleNormalMode")
     if (qp.project && (qp.genomiccoordstart && qp.genomiccoordend) && !tsconfig) {
       setProject(qp.project);
       axios.get(`${API_BASE}/${file}?project=${qp.project}&genomiccoordstart=${qp.genomiccoordstart}&genomiccoordend=${qp.genomiccoordend}`).then(response => {
-        console.log("config response", response.data, tsconfig)
+        // console.log("config response", response.data, tsconfig)
         if (response.data.error) {
           console.log("error", response.data.error)
         } else {
