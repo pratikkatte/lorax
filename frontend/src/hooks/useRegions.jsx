@@ -43,7 +43,7 @@ function getDynamicBpPerUnit(globalBpPerUnit, zoom, baseZoom = 8) {
 // useRegions Hook
 // ────────────────────────────────
 
-const useRegions = ({ backend, valueRef, viewState, globalBpPerUnit, tsconfig }) => {
+const useRegions = ({ backend, valueRef, viewState, globalBpPerUnit, tsconfig, setStatusMessage }) => {
   const { queryNodes, queryLocalBins } = backend;
   const [localBins, setLocalBins] = useState({});
   const localBinsRef = useRef(localBins);
@@ -56,7 +56,7 @@ const useRegions = ({ backend, valueRef, viewState, globalBpPerUnit, tsconfig })
   const debouncedQuery = useMemo(
     () => debounce(async (val) => {
       if (isFetching.current) return;
-      console.log("inside here")
+
       const [lo, hi] = val;
       const zoom = viewState["ortho"]?.zoom?.[0] ?? 8;
       const new_globalBp = getDynamicBpPerUnit(globalBpPerUnit, zoom);
@@ -68,6 +68,8 @@ const useRegions = ({ backend, valueRef, viewState, globalBpPerUnit, tsconfig })
       );
 
       if (rangeArray.length > 0) {
+        setStatusMessage({status: "loading", message: "Fetching data from backend..."});
+
         const results = await queryNodes([], rangeArray);
         // console.log("results", results);
         rangeArray.forEach(({ global_index }) => {
@@ -76,6 +78,7 @@ const useRegions = ({ backend, valueRef, viewState, globalBpPerUnit, tsconfig })
       }
 
       setLocalBins(local_bins);
+      setStatusMessage(null);
       isFetching.current = false;
     }, 400, { leading: false, trailing: true }),
     [isFetching.current]
@@ -117,7 +120,7 @@ const useRegions = ({ backend, valueRef, viewState, globalBpPerUnit, tsconfig })
   return useMemo(() => ({
     bins: localBins,
     localCoordinates,
-    times
+    times,
   }), [localBins, localCoordinates, times]);
 };
 

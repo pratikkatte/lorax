@@ -14,6 +14,12 @@ const LoadingSpinner = React.memo(() => (
   </div>
 ));
 
+const StatusMessage = React.memo(({status, message}) => (
+  <div className="w-full h-full flex justify-center items-center">
+    <div className="text-sm text-gray-500">{message}</div>
+  </div>
+));
+
 const ViewportOverlay = React.memo(() => (
   <>
     {/* Outer border */}
@@ -143,13 +149,14 @@ function Deck({
   const {tsconfig, globalBpPerUnit, populations, populationFilter} = config;
   const saveViewports = useRef({});
   const clickedTree = useRef(null);
+  const [statusMessage, setStatusMessage] = useState(null);
 
   const {views, xzoom, viewState, handleViewStateChange} = view
 
   const {queryDetails} = backend;
 
 
-  const regions = useRegions({backend, viewState, valueRef, saveViewports: saveViewports.current, globalBpPerUnit, tsconfig});
+  const regions = useRegions({backend, viewState, valueRef, saveViewports: saveViewports.current, globalBpPerUnit, tsconfig, setStatusMessage});
 
   const onClickOrMouseMove = useCallback(
     (event) => {
@@ -254,15 +261,6 @@ useEffect(() => {
       const deck = deckRef?.current?.deck;
       if (!deck) return;
 
-      console.log("Live layers:", deck.props.layers.length);
-
-      if (performance.memory) {
-        const mem = (performance.memory.usedJSHeapSize / 1048576).toFixed(1);
-        console.log(`💾 JS heap: ${mem} MB`);
-      }
-
-      // if (saveViewports.current) return;
-
       const vpGenome = deck.getViewports().find(v => v.id === 'genome-positions');
       const vpOrtho = deck.getViewports().find(v => v.id === 'ortho');
 
@@ -287,12 +285,14 @@ useEffect(() => {
       ref={deckRef}
       onHover={(info, event) => {
         if(info.object) {
-        setHoveredTreeIndex({path: info.object?.path})
+          const { srcEvent } = event;
+        const x = srcEvent.clientX;
+        const y = srcEvent.clientY;
+        setHoveredTreeIndex({path: info.object?.path, center: [x, y]})
         }
       }}
       onClick={(info, event) => {
         clickedTree.current = {treeIndex: info.layer.props.bin.global_index, node: info.object?.name}
-
       }}
       pickingRadius={10}
       layers={layers}
@@ -307,6 +307,35 @@ useEffect(() => {
       {dummy && dummy.pointsArray.length > 0 && (
               <GenomeVisualization pointsArray={dummy.pointsArray} skipArray={dummy.skipArray} />
             )}
+
+            {statusMessage?.status === "loading" && <StatusMessage status={statusMessage.status} message={statusMessage.message} />}
+
+      {/* Tooltip on hoveredTreeIndex */}
+      {hoveredTreeIndex && hoveredTreeIndex.path && typeof hoveredTreeIndex.center[0] === "number" && typeof hoveredTreeIndex.center[1] === "number" && (
+        <div
+          style={{
+            position: 'fixed',
+            left: hoveredTreeIndex.center[0] + 15,
+            top: hoveredTreeIndex.center[1] - 15,
+            zIndex: 51,
+            pointerEvents: 'none',
+            backgroundColor: 'rgba(255,255,255,0.98)',
+            boxShadow: '0 2px 8px 0 rgba(0,0,0,0.08)',
+            borderRadius: 8,
+            padding: "6px 12px",
+            minWidth: 120,
+            border: '1px solid #ddd',
+            fontSize: '14px',
+            color: '#1a2330',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {/* Display tree index and path */}
+          <div>
+            <b>Tree Info:</b> some data
+          </div>
+        </div>
+      )}
       </View>
       <View id="genome-positions">
       </View>
