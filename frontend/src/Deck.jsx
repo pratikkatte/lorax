@@ -105,7 +105,7 @@ const ViewportOverlay = React.memo(() => (
           letterSpacing: '2px',
         }}
       >
-        Coalescent time
+        Coalescent time 
       </div>
     </div>
   </>
