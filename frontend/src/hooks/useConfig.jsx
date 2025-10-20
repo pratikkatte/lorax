@@ -1,6 +1,5 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import websocketEvents from "../webworkers/websocketEvents";
-import { useNavigate } from "react-router-dom";
 
 
 function useConfig({backend}) {
@@ -9,10 +8,11 @@ function useConfig({backend}) {
   const [populations, setPopulations] = useState({"populations": null, "nodes_population": null});
   const [globalBpPerUnit, setGlobalBpPerUnit] = useState(null);
   const [populationFilter, setPopulationFilter] = useState(null);
-  
+  const genomeLength = useRef(null);
+  const pathArray = useRef([]);
+
   const handleConfigUpdate = useCallback((data) => {
     if (data.role === "config") {
-      console.log("handleConfigUpdate", data.data, tsconfig)
       setConfig({...tsconfig, ...data.data});
       // For each key in populations, assign a unique color (generate if needed, do not repeat)
       const assignUniqueColors = (dict) => {
@@ -54,17 +54,16 @@ function useConfig({backend}) {
               "color": getColor(keys.indexOf(key), keys.length)};
         }
         return dict;
-        
-        // return keys.reduce((acc, key, idx) => {
-        //   acc[key] = Object.assign({}, dict[key], { color: getColor(idx, keys.length) });
-        //   return acc;
-        // }, {});
       };
       
       setPopulations({'populations': assignUniqueColors(data.data.populations), 'nodes_population': data.data.nodes_population});
 
       queryConfig(data.data);
-      setGlobalBpPerUnit(data.data.genome_length/(Object.keys(data.data.new_intervals).length));
+      let number_of_intervals = Object.keys(data.data.new_intervals).length;
+      setGlobalBpPerUnit(data.data.genome_length/(number_of_intervals));
+      pathArray.current = Array(number_of_intervals).fill(null);
+
+      genomeLength.current = data.data.genome_length;
       // setWidth(data.data.genome_length);
     }
   }, [tsconfig]);
@@ -89,8 +88,10 @@ function useConfig({backend}) {
     globalBpPerUnit,
     populations,
     populationFilter,
-    setPopulationFilter
-  }), [tsconfig, setConfig, globalBpPerUnit, populations, populationFilter, setPopulationFilter]);
+    setPopulationFilter,
+    genomeLength,
+    pathArray
+  }), [tsconfig, setConfig, globalBpPerUnit, populations, populationFilter, setPopulationFilter, genomeLength, pathArray]);
 };
 
 export default useConfig;

@@ -95,14 +95,6 @@ async def get_file(
         file = "1kg_chr20.trees.tsz"
         file_path = UPLOAD_DIR / (project or "1000Genomes") / file
 
-    print("file_path", file_path)
-    print("project", project)
-    print("chrom", chrom)
-    print("genomiccoordstart", genomiccoordstart)
-    print("genomiccoordend", genomiccoordend)
-    print("regionstart", regionstart)
-    print("regionend", regionend)
-
     try:
         if file_path:
             viz_config, chat_config = await lorax_handler.handle_upload(file_path)
@@ -131,15 +123,16 @@ async def get_file(
     }
 
 
+from fastapi import status
+from fastapi.responses import JSONResponse
+
 @app.post('/load_file')
 async def load_file(request: Request):
     try:
         form_data = await request.json()
-        print("form_data", form_data)
         project = form_data.get("project")
         file = form_data.get("file")
         file_path = UPLOAD_DIR / project / file
-        print("file_path", file_path)
         viz_config, chat_config = await lorax_handler.handle_upload(file_path)
         await manager.send_to_component("viz", {
             "type": "viz", 
@@ -161,7 +154,10 @@ async def load_file(request: Request):
 
     except Exception as e:
         print(f"Error loading file: {e}")
-        return {"error": str(e)}
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"error": str(e)}
+        )
 
 @app.post('/upload')
 # async def upload(file: UploadFile = File(...)):
@@ -212,87 +208,154 @@ async def upload(request: Request):
     finally:
         file.file.close()
 
+import asyncio
+from fastapi import WebSocket, WebSocketDisconnect
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
     await manager.register_component(websocket, "viz")
     await manager.register_component(websocket, "chat")
     await manager.register_component(websocket, "ping")
-    
-    # Clean up any existing disconnected clients
+
     await manager.cleanup_disconnected_clients()
-    
+
+    # ────────────────────────────────
+    # Track currently active tasks per role (e.g., query, details)
+    # ────────────────────────────────
+    active_tasks = {}
+
     try:
         while True:
-            # Check if client is still connected before processing
+            # Check if connection is still alive
             if not manager.is_connected(websocket):
                 print("Client disconnected, breaking loop")
                 break
-                
+
             try:
                 message = await websocket.receive_json()
-                
-                # Check connection again after receiving message
+
+                # Recheck connection
                 if not manager.is_connected(websocket):
                     print("Client disconnected after receiving message")
                     break
-                
-                # Periodic cleanup of other disconnected clients
+
                 await manager.cleanup_disconnected_clients()
-                
+
+                # ────────────────────────────────
+                # PING: lightweight status check
+                # ────────────────────────────────
                 if message.get("type") == "ping":
                     data = await lorax_handler.handle_ping(message)
                     await manager.send_to_component("ping", data)
-                    continue  # ignore pings
-
-    
-
-                if message.get("type") == "viz":
-                    print("message", message)
-                    if message.get("role") == "query":
-                        try:
-                            result = await lorax_handler.handle_query(message)
-                            print("Viz received query")
-                            message = {"type": "viz", "role": "query-result", "data": result}
-                            await manager.send_to_component("viz", message)
-                        except Exception as e:
-                            print(f"Error handling viz query: {e}")
-                            await manager.send_to_component("viz", {
-                                "type": "viz", 
-                                "role": "query-result", 
-                                "data": {"error": str(e)}
-                            })
-                        continue
-
-                    if message.get("role") == "details":
-                        try:
-                            result = await lorax_handler.handle_details(message)
-                            message = {"type": "viz", "role": "details-result", "data": result}
-                            
-                            await manager.send_to_component("viz", message)
-                        except Exception as e:
-                            print(f"Error handling viz details: {e}")
-                            await manager.send_to_component("viz", {
-                                "type": "viz", 
-                                "role": "details-result", 
-                                "data": {"error": str(e)}
-                            })
-                        continue
-
                     continue
 
-                # Broadcast to all connected clients
+                # ────────────────────────────────
+                # VIZ REQUESTS
+                # ────────────────────────────────
+                if message.get("type") == "viz":
+                    role = message.get("role")
+
+                    # ────── Handle Frequent Queries (Cancellable)
+                    if role == "query":
+                        try:
+                            # Cancel any existing query task before starting new one
+                            if "query" in active_tasks:
+                                prev_task = active_tasks.pop("query")
+                                if not prev_task.done():
+                                    prev_task.cancel()
+                                    print("🛑 Cancelled previous query task")
+
+                            # Create a new query task
+                            current_task = asyncio.create_task(lorax_handler.handle_query(message))
+                            active_tasks["query"] = current_task
+
+                            result = await current_task
+
+                            await manager.send_to_component("viz", {
+                                "type": "viz",
+                                "role": "query-result",
+                                "data": result
+                            })
+
+                        except asyncio.CancelledError:
+                            print("⚠️ Query task cancelled — skipping result send")
+                            await manager.send_to_component("viz", {
+                                "type": "viz",
+                                "role": "query-result",
+                                "data": {"status": "cancelled"}
+                            })
+                            continue
+
+                        except Exception as e:
+                            print(f"❌ Error handling viz query: {e}")
+                            await manager.send_to_component("viz", {
+                                "type": "viz",
+                                "role": "query-result",
+                                "data": {"error": str(e)}
+                            })
+                        continue
+
+                    # ────── Handle Details (Optional Cancellable Type)
+                    if role == "details":
+                        try:
+                            # Cancel previous details task if active
+                            if "details" in active_tasks:
+                                prev_task = active_tasks.pop("details")
+                                if not prev_task.done():
+                                    prev_task.cancel()
+                                    print("🛑 Cancelled previous details task")
+
+                            current_task = asyncio.create_task(lorax_handler.handle_details(message))
+                            active_tasks["details"] = current_task
+
+                            result = await current_task
+
+                            await manager.send_to_component("viz", {
+                                "type": "viz",
+                                "role": "details-result",
+                                "data": result
+                            })
+                        except asyncio.CancelledError:
+                            print("⚠️ Details task cancelled")
+                            continue
+                        except Exception as e:
+                            print(f"❌ Error handling viz details: {e}")
+                            await manager.send_to_component("viz", {
+                                "type": "viz",
+                                "role": "details-result",
+                                "data": {"error": str(e)}
+                            })
+                        continue
+
+                    # Continue to next loop iteration
+                    continue
+
+                # ────────────────────────────────
+                # FALLBACK: Broadcast to all clients
+                # ────────────────────────────────
                 connected_clients = manager.get_connected_clients()
                 for client in connected_clients:
-                    print("Sending message to client" )
                     await manager.send_message(client, message)
+
             except Exception as e:
-                print(f"Error processing message: {e}")
-                # Don't disconnect for message processing errors, just log them
+                print(f"⚠️ Error processing message: {e}")
                 continue
+
     except WebSocketDisconnect:
+        print("🔌 Client disconnected")
+        # Cancel all running tasks cleanly
+        for task in active_tasks.values():
+            if not task.done():
+                task.cancel()
+        active_tasks.clear()
         await manager.disconnect(websocket)
-        print("Client disconnected")
+
     except Exception as e:
-        print(f"Unexpected error: {e}")
+        print(f"❗ Unexpected error: {e}")
+        # Cancel all running tasks on fatal errors
+        for task in active_tasks.values():
+            if not task.done():
+                task.cancel()
+        active_tasks.clear()
         await manager.disconnect(websocket)

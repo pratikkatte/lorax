@@ -36,22 +36,23 @@ const getLocalCoordinates = memoizeOne((lo, hi) => {
 function getDynamicBpPerUnit(globalBpPerUnit, zoom, baseZoom = 8) {
   const zoomDiff = zoom - baseZoom;
   const scaleFactor = Math.max(1, Math.pow(2, -zoomDiff));
-  return globalBpPerUnit * Math.floor(scaleFactor);
+  // return globalBpPerUnit * Math.floor(scaleFactor);
+  return globalBpPerUnit * scaleFactor;
 }
 
 // ────────────────────────────────
 // useRegions Hook
 // ────────────────────────────────
 
-const useRegions = ({ backend, valueRef, viewState, globalBpPerUnit, tsconfig, setStatusMessage }) => {
+const useRegions = ({ backend, valueRef, viewState, globalBpPerUnit, tsconfig, setStatusMessage, pathArray }) => {
   const { queryNodes, queryLocalBins } = backend;
-  const [localBins, setLocalBins] = useState({});
-  const localBinsRef = useRef(localBins);
+  const [localBins, setLocalBins] = useState(null);
+  // const localBinsRef = useRef(localBins);
   const isFetching = useRef(false);
   const [times, setTimes] = useState([]);
 
   // keep latest localBins for stable debounced callback
-  useEffect(() => { localBinsRef.current = localBins; }, [localBins]);
+  // useEffect(() => { localBinsRef.current = localBins; }, [localBins]);
 
   const debouncedQuery = useMemo(
     () => debounce(async (val) => {
@@ -62,26 +63,43 @@ const useRegions = ({ backend, valueRef, viewState, globalBpPerUnit, tsconfig, s
       const new_globalBp = getDynamicBpPerUnit(globalBpPerUnit, zoom);
 
       isFetching.current = true;
-
       const { local_bins, rangeArray } = await queryLocalBins(
-        lo, hi, localBinsRef.current, globalBpPerUnit, null, new_globalBp
+        lo, hi, localBins, globalBpPerUnit, null, new_globalBp
       );
+      setLocalBins(local_bins);
 
       if (rangeArray.length > 0) {
         setStatusMessage({status: "loading", message: "Fetching data from backend..."});
 
         const results = await queryNodes([], rangeArray);
-        // console.log("results", results);
-        rangeArray.forEach(({ global_index }) => {
-          local_bins[global_index].path = results.paths[global_index] || null;
-        });
-      }
 
-      setLocalBins(local_bins);
+        setLocalBins(prev => {
+          // Clone the previous Map to preserve immutability
+          const updated = new Map(prev);
+        
+          for (const { global_index } of rangeArray) {
+            if (updated.has(global_index)) {
+              const prevEntry = updated.get(global_index);
+              
+              updated.set(global_index, {
+                ...prevEntry,
+                path: results.paths?.[global_index] || null
+              });
+              // pathArray[global_index] = results.paths?.[global_index] || null;
+            }
+          }
+          return updated;
+        });
+        
+        // rangeArray.forEach(({ global_index }) => {
+        //   local_bins[global_index].path = results.paths[global_index] || null;
+        // });
+      }
+      
       setStatusMessage(null);
       isFetching.current = false;
     }, 400, { leading: false, trailing: true }),
-    [isFetching.current]
+    [isFetching.current, valueRef.current]
   );
 
   useEffect(() => {
@@ -93,7 +111,7 @@ const useRegions = ({ backend, valueRef, viewState, globalBpPerUnit, tsconfig, s
   const localCoordinates = useMemo(() => {
     if (!valueRef.current) return [];
     const [lo, hi] = valueRef.current;
-    const bufferFrac = 0.01;
+    const bufferFrac = 0.1;
     const range = hi - lo;
     return getLocalCoordinates(lo - bufferFrac * range, hi + bufferFrac * range);
   }, [valueRef.current?.[0], valueRef.current?.[1]]);

@@ -1,6 +1,7 @@
 import {CompositeLayer} from '@deck.gl/core';
 import {TextLayer} from '@deck.gl/layers';
 
+
 export class GenomeGridLayer extends CompositeLayer {
   static defaultProps = {
     data: [],

@@ -16,8 +16,7 @@ populations,
 populationFilter,
 }) => {
 
-  const { bins = {}, localCoordinates = [], times = [] } = regions;
-  const layerCacheRef = useRef(new Map());
+  const { bins = new Map(), localCoordinates = [], times = [] } = regions;
 
   /** Filter visible layers by viewId (deck.gl native optimization) */
   const layerFilter = useCallback(({ layer, viewport }) => {
@@ -55,6 +54,7 @@ populationFilter,
           d.end.toLocaleString("en-US", { maximumFractionDigits: 0 }),
         viewId: "genome-positions",
         showLabels: true,
+        // filterRange: valueRef?.current ? [valueRef?.current?.[0] - valueRef?.current?.[0]*0.1, valueRef?.current?.[1] + valueRef?.current?.[1]*0.1] :[],
       });
     }, [localCoordinates, globalBpPerUnit]);
 
@@ -72,70 +72,52 @@ populationFilter,
         getText: d =>
           d.end.toLocaleString("en-US", { maximumFractionDigits: 0 }),
         viewId: "genome-info",
-        filterRange: valueRef?.current ? [valueRef?.current?.[0] - valueRef?.current?.[0]*0.1, valueRef?.current?.[1] + valueRef?.current?.[1]*0.1] :[],
+        // filterRange: valueRef?.current ? [valueRef?.current?.[0] - valueRef?.current?.[0]*0.1, valueRef?.current?.[1] + valueRef?.current?.[1]*0.1] :[],
       });
     }, [bins, globalBpPerUnit]);
 
     const treeLayers = useMemo(() => {
-      // console.log("populationFilter", populationFilter)
-      if (!bins || Object.keys(bins).length === 0) return [];
+      if (!bins || bins.size === 0) return [];
     
-      // const layerCache = layerCacheRef.current;
       const newLayers = [];
     
-      for (const bin of Object.values(bins)) {
-
+      // Iterate directly over map entries
+      for (const [key, bin] of bins.entries()) {
         const id = `main-layer-${bin.global_index}`;
         // const existing = layerCache.get(id);
         const existing = false;
-
-        // if (!bin?.path || !bin.visible) {
-        //   if (existing) {
-        //     layerCache.delete(id);
-        //   }
-        //   continue;
-        // }
     
+        // Skip bins with no path or invisible
+        if (!bin?.path || !bin.visible) {
+          // if (existing) layerCache.delete(id);
+          continue;
+        }
     
-      //   if (existing) {
-          
-      // //   //   const sameMatrix = existing.props.bin?.modelMatrix === bin.modelMatrix;
-
-      // //   //   if (!sameMatrix) {
-      // //   // // ⚡ clone with new matrix
-      // //   // const updatedLayer = existing.clone({ bin});
-      
-      // //   // layerCache.set(id, updatedLayer);
-      // //   // newLayers.push(updatedLayer);
-      // // } else {
-      // //   // ✅ reuse same layer
-      // //   newLayers.push(existing);
-      // }
-      //   } else 
-          // 🆕 Create new layer if it doesn’t exist
-          const newLayer = new TreeLayer({
-            id,
-            bin,
-            globalBpPerUnit,
-            treeSpacing: 1.03,
-            viewId: "ortho",
-            hoveredTreeIndex,
-            populations,
-            populationFilter,
-          });
-          // layerCache.set(id, newLayer); 
-          newLayers.push(newLayer);
+        // 🆕 Create new layer if it doesn’t exist
+        const newLayer = new TreeLayer({
+          id,
+          bin,
+          globalBpPerUnit,
+          treeSpacing: 1.03,
+          viewId: "ortho",
+          hoveredTreeIndex,
+          populations,
+          populationFilter,
+        });
+    
+        newLayers.push(newLayer);
       }
     
-      // 🧹 Remove layers for bins no longer visible
+      // 🧹 Optional cleanup logic if using layerCache:
       // for (const key of layerCache.keys()) {
-      //   if (!bins[key.replace("main-layer-", "")]) {
+      //   if (!bins.has(key.replace("main-layer-", ""))) {
       //     layerCache.delete(key);
       //   }
       // }
     
       return newLayers;
     }, [bins, globalBpPerUnit, hoveredTreeIndex, populations, populationFilter]);
+    
     
     // const treeLayers = useMemo(() => {
     //   if (!bins || Object.keys(bins).length === 0) return [];

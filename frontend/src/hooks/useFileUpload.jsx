@@ -35,12 +35,16 @@ export default function useFileUpload({
   const navigate = useNavigate(); 
 
   const {tsconfig, setConfig} = config;
+  const [loadingFile, setLoadingFile] = useState(null);
+
 
   const inputRef = useRef(null);
+  const loadingRequestRef = useRef(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [selectedFileName, setSelectedFileName] = useState("");
   const [dragOver, setDragOver] = useState(false);
+  const [error, setError] = useState(null);
 
   const acceptAttr = useMemo(() => (Array.isArray(accept) ? accept.join(",") : accept), [accept]);
 
@@ -75,6 +79,15 @@ export default function useFileUpload({
       if (typeof onError === "function") onError(err);
       if (autoClearOnError && inputRef.current) inputRef.current.value = "";
       setIsUploading(false);
+      setLoadingFile(null);
+      try {
+        const apiMessage = err?.response?.data?.error || err?.response?.data?.message;
+        const status = err?.response?.status;
+        const message = apiMessage || err?.message || "Unexpected error";
+        setError(status ? `${message} (HTTP ${status})` : message);
+      } catch (_) {
+        setError("Unexpected error");
+      }
     },
     [autoClearOnError, onError]
   );
@@ -82,16 +95,21 @@ export default function useFileUpload({
   const loadFile = useCallback(
     async (project) => {
       if (!project) return;
+      if (loadingRequestRef.current) return;
+      loadingRequestRef.current = true;
   
       try {
         const url = `${API_BASE}/load_file`;
         const payload = project;
         console.log("payload", payload);
         const res = await axios.post(url, payload);
-        console.log("res", res);
         _finishSuccess(res?.data, { name: project.file, project: project.project });
       } catch (err) {
+        console.log("err", err);
         _finishError(err);
+      } finally {
+        setLoadingFile(null);
+        loadingRequestRef.current = false;
       }
     },
     [API_BASE, _finishSuccess, _finishError]
@@ -176,12 +194,15 @@ export default function useFileUpload({
     onDrop,
   }), [onDragEnter, onDragLeave, onDragOver, onDrop]);
 
+  const dismissError = useCallback(() => setError(null), []);
+
   return {
     // state
     isUploading,
     uploadProgress,
     selectedFileName,
     dragOver,
+    error,
 
     // refs
     inputRef,
@@ -191,6 +212,9 @@ export default function useFileUpload({
     remove,
     uploadFile,
     loadFile,
+    loadingFile,
+    setLoadingFile,
+    dismissError,
 
     // event handlers
     onInputChange,

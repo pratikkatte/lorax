@@ -75,10 +75,11 @@ class MyOrthographicController extends OrthographicController {
 
   const useView = ({ config, valueRef}) => {
 
-  const {globalBpPerUnit, tsconfig} = config;
+  const {globalBpPerUnit, tsconfig, genomeLength} = config;
   const [zoomAxis, setZoomAxis] = useState("Y");
   const [panDirection, setPanDirection] = useState(null);
   const [xzoom, setXzoom] = useState(window.screen.width < 600 ? -1 : 0);
+  const xStopZoomRef = useRef(false);
 
   const [viewState, setViewState] = useState({
     'ortho': INITIAL_VIEW_STATE['ortho'],
@@ -96,7 +97,7 @@ class MyOrthographicController extends OrthographicController {
 
   const updateValueRef = useCallback(() => {
     
-    let treeSpacing = 1.03;
+    // let treeSpacing = 1.03;
     let width = decksize.current.width;
 
     let tzoom = viewState['ortho'].zoom[0];
@@ -104,13 +105,18 @@ class MyOrthographicController extends OrthographicController {
 
     let x0 = viewState['ortho'].target[0] - W_w / 2;
     let x1 = viewState['ortho'].target[0] + W_w / 2;
-
+    
 
     if (globalBpPerUnit) {
       const newValue = [
-        Math.max(0, Math.round((x0 - treeSpacing) * globalBpPerUnit)),
-        Math.max(0, Math.round((x1 - treeSpacing) * globalBpPerUnit))
+        Math.max(0, Math.round((x0) * globalBpPerUnit)),
+        Math.max(0, Math.round((x1) * globalBpPerUnit))
       ];
+      if (newValue[0] <= 0 && (newValue[1] > genomeLength.current)) {
+        xStopZoomRef.current = true;
+      } else {
+        xStopZoomRef.current = false;
+      }
       return newValue;
     }
   }, [globalBpPerUnit, viewState]);
@@ -213,9 +219,27 @@ class MyOrthographicController extends OrthographicController {
   }, [viewState, tsconfig])
 
   function getPanStep({zoomX, baseStep = 8, sensitivity = 0.5}) {
+
+    if (zoomX < 0) {
+      // 2. Increase baseStep by the magnitude of the negative zoomX
+      // e.g., if zoomX is -4, the multiplier is 4+1 = 5
+      baseStep = baseStep * (Math.abs(zoomX) + 1);
+    }
+
     return baseStep / Math.pow(2, zoomX * sensitivity);
   }
   
+  const panLimit = useCallback((target, oldTarget) => {
+    if (target[0] < 0){
+      return oldTarget;
+    }
+    if (target[0] > genomeLength.current/globalBpPerUnit){
+      return oldTarget;
+    }
+    return target;
+  }, [genomeLength, globalBpPerUnit]);
+
+
   const handleViewStateChange = useCallback(({viewState:newViewState, viewId, oldViewState}) => {
     if (!viewId || !newViewState) return;
 
@@ -237,18 +261,22 @@ class MyOrthographicController extends OrthographicController {
           target[0] = oldViewState.target[0];
         }
         else if (zoomAxis=='X') {
+          if (xStopZoomRef.current) {
+            zoom[0] = oldViewState.zoom[0];
+          } else {
           zoom[0] = newViewState.zoom[0] <= maxZoom ? newViewState.zoom[0] : maxZoom; 
-          target[0] = zoom[0] >= maxZoom ? oldViewState.target[0] : newViewState.target[0]; 
+        }
+        target[0] = zoom[0] >= maxZoom ? oldViewState.target[0] : newViewState.target[0]; 
           zoom[1] = oldViewState.zoom[1];
           target[1] = oldViewState.target[1];
         }
       } else if (panDirection === "L"){
-        panStep = getPanStep({zoomX: zoom[0], baseStep: 8, sensitivity: zoom[0] >= 8 ? 0.9 : 0.7})
+        panStep = getPanStep({zoomX: zoom[0], baseStep: 8, sensitivity: zoom[0] >= 8 || zoom[0] < 0 ? 0.9 : 0.7})
         target[0] = target[0] - panStep;
       }
 
       else if (panDirection === "R"){
-        panStep = getPanStep({zoomX: zoom[0], baseStep: 8, sensitivity: zoom[0] >= 8 ? 0.9 : 0.7})
+        panStep = getPanStep({zoomX: zoom[0], baseStep: 8, sensitivity: zoom[0] >= 8 || zoom[0] < 0 ? 0.9 : 0.7})
          target[0] = target[0] + panStep;
       }
       
@@ -260,6 +288,34 @@ class MyOrthographicController extends OrthographicController {
       if (target[0] < 0){
         target = [...oldViewState.target];
       }
+      if (target[0] > genomeLength.current/globalBpPerUnit){
+        target = [...oldViewState.target];
+      }
+
+      if (target.length > 0 && oldViewState.target.length > 0) {
+        target = panLimit(target,[...oldViewState.target]);
+      }
+      const W_w = newViewState.width/ (Math.pow(2, zoom[0]));
+
+      let x0 = target[0] - W_w / 2;
+      let x1 = target[0] + W_w / 2;
+      let xstop = false;
+      let newValue = [...valueRef.current];
+      if (globalBpPerUnit) {
+        const newValue = [
+          Math.max(0, Math.round((x0) * globalBpPerUnit)),
+          Math.max(0, Math.round((x1) * globalBpPerUnit))
+        ];
+        if (newValue[0] <= 0 && (newValue[1] > genomeLength.current)) {
+          xstop = true;
+        }
+      }
+      if (xstop) {
+        zoom[0] = oldViewState.zoom[0];
+      } else {
+        valueRef.current = newValue;
+      }
+
       const newViewStates = {
         ...prev,
         [viewId]: {
@@ -296,7 +352,7 @@ class MyOrthographicController extends OrthographicController {
       return newViewStates;
     });
     
-  }, [zoomAxis, panDirection, tsconfig])
+  }, [zoomAxis, panDirection, tsconfig, xStopZoomRef])
 
   const panInterval = useRef(null);
 
@@ -306,10 +362,12 @@ const startPan = useCallback((direction) => {
   panInterval.current = setInterval(() => {
     setViewState(prev => {
       const zoom = prev['ortho'].zoom[0];
-      const panStep = getPanStep({ zoomX: zoom, baseStep: 8, sensitivity: zoom >= 8 ? 0.9 : 0.7 });
+      const panStep = getPanStep({zoomX: zoom, baseStep: 8, sensitivity: zoom >= 8 || zoom < 0 ? 0.9 : 0.7})
       const delta = panStep * stepDir;
-      const new_target = [...prev['ortho'].target];
+      let new_target = [...prev['ortho'].target];
       new_target[0] += delta;
+      new_target = panLimit(new_target, prev['ortho'].target);
+      
       return {
         ...prev,
         ['ortho']: { ...prev['ortho'], target: new_target },

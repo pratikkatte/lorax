@@ -6,6 +6,7 @@ import { LuTreePine } from "react-icons/lu";
 import { BsChevronDown } from "react-icons/bs";
 import axios from "axios";
 import useLoraxConfig from "../globalconfig.js";
+import ErrorAlert from "./ErrorAlert.jsx";
 /**
  * LandingPage integrated with useFileUpload
  *
@@ -17,9 +18,8 @@ import useLoraxConfig from "../globalconfig.js";
  * - version?: string
  */
 
-function DatasetFiles({ project, files = [], loadFile}) {
+function DatasetFiles({ project, files = [],loadFile, loadingFile, setLoadingFile }) {
   const [q, setQ] = useState("");
-  const [loadingFile, setLoadingFile] = useState(null);
   
   const visible = useMemo(() => {
     const sorted = [...files]
@@ -47,7 +47,7 @@ function DatasetFiles({ project, files = [], loadFile}) {
                 name={name}
                 loading={loadingFile === name}
                 onClick={e => {
-                  e.currentTarget.disabled = true;
+                  e.currentTarget.disabled = loadingFile?true:false;
                   setLoadingFile(name);
                   loadFile?.({ project, file: name});
                 }}
@@ -149,6 +149,12 @@ export default function LandingPage({
 
       {/* Main content wrapper */}
       <main className="flex-1">
+        {upload.error && (
+          <ErrorAlert
+            message={upload.error}
+            onDismiss={upload.dismissError}
+          />
+        )}
         {/* Hero */}
         <section className="mx-auto max-w-7xl px-6 pt-10 pb-8 grid lg:grid-cols-2 gap-10 items-center">
           <div>
@@ -259,7 +265,7 @@ export default function LandingPage({
             <div className="overflow-hidden">
               <div className="px-6 pb-6 pt-1">
                 {/* Optional inline file filter */}
-                <DatasetFiles project={p.folder} files={files} loadFile={upload.loadFile}/>
+                <DatasetFiles project={p.folder} files={files} loadFile={upload.loadFile} loadingFile={upload.loadingFile} setLoadingFile={upload.setLoadingFile}/>
               </div>
             </div>
           </div>

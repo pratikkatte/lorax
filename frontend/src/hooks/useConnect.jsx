@@ -120,10 +120,10 @@ function useConnect({ setGettingDetails, settings }) {
         globalBpPerUnit: globalBpPerUnit,
       });
 
-      onConfigReceipt = (receivedData) => {
-        console.log("got query config result", receivedData);
-        resolve(receivedData);
-      };
+      // onConfigReceipt = (receivedData) => {
+      //   console.log("got query config result", receivedData);
+      //   resolve(receivedData);
+      // };
     })
   }, []);
 
@@ -147,7 +147,7 @@ function useConnect({ setGettingDetails, settings }) {
     
     worker.postMessage({
       type: "local-bins",
-      data: {start, end, localBins, globalBpPerUnit, nTrees, new_globalBp},
+      data: {start, end,localBins, globalBpPerUnit, nTrees, new_globalBp},
     });
 
     onLocalBinsReceipt = (receivedData) => {

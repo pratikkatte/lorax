@@ -185,51 +185,139 @@ function upperBound(arr, x) {
   return lo;
 }
 
-async function getLocalData(
-  start, end, localBins, globalBpPerUnit, nTrees, new_globalBp
-) {
-  const bins = localBins;
-  const buffer = 0.01;
-  const bufferStart = Math.max(0, start - start * buffer);
-  const intervalKeys = Object.keys(tsconfig.new_intervals)
-    .map(Number)
-    .sort((a, b) => a - b);
-  if (intervalKeys.length === 0) return { local_bins: {}, rangeArray: [] };
+// let localBins = new Map();
 
-  const bufferEnd = Math.min(intervalKeys.length - 1, end + end * buffer);
+// async function getLocalData(
+//   start, end, globalBpPerUnit, nTrees, new_globalBp
+// ) {
+//   const bins = localBins;
+//   const buffer = 0.1;
+//   const bufferStart = Math.max(0, start - start * buffer);
+//   const intervalKeys = Object.keys(tsconfig.new_intervals)
+//     .map(Number)
+//     .sort((a, b) => a - b);
+//   if (intervalKeys.length === 0) return { local_bins: {}, rangeArray: [] };
+
+//   const bufferEnd = Math.min(intervalKeys[intervalKeys.length - 1], end + end * buffer);
+//   const lower_bound = lowerBound(intervalKeys, bufferStart);
+//   const upper_bound = upperBound(intervalKeys, bufferEnd);
+
+//   const addBins = (lo, hi) => {
+//     for (let i = lo; i <= hi; i++) {
+//       const temp_bin = tsconfig.new_intervals[intervalKeys[i]];
+//         bins[Number(i)] = { s: temp_bin[0], e: temp_bin[1], path: null, global_index: Number(i) };
+//     }
+//   };
+
+//   // region management
+//   if (lastStart == null || lastEnd == null || upper_bound < lastStart || lower_bound > lastEnd) {
+//     Object.keys(bins).forEach(k => delete bins[k]);
+//     addBins(lower_bound, upper_bound);
+//   } else {
+//     if (lower_bound > lastStart) for (let i = lastStart; i < lower_bound; i++) delete bins[i];
+//     if (lower_bound < lastStart) addBins(lower_bound, lastStart - 1);
+//     if (upper_bound > lastEnd) addBins(lastEnd + 1, upper_bound);
+//     if (upper_bound < lastEnd) for (let i = lastEnd; i > upper_bound; i--) delete bins[i];
+//   }
+
+//   // const { return_local_bins, rangeArray } = complete_new_sampling(bins, globalBpPerUnit, nTrees, new_globalBp);
+//   const { rangeArray } = new_complete_experiment(bins, globalBpPerUnit, new_globalBp);
+  
+//   lastStart = lower_bound;
+//   lastEnd = upper_bound;
+//   localBins = bins;
+
+//   return { local_bins: bins, rangeArray: rangeArray};
+// };
+
+let intervalKeys = [];
+async function getLocalData(start, end, localBins, globalBpPerUnit, nTrees, new_globalBp) {
+  // Keep localBins as a Map instead of plain object
+  if (!(localBins instanceof Map)) localBins = new Map();
+
+  let scaleFactor = new_globalBp/globalBpPerUnit
+  const approxEqual = Math.abs(scaleFactor - 1) < 1e-6;
+  const buffer = approxEqual ? 0.01 : 0.01;
+  const bufferStart = Math.max(0, start - start * buffer);
+  const bufferEnd = end + end * buffer;
+
+  // const intervalKeys = Object.keys(tsconfig.new_intervals)
+  //   .map(Number)
+  //   .sort((a, b) => a - b);
+  if (intervalKeys.length === 0) return { local_bins: new Map(), rangeArray: [] };
+
   const lower_bound = lowerBound(intervalKeys, bufferStart);
   const upper_bound = upperBound(intervalKeys, bufferEnd);
 
+  // ────────────────────────────────
+  // Utility to quickly add bins
+  // ────────────────────────────────
   const addBins = (lo, hi) => {
     for (let i = lo; i <= hi; i++) {
       const temp_bin = tsconfig.new_intervals[intervalKeys[i]];
-      bins[i] = { s: temp_bin[0], e: temp_bin[1], path: null, global_index: i };
+      if (!temp_bin) continue;
+      newLocalBins.set(i, {
+        s: temp_bin[0],
+        e: temp_bin[1],
+        path: null,
+        global_index: i
+      });
     }
   };
 
-  // region management
-  if (lastStart == null || lastEnd == null || upper_bound < lastStart || lower_bound > lastEnd) {
-    Object.keys(bins).forEach(k => delete bins[k]);
+  // ────────────────────────────────
+  // Region management (no per-key delete)
+  // ────────────────────────────────
+  const newLocalBins = new Map();
+
+  if (
+    lastStart == null ||
+    lastEnd == null ||
+    upper_bound < lastStart ||
+    lower_bound > lastEnd
+  ) {
+    // Non-overlapping → rebuild completely
     addBins(lower_bound, upper_bound);
   } else {
-    if (lower_bound > lastStart) for (let i = lastStart; i < lower_bound; i++) delete bins[i];
-    if (lower_bound < lastStart) addBins(lower_bound, lastStart - 1);
-    if (upper_bound > lastEnd) addBins(lastEnd + 1, upper_bound);
-    if (upper_bound < lastEnd) for (let i = lastEnd; i > upper_bound; i--) delete bins[i];
+    // Overlapping → reuse bins where possible
+    for (let i = lower_bound; i <= upper_bound; i++) {
+      if (localBins.has(i)) {
+        newLocalBins.set(i, localBins.get(i)); // reuse
+      } else {
+        const temp_bin = tsconfig.new_intervals[intervalKeys[i]];
+        if (temp_bin) {
+          newLocalBins.set(i, {
+            s: temp_bin[0],
+            e: temp_bin[1],
+            path: null,
+            global_index: i
+          });
+        }
+      }
+    }
   }
 
-  const { rangeArray } = complete_new_sampling(bins, globalBpPerUnit, nTrees, new_globalBp);
-  // const { rangeArray } = new_complete_experiment(bins, globalBpPerUnit, new_globalBp);
+  // ────────────────────────────────
+  // Sampling / range computation
+  // ────────────────────────────────
+  // const binsObj = Object.fromEntries(localBins);
+  const { rangeArray, return_local_bins} = new_complete_experiment_map(newLocalBins,  globalBpPerUnit, new_globalBp);
+
   lastStart = lower_bound;
   lastEnd = upper_bound;
-  return { local_bins: bins, rangeArray };
-};
+  localBins = return_local_bins;
+
+
+  return { local_bins: localBins, rangeArray: rangeArray};
+}
 
 
 export const queryConfig = async (data) => {
   
   try {
     tsconfig = data.data;
+    intervalKeys = Object.keys(tsconfig.new_intervals)
+    .map(Number)
     // const global_bins_linear = getGlobalBins_linear(data.data, data.globalBpPerUnit);
 
     // globalBins = global_bins_linear;
@@ -239,98 +327,6 @@ export const queryConfig = async (data) => {
     console.log("error", error);
   }
 }
-
-let cachedBins = [];
-let cachedLo = null;
-let cachedHi = null;
-
-function buildBins(globalBins, lo, hi) {
-  const arr = [];
-  for (let i = lo; i <= hi; i++) arr.push(makeBin(globalBins[i], i));
-  return arr;
-}
-
-function makeBin(bin, index) {
-  return {
-    start: bin.s,
-    index,
-    end: bin.e,
-    sourcePosition: [bin.acc, 0],
-    targetPosition: [bin.acc, 2],
-  };  
-}
-
-const skip_threshold = 1000;
-const new_skip_threshold = 100;
-
-
-// function optimized_new_buildBins(globalBins, lo, hi, skip_threshold) {
-
-//   const arr = [];
-//   let prevEnd = null;
-
-//   let skipBuffer = [];
-//   let groupStart = null; 
-//   let groupEnd = null;  
-//   let j = lo;
-//   for (let i = lo; i <= hi; i++) {
-    
-//     const bin = globalBins[i];
-//     const end = bin.e;
-//     const start = bin.s;
-
-//     const diff = prevEnd !== null ? end - prevEnd : Infinity;
-//     const visible = diff >= new_skip_threshold;
-
-//     if (visible) {
-//       if (skipBuffer.length > 0 && arr.length > 0) {
-//         const last = arr[arr.length - 1];
-//         last.trees_index = [...skipBuffer];
-//         last.number_of_skips = skipBuffer.length;
-//         last.visibility = false;
-//         last.end = groupEnd; // extend the end of the last group
-//         skipBuffer = [];
-//       }
-
-//       arr.push({
-//         start,
-//         end,
-//         trees_index: [],
-//         number_of_skips: 0,
-//         visibility: true,
-//         index: j,
-//         global_index: i,
-//       });
-//       j++;
-
-//       groupStart = start;
-      
-//     } else {
-//       if (skipBuffer.length == 0) {
-//         arr.push({
-//           start,
-//           end,
-//           trees_index: [i],
-//           number_of_skips: 1,
-//           visibility: false,
-//           global_index: null,
-//           index: j,
-//         })
-//         j++;
-//         groupStart = start;
-//         skipBuffer.push(i);
-//       } 
-//       else {
-//         skipBuffer.push(i);
-//       }
-      
-//     }
-//     groupEnd = end;
-//     prevEnd = end;
-//   }
-
-//   return arr;
-// }
 
 export const queryValueChanged = async (value) => {
   const [x0, x1] = value;
@@ -345,14 +341,19 @@ function new_complete_experiments(localBins, globalBpPerUnit, new_globalBp) {
   const scaleFactor = new_globalBp / globalBpPerUnit;
   let localBpPerBin = new_globalBp;
   let prevBinEnd = null;
+  let total_span = 0;
   for (const key in localBins) {
+    
     const s = localBins[key].s;
 
     let binIdxEnd = Math.floor(s / localBpPerBin);
 
     const span = localBins[key].e - localBins[key].s;
-    if (span < localBpPerBin && prevBinEnd !== null) {
+    total_span += span;
+    if (total_span <= localBpPerBin && prevBinEnd !== null) {
       binIdxEnd = prevBinEnd;
+    }else{
+      total_span = span;
     }
     bins[binIdxEnd] = {
       indexes: [...(bins[binIdxEnd]?.indexes || []), key],
@@ -446,8 +447,9 @@ function new_complete_experiments(localBins, globalBpPerUnit, new_globalBp) {
         }else {
           localBins[idx] = {
             ...localBins[idx],
-            visible: false,
+            visible: true,
             span: null,
+            path: null,
             position: null,
             modelMatrix: null,
           }
@@ -465,6 +467,7 @@ return { rangeArray };
 const tempMatrix = new Matrix4();
 
 export function new_complete_experiment(localBins, globalBpPerUnit, new_globalBp) {
+  const spacing = 1.05;
   const bins = Object.create(null);
   const rangeArray = [];
   const scaleFactor = new_globalBp / globalBpPerUnit;
@@ -478,13 +481,18 @@ export function new_complete_experiment(localBins, globalBpPerUnit, new_globalBp
     let binIdxEnd = Math.floor(s / localBpPerBin);
 
     const span = e - s;
+    if (span < localBpPerBin && prevBinEnd !== -1) {
+      let endBinIdx = Math.floor(e / localBpPerBin);
+      if (endBinIdx === binIdxEnd) {
+        prevBinEnd = binIdxEnd;
+      }
+    }
+
     // if (span < localBpPerBin && prevBinEnd !== -1) binIdxEnd = prevBinEnd;
 
     const bin = bins[binIdxEnd] || (bins[binIdxEnd] = { indexes: [], spans: [] });
-    bin.indexes.push(key);
+    bin.indexes.push(Number(key));
     bin.spans.push(span);
-
-    prevBinEnd = binIdxEnd;
   }
 
   const approxEqual = Math.abs(scaleFactor - 1) < 1e-6;
@@ -500,9 +508,9 @@ export function new_complete_experiment(localBins, globalBpPerUnit, new_globalBp
       const { s, e, path } = localBins[idx];
       const span = e - s;
       const dividePos = s / globalBpPerUnit;
-      const scaleX = span / globalBpPerUnit * 1.05;
+      const scaleX = span / (globalBpPerUnit * spacing);
 
-      if (!path) rangeArray.push({ global_index: +idx });
+      if (!path) rangeArray.push({ global_index: idx });
 
       localBins[idx].modelMatrix = tempMatrix.clone()
         .translate([dividePos, 0, 0])
@@ -528,7 +536,7 @@ export function new_complete_experiment(localBins, globalBpPerUnit, new_globalBp
         const idx = indexes[i];
         const { path } = localBins[idx];
         const dividePos = pos / globalBpPerUnit;
-        const scaleX = dist_scales[i] / globalBpPerUnit * 1.05;
+        const scaleX = dist_scales[i] / (globalBpPerUnit * spacing);
 
         if (!path) rangeArray.push({ global_index: +idx });
 
@@ -559,7 +567,7 @@ export function new_complete_experiment(localBins, globalBpPerUnit, new_globalBp
 
     const binStart = localBins[indexes[0]].s;
     const translateX = binStart / globalBpPerUnit;
-    const scaleX = totalSpan / globalBpPerUnit * 1.05;
+    const scaleX = totalSpan / (globalBpPerUnit * spacing);
 
     // assign only to the max index
     for (let i = 0; i < n; i++) {
@@ -577,11 +585,165 @@ export function new_complete_experiment(localBins, globalBpPerUnit, new_globalBp
         localBins[idx].span = totalSpan;
       } else {
         localBins[idx].visible = false;
+        localBins[idx].modelMatrix = null;
+        localBins[idx].position = null;
+        localBins[idx].span = null;
+        localBins[idx].path = null;
       }
     }
   }
 
   return { rangeArray, localBins };
+}
+
+export function new_complete_experiment_map(localBins, globalBpPerUnit, new_globalBp) {
+  const spacing = 1.05;
+  const bins = new Map();            // replaces plain object
+  const rangeArray = [];
+  const scaleFactor = new_globalBp / globalBpPerUnit;
+  const localBpPerBin = new_globalBp;
+  const approxEqual = Math.abs(scaleFactor - 1) < 1e-6;
+
+  let prevBinEnd = -1;
+
+  // ────────────────────────────────
+  // PASS 1: group local bins
+  // ────────────────────────────────
+  for (const [key, bin] of localBins.entries()) {
+    const { s, e } = bin;
+    let binIdxEnd = Math.floor(s / localBpPerBin);
+    const span = e - s;
+
+    if (span < localBpPerBin && prevBinEnd !== -1) {
+      const endBinIdx = Math.floor(e / localBpPerBin);
+      if (endBinIdx === binIdxEnd) prevBinEnd = binIdxEnd;
+    }
+
+    const group = bins.get(binIdxEnd) || { indexes: [], spans: [] };
+    group.indexes.push(Number(key));
+    group.spans.push(span);
+    bins.set(binIdxEnd, group);
+  }
+
+  // ────────────────────────────────
+  // PASS 2: compute transforms
+  // ────────────────────────────────
+  for (const [binKey, { indexes, spans }] of bins.entries()) {
+    const n = indexes.length;
+
+    // ── Single-bin group (fast path)
+    if (n === 1) {
+      const idx = indexes[0];
+      const bin = localBins.get(idx);
+      if (!bin) continue;
+
+      const { s, e, path } = bin;
+      const span = e - s;
+      const dividePos = s / globalBpPerUnit;
+      const scaleX = span / (globalBpPerUnit * spacing);
+
+      if (!path) rangeArray.push({ global_index: idx });
+
+      const modelMatrix = tempMatrix.clone()
+        .translate([dividePos, 0, 0])
+        .scale([scaleX, 1, 1]);
+
+      localBins.set(idx, {
+        ...bin,
+        modelMatrix,
+        visible: true,
+        position: s,
+        span
+      });
+
+      continue;
+    }
+
+    // ── Approx-equal case (scaleFactor ~ 1)
+    if (approxEqual) {
+      let totalSpan = 0;
+      for (let i = 0; i < n; i++) totalSpan += spans[i];
+      const binStart = localBins.get(indexes[0]).s;
+
+      // distribute proportional scales
+      const dist_scales = distribute(totalSpan, spans, 1);
+      let pos = binStart;
+
+      for (let i = 0; i < n; i++) {
+        const idx = indexes[i];
+        const bin = localBins.get(idx);
+        if (!bin) continue;
+
+        const dividePos = pos / globalBpPerUnit;
+        const scaleX = dist_scales[i] / (globalBpPerUnit * spacing);
+        if (!bin.path) rangeArray.push({ global_index: idx });
+
+        const modelMatrix = tempMatrix.clone()
+          .translate([dividePos, 0, 0])
+          .scale([scaleX, 1, 1]);
+
+        localBins.set(idx, {
+          ...bin,
+          modelMatrix,
+          visible: true,
+          position: pos,
+          span: totalSpan
+        });
+
+        pos += dist_scales[i];
+      }
+      continue;
+    }
+
+    // ── Coarser scaling case (scaleFactor ≠ 1)
+    let maxSpan = spans[0];
+    let maxIdx = indexes[0];
+    let totalSpan = spans[0];
+    for (let i = 1; i < n; i++) {
+      totalSpan += spans[i];
+      if (spans[i] > maxSpan) {
+        maxSpan = spans[i];
+        maxIdx = indexes[i];
+      }
+    }
+
+    const binStart = localBins.get(indexes[0]).s;
+    const translateX = binStart / globalBpPerUnit;
+    const scaleX = totalSpan / (globalBpPerUnit * spacing);
+
+    for (let i = 0; i < n; i++) {
+      const idx = indexes[i];
+      const bin = localBins.get(idx);
+      if (!bin) continue;
+
+      if (idx === maxIdx) {
+        if (!bin.path) rangeArray.push({ global_index: idx });
+        const modelMatrix = tempMatrix.clone()
+          .translate([translateX, 0, 0])
+          .scale([scaleX, 1, 1]);
+
+        localBins.set(idx, {
+          ...bin,
+          modelMatrix,
+          visible: true,
+          position: binStart,
+          span: totalSpan
+        });
+      } else {
+        // deactivate others in this group
+        localBins.set(idx, {
+          ...bin,
+          modelMatrix: null,
+          visible: false,
+          position: null,
+          span: null,
+          path: null
+        });
+      }
+    }
+  }
+
+  return { rangeArray, return_local_bins:localBins };
 }
 
 
@@ -591,6 +753,7 @@ function complete_new_sampling(localBins, globalBpPerUnit, nTrees, new_globalBp)
   let globalBin = null;
   let binStart = 0, binEnd = 0;
   const scaleFactor = new_globalBp / globalBpPerUnit;
+
   const func_globalBpPerUnit = new_globalBp;
 
   const finalizeBin = () => {
@@ -653,7 +816,7 @@ function complete_new_sampling(localBins, globalBpPerUnit, nTrees, new_globalBp)
     } else {
       bin_indexes.forEach((idx) => {
         if (idx === maxIndex) {
-          const scaleX = globalBin.span / (globalBpPerUnit * 1.05);
+          const scaleX = globalBin.span / (globalBpPerUnit * 1.0);
           const dividePos = binStart / globalBpPerUnit;
           if (!localBins[idx].path) rangeArray.push({ global_index: parseInt(idx) });
 
@@ -710,7 +873,7 @@ function complete_new_sampling(localBins, globalBpPerUnit, nTrees, new_globalBp)
   }
 
   finalizeBin();
-  return { rangeArray };
+  return { return_local_bins:localBins, rangeArray };
 }
 
 
@@ -720,7 +883,6 @@ export const queryLocalBins = async (start, end, localBins, globalBpPerUnit, nTr
 
   let result = await getLocalData(start, end, localBins, globalBpPerUnit, nTrees, new_globalBp);
   return result;
-
 }
 export const queryNodes = async (data, vertical_mode) => {
   try {
@@ -734,6 +896,7 @@ export const queryNodes = async (data, vertical_mode) => {
       // tree_index: tree_index,
       // times: times
     }
+    
 
     return result;
   } catch (error) {

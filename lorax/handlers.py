@@ -144,7 +144,8 @@ class LoraxHandler:
     async def get_projects(self, upload_dir):
         with open(f'{upload_dir}/projects.json', 'r') as f:
             projects = json.load(f)
-        return projects
+            final_projects = [project for project in projects if os.path.exists(os.path.join(upload_dir, project.get("folder", "")))]
+        return final_projects
     
     async def handle_details(self, message):
         try:

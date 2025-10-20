@@ -92,6 +92,7 @@ def old_new_tree_samples(tree_indexes, ts):
     for i, treee in enumerate(tree_indexes):
         try:
             global_index = treee['global_index']
+            global_index = int(global_index)
             tree = ts.at_index(global_index)
             node_ids = list(tree.nodes())
             node_times = [ts.node(u).time for u in node_ids]

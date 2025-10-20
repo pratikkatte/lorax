@@ -146,7 +146,7 @@ function Deck({
   valueRef,
 }) {
 
-  const {tsconfig, globalBpPerUnit, populations, populationFilter} = config;
+  const {tsconfig, globalBpPerUnit, populations, populationFilter, pathArray} = config;
   const saveViewports = useRef({});
   const clickedTree = useRef(null);
   const [statusMessage, setStatusMessage] = useState(null);
@@ -206,55 +206,104 @@ function Deck({
 
     const [dummy, setDummy] = useState(null);
 
-  const getLayerPixelPositions = useCallback((deckRef) => {
+  // const getLayerPixelPositions = useCallback((deckRef) => {
 
-    const {bins} = regions;
-    if (!deckRef?.current?.deck) return;
-    const deck = deckRef?.current?.deck;
+  //   const {bins} = regions;
+  //   if (!deckRef?.current?.deck) return;
+  //   const deck = deckRef?.current?.deck;
 
-    const pointsArray = [];
+  //   const pointsArray = [];
 
-    if (saveViewports.current && Object.keys(saveViewports.current).length > 0) {
-      Object.values(bins)
-      .filter(b => b.visible).map((b, i) => {
-        let modalMatrix = b.modelMatrix;
-        // const coords_s = [b.bin_start/globalBpPerUnit, 0];
-        const coords_s = [b.s/globalBpPerUnit, 0];
-        // later todo : const coords_e = [(b.e/globalBpPerUnit), 0];
-        const coords_e = [(b.e/globalBpPerUnit), 0];
-        // const coords_e = [((b.bin_start+b.span)/globalBpPerUnit), 0];
-        const pixel_s = saveViewports.current?.['genome-positions']?.project(coords_s);
-        const pixel_e = saveViewports.current?.['genome-positions']?.project(coords_e);
-        // genome_positions_pixels.push({pixels: [pixel_s, pixel_e], highlight: b.visible})
+  //   if (saveViewports.current && Object.keys(saveViewports.current).length > 0) {
+  //     Object.values(bins)
+  //     .filter(b => b.visible).map((b, i) => {
+  //       let modalMatrix = b.modelMatrix;
+  //       // const coords_s = [b.bin_start/globalBpPerUnit, 0];
+  //       const coords_s = [b.s/globalBpPerUnit, 0];
+  //       // later todo : const coords_e = [(b.e/globalBpPerUnit), 0];
+  //       const coords_e = [(b.e/globalBpPerUnit), 0];
+  //       // const coords_e = [((b.bin_start+b.span)/globalBpPerUnit), 0];
+  //       const pixel_s = saveViewports.current?.['genome-positions']?.project(coords_s);
+  //       const pixel_e = saveViewports.current?.['genome-positions']?.project(coords_e);
+  //       // genome_positions_pixels.push({pixels: [pixel_s, pixel_e], highlight: b.visible})
 
-        const [x0, y0] = saveViewports.current?.['ortho']?.project([modalMatrix[12],0])
-        // const [x1, y1] = saveViewports.current?.['ortho']?.project([((b.position+ (scaleFactor * globalBpPerUnit))/globalBpPerUnit),1])
-        const [x1, y1] = saveViewports.current?.['ortho']?.project([(modalMatrix[12]+ modalMatrix[0]),1])
-        // main_positions_pixels.push([x0,y0,x1,y1])
+  //       const [x0, y0] = saveViewports.current?.['ortho']?.project([modalMatrix[12],0])
+  //       // const [x1, y1] = saveViewports.current?.['ortho']?.project([((b.position+ (scaleFactor * globalBpPerUnit))/globalBpPerUnit),1])
+  //       const [x1, y1] = saveViewports.current?.['ortho']?.project([(modalMatrix[12]+ modalMatrix[0]),1])
+  //       // main_positions_pixels.push([x0,y0,x1,y1])
 
+  //       pointsArray.push([
+  //         [x0, y1*0.1],
+  //         [pixel_s[0],0],
+  //         [pixel_e[0],0],
+  //         [x1,y1*0.1],
+  //         [x1,y1], 
+  //         [x0,y1]
+  //       ])
+
+  //       // skipArray.push({'position': [x0, 10], 'text': b.number_of_skips})
+  //     })
+  //     setDummy({
+  //           'pointsArray': pointsArray,
+  //         })
+  //   }
+  //   return;
+  // }, [deckRef, saveViewports.current ]);
+
+
+  const getLayerPixelPositions = useCallback(
+    (deckRef) => {
+      if (!deckRef?.current?.deck) return;
+      const deck = deckRef.current.deck;
+      const pointsArray = [];
+  
+      const genomeVP = saveViewports.current?.["genome-positions"];
+      const orthoVP = saveViewports.current?.["ortho"];
+  
+      // Quick bail-out if viewports missing
+      if (!genomeVP || !orthoVP) return;
+  
+      const { bins } = regions;
+      if (!(bins instanceof Map)) return;
+  
+      // Iterate directly over map entries — much faster than Object.values()
+      for (const [key, b] of bins) {
+        if (!b?.visible) continue;
+  
+        const modelMatrix = b.modelMatrix;
+        const coords_s = [b.s / globalBpPerUnit, 0];
+        const coords_e = [b.e / globalBpPerUnit, 0];
+  
+        const pixel_s = genomeVP.project(coords_s);
+        const pixel_e = genomeVP.project(coords_e);
+  
+        // Modal matrix translation terms
+        const [x0, y0] = orthoVP.project([modelMatrix[12], 0]);
+        const [x1, y1] = orthoVP.project([
+          modelMatrix[12] + modelMatrix[0],
+          1,
+        ]);
+  
         pointsArray.push([
-          [x0, y1*0.1],
-          [pixel_s[0],0],
-          [pixel_e[0],0],
-          [x1,y1*0.1],
-          [x1,y1], 
-          [x0,y1]
-        ])
-
-        // skipArray.push({'position': [x0, 10], 'text': b.number_of_skips})
-      })
-      setDummy({
-            'pointsArray': pointsArray,
-          })
-    }
-    return;
-  }, [deckRef, saveViewports.current ]);
-
+          [x0, y1 * 0.1],
+          [pixel_s[0], 0],
+          [pixel_e[0], 0],
+          [x1, y1 * 0.1],
+          [x1, y1],
+          [x0, y1],
+        ]);
+      }
+  
+      if (pointsArray.length > 0) {
+        setDummy({ pointsArray });
+      }
+    },
+    [deckRef, saveViewports, globalBpPerUnit, regions]
+  );
   
 useEffect(() => {
     getLayerPixelPositions(deckRef)
-
-}, [regions, saveViewports.current])
+}, [regions, valueRef.current, saveViewports.current])
 
   const handleAfterRender = useCallback(() => {
     

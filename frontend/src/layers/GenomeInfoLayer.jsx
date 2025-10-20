@@ -1,6 +1,5 @@
 import {CompositeLayer} from '@deck.gl/core';
-import {LineLayer, TextLayer} from '@deck.gl/layers';
-import {DataFilterExtension} from '@deck.gl/extensions';
+import {LineLayer} from '@deck.gl/layers';
 
 
 export class GenomeInfoLayer extends CompositeLayer {
@@ -24,15 +23,28 @@ export class GenomeInfoLayer extends CompositeLayer {
     
     const {
       data, y0, y1,
-      getColor, viewId, globalBpPerUnit, filterRange
+      getColor, viewId, globalBpPerUnit
     } = this.props;
 
-    if (!Object.keys(data).length) return [];
+    let binArray = [];
+
+    if (data instanceof Map) {
+      binArray = Array.from(data.values());
+    } else if (Array.isArray(data)) {
+      binArray = data;
+    } else if (data && typeof data === "object") {
+      binArray = Object.values(data);
+    } else {
+      // Unknown format — skip rendering
+      return [];
+    }
+
+    if (binArray.length === 0) return [];
 
     return [
       new LineLayer({
       id: `${this.props.id}-lines`,
-      data: Object.values(data).map(d => d.s),
+      data:Array.from(data.values()).map(d => d.s),
       // data: data,
       getSourcePosition: d => [d / globalBpPerUnit, y0],
       getTargetPosition: d => [d /globalBpPerUnit, y1],
