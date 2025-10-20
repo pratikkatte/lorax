@@ -4,7 +4,7 @@ import { useSearchParams } from 'react-router-dom';
 
 export default function PositionSlider({ config, project, ucgbMode, view, valueRef }) {
   
-  const { tsconfig, intervals } = config;
+  const { tsconfig, filename } = config;
   const { genome_length } = tsconfig;
   
   const [searchParams, setSearchParams] = useSearchParams();
@@ -87,10 +87,14 @@ export default function PositionSlider({ config, project, ucgbMode, view, valueR
         justifyContent: 'center',
       }}
     >
-      <div className="flex items-center justify-start px-4 py-1 font-medium text-base text-slate-700">
-        filename
-      </div>
-      <div style={{ 
+      <div className="flex items-center gap-2">
+  {filename && (
+            <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">
+              {filename}
+            </span>
+          )}
+        </div>
+      {/* <div style={{ 
         marginRight: 16, 
         display: 'flex', 
         alignItems: 'center', 
@@ -110,7 +114,7 @@ export default function PositionSlider({ config, project, ucgbMode, view, valueR
             </span>
           </>
         )}
-      </div>
+      </div> */}
       <button
         onMouseDown={() => startPan('L')}
         onMouseUp={stopPan}
@@ -144,7 +148,7 @@ export default function PositionSlider({ config, project, ucgbMode, view, valueR
       >
         →
       </button>
-      <button
+      {/* <button
         onMouseDown={() => startPan('reset')}
         onMouseUp={stopPan}
         onMouseLeave={stopPan}
@@ -171,8 +175,8 @@ export default function PositionSlider({ config, project, ucgbMode, view, valueR
         title="Reset range"
       >
         <span style={{ color: '#18b34c' }}>🔄</span>
-      </button>
-      <button
+      </button> */}
+      {/* <button
         onClick={() => {
           // Try to use the browser's built-in 'screenshot' API if available,
           // otherwise just snapshot the component/DOM node by ID (instruct user if not supported)
@@ -209,7 +213,6 @@ export default function PositionSlider({ config, project, ucgbMode, view, valueR
         }}
         title="Capture screenshot"
       >
-        {/* Replace camera emoji with a modern outlined camera SVG icon */}
         <svg
           width="40"
           height="20"
@@ -226,7 +229,7 @@ export default function PositionSlider({ config, project, ucgbMode, view, valueR
           <circle cx="12" cy="13.5" r="3.5" />
           <path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
         </svg>
-      </button>
+      </button> */}
     </div>
   );
 }

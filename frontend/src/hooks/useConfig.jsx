@@ -10,10 +10,12 @@ function useConfig({backend}) {
   const [populationFilter, setPopulationFilter] = useState(null);
   const genomeLength = useRef(null);
   const pathArray = useRef([]);
+  const [filename, setFilename] = useState("");
 
   const handleConfigUpdate = useCallback((data) => {
     if (data.role === "config") {
       setConfig({...tsconfig, ...data.data});
+      setFilename(data.data.filename);
       // For each key in populations, assign a unique color (generate if needed, do not repeat)
       const assignUniqueColors = (dict) => {
         const keys = Object.keys(dict || {});
@@ -90,8 +92,9 @@ function useConfig({backend}) {
     populationFilter,
     setPopulationFilter,
     genomeLength,
-    pathArray
-  }), [tsconfig, setConfig, globalBpPerUnit, populations, populationFilter, setPopulationFilter, genomeLength, pathArray]);
+    pathArray,
+    filename
+  }), [tsconfig, setConfig, globalBpPerUnit, populations, populationFilter, setPopulationFilter, genomeLength, pathArray, filename]);
 };
 
 export default useConfig;

@@ -223,7 +223,7 @@ class MyOrthographicController extends OrthographicController {
     if (zoomX < 0) {
       // 2. Increase baseStep by the magnitude of the negative zoomX
       // e.g., if zoomX is -4, the multiplier is 4+1 = 5
-      baseStep = baseStep * (Math.abs(zoomX) + 1);
+      baseStep = baseStep * (Math.abs(zoomX)/2 + 1);
     }
 
     return baseStep / Math.pow(2, zoomX * sensitivity);

@@ -1,4 +1,6 @@
 import { useState, useEffect } from "react";
+import { faSearch } from '@fortawesome/free-solid-svg-icons';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 
 function formatNumber(num) {
   if (!num && num !== 0) return "";
@@ -62,9 +64,10 @@ export default function EditableRange({ valueRef, onChange }) {
         onChange={handleStartChange}
         onKeyPress={handleKeyPress}
         style={{
-          width: "80px",
+          width: "50%",
           padding: "4px 6px",
-          border: "1px solid #eee",
+          // border: "1px solid #eee",
+          border: "none",
           borderRadius: "4px",
           textAlign: "center",
           fontSize: "14px",
@@ -81,9 +84,10 @@ export default function EditableRange({ valueRef, onChange }) {
         onChange={handleEndChange}
         onKeyPress={handleKeyPress}
         style={{
-          width: "80px",
+          width: "50%",
           padding: "4px 6px",
-          border: "1px solid #eee",
+          // border: "1px solid #eee",
+          border: "none",
           borderRadius: "4px",
           textAlign: "center",
           fontSize: "14px",
@@ -98,17 +102,18 @@ export default function EditableRange({ valueRef, onChange }) {
         disabled={!hasChanges}
         style={{
           background: "none",
-          border: "none",
+          border: "1px solid #eee",
           cursor: hasChanges ? "pointer" : "not-allowed",
           fontSize: "14px",
+          padding: "4px 6px",
           color: hasChanges ? "#666" : "#ccc",
-          padding: "2px",
           borderRadius: "3px",
-          marginLeft: "2px"
+          // marginLeft: "2px"
         }}
         title="Submit changes"
       >
-        🔍
+        {/* 🔍 */}
+        <FontAwesomeIcon icon={faSearch} />
       </button>
     </div>
   );

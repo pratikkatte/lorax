@@ -337,7 +337,8 @@ useEffect(() => {
           const { srcEvent } = event;
         const x = srcEvent.clientX;
         const y = srcEvent.clientY;
-        setHoveredTreeIndex({path: info.object?.path, center: [x, y]})
+        // setHoveredTreeIndex({path: info.object?.path, center: [x, y]})
+        setHoveredTreeIndex({path: info.object?.path, center: null})
         }
       }}
       onClick={(info, event) => {
@@ -360,7 +361,7 @@ useEffect(() => {
             {statusMessage?.status === "loading" && <StatusMessage status={statusMessage.status} message={statusMessage.message} />}
 
       {/* Tooltip on hoveredTreeIndex */}
-      {hoveredTreeIndex && hoveredTreeIndex.path && typeof hoveredTreeIndex.center[0] === "number" && typeof hoveredTreeIndex.center[1] === "number" && (
+      {hoveredTreeIndex && hoveredTreeIndex.path && hoveredTreeIndex.center && typeof hoveredTreeIndex.center[0] === "number" && typeof hoveredTreeIndex.center[1] === "number" && (
         <div
           style={{
             position: 'fixed',
@@ -380,9 +381,9 @@ useEffect(() => {
           }}
         >
           {/* Display tree index and path */}
-          <div>
+          {/* <div>
             <b>Tree Info:</b> some data
-          </div>
+          </div> */}
         </div>
       )}
       </View>
