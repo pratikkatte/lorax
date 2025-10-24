@@ -92,7 +92,10 @@ function FilePill({ name, onClick, loading = false }) {
 
 function getProjects(API_BASE) {
   return axios.get(`${API_BASE}/projects`)
-    .then(response => response.data.projects)
+    .then(response => {
+      console.log("response", response);
+      return response.data.projects;
+    })
     .catch(error => {
       console.error('Error fetching projects:', error);
       return [];
@@ -114,6 +117,7 @@ export default function LandingPage({
     let active = true;
     if(projects.length === 0) {
       getProjects(API_BASE).then(projectsData => {
+        console.log("projectsData", projectsData);
         if (active) setProjects(projectsData);
       })
       .catch(error => {

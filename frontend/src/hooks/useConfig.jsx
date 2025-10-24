@@ -1,8 +1,11 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import websocketEvents from "../webworkers/websocketEvents";
+import { useNavigate } from "react-router-dom";
 
 
 function useConfig({backend}) {
+
+  const navigate = useNavigate();
   const [tsconfig, setConfig] = useState(null);
   const {isConnected, queryConfig} = backend;
   const [populations, setPopulations] = useState({"populations": null, "nodes_population": null});
@@ -13,8 +16,12 @@ function useConfig({backend}) {
   const [filename, setFilename] = useState("");
 
   const handleConfigUpdate = useCallback((data) => {
+
     if (data.role === "config") {
+
+      
       setConfig({...tsconfig, ...data.data});
+      
       setFilename(data.data.filename);
       // For each key in populations, assign a unique color (generate if needed, do not repeat)
       const assignUniqueColors = (dict) => {
@@ -66,6 +73,12 @@ function useConfig({backend}) {
       pathArray.current = Array(number_of_intervals).fill(null);
 
       genomeLength.current = data.data.genome_length;
+    }
+  }, [tsconfig]);
+
+  useEffect(() => {
+    if (tsconfig && tsconfig.filename) {
+      navigate(`/${encodeURIComponent(tsconfig.filename)}`);
     }
   }, [tsconfig]);
 

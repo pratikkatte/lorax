@@ -66,15 +66,17 @@ export default function useFileUpload({
         }
         if (file?.name) {
 
-          setProject(file.project);
-
-          navigate(`/${encodeURIComponent(file.name)}`);
-          
           // ✅ Connect WebSocket only now
           if (typeof connect === "function") {
             console.log("🕸️ Connecting WS after upload...");
             connect(resp.sid);
           }
+
+          setProject(file.project);
+
+          // navigate(`/${encodeURIComponent(file.name)}`);
+          
+          
         }
       } catch (e) {
         console.error("Post-upload handling failed:", e);
