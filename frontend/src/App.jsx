@@ -18,8 +18,12 @@ function App() {
   const {settings, setSettings} = useSettings();
   const [gettingDetails, setGettingDetails] = useState(false);
   const backend = useConnect({setGettingDetails, settings});
+  const [statusMessage, setStatusMessage] = useState(null);
 
-  const config = useConfig({backend});
+
+  const config = useConfig({backend, setStatusMessage});
+
+
 
   const upload = useFileUpload({
     config,
@@ -51,7 +55,10 @@ function App() {
             project={project}
             setProject={setProject}
             ucgbMode={ucgbMode}
+            statusMessage={statusMessage}
+            setStatusMessage={setStatusMessage}
           />
+
         }
       />
       </Routes>

@@ -3,7 +3,7 @@ import websocketEvents from "../webworkers/websocketEvents";
 import { useNavigate } from "react-router-dom";
 
 
-function useConfig({backend}) {
+function useConfig({backend, setStatusMessage}) {
 
   const navigate = useNavigate();
   const [tsconfig, setConfig] = useState(null);
@@ -22,6 +22,7 @@ function useConfig({backend}) {
       
       setConfig({...tsconfig, ...data.data});
       
+      setStatusMessage({status: "loaded", message: "config loaded"});
       setFilename(data.data.filename);
       // For each key in populations, assign a unique color (generate if needed, do not repeat)
       const assignUniqueColors = (dict) => {

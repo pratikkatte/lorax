@@ -6,6 +6,7 @@ import {View} from '@deck.gl/core';
 import useLayers from "./hooks/useLayers";
 import { Oval } from 'react-loader-spinner';
 import useRegions from "./hooks/useRegions";
+import LoraxMessage from "./components/loraxMessage";
 
 
 const LoadingSpinner = React.memo(() => (
@@ -144,12 +145,13 @@ function Deck({
   config,
   setViewPortCoords,
   valueRef,
+  statusMessage,
+  setStatusMessage,
 }) {
 
   const {tsconfig, globalBpPerUnit, populations, populationFilter, pathArray} = config;
   const saveViewports = useRef({});
   const clickedTree = useRef(null);
-  const [statusMessage, setStatusMessage] = useState(null);
 
   const {views, xzoom, viewState, handleViewStateChange, decksize, setDecksize} = view
 
@@ -319,7 +321,7 @@ useEffect(() => {
       {dummy && dummy.pointsArray.length > 0 && (
               <GenomeVisualization pointsArray={dummy.pointsArray} skipArray={dummy.skipArray} />
             )}
-            {statusMessage?.status === "loading" && <StatusMessage status={statusMessage.status} message={statusMessage.message} />}
+            {statusMessage?.status === "loading" && <LoraxMessage status={statusMessage.status} message={statusMessage.message} />}
 
       {/* Tooltip on hoveredTreeIndex */}
       {hoveredTreeIndex && hoveredTreeIndex.path && hoveredTreeIndex.center && typeof hoveredTreeIndex.center[0] === "number" && typeof hoveredTreeIndex.center[1] === "number" && (

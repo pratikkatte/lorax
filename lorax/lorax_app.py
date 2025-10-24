@@ -16,7 +16,7 @@ import aiofiles
 
 app = FastAPI()
 
-lorax_handler = LoraxHandler()
+# lorax_handler = LoraxHandler()
 
 # Create uploads directory if it doesn't exist
 UPLOAD_DIR = Path("uploads")
@@ -30,7 +30,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-manager = WebSocketManager()
+# manager = WebSocketManager()
 
 
 # ────────────────────────────────
@@ -125,7 +125,7 @@ from fastapi import Query
 from typing import Optional
 
 @app.get("/{file}")
-async def get_file(
+async def get_file(request: Request, response: Response,
     file: Optional[str] = None,
     project: Optional[str] = Query(None),
     chrom: Optional[str] = Query(None),
@@ -134,6 +134,10 @@ async def get_file(
     regionstart: Optional[int] = Query(None),
     regionend: Optional[int] = Query(None)
 ):
+
+    sid, session = get_or_create_session(request, response)
+
+    print("sid in get_file", sid);
 
     # Case 1: file provided in path
     if file and file != "" and file != "ucgb":
@@ -146,17 +150,16 @@ async def get_file(
 
     try:
         if file_path:
-            viz_config, chat_config = await lorax_handler.handle_upload(file_path)
-            viz_config['value'] = [genomiccoordstart, genomiccoordend]
+            viz_config, chat_config = await session.handler.handle_upload(file_path)
+            # viz_config['value'] = [genomiccoordstart, genomiccoordend]
         else:
             viz_config, chat_config = {"data": "no file"}, {"data": "no file"}  # Or handle differently
-        
-        
-        await manager.send_to_component("viz", {
-            "type": "viz", 
-            "role": "config",
-            "data": viz_config,
-        })
+    
+        # await manager.send_to_component("viz", {
+        #     "type": "viz", 
+        #     "role": "config",
+        #     "data": viz_config,
+        # })
         
     except Exception as e:
         print(f"Error loading file: {e}")

@@ -4,7 +4,7 @@ import useView from "./hooks/useView";
 import { useState, useRef } from "react";
 import PositionSlider from './components/PositionSlider'
 
-function Lorax({backend, config, settings, setSettings, project, ucgbMode}) {
+function Lorax({backend, config, settings, setSettings, project, ucgbMode, statusMessage, setStatusMessage}) {
 
   const {tsconfig} = config;
 
@@ -41,6 +41,8 @@ function Lorax({backend, config, settings, setSettings, project, ucgbMode}) {
               setSettings={setSettings}
               config={config}
               valueRef={valueRef}
+              statusMessage={statusMessage}
+              setStatusMessage={setStatusMessage}
             />
           </div>
         </div>

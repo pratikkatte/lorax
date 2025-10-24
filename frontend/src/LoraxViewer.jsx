@@ -8,8 +8,9 @@ import Info from './components/Info.jsx'
 import Settings from './components/Settings.jsx'
 import useLoraxConfig from './globalconfig.js'
 import axios from 'axios';
+import LoraxMessage from "./components/loraxMessage";
 
-export default function LoraxViewer({ backend, config, settings, setSettings, project, setProject, ucgbMode}) {
+export default function LoraxViewer({ backend, config, settings, setSettings, project, setProject, ucgbMode, statusMessage, setStatusMessage}) {
 
 
 
@@ -18,6 +19,8 @@ export default function LoraxViewer({ backend, config, settings, setSettings, pr
   const {API_BASE} = useLoraxConfig();
   const [searchParams, setSearchParams] = useSearchParams();
   // const navigate = useNavigate();
+
+  const {connect} = backend;
 
   // UI state
   const [showInfo, setShowInfo] = useState(false);
@@ -42,7 +45,6 @@ export default function LoraxViewer({ backend, config, settings, setSettings, pr
   //   console.log("load config", tsconfig);
   //   ucgbMode.current = false;
   // }
-
 
   const qp = {
     file: file,
@@ -92,11 +94,26 @@ export default function LoraxViewer({ backend, config, settings, setSettings, pr
     // console.log("in handleNormalMode")
     if (qp.project && (qp.genomiccoordstart && qp.genomiccoordend) && !tsconfig) {
       setProject(qp.project);
-      axios.get(`${API_BASE}/${file}?project=${qp.project}&genomiccoordstart=${qp.genomiccoordstart}&genomiccoordend=${qp.genomiccoordend}`).then(response => {
+      axios.get(
+        `${API_BASE}/${file}?project=${qp.project}&genomiccoordstart=${qp.genomiccoordstart}&genomiccoordend=${qp.genomiccoordend}`,
+        {
+          withCredentials: true,
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      ).then(response => {
+
+        if (response.data) {
+          setStatusMessage({status: "file-load", message: "loading file..."});
+        }
+        console.log("response", response);
         // console.log("config response", response.data, tsconfig)
         if (response.data.error) {
           console.log("error", response.data.error)
         } else {
+
+          connect(response.data.sid);
           // console.log("config set", tsconfig, qp.project, qp.genomiccoordstart, qp.genomiccoordend)
           // if (!tsconfig) {
           // setConfig({project: qp.project, value: [qp.genomiccoordstart,qp.genomiccoordend]});
@@ -130,8 +147,10 @@ export default function LoraxViewer({ backend, config, settings, setSettings, pr
         </div>
       
       <div className="flex flex-row h-screen w-full z-40">
+
         <div className={`${(showInfo || showSettings) ? (showSidebar ? 'w-[73%]' : 'w-3/4') :  (showSidebar ? 'w-[97%]' : 'w-full')} transition-all duration-200`}>
-          <Lorax backend={backend} config={config} settings={settings} setSettings={setSettings} project={project} ucgbMode={ucgbMode} />
+        {statusMessage?.status === "file-load" && <LoraxMessage status={statusMessage.status} message={statusMessage.message} />}
+        <Lorax backend={backend} config={config} settings={settings} setSettings={setSettings} project={project} ucgbMode={ucgbMode} statusMessage={statusMessage} setStatusMessage={setStatusMessage} />}
         </div>
         <div className={`transition-all relative ${showInfo ? '' : 'hidden'} shadow-2xl bg-gray-100 duration-200 ${showSidebar ? 'w-[25%]' : 'w-1/4'}`}>
             <Info backend={backend} gettingDetails={gettingDetails} setGettingDetails={setGettingDetails} setShowInfo={setShowInfo} config={config} setConfig={setConfig} selectedFileName={selectedFileName} setSelectedFileName={setSelectedFileName}/>
