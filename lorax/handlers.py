@@ -137,8 +137,9 @@ class LoraxHandler:
                 self.file_path = file_path
                 self.global_context = self.file_path
             
-        viz_config = self.get_config()
-        chat_config = "file uploaded"
+        # viz_config = self.get_config()
+        # chat_config = "file uploaded"
+        return None, None
         return viz_config, chat_config
 
     async def get_projects(self, upload_dir):

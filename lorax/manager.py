@@ -135,7 +135,7 @@ class WebSocketManager:
             ws for ws, comps in self.client_component.items()
             if component in comps and self.is_connected(ws)
         ]
-        print("targets", targets);
+        print("targets", targets, message['type']);
         if not targets:
             print(f"⚠️ No sockets registered for component: {component}")
             return

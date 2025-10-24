@@ -202,7 +202,7 @@ async def load_file(request: Request, response: Response):
     #     "type": "viz", "role": "config", "data": viz_config
     # })
 
-    await session.send_or_queue("viz", {"type": "viz", "role": "config", "data": viz_config})
+    # await session.send_or_queue("viz", {"type": "viz", "role": "config", "data": viz_config})
 
     # await session.manager.send_to_component("chat", {
     #     "type": "chat", "role": "assistant", "data": chat_config
@@ -267,7 +267,7 @@ async def upload(request: Request, response: Response, file: UploadFile = File(.
         #     "type": "viz", "role": "config", "data": viz_config
         # })
 
-        await session.send_or_queue("viz", {"type": "viz", "role": "config", "data": viz_config})
+        # await session.send_or_queue("viz", {"type": "viz", "role": "config", "data": viz_config})
         # await session.manager.send_to_component("chat", {
         #     "type": "chat", "role": "assistant", "data": chat_config
         # })
@@ -345,11 +345,22 @@ async def websocket_endpoint(websocket: WebSocket):
     await manager.register_component(websocket, "viz")
     await manager.register_component(websocket, "chat")
     await manager.register_component(websocket, "ping")
-    await session.flush_pending()
+    # await session.flush_pending()
 
 
     active_tasks = {}
 
+
+    if manager.is_connected(websocket):
+        if (handler.ts is not None):
+            viz_config = handler.get_config()
+            print("sending config", sid)
+            await manager.send_message(websocket, {
+                "type": "viz",
+                "role": "config",
+                "data": viz_config
+            })
+        
     try:
         while True:
             if not manager.is_connected(websocket):
@@ -361,7 +372,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
             if mtype == "ping":
                 data = await handler.handle_ping(message)
-                await manager.send_to_component("ping", data)
+                await manager.send_message(websocket, data)
                 continue
 
             if mtype == "viz" and role == "query":
@@ -376,7 +387,13 @@ async def websocket_endpoint(websocket: WebSocket):
                 try:
                     result = await task
                     print("sending query result", sid);
-                    await manager.send_to_component("viz", {
+                    # await manager.send_to_component("viz", {
+                    #     "type": "viz",
+                    #     "role": "query-result",
+                    #     "data": result
+                    # })
+
+                    await manager.send_message(websocket, {
                         "type": "viz",
                         "role": "query-result",
                         "data": result
@@ -384,7 +401,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 except asyncio.CancelledError:
                     continue
                 except Exception as e:
-                    await manager.send_to_component("viz", {
+                    await manager.send_message(websocket, {
                         "type": "viz",
                         "role": "query-result",
                         "data": {"error": str(e)}
@@ -401,13 +418,13 @@ async def websocket_endpoint(websocket: WebSocket):
                 active_tasks["details"] = task
                 try:
                     result = await task
-                    await manager.send_to_component("viz", {
+                    await manager.send_message(websocket, {
                         "type": "viz",
                         "role": "details-result",
                         "data": result
                     })
                 except Exception as e:
-                    await manager.send_to_component("viz", {
+                    await manager.send_message(websocket, {
                         "type": "viz",
                         "role": "details-result",
                         "data": {"error": str(e)}
