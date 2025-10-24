@@ -85,7 +85,7 @@ function Chatbot(props) {
       websocketEvents.off("chat", handleChat);
     };
   }
-  }, [chatbotEnabled]);
+  }, [chatbotEnabled, handleChat]);
 
   const handleSubmit = async (event) => {
     event.preventDefault();

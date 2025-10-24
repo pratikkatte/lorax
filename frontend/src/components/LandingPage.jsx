@@ -111,15 +111,22 @@ export default function LandingPage({
   const [expandedId, setExpandedId] = useState(null);
 
   useEffect(() => {
+    let active = true;
     if(projects.length === 0) {
       getProjects(API_BASE).then(projectsData => {
-        setProjects(projectsData);
+        if (active) setProjects(projectsData);
       })
       .catch(error => {
         console.error('Failed to load projects:', error);
       });
+
+      return () => {
+        active = false;
+        setProjects([]);
+        setExpandedId(null);
+      };
     }
-  },[projects])
+  },[API_BASE])
 
   return (
     <div className="min-h-screen w-full flex flex-col bg-gradient-to-b from-slate-50 to-white text-slate-900">
@@ -375,6 +382,9 @@ function ARGIillustrationWrapper() {
 
   useEffect(() => {
     setMounted(true);
+    return () => {
+      setMounted(false);
+    };
   }, []); // run only once after mount
 
   if (!mounted) return <ARGIillustrationSkeleton />;

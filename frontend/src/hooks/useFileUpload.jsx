@@ -30,8 +30,11 @@ export default function useFileUpload({
   accept = ".trees,.ts,.tree,.newick,.nwk,.json,.bb,.bed,.bed.gz",
   autoClearOnError = true,
   setProject,
+  backend
 } = {}) {
   const { API_BASE } = useLoraxConfig();
+
+  const {connect} = backend;
   const navigate = useNavigate(); 
 
   const {tsconfig, setConfig} = config;
@@ -66,7 +69,13 @@ export default function useFileUpload({
           setProject(file.project);
 
           navigate(`/${encodeURIComponent(file.name)}`);
+          
+          // ✅ Connect WebSocket only now
+          if (typeof connect === "function") {
+            console.log("🕸️ Connecting WS after upload...");
+            connect(resp.sid);
           }
+        }
       } catch (e) {
         console.error("Post-upload handling failed:", e);
       }
@@ -102,7 +111,13 @@ export default function useFileUpload({
         const url = `${API_BASE}/load_file`;
         const payload = project;
         console.log("payload", payload);
-        const res = await axios.post(url, payload);
+        const res = await axios.post(url, payload, {
+          withCredentials: true,
+          headers: {
+            "Content-Type": "application/json",
+          },
+        });
+        console.log("res", res);
         _finishSuccess(res?.data, { name: project.file, project: project.project });
       } catch (err) {
         console.log("err", err);

@@ -151,10 +151,9 @@ function Deck({
   const clickedTree = useRef(null);
   const [statusMessage, setStatusMessage] = useState(null);
 
-  const {views, xzoom, viewState, handleViewStateChange} = view
+  const {views, xzoom, viewState, handleViewStateChange, decksize, setDecksize} = view
 
   const {queryDetails} = backend;
-
 
   const regions = useRegions({backend, viewState, valueRef, saveViewports: saveViewports.current, globalBpPerUnit, tsconfig, setStatusMessage});
 
@@ -185,10 +184,6 @@ function Deck({
     [clickedTree.current]
   )
  
-  // const setHoverInfo = useCallback(
-  //   (info) => {
-  //     setHoverInfoRaw(info);
-  //   },[]);
     const { layers, layerFilter } = useLayers({
       xzoom,
       tsconfig,
@@ -206,51 +201,6 @@ function Deck({
 
     const [dummy, setDummy] = useState(null);
 
-  // const getLayerPixelPositions = useCallback((deckRef) => {
-
-  //   const {bins} = regions;
-  //   if (!deckRef?.current?.deck) return;
-  //   const deck = deckRef?.current?.deck;
-
-  //   const pointsArray = [];
-
-  //   if (saveViewports.current && Object.keys(saveViewports.current).length > 0) {
-  //     Object.values(bins)
-  //     .filter(b => b.visible).map((b, i) => {
-  //       let modalMatrix = b.modelMatrix;
-  //       // const coords_s = [b.bin_start/globalBpPerUnit, 0];
-  //       const coords_s = [b.s/globalBpPerUnit, 0];
-  //       // later todo : const coords_e = [(b.e/globalBpPerUnit), 0];
-  //       const coords_e = [(b.e/globalBpPerUnit), 0];
-  //       // const coords_e = [((b.bin_start+b.span)/globalBpPerUnit), 0];
-  //       const pixel_s = saveViewports.current?.['genome-positions']?.project(coords_s);
-  //       const pixel_e = saveViewports.current?.['genome-positions']?.project(coords_e);
-  //       // genome_positions_pixels.push({pixels: [pixel_s, pixel_e], highlight: b.visible})
-
-  //       const [x0, y0] = saveViewports.current?.['ortho']?.project([modalMatrix[12],0])
-  //       // const [x1, y1] = saveViewports.current?.['ortho']?.project([((b.position+ (scaleFactor * globalBpPerUnit))/globalBpPerUnit),1])
-  //       const [x1, y1] = saveViewports.current?.['ortho']?.project([(modalMatrix[12]+ modalMatrix[0]),1])
-  //       // main_positions_pixels.push([x0,y0,x1,y1])
-
-  //       pointsArray.push([
-  //         [x0, y1*0.1],
-  //         [pixel_s[0],0],
-  //         [pixel_e[0],0],
-  //         [x1,y1*0.1],
-  //         [x1,y1], 
-  //         [x0,y1]
-  //       ])
-
-  //       // skipArray.push({'position': [x0, 10], 'text': b.number_of_skips})
-  //     })
-  //     setDummy({
-  //           'pointsArray': pointsArray,
-  //         })
-  //   }
-  //   return;
-  // }, [deckRef, saveViewports.current ]);
-
-
   const getLayerPixelPositions = useCallback(
     (deckRef) => {
       if (!deckRef?.current?.deck) return;
@@ -259,6 +209,7 @@ function Deck({
   
       const genomeVP = saveViewports.current?.["genome-positions"];
       const orthoVP = saveViewports.current?.["ortho"];
+      
   
       // Quick bail-out if viewports missing
       if (!genomeVP || !orthoVP) return;
@@ -303,9 +254,10 @@ function Deck({
   
 useEffect(() => {
     getLayerPixelPositions(deckRef)
-}, [regions, valueRef.current, saveViewports.current])
+}, [regions, valueRef.current, tsconfig, saveViewports.current])
 
   const handleAfterRender = useCallback(() => {
+
     
       const deck = deckRef?.current?.deck;
       if (!deck) return;
@@ -315,12 +267,22 @@ useEffect(() => {
 
       if (!vpGenome || !vpOrtho) return;
 
+      setDecksize(prev => {
+        if (prev.width === deck.width && prev.height === deck.height) {
+          return prev;
+        }
+        return {
+          ...prev,
+          width: deck.width,
+          height: deck.height
+        };
+      });
       
       saveViewports.current = {
         'ortho': vpOrtho,
         'genome-positions': vpGenome
       };
-      }, [deckRef])
+      }, [deckRef, tsconfig])
 
   return (
     <div className="w-full"
@@ -349,7 +311,7 @@ useEffect(() => {
       layerFilter={layerFilter}
       viewState={viewState}
       onViewStateChange={handleViewStateChange}
-      views={views} 
+      views={views}
       onAfterRender={handleAfterRender}
     >
       <View id="ortho">
@@ -357,7 +319,6 @@ useEffect(() => {
       {dummy && dummy.pointsArray.length > 0 && (
               <GenomeVisualization pointsArray={dummy.pointsArray} skipArray={dummy.skipArray} />
             )}
-
             {statusMessage?.status === "loading" && <StatusMessage status={statusMessage.status} message={statusMessage.message} />}
 
       {/* Tooltip on hoveredTreeIndex */}

@@ -66,10 +66,8 @@ function useConfig({backend}) {
       pathArray.current = Array(number_of_intervals).fill(null);
 
       genomeLength.current = data.data.genome_length;
-      // setWidth(data.data.genome_length);
     }
   }, [tsconfig]);
-
 
   useEffect(() => {
     if (!isConnected) return;

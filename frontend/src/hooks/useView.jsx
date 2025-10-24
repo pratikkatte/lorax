@@ -81,24 +81,21 @@ class MyOrthographicController extends OrthographicController {
   const [xzoom, setXzoom] = useState(window.screen.width < 600 ? -1 : 0);
   const xStopZoomRef = useRef(false);
 
-  const [viewState, setViewState] = useState({
-    'ortho': INITIAL_VIEW_STATE['ortho'],
-    'genome-positions': INITIAL_VIEW_STATE['genome_positions'],
-    'tree-time': INITIAL_VIEW_STATE['tree-time'],
-    'genome-info': INITIAL_VIEW_STATE['genome-info']
-  });
+  const [viewState, setViewState] = useState(null);
 
   globalSetZoomAxis = setZoomAxis;
   globalPanDirection = setPanDirection;
 
   const maxZoom = 17;
 
-  const decksize = useRef({});
+  const [decksize, setDecksize] = useState({});
 
   const updateValueRef = useCallback(() => {
+
+    if (!viewState) return;
     
     // let treeSpacing = 1.03;
-    let width = decksize.current.width;
+    let width = decksize.width;
 
     let tzoom = viewState['ortho'].zoom[0];
     const W_w = width/ (Math.pow(2, tzoom));
@@ -119,7 +116,7 @@ class MyOrthographicController extends OrthographicController {
       }
       return newValue;
     }
-  }, [globalBpPerUnit, viewState]);
+  }, [globalBpPerUnit, viewState, tsconfig]);
 
   const changeView = useCallback((val) => {
   
@@ -129,7 +126,7 @@ class MyOrthographicController extends OrthographicController {
       
       let [x0, x1] = [val[0]/globalBpPerUnit, val[1]/globalBpPerUnit];
       // const Z = Math.log2((viewPortCoords['ortho']['viewport'].width * globalBpPerUnit) / (val[1] - val[0]))
-      const Z = Math.log2((decksize.current.width * globalBpPerUnit) / (val[1] - val[0]))
+      const Z = Math.log2((decksize.width * globalBpPerUnit) / (val[1] - val[0]))
       setViewState((prev) => {
         return {
           ...prev,
@@ -214,9 +211,23 @@ class MyOrthographicController extends OrthographicController {
       changeView(tsconfig.value);
     }else{
       const newValue = updateValueRef();
-      debouncedUpdateRef(newValue);
+      newValue && debouncedUpdateRef(newValue);
+      
     }
   }, [viewState, tsconfig])
+
+  useEffect(() => {
+    if (!decksize) return;
+
+
+    setViewState(prev => ({
+      ...prev,
+    'ortho': INITIAL_VIEW_STATE['ortho'],
+    'genome-positions': INITIAL_VIEW_STATE['genome_positions'],
+    'tree-time': INITIAL_VIEW_STATE['tree-time'],
+    'genome-info': INITIAL_VIEW_STATE['genome-info']
+  }));
+  }, [decksize])
 
   function getPanStep({zoomX, baseStep = 8, sensitivity = 0.5}) {
 
@@ -239,14 +250,12 @@ class MyOrthographicController extends OrthographicController {
     return target;
   }, [genomeLength, globalBpPerUnit]);
 
+  
+
 
   const handleViewStateChange = useCallback(({viewState:newViewState, viewId, oldViewState}) => {
     if (!viewId || !newViewState) return;
 
-    decksize.current = {
-      width: newViewState.width,
-      height: newViewState.height
-    }
     
     setViewState((prev) => {
       let zoom = [...oldViewState.zoom];
@@ -300,7 +309,7 @@ class MyOrthographicController extends OrthographicController {
       let x0 = target[0] - W_w / 2;
       let x1 = target[0] + W_w / 2;
       let xstop = false;
-      let newValue = [...valueRef.current];
+      let newValue = [];
       if (globalBpPerUnit) {
         const newValue = [
           Math.max(0, Math.round((x0) * globalBpPerUnit)),
@@ -313,7 +322,7 @@ class MyOrthographicController extends OrthographicController {
       if (xstop) {
         zoom[0] = oldViewState.zoom[0];
       } else {
-        valueRef.current = newValue;
+        // valueRef.current = newValue;
       }
 
       const newViewStates = {
@@ -352,7 +361,7 @@ class MyOrthographicController extends OrthographicController {
       return newViewStates;
     });
     
-  }, [zoomAxis, panDirection, tsconfig, xStopZoomRef])
+  }, [zoomAxis, panDirection, tsconfig, xStopZoomRef, decksize])
 
   const panInterval = useRef(null);
 
@@ -402,7 +411,9 @@ const stopPan = useCallback(() => {
       handleViewStateChange,
       changeView,
       startPan,
-      stopPan
+      stopPan,
+      decksize,
+      setDecksize
     };
   }, [
     viewState,
@@ -417,7 +428,9 @@ const stopPan = useCallback(() => {
    handleViewStateChange,
    changeView,
    startPan,
-   stopPan
+   stopPan,
+   decksize,
+   setDecksize
   ]);
 
   return output;

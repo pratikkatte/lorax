@@ -3,7 +3,7 @@ import websocketEvents from "../webworkers/websocketEvents";
 import useLoraxConfig from "../globalconfig.js";
 import workerSpec from "../webworkers/localBackendWorker.js?worker&inline";
 
-const worker = new workerSpec();
+// const worker = new workerSpec();
 
 let onQueryReceipt = (receivedData) => {};
 let onStatusReceipt = (receivedData) => console.log("STATUS:", receivedData.data);
@@ -12,16 +12,17 @@ let onLocalBinsReceipt = (receivedData) => {};
 let onDetailsReceipt = (receivedData) => {};
 let onValueChangedReceipt = (receivedData) => {};
 
-worker.onmessage = (event) => {
-  if (event.data.type === "status") onStatusReceipt(event.data);
-  if (event.data.type === "query") onQueryReceipt(event.data.data);
-  if (event.data.type === "config") onConfigReceipt(event.data);
-  if (event.data.type === "details") onDetailsReceipt(event.data.data);
-  if (event.data.type === "local-bins") onLocalBinsReceipt(event.data);
-  if (event.data.type === "value-changed") onValueChangedReceipt(event.data);
-};
+
+
+/** Utility: extract lorax_sid cookie for same-session WS */
+function getCookie(name) {
+  const match = document.cookie.match(new RegExp(`(^| )${name}=([^;]+)`));
+  return match ? match[2] : null;
+}
 
 function useConnect({ setGettingDetails, settings }) {
+
+  const workerRef = useRef(null);
   const socketRef = useRef(null);
   const messageQueue = useRef([]); // <-- buffer for unsent messages
   const [statusMessage, setStatusMessage] = useState({ message: null });
@@ -29,16 +30,37 @@ function useConnect({ setGettingDetails, settings }) {
 
   const { WEBSOCKET_BASE } = useLoraxConfig();
 
+    /** Build the correct WebSocket URL (with sid if needed) */
+    const getWebSocketURL = useCallback((sid) => {
+      // const sid = getCookie("lorax_sid");
+      // if backend & frontend share domain, cookie auto-sent — no need for sid
+    
+
+      const url = new URL(WEBSOCKET_BASE, window.location.origin);
+      if (sid && !WEBSOCKET_BASE.includes("localhost")) {
+        // same-origin deployment: just use WEBSOCKET_BASE
+        return WEBSOCKET_BASE;
+      }
+      // otherwise append sid explicitly for cross-origin dev
+      return `${WEBSOCKET_BASE}?sid=${sid ?? ""}`;
+    }, [WEBSOCKET_BASE]);
+
+
   /** 🔑 Function: actually connect */
-  const connect = useCallback(() => {
-    console.log("connecting to websocket")
-    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+  const connect = useCallback((sid) => {
+    if (
+      socketRef.current &&
+      (socketRef.current.readyState === WebSocket.OPEN ||
+        socketRef.current.readyState === WebSocket.CONNECTING)
+    ) {
       console.log("WebSocket already connected");
       return;
     }
 
-    console.log("Connecting WebSocket to", WEBSOCKET_BASE);
-    const ws = new WebSocket(WEBSOCKET_BASE);
+    const wsURL = getWebSocketURL(sid);
+    console.log("Connecting WebSocket to", wsURL);
+
+    const ws = new WebSocket(wsURL);
     socketRef.current = ws;
 
     ws.onopen = () => {
@@ -52,7 +74,7 @@ function useConnect({ setGettingDetails, settings }) {
       websocketEvents.emit(message.type, message);
 
       if (message.type === "viz" && message.role === "query-result") {
-        worker.postMessage({
+        workerRef.current.postMessage({
           type: "query",
           data: message.data,
           vertical_mode: settings.vertical_mode,
@@ -66,12 +88,19 @@ function useConnect({ setGettingDetails, settings }) {
     };
 
     ws.onclose = () => {
-      console.log("⚠️ WebSocket closed, retrying in 2s...");
+      console.log("⚠️ WebSocket closed");
       setIsConnected(false);
       socketRef.current = null;
-      setTimeout(() => connect(), 2000); // retry
+
+    // Try reconnecting after a short delay
+    setTimeout(() => {
+      if (!socketRef.current) {
+        console.log("Attempting to reconnect WebSocket...");
+        connect(); 
+      }
+    }, 2000);
     };
-  }, [WEBSOCKET_BASE, settings]);
+  }, [getWebSocketURL, settings]);
 
   /** 🔑 Flush queued messages once reconnected */
   const flushQueue = useCallback(() => {
@@ -85,19 +114,40 @@ function useConnect({ setGettingDetails, settings }) {
   /** 🔑 Safe send with queue fallback */
   const sendMessage = useCallback((msgObj) => {
     const msg = JSON.stringify(msgObj);
-    if (socketRef.current?.readyState === WebSocket.OPEN) {
+    if (socketRef.current?.readyState == WebSocket.OPEN) {
       socketRef.current.send(msg);
     } else {
       console.log("Socket not open, queueing message:", msgObj);
-      messageQueue.current.push(msg);
+      // messageQueue.current.push(msg);
     }
   }, []);
 
   /** Start connection once on mount */
   useEffect(() => {
-    connect();
+    
+    const worker = new workerSpec();
+    workerRef.current = worker;
+
+    worker.onmessage = (event) => {
+      if (event.data.type === "status") onStatusReceipt(event.data);
+      if (event.data.type === "query") onQueryReceipt(event.data.data);
+      if (event.data.type === "config") onConfigReceipt(event.data);
+      if (event.data.type === "details") onDetailsReceipt(event.data.data);
+      if (event.data.type === "local-bins") onLocalBinsReceipt(event.data);
+      if (event.data.type === "value-changed") onValueChangedReceipt(event.data);
+    };
+
     return () => {
-      if (socketRef.current) socketRef.current.close();
+      if (socketRef.current) {
+        
+        socketRef.current.close()
+        console.log("worker terminating");
+        worker.terminate();
+        workerRef.current = null;
+        socketRef.current = null;
+
+        setIsConnected(false);
+      };
     };
   }, [connect]);
 
@@ -109,12 +159,12 @@ function useConnect({ setGettingDetails, settings }) {
       }
     }, 3000);
     return () => clearInterval(pingInterval);
-  }, []);
+  }, [socketRef.current]);
   
   const queryConfig = useCallback((configData, globalBpPerUnit=null) => {
 
     return new Promise ((resolve) => {
-      worker.postMessage({
+      workerRef.current.postMessage({
         type: "config",
         data: configData,
         globalBpPerUnit: globalBpPerUnit,
@@ -130,7 +180,7 @@ function useConnect({ setGettingDetails, settings }) {
   
   const valueChanged = useCallback((value, setResult) => {
 
-    worker.postMessage({
+    workerRef.current.postMessage({
       type: "value-changed",
       data: value,
     });
@@ -145,7 +195,7 @@ function useConnect({ setGettingDetails, settings }) {
   const queryLocalBins = useCallback((start, end, localBins, globalBpPerUnit, nTrees, new_globalBp) => {
     return new Promise((resolve) => {
     
-    worker.postMessage({
+    workerRef.current.postMessage({
       type: "local-bins",
       data: {start, end,localBins, globalBpPerUnit, nTrees, new_globalBp},
     });
@@ -157,15 +207,6 @@ function useConnect({ setGettingDetails, settings }) {
     };    
   });
   }, []);
-
-const queryExperimental = useCallback((value) => {
-
-  worker.postMessage({
-    type: "experimental",
-    data: value,
-  });
-  
-});
 
 const queryNodes = useCallback((value, localTrees) => {
   return new Promise((resolve) => {
@@ -197,7 +238,7 @@ const queryNodes = useCallback((value, localTrees) => {
       // console.log("got details result", receivedData);
       setGettingDetails(false);
     };
-  }, [sendMessage, setGettingDetails]);
+  }, [sendMessage]);
 
   const checkConnection = useCallback(() => {
     return socketRef.current?.readyState === WebSocket.OPEN;
@@ -214,8 +255,8 @@ const queryNodes = useCallback((value, localTrees) => {
     checkConnection,
     queryLocalBins,
     valueChanged,
-    queryExperimental
-  }), [statusMessage, queryNodes, queryDetails, isConnected, checkConnection, queryConfig, queryLocalBins, valueChanged, queryExperimental]);
+    connect,
+  }), [connect, statusMessage, queryNodes, queryDetails, isConnected, checkConnection, queryConfig, queryLocalBins, valueChanged]);
 }
 
 export default useConnect;

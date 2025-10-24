@@ -18,11 +18,13 @@ function App() {
   const {settings, setSettings} = useSettings();
   const [gettingDetails, setGettingDetails] = useState(false);
   const backend = useConnect({setGettingDetails, settings});
+
   const config = useConfig({backend});
 
   const upload = useFileUpload({
     config,
     setProject,
+    backend
   });
 
   return (

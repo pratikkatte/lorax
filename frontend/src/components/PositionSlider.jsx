@@ -36,37 +36,11 @@ export default function PositionSlider({ config, project, ucgbMode, view, valueR
     }
   }, [valueRef.current, tsconfig.chrom, project, ucgbMode, setSearchParams]);
 
-  const moveLeft = () => {
-    const [left, right] = valueRef.current ?? [];
-    const newLeft = left - 100;
-    const newRight = right - 100;
-    if (newLeft >= 0) {
-      const newVal = [newLeft, newRight];
-      // valueRef.current = newVal;
-      moveLeftView(newVal);
-    } else {
-      alert(`ERROR: cannot move more left`);
-    }
-  };
 
-  const moveRight = () => {
-    const [left, right] = valueRef.current ?? [];
-    const newRight = right + 100;
-    const newLeft = left + 100;
-  
-    if (newRight <= genome_length) {
-      const newVal = [newLeft, newRight];
-      // valueRef.current = newVal;
-      moveRightView(newVal);
-    } else {
-      alert(`ERROR: cannot move more right`);
-    }
-  };
 
   const onChange = useCallback(
     (input_values) => {
       if (input_values[0] >= 0 && input_values[1] <= genome_length) {
-        console.log('onChange input_values', input_values);
         const newVal = [input_values[0], input_values[1]];
         // valueRef.current = newVal;
         // setValue(newVal);
@@ -77,6 +51,10 @@ export default function PositionSlider({ config, project, ucgbMode, view, valueR
     },[]
   );
 
+  useEffect(() => {
+    if (!valueRef.current) return;
+  }, [valueRef.current])
+  
   return (
     <div
       style={{
