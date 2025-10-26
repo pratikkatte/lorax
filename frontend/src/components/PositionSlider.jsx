@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import EditableRange from './EditableRange';
 import { useSearchParams } from 'react-router-dom';
+import { faArrows } from '@fortawesome/free-solid-svg-icons';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 
 export default function PositionSlider({ config, project, ucgbMode, view, valueRef }) {
   
@@ -8,7 +10,7 @@ export default function PositionSlider({ config, project, ucgbMode, view, valueR
   const { genome_length } = tsconfig;
   
   const [searchParams, setSearchParams] = useSearchParams();
-  const { changeView , startPan, stopPan} = view;
+  const { changeView , startPan, stopPan, viewReset} = view;
 
   // Initialize value if missing
   useEffect(() => {
@@ -125,6 +127,22 @@ export default function PositionSlider({ config, project, ucgbMode, view, valueR
         }}
       >
         →
+      </button>
+      <button
+        onClick={() => {
+          viewReset();
+        }}
+        style={{
+          background: 'none',
+          border: 'none',
+          cursor: 'pointer',
+          padding: '0 8px',
+          fontSize: '16px',
+          color: '#18b34c',
+        }}
+        title="Reset view"
+      >
+        <FontAwesomeIcon icon={faArrows} style={{ color: 'black' }} />
       </button>
       {/* <button
         onMouseDown={() => startPan('reset')}

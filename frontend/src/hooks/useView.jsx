@@ -10,7 +10,7 @@ let globalPanDirection = () => {};
 
 
 const INITIAL_VIEW_STATE = {
-  'genome_positions':{
+  'genome-positions':{
     target: [961,1],
     zoom: [8,8],
     // minZoom: 1,
@@ -223,7 +223,7 @@ class MyOrthographicController extends OrthographicController {
     setViewState(prev => ({
       ...prev,
     'ortho': INITIAL_VIEW_STATE['ortho'],
-    'genome-positions': INITIAL_VIEW_STATE['genome_positions'],
+    'genome-positions': INITIAL_VIEW_STATE['genome-positions'],
     'tree-time': INITIAL_VIEW_STATE['tree-time'],
     'genome-info': INITIAL_VIEW_STATE['genome-info']
   }));
@@ -250,7 +250,6 @@ class MyOrthographicController extends OrthographicController {
     return target;
   }, [genomeLength, globalBpPerUnit]);
 
-  
 
 
   const handleViewStateChange = useCallback(({viewState:newViewState, viewId, oldViewState}) => {
@@ -365,6 +364,39 @@ class MyOrthographicController extends OrthographicController {
 
   const panInterval = useRef(null);
 
+
+
+  const viewReset = useCallback(() => {
+    setViewState(prev => (
+      {
+      ...prev,
+      'ortho': {
+        ...prev['ortho'],
+        zoom: INITIAL_VIEW_STATE['ortho'].zoom,
+        target: [prev['ortho'].target[0], INITIAL_VIEW_STATE['ortho'].target[1]]
+      },
+      'genome-positions': {
+        ...prev['genome-positions'],
+        zoom: INITIAL_VIEW_STATE['genome-positions'].zoom,
+        target: [prev['genome-positions'].target[0], INITIAL_VIEW_STATE['genome-positions'].target[1]]
+      },
+      'tree-time': {
+        ...prev['tree-time'],
+        zoom: INITIAL_VIEW_STATE['tree-time'].zoom,
+        target: [prev['tree-time'].target[0], INITIAL_VIEW_STATE['tree-time'].target[1]]
+      },
+      'genome-info': {
+        ...prev['genome-info'],
+        zoom: INITIAL_VIEW_STATE['genome-info'].zoom,
+        target: [prev['genome-info'].target[0], INITIAL_VIEW_STATE['genome-info'].target[1]]
+      }
+    }
+  ));
+  }, [viewState]);
+  
+
+
+
 const startPan = useCallback((direction) => {
   if (panInterval.current) return;
   const stepDir = direction === 'L' ? -1 : 1;
@@ -413,7 +445,8 @@ const stopPan = useCallback(() => {
       startPan,
       stopPan,
       decksize,
-      setDecksize
+      setDecksize,
+      viewReset
     };
   }, [
     viewState,
@@ -430,7 +463,8 @@ const stopPan = useCallback(() => {
    startPan,
    stopPan,
    decksize,
-   setDecksize
+   setDecksize,
+   viewReset
   ]);
 
   return output;
