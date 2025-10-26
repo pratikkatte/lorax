@@ -37,7 +37,7 @@ export default function useFileUpload({
   const {connect} = backend;
   const navigate = useNavigate(); 
 
-  const {tsconfig, setConfig} = config;
+  const {tsconfig, setConfig, handleConfigUpdate} = config;
   const [loadingFile, setLoadingFile] = useState(null);
 
 
@@ -58,24 +58,12 @@ export default function useFileUpload({
   const _finishSuccess = useCallback(
     (resp, file) => {
       try {
-        console.log("resp", resp, file);
-        if (typeof setConfig === "function") {
-          const cfg = typeof mapResponseToConfig === "function"
-            ? mapResponseToConfig(resp, file, config)
-            : { ...(config ?? {}), file: file?.name };
-        }
-        if (file?.name) {
 
-          // ✅ Connect WebSocket only now
-          if (typeof connect === "function") {
-            console.log("🕸️ Connecting WS after upload...");
-            connect(resp.sid);
-          }
+        if (resp.filename) {
 
           setProject(file.project);
 
-          // navigate(`/${encodeURIComponent(file.name)}`);
-          
+          handleConfigUpdate(resp.config);
           
         }
       } catch (e) {
@@ -119,7 +107,6 @@ export default function useFileUpload({
             "Content-Type": "application/json",
           },
         });
-        console.log("res", res);
         _finishSuccess(res?.data, { name: project.file, project: project.project });
       } catch (err) {
         console.log("err", err);

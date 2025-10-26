@@ -20,8 +20,9 @@ function App() {
   const backend = useConnect({setGettingDetails, settings});
   const [statusMessage, setStatusMessage] = useState(null);
 
+  const timeRef = useRef(null);
 
-  const config = useConfig({backend, setStatusMessage});
+  const config = useConfig({backend, setStatusMessage, timeRef});
 
 
 
@@ -41,6 +42,7 @@ function App() {
           <LandingPage
             API_BASE={API_BASE}
             upload={upload}
+            timeRef={timeRef}
           />
         }
       />

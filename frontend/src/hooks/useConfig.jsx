@@ -3,7 +3,7 @@ import websocketEvents from "../webworkers/websocketEvents";
 import { useNavigate } from "react-router-dom";
 
 
-function useConfig({backend, setStatusMessage}) {
+function useConfig({backend, setStatusMessage, timeRef}) {
 
   const navigate = useNavigate();
   const [tsconfig, setConfig] = useState(null);
@@ -17,13 +17,18 @@ function useConfig({backend, setStatusMessage}) {
 
   const handleConfigUpdate = useCallback((data) => {
 
-    if (data.role === "config") {
-
+      if (timeRef.current && timeRef.current.start) {
+        
+        const endTime = new Date().getTime() / 1000;
+        const duration = endTime - timeRef.current.start;
+        console.log("duration", duration);
+        timeRef.current = {start: null};
+      }
       
-      setConfig({...tsconfig, ...data.data});
+      setConfig({...tsconfig, ...data});
       
       setStatusMessage({status: "loaded", message: "config loaded"});
-      setFilename(data.data.filename);
+      setFilename(data.filename);
       // For each key in populations, assign a unique color (generate if needed, do not repeat)
       const assignUniqueColors = (dict) => {
         const keys = Object.keys(dict || {});
@@ -66,15 +71,16 @@ function useConfig({backend, setStatusMessage}) {
         return dict;
       };
       
-      setPopulations({'populations': assignUniqueColors(data.data.populations), 'nodes_population': data.data.nodes_population});
+      setPopulations({'populations': assignUniqueColors(data.populations), 'nodes_population': data.nodes_population});
 
-      queryConfig(data.data);
-      let number_of_intervals = Object.keys(data.data.new_intervals).length;
-      setGlobalBpPerUnit(data.data.genome_length/(number_of_intervals));
+      let number_of_intervals = Object.keys(data.new_intervals).length;
+      setGlobalBpPerUnit(data.genome_length/(number_of_intervals));
       pathArray.current = Array(number_of_intervals).fill(null);
 
-      genomeLength.current = data.data.genome_length;
-    }
+      genomeLength.current = data.genome_length;
+
+      queryConfig(data);
+      
   }, [tsconfig]);
 
   useEffect(() => {
@@ -83,17 +89,6 @@ function useConfig({backend, setStatusMessage}) {
     }
   }, [tsconfig]);
 
-  useEffect(() => {
-    if (!isConnected) return;
-    // Subscribe to config updates
-    websocketEvents.on("viz", handleConfigUpdate);
-
-    // Cleanup subscription on unmount or disconnect
-    return () => {
-      console.log("unmounting")
-      websocketEvents.off("viz", handleConfigUpdate);
-    };
-  }, [isConnected]);
 
   
   return useMemo(() => ({
@@ -105,8 +100,9 @@ function useConfig({backend, setStatusMessage}) {
     setPopulationFilter,
     genomeLength,
     pathArray,
-    filename
-  }), [tsconfig, setConfig, globalBpPerUnit, populations, populationFilter, setPopulationFilter, genomeLength, pathArray, filename]);
+    filename,
+    handleConfigUpdate
+  }), [tsconfig, setConfig, globalBpPerUnit, populations, populationFilter, setPopulationFilter, genomeLength, pathArray, filename, handleConfigUpdate]);
 };
 
 export default useConfig;

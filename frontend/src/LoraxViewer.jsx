@@ -113,7 +113,7 @@ export default function LoraxViewer({ backend, config, settings, setSettings, pr
           console.log("error", response.data.error)
         } else {
 
-          connect(response.data.sid);
+          // connect(response.data.sid);
           // console.log("config set", tsconfig, qp.project, qp.genomiccoordstart, qp.genomiccoordend)
           // if (!tsconfig) {
           // setConfig({project: qp.project, value: [qp.genomiccoordstart,qp.genomiccoordend]});

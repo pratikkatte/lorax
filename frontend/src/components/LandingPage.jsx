@@ -7,18 +7,8 @@ import { BsChevronDown } from "react-icons/bs";
 import axios from "axios";
 import useLoraxConfig from "../globalconfig.js";
 import ErrorAlert from "./ErrorAlert.jsx";
-/**
- * LandingPage integrated with useFileUpload
- *
- * Props:
- * - config, setConfig: pass-through to hook so it can set your app config after upload
- * - onStartDemo?: () => void
- * - onOpenDocs?: () => void
- * - onSelectFile?: (file: File) => void   // optional, called after successful upload
- * - version?: string
- */
 
-function DatasetFiles({ project, files = [],loadFile, loadingFile, setLoadingFile }) {
+function DatasetFiles({ project, files = [],loadFile, loadingFile, setLoadingFile, timeRef}) {
   const [q, setQ] = useState("");
   
   const visible = useMemo(() => {
@@ -49,6 +39,8 @@ function DatasetFiles({ project, files = [],loadFile, loadingFile, setLoadingFil
                 onClick={e => {
                   e.currentTarget.disabled = loadingFile?true:false;
                   setLoadingFile(name);
+                  timeRef.current = {start: new Date().getTime() / 1000};
+                  console.log("timeRef", timeRef.current);
                   loadFile?.({ project, file: name});
                 }}
               />
@@ -93,7 +85,6 @@ function FilePill({ name, onClick, loading = false }) {
 function getProjects(API_BASE) {
   return axios.get(`${API_BASE}/projects`)
     .then(response => {
-      console.log("response", response);
       return response.data.projects;
     })
     .catch(error => {
@@ -105,6 +96,7 @@ function getProjects(API_BASE) {
 export default function LandingPage({
   upload,
   version = "pre‑release",
+  timeRef,
 }) {
 
   const {API_BASE} = useLoraxConfig();
@@ -117,7 +109,6 @@ export default function LandingPage({
     let active = true;
     if(projects.length === 0) {
       getProjects(API_BASE).then(projectsData => {
-        console.log("projectsData", projectsData);
         if (active) setProjects(projectsData);
       })
       .catch(error => {
@@ -276,7 +267,7 @@ export default function LandingPage({
             <div className="overflow-hidden">
               <div className="px-6 pb-6 pt-1">
                 {/* Optional inline file filter */}
-                <DatasetFiles project={p.folder} files={files} loadFile={upload.loadFile} loadingFile={upload.loadingFile} setLoadingFile={upload.setLoadingFile}/>
+                <DatasetFiles project={p.folder} files={files} loadFile={upload.loadFile} loadingFile={upload.loadingFile} setLoadingFile={upload.setLoadingFile} timeRef={timeRef}/>
               </div>
             </div>
           </div>

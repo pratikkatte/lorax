@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import websocketEvents from "../webworkers/websocketEvents";
 import useLoraxConfig from "../globalconfig.js";
 import workerSpec from "../webworkers/localBackendWorker.js?worker&inline";
+import axios from "axios";
 
 // const worker = new workerSpec();
 
@@ -28,7 +29,7 @@ function useConnect({ setGettingDetails, settings }) {
   const [statusMessage, setStatusMessage] = useState({ message: null });
   const [isConnected, setIsConnected] = useState(false);
 
-  const { WEBSOCKET_BASE } = useLoraxConfig();
+  const { WEBSOCKET_BASE, API_BASE } = useLoraxConfig();
 
     /** Build the correct WebSocket URL (with sid if needed) */
     const getWebSocketURL = useCallback((sid) => {
@@ -122,9 +123,50 @@ function useConnect({ setGettingDetails, settings }) {
     }
   }, []);
 
-  /** Start connection once on mount */
-  useEffect(() => {
+
+
+    const initSession = useCallback(() => {
+      try {
+        return axios.post(
+          `${API_BASE}/init-session`,
+          {}, 
+          {
+            withCredentials: true,
+            headers: {
+              "Content-Type": "application/json",
+            },
+          }
+        );
+      } catch (error) {
+        console.error("Error initializing session:", error);
+        return null;
+      }
+    }, [API_BASE]);
+
+
+    useEffect(() => {
+      let isMounted = true; // avoid setting state if unmounted
     
+      const initializeAndConnect = async () => {
+        try {
+          const response = await initSession();
+    
+          // Axios response structure: { data: { sid: "..." }, ... }
+          const sid = response?.data?.sid;
+    
+          if (sid && isMounted) {
+            console.log("Session initialized:", sid);
+            connect(sid); // ✅ start websocket with sid
+          } else {
+            console.warn("No SID received during session init");
+          }
+        } catch (error) {
+          console.error("Error initializing session:", error);
+        }
+      };
+    
+      initializeAndConnect();
+
     const worker = new workerSpec();
     workerRef.current = worker;
 
@@ -138,6 +180,7 @@ function useConnect({ setGettingDetails, settings }) {
     };
 
     return () => {
+      isMounted = false;
       if (socketRef.current) {
         
         socketRef.current.close()

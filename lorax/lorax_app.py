@@ -14,9 +14,12 @@ from uuid import uuid4
 import time
 import aiofiles
 
+from fastapi import Query
+from typing import Optional
+
 app = FastAPI()
 
-# lorax_handler = LoraxHandler()
+lorax_handler = LoraxHandler()
 
 # Create uploads directory if it doesn't exist
 UPLOAD_DIR = Path("uploads")
@@ -76,6 +79,13 @@ def get_or_create_session(request: Request, response: Response):
         )
     return sid, sessions[sid]
 
+
+@app.post("/init-session")
+async def init_session(request: Request, response: Response):
+    sid, session = get_or_create_session(request, response)
+    print("sid in init_session", sid);
+    return {"sid": sid}
+
 # ────────────────────────────────
 # Routes
 # ────────────────────────────────
@@ -88,41 +98,7 @@ async def projects():
     projects = await lorax_handler.get_projects(UPLOAD_DIR)
     return {"projects": projects}
 
-# @app.get('/test')
-# async def test(request: Request):
-#     file_name = "sample.trees"
-#     file_path = UPLOAD_DIR / file_name
-#     viz_config, chat_config = await lorax_handler.handle_upload(file_path)
 
-#     await manager.send_to_component("viz", {
-#             "type": "viz", 
-#             "role": "config",
-#             "data": viz_config,
-#         })
-
-#     await manager.send_to_component("chat", {
-#         "type": "chat", 
-#         "role": "assistant",
-#         "data": chat_config # send the config to the chat component  
-#     })
-    
-#     return {
-#         "message": "File uploaded successfully",
-#         "filename": file_name,
-#         "file_path": str(file_path)
-#     }
-
-# @app.get("/{file}")
-# async def get_file(file: str, project: str=None, chrom=None, genomiccoordstart: int=None, genomiccoordend: int=None, regionstart: int=None, regionend: int=None):
-#     print("file_path", file) 
-#     file_path = UPLOAD_DIR / project / file
-    
-#     viz_config, chat_config = await lorax_handler.handle_upload(file_path)
-#     return {"file_path": str(file_path)}
-
-
-from fastapi import Query
-from typing import Optional
 
 @app.get("/{file}")
 async def get_file(request: Request, response: Response,
@@ -201,6 +177,14 @@ async def load_file(request: Request, response: Response):
 
     viz_config, chat_config = await session.handler.handle_upload(str(file_path))
 
+    viz_config = session.handler.get_config()
+    print("sending config", sid)
+    # await session.manager.send_message(session.manager.connected_clients[0], {
+    #     "type": "viz",
+    #     "role": "config",
+    #     "data": viz_config
+    #     })
+
     # await session.manager.send_to_component("viz", {
     #     "type": "viz", "role": "config", "data": viz_config
     # })
@@ -211,38 +195,7 @@ async def load_file(request: Request, response: Response):
     #     "type": "chat", "role": "assistant", "data": chat_config
     # })
 
-    return {"message": "File loaded", "sid": sid, "filename": filename}
-
-    # try:
-    #     form_data = await request.json()
-    #     project = form_data.get("project")
-    #     file = form_data.get("file")
-    #     file_path = UPLOAD_DIR / project / file
-    #     viz_config, chat_config = await lorax_handler.handle_upload(file_path)
-    #     await manager.send_to_component("viz", {
-    #         "type": "viz", 
-    #         "role": "config",
-    #         "data": viz_config,
-    #     })
-
-    #     await manager.send_to_component("chat", {
-    #         "type": "chat", 
-    #         "role": "assistant",
-    #         "data": chat_config # send the config to the chat component  
-    #     })
-        
-    #     return {
-    #         "message": "File uploaded successfully",
-    #         "filename": file,
-    #         "file_path": str(file_path)
-    #     }
-
-    # except Exception as e:
-    #     print(f"Error loading file: {e}")
-    #     return JSONResponse(
-    #         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-    #         content={"error": str(e)}
-    #     )
+    return {"message": "File loaded", "sid": sid, "filename": filename, "config": viz_config}
 
 @app.post('/upload')
 # async def upload(file: UploadFile = File(...)):
@@ -281,51 +234,6 @@ async def upload(request: Request, response: Response, file: UploadFile = File(.
         print(f"❌ Upload error: {e}")
         return JSONResponse(status_code=500, content={"error": str(e)})
 
-    # try:
-    #     # Create a safe file path
-    #     form_data = await request.form()
-    #     file = form_data.get("file")
-    #     filename = form_data.get("filename") or file.filename
-
-    #     file_path = UPLOAD_DIR / filename
-        
-    #     start = time.time()
-    #     # Stream 1MB chunks to disk (no memory blow-up)
-    #     async with aiofiles.open(file_path, "wb") as f:
-    #         # Read in chunks to handle large files efficiently
-    #         chunk_size = 10240 * 10240 # 1MB chunks
-    #         while content := await file.read(chunk_size):
-    #             await f.write(content)
-
-    #     # Notify components about the upload
-    #     viz_config, chat_config = await lorax_handler.handle_upload(file_path)
-
-    #     # Only send to connected components
-
-    #      # Only send to connected clients
-    #     await manager.send_to_component("viz", {
-    #         "type": "viz", 
-    #         "role": "config",
-    #         "data": viz_config,
-    #     })
-
-    #     await manager.send_to_component("chat", {
-    #         "type": "chat", 
-    #         "role": "assistant",
-    #         "data": chat_config # send the config to the chat component  
-    #     })
-        
-    #     return {
-    #         "message": "File uploaded successfully",
-    #         "filename": filename,
-    #         "file_path": str(file_path)
-    #     }
-
-    # except Exception as e:
-    #     print(f"Upload error: {e}")
-    #     return {"error": str(e)}
-    # finally:
-    #     file.file.close()
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -354,15 +262,15 @@ async def websocket_endpoint(websocket: WebSocket):
     active_tasks = {}
 
 
-    if manager.is_connected(websocket):
-        if (handler.ts is not None):
-            viz_config = handler.get_config()
-            print("sending config", sid)
-            await manager.send_message(websocket, {
-                "type": "viz",
-                "role": "config",
-                "data": viz_config
-            })
+    # if manager.is_connected(websocket):
+    #     if (handler.ts is not None):
+    #         viz_config = handler.get_config()
+    #         print("sending config", sid)
+    #         await manager.send_message(websocket, {
+    #             "type": "viz",
+    #             "role": "config",
+    #             "data": viz_config
+    #         })
         
     try:
         while True:
@@ -448,103 +356,3 @@ async def websocket_endpoint(websocket: WebSocket):
                 t.cancel()
         active_tasks.clear()
         await manager.disconnect(websocket)
-    
-    # try:
-    #     # --- Connection setup is NOW INSIDE the try block ---
-    #     await manager.connect(websocket)
-    #     await manager.register_component(websocket, "viz")
-    #     await manager.register_component(websocket, "chat")
-    #     await manager.register_component(websocket, "ping")
-
-    #     # No need to call cleanup_disconnected_clients() here,
-    #     # your send_to_component logic already handles it well.
-
-    #     while True:
-    #         # This is the single point of failure we need to watch.
-    #         # It will raise WebSocketDisconnect automatically.
-    #         message = await websocket.receive_json()
-
-    #         # --- PING ---
-    #         if message.get("type") == "ping":
-    #             data = await lorax_handler.handle_ping(message)
-    #             await manager.send_to_component("ping", data)
-    #             continue
-
-    #         # --- VIZ REQUESTS ---
-    #         if message.get("type") == "viz":
-    #             role = message.get("role")
-
-    #             # --- Handle Frequent Queries (Cancellable) ---
-    #             if role == "query":
-    #                 try:
-    #                     # Cancel previous query task
-    #                     if "query" in active_tasks:
-    #                         prev_task = active_tasks.pop("query")
-    #                         if not prev_task.done():
-    #                             prev_task.cancel()
-    #                             print("🛑 Cancelled previous query task")
-
-    #                     # Create and await new query task
-    #                     current_task = asyncio.create_task(lorax_handler.handle_query(message))
-    #                     active_tasks["query"] = current_task
-    #                     result = await current_task
-
-    #                     await manager.send_to_component("viz", {
-    #                         "type": "viz",
-    #                         "role": "query-result",
-    #                         "data": result
-    #                     })
-    #                 except asyncio.CancelledError:
-    #                     print("⚠️ Query task cancelled — skipping result send")
-    #                     # Optionally send a 'cancelled' status
-    #                 except Exception as e:
-    #                     print(f"❌ Error handling viz query: {e}")
-    #                     # Send error state to UI
-    #                 continue
-
-    #             # --- Handle Details (Cancellable) ---
-    #             if role == "details":
-    #                 try:
-    #                     # Cancel previous details task
-    #                     if "details" in active_tasks:
-    #                         prev_task = active_tasks.pop("details")
-    #                         if not prev_task.done():
-    #                             prev_task.cancel()
-    #                             print("🛑 Cancelled previous details task")
-
-    #                     # Create and await new details task
-    #                     current_task = asyncio.create_task(lorax_handler.handle_details(message))
-    #                     active_tasks["details"] = current_task
-    #                     result = await current_task
-                        
-    #                     await manager.send_to_component("viz", {
-    #                         "type": "viz",
-    #                         "role": "details-result",
-    #                         "data": result
-    #                     })
-    #                 except asyncio.CancelledError:
-    #                     print("⚠️ Details task cancelled")
-    #                 except Exception as e:
-    #                     print(f"❌ Error handling viz details: {e}")
-    #                 continue
-
-    #         # --- FALLBACK (if you need it) ---
-    #         # ...
-
-    # except WebSocketDisconnect:
-    #     # This is the expected, clean way a client disconnects.
-    #     print(f"🔌 Client disconnected: {websocket.client}")
-    
-    # except Exception as e:
-    #     # This catches any other unexpected errors in the loop.
-    #     print(f"❗ Unexpected error: {e}")
-    
-    # finally:
-    #     # This block runs NO MATTER WHAT (clean disconnect, or error).
-    #     # It's the perfect place for cleanup.
-    #     print(f"Cleaning up tasks and connection for {websocket.client}")
-    #     for task in active_tasks.values():
-    #         if not task.done():
-    #             task.cancel()
-    #     active_tasks.clear()
-    #     await manager.disconnect(websocket)

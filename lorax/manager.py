@@ -9,7 +9,6 @@ class WebSocketManager:
     async def connect(self, websocket: WebSocket):
         client_ip = f"{websocket.client.host}:{websocket.client.port}"
         await websocket.accept()
-        # self.connected_clients.append(websocket)
         self.connected_clients.add(websocket)
         
         # This message send can still fail if client disconnects
