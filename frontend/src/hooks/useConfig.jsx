@@ -15,7 +15,7 @@ function useConfig({backend, setStatusMessage, timeRef}) {
   const pathArray = useRef([]);
   const [filename, setFilename] = useState("");
 
-  const handleConfigUpdate = useCallback((data) => {
+  const handleConfigUpdate = useCallback((data, value=null) => {
 
       if (timeRef.current && timeRef.current.start) {
         
@@ -25,7 +25,8 @@ function useConfig({backend, setStatusMessage, timeRef}) {
         timeRef.current = {start: null};
       }
       
-      setConfig({...tsconfig, ...data});
+      console.log("data", data, value);
+      setConfig({...tsconfig, ...data, value: value ? [parseInt(value[0], 10), parseInt(value[1], 10)] : null});
       
       setStatusMessage({status: "loaded", message: "config loaded"});
       setFilename(data.filename);

@@ -98,6 +98,8 @@ export default function useFileUpload({
       loadingRequestRef.current = true;
   
       try {
+
+        const start = performance.now();
         const url = `${API_BASE}/load_file`;
         const payload = project;
         console.log("payload", payload);
@@ -107,6 +109,9 @@ export default function useFileUpload({
             "Content-Type": "application/json",
           },
         });
+        const end = performance.now();
+        console.log(`loadFile response time: ${((end - start) / 1000).toFixed(2)}s`);
+        
         _finishSuccess(res?.data, { name: project.file, project: project.project });
       } catch (err) {
         console.log("err", err);

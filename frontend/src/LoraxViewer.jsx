@@ -14,7 +14,7 @@ export default function LoraxViewer({ backend, config, settings, setSettings, pr
 
 
 
-  const {tsconfig, setConfig} = config;
+  const {tsconfig, setConfig, handleConfigUpdate} = config;
   const { file } = useParams();
   const {API_BASE} = useLoraxConfig();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -75,12 +75,9 @@ export default function LoraxViewer({ backend, config, settings, setSettings, pr
     if (ucgbMode.current) {
       axios.get(`${API_BASE}/ucgb?chrom=${qp.chrom}&genomiccoordstart=${qp.genomiccoordstart}&genomiccoordend=${qp.genomiccoordend}`).then(response => {
         // console.log("response", response)
-        console.log(parseInt(qp.genomiccoordend) - parseInt(qp.genomiccoordstart))
-        if (parseInt(qp.genomiccoordend) - parseInt(qp.genomiccoordstart) > 1000) {
-          alert("Please try a genomic coordinate range less than 10kb");
-        // throw new Error("Please try a genomic coordinate range less than 10kb");
-        return;
-        }
+
+        handleConfigUpdate(response.data.config);
+        
         if (response.data.error) {
           console.log("error", response.data.error)
         } else {
@@ -105,9 +102,11 @@ export default function LoraxViewer({ backend, config, settings, setSettings, pr
       ).then(response => {
 
         if (response.data) {
+
+          handleConfigUpdate(response.data.config, [qp.genomiccoordstart, qp.genomiccoordend]);
+
           setStatusMessage({status: "file-load", message: "loading file..."});
         }
-        console.log("response", response);
         // console.log("config response", response.data, tsconfig)
         if (response.data.error) {
           console.log("error", response.data.error)
@@ -150,7 +149,7 @@ export default function LoraxViewer({ backend, config, settings, setSettings, pr
 
         <div className={`${(showInfo || showSettings) ? (showSidebar ? 'w-[73%]' : 'w-3/4') :  (showSidebar ? 'w-[97%]' : 'w-full')} transition-all duration-200`}>
         {statusMessage?.status === "file-load" && <LoraxMessage status={statusMessage.status} message={statusMessage.message} />}
-        <Lorax backend={backend} config={config} settings={settings} setSettings={setSettings} project={project} ucgbMode={ucgbMode} statusMessage={statusMessage} setStatusMessage={setStatusMessage} />}
+        <Lorax backend={backend} config={config} settings={settings} setSettings={setSettings} project={project} ucgbMode={ucgbMode} statusMessage={statusMessage} setStatusMessage={setStatusMessage} />
         </div>
         <div className={`transition-all relative ${showInfo ? '' : 'hidden'} shadow-2xl bg-gray-100 duration-200 ${showSidebar ? 'w-[25%]' : 'w-1/4'}`}>
             <Info backend={backend} gettingDetails={gettingDetails} setGettingDetails={setGettingDetails} setShowInfo={setShowInfo} config={config} setConfig={setConfig} selectedFileName={selectedFileName} setSelectedFileName={setSelectedFileName}/>

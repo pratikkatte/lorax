@@ -10,7 +10,7 @@ export default function PositionSlider({ config, project, ucgbMode, view, valueR
   const { genome_length } = tsconfig;
   
   const [searchParams, setSearchParams] = useSearchParams();
-  const { changeView , startPan, stopPan, viewReset} = view;
+  const { changeView , startPan, stopPan, viewReset, decksize} = view;
 
   // Initialize value if missing
   useEffect(() => {
@@ -40,8 +40,7 @@ export default function PositionSlider({ config, project, ucgbMode, view, valueR
 
 
 
-  const onChange = useCallback(
-    (input_values) => {
+  const onChange = useCallback((input_values) => {
       if (input_values[0] >= 0 && input_values[1] <= genome_length) {
         const newVal = [input_values[0], input_values[1]];
         // valueRef.current = newVal;
@@ -50,51 +49,26 @@ export default function PositionSlider({ config, project, ucgbMode, view, valueR
       }else{
         alert(`ERROR: cannot change to ${input_values}`);
       }
-    },[]
-  );
+    },[decksize]);
 
-  useEffect(() => {
-    if (!valueRef.current) return;
-  }, [valueRef.current])
-  
   return (
     <div
       style={{
-        width: '60%',
+        width: '100%',
         border: '1px',
         borderColor: 'black',
         display: 'flex',
         justifyContent: 'center',
       }}
+      // className="flex justify-center items-center"
     >
-      <div className="flex items-center gap-2">
+      <div className="flex justify-center items-center gap-2">
   {filename && (
             <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">
               {filename}
             </span>
           )}
         </div>
-      {/* <div style={{ 
-        marginRight: 16, 
-        display: 'flex', 
-        alignItems: 'center', 
-        fontSize: '14px', 
-        color: '#444',
-        minWidth: '105px'
-      }}>
-        {typeof genome_length !== "undefined" && valueRef.current && (
-          <>
-            Chr&nbsp;
-            <b>
-              {valueRef.current.chromosome || "?"}
-            </b>
-            &nbsp;|&nbsp;
-            <span>
-              {valueRef.current[0]} - {valueRef.current[1]} / {genome_length}
-            </span>
-          </>
-        )}
-      </div> */}
       <button
         onMouseDown={() => startPan('L')}
         onMouseUp={stopPan}

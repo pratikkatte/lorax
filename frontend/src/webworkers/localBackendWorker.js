@@ -884,11 +884,11 @@ export const queryLocalBins = async (start, end, localBins, globalBpPerUnit, nTr
   let result = await getLocalData(start, end, localBins, globalBpPerUnit, nTrees, new_globalBp);
   return result;
 }
-export const queryNodes = async (data, vertical_mode) => {
+export const queryNodes = async (localTrees, vertical_mode) => {
   try {
-    const received_data = JSON.parse(data);
+    // const received_data = JSON.parse(data);
 
-    const localTrees = received_data.tree_dict;
+    // const localTrees = received_data.tree_dict;
     const processed_data = await processData(localTrees, sendStatusMessage, vertical_mode)
     const result = {
       paths: processed_data,
@@ -1128,7 +1128,8 @@ onmessage = async (event) => {
 
   } else {
     if (data.type === "query") {
-      const result = await queryNodes(data.data, data.vertical_mode);
+
+      const result = await queryNodes(data.data.tree_dict, data.vertical_mode);
       postMessage({ type: "query", data: result });
     }
     if (data.type === "search") {

@@ -269,16 +269,7 @@ useEffect(() => {
 
       if (!vpGenome || !vpOrtho) return;
 
-      setDecksize(prev => {
-        if (prev.width === deck.width && prev.height === deck.height) {
-          return prev;
-        }
-        return {
-          ...prev,
-          width: deck.width,
-          height: deck.height
-        };
-      });
+
       
       saveViewports.current = {
         'ortho': vpOrtho,
@@ -315,6 +306,9 @@ useEffect(() => {
       onViewStateChange={handleViewStateChange}
       views={views}
       onAfterRender={handleAfterRender}
+      onResize={({width, height}) => {
+        setDecksize({width, height});
+      }}
     >
       <View id="ortho">
         {/* {no_data && <LoadingSpinner />} */}

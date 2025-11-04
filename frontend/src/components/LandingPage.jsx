@@ -39,8 +39,8 @@ function DatasetFiles({ project, files = [],loadFile, loadingFile, setLoadingFil
                 onClick={e => {
                   e.currentTarget.disabled = loadingFile?true:false;
                   setLoadingFile(name);
-                  timeRef.current = {start: new Date().getTime() / 1000};
-                  console.log("timeRef", timeRef.current);
+                  // timeRef.current = {start: new Date().getTime() / 1000};
+                  // console.log("timeRef", timeRef.current);
                   loadFile?.({ project, file: name});
                 }}
               />
@@ -109,6 +109,8 @@ export default function LandingPage({
     let active = true;
     if(projects.length === 0) {
       getProjects(API_BASE).then(projectsData => {
+
+        console.log("projectsData", projectsData);
         if (active) setProjects(projectsData);
       })
       .catch(error => {
@@ -221,7 +223,7 @@ export default function LandingPage({
   <h2 className="text-2xl font-semibold mb-4">Load Existing Inferred ARGs</h2>
 
   <ul className="space-y-4">
-    {projects.map((p) => {
+    {(projects ?? []).map((p) => {
       const id = p.id ?? p.slug ?? p.name;
       const isOpen = expandedId === id;
       const files = Array.isArray(p.files) ? p.files : (p.files ? [p.files] : []);

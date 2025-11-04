@@ -45,11 +45,9 @@ const handleDetails = useCallback((incoming_data) => {
   }, []);
   
   useEffect(() => { 
-    console.log("gettingDetails", isConnected)
     if (!isConnected) return;
     websocketEvents.on("viz", handleDetails);
     return () => {
-      console.log("unmounting")
       websocketEvents.off("viz", handleDetails);
     };
   }, [isConnected]);

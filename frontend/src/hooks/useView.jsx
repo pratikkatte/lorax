@@ -97,6 +97,7 @@ class MyOrthographicController extends OrthographicController {
     // let treeSpacing = 1.03;
     let width = decksize.width;
 
+
     let tzoom = viewState['ortho'].zoom[0];
     const W_w = width/ (Math.pow(2, tzoom));
 
@@ -121,34 +122,41 @@ class MyOrthographicController extends OrthographicController {
   const changeView = useCallback((val) => {
   
     if (!val) return;
-    valueRef.current = val;
-    if (globalBpPerUnit) {
+    
+    if (globalBpPerUnit && decksize.width) {
+
+      let width = decksize.width;
       
       let [x0, x1] = [val[0]/globalBpPerUnit, val[1]/globalBpPerUnit];
+      let spacing = 0;
       // const Z = Math.log2((viewPortCoords['ortho']['viewport'].width * globalBpPerUnit) / (val[1] - val[0]))
-      const Z = Math.log2((decksize.width * globalBpPerUnit) / (val[1] - val[0]))
+      const Z = Math.log2((width * globalBpPerUnit) / (val[1] - val[0]))
+      const target = ((x1+spacing)+(x0+spacing))/2;
+      valueRef.current = val;
+
       setViewState((prev) => {
         return {
           ...prev,
           ['ortho']: {
             ...prev['ortho'],
-           'target': [((x1+1.03)+(x0+1.03))/2, prev['ortho'].target[1]],
+           'target': [target, prev['ortho'].target[1]],
             'zoom': [Z>=1 ? Z : 1, prev['ortho'].zoom[1]],
           },
           ['genome-positions']: {
             ...prev['genome-positions'],
-            'target': [((x1+1.03)+(x0+1.03))/2, prev['genome-positions'].target[1]],
+            'target': [target, prev['genome-positions'].target[1]],
             'zoom': [Z>=1 ? Z : 1, prev['genome-positions'].zoom[1]],
           },
           ['genome-info']: {
             ...prev['genome-info'],
-            'target': [((x1+1.03)+(x0+1.03))/2, prev['genome-info'].target[1]],
+            'target': [target, prev['genome-info'].target[1]],
             'zoom': [Z>=1 ? Z : 1, prev['genome-info'].zoom[1]],
-          }
+          },
         }
       })
+      
     }
-  }, [globalBpPerUnit, viewState])
+  }, [globalBpPerUnit, viewState, decksize])
 
   const views = useMemo(() => {
     return [
@@ -204,15 +212,16 @@ class MyOrthographicController extends OrthographicController {
     ),
     [valueRef, viewState]
   );
+  
   useEffect(() => {
     if (!tsconfig) return;
 
     if (tsconfig?.value && !valueRef.current){
+      console.log("changing view to", tsconfig.value);
       changeView(tsconfig.value);
     }else{
       const newValue = updateValueRef();
       newValue && debouncedUpdateRef(newValue);
-      
     }
   }, [viewState, tsconfig])
 

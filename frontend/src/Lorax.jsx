@@ -1,4 +1,5 @@
 import "./App.css";
+import React from "react";
 import Deck from "./Deck";
 import useView from "./hooks/useView";
 import { useState, useRef } from "react";
@@ -9,7 +10,6 @@ function Lorax({backend, config, settings, setSettings, project, ucgbMode, statu
   const {tsconfig} = config;
 
   const [mouseDownIsMinimap, setMouseDownIsMinimap] = useState(false);
-  const [deckSize, setDeckSize] = useState(null); // idk the use of this?
   const [hoveredTreeIndex, setHoveredTreeIndex] = useState({path: null, node: null, treeIndex: null}); // this is for knowing which tree is hovered. 
   const deckRef = useRef(); // reference to the deck component. 
   const valueRef = useRef(null);
@@ -20,20 +20,19 @@ function Lorax({backend, config, settings, setSettings, project, ucgbMode, statu
     <>
       {backend.isConnected && tsconfig && (
         <div className="flex flex-col h-screen bg-white">
+          
           {(!ucgbMode.current) && (
-          <div className="flex justify-center items-center py-2 bg-white border-b border-gray-200">
+          <div className="flex justify-center">
             <PositionSlider config={config} project={project} ucgbMode={ucgbMode} view={view} valueRef={valueRef} />
           </div>
           )}
-          <div className="flex-1 flex justify-center">
+          <div className="flex-1 flex ">
             <Deck 
               backend={backend}
               hoveredTreeIndex={hoveredTreeIndex}
               setHoveredTreeIndex={setHoveredTreeIndex}
               view={view}
               ariaHideApp={false} 
-              setDeckSize={setDeckSize}
-              deckSize={deckSize}
               deckRef={deckRef}
               mouseDownIsMinimap={mouseDownIsMinimap}
               setMouseDownIsMinimap={setMouseDownIsMinimap}
@@ -44,8 +43,9 @@ function Lorax({backend, config, settings, setSettings, project, ucgbMode, statu
               statusMessage={statusMessage}
               setStatusMessage={setStatusMessage}
             />
+
           </div>
-        </div>
+          </div>
       )}
     </>
   )

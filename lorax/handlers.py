@@ -6,7 +6,82 @@ import tskit
 import tszip
 import numpy as np
 import os
+import asyncio
 
+
+# Global cache for loaded tree sequences
+_ts_cache = {}
+
+def get_or_load_ts(file_path):
+    """
+    Load a tree sequence from a file, using a global cache to avoid reloading.
+    """
+    if file_path and file_path in _ts_cache:
+        print("Using cached tree sequence from file_path:", file_path)
+        return _ts_cache[file_path]
+    if file_path.endswith('.tsz'):
+        print("Loading tree sequence from file_path:", file_path)
+        ts = tszip.load(file_path)
+    else:
+        print("Loading tree sequence from file_path:", file_path)
+        ts = tskit.load(file_path)
+    _ts_cache[file_path] = ts
+    return ts
+
+async def handle_query(file_path, localTrees):
+    """
+
+    """
+    # get object from file_path using get_or_load_ts
+    ts = get_or_load_ts(file_path)
+    if ts is None:
+        return json.dumps({"error": "Tree sequence (ts) is not set. Please upload a file first. Or file_path is not valid or not found."})
+    try:
+        tree_dict = await asyncio.to_thread(old_new_tree_samples, localTrees, ts)
+        data = json.dumps({
+            "tree_dict": tree_dict
+            })
+        return data
+    except Exception as e:
+        print("Error in handle_query", e)
+        return json.dumps({"error": f"Error processing query: {str(e)}"})
+
+def get_config(ts, file_path):
+    new_intervals = {int(tree.interval[0]): [int(tree.interval[0]), int(tree.interval[1])] for tree in ts.trees()}
+    ts_intervals = new_intervals
+    times = [ts.min_time, ts.max_time]
+    populations = {}
+
+    for s in ts.populations():
+        meta = json.loads(s.metadata)
+        populations[int(s.id)] = {
+            "population": meta.get("name"),
+            "description": meta.get("description"),
+            "super_population": meta.get("super_population")
+            }
+    nodes_population = [n.population for n in ts.nodes()]
+
+    config = {'genome_length': ts.sequence_length, 'times':times, 'new_intervals':new_intervals,'filename': str(file_path).split('/')[-1], 'populations':populations, 'nodes_population':nodes_population}
+    return config
+
+async def handle_upload(file_path):
+    """
+    """
+    basefilename = os.path.basename(file_path)
+    if basefilename.endswith('.tsz'):
+        ts = tszip.load(file_path)
+    else:
+        ts = tskit.load(file_path)
+
+    config = await asyncio.to_thread(get_config, ts, file_path)
+    return config, None
+
+async def get_projects(upload_dir, sid=None):
+    with open(f'{upload_dir}/projects.json', 'r') as f:
+        projects = json.load(f)
+        final_projects = [project for project in projects if os.path.exists(os.path.join(upload_dir, project.get("folder", "")))]
+        return final_projects
+    
 class LoraxHandler:
     def __init__(self):
         self.ts = None  # Set when a file is uploaded
