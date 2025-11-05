@@ -10,14 +10,16 @@ export default function PositionSlider({ config, project, ucgbMode, view, valueR
   const { genome_length } = tsconfig;
   
   const [searchParams, setSearchParams] = useSearchParams();
-  const { changeView , startPan, stopPan, viewReset, decksize} = view;
+  const { changeView , startPan, stopPan, viewReset, decksize, genomicValues} = view;
 
   // Initialize value if missing
   useEffect(() => {
-    if (!valueRef.current) {
+    if (genomicValues) {
+
       // valueRef.current = tsconfig.value;
+      // console.log("value is set to", genomicValues);
     }
-  }, [tsconfig.value]);
+  }, [genomicValues, tsconfig.value]);
 
   // Keep ref and search params in sync with React state
   useEffect(() => {
@@ -38,18 +40,6 @@ export default function PositionSlider({ config, project, ucgbMode, view, valueR
     }
   }, [valueRef.current, tsconfig.chrom, project, ucgbMode, setSearchParams]);
 
-
-
-  const onChange = useCallback((input_values) => {
-      if (input_values[0] >= 0 && input_values[1] <= genome_length) {
-        const newVal = [input_values[0], input_values[1]];
-        // valueRef.current = newVal;
-        // setValue(newVal);
-        changeView(newVal); // always call when user changes
-      }else{
-        alert(`ERROR: cannot change to ${input_values}`);
-      }
-    },[decksize]);
 
   return (
     <div
@@ -85,7 +75,7 @@ export default function PositionSlider({ config, project, ucgbMode, view, valueR
         ←
       </button>
       {valueRef.current && (
-        <EditableRange valueRef={valueRef} onChange={onChange} />
+        <EditableRange valueRef={valueRef} onChange={changeView} genomeLength={genome_length} />
       )}
       <button
         onMouseDown={() => startPan('R')}
@@ -118,88 +108,6 @@ export default function PositionSlider({ config, project, ucgbMode, view, valueR
       >
         <FontAwesomeIcon icon={faArrows} style={{ color: 'black' }} />
       </button>
-      {/* <button
-        onMouseDown={() => startPan('reset')}
-        onMouseUp={stopPan}
-        onMouseLeave={stopPan}
-        onClick={() => {
-          if (valueRef.current) {
-            // Reset the range to the initial/default value(s)
-            if (valueRef.current.default) {
-              valueRef.current.value = [...valueRef.current.default];
-              onChange([...valueRef.current.default]);
-            } else if (Array.isArray(valueRef.current.initial)) {
-              valueRef.current.value = [...valueRef.current.initial];
-              onChange([...valueRef.current.initial]);
-            }
-          }
-        }}
-        style={{
-          background: 'none',
-          border: 'none',
-          cursor: 'pointer',
-          padding: '0 8px',
-          fontSize: '16px',
-          color: 'black',
-        }}
-        title="Reset range"
-      >
-        <span style={{ color: '#18b34c' }}>🔄</span>
-      </button> */}
-      {/* <button
-        onClick={() => {
-          // Try to use the browser's built-in 'screenshot' API if available,
-          // otherwise just snapshot the component/DOM node by ID (instruct user if not supported)
-          const mainDeckEl = document.querySelector('.w-full .relative');
-          if (!mainDeckEl) {
-            alert('Could not find genome visualization area to screenshot.');
-            return;
-          }
-          if ("startViewTransition" in document) {
-              // The experimental View Transitions API with screenshot is not widely available yet;
-              // fallback to using html2canvas if present
-              alert('Screenshotting using startViewTransition is not supported in your browser. Please use the browser\'s screenshot feature or ensure html2canvas is loaded.');
-              return;
-          }
-          // Try to use html2canvas if available
-          if (window.html2canvas) {
-            window.html2canvas(mainDeckEl).then(canvas => {
-              const link = document.createElement('a');
-              link.download = 'lorax-screenshot.png';
-              link.href = canvas.toDataURL();
-              link.click();
-            });
-          } else {
-            alert("Automatic screenshot not supported in this browser.\n\nYou can use your OS/browser's screenshot tool, or load html2canvas for this button to work.");
-          }
-        }}
-        style={{
-          background: 'none',
-          border: 'none',
-          cursor: 'pointer',
-          padding: '0 8px',
-          fontSize: '16px',
-          color: 'black',
-        }}
-        title="Capture screenshot"
-      >
-        <svg
-          width="40"
-          height="20"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="#000"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-label="screenshot"
-          style={{ verticalAlign: "middle" }}
-        >
-          <rect x="3" y="7" width="18" height="13" rx="2" />
-          <circle cx="12" cy="13.5" r="3.5" />
-          <path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-        </svg>
-      </button> */}
     </div>
   );
 }

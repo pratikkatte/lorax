@@ -75,11 +75,14 @@ class MyOrthographicController extends OrthographicController {
 
   const useView = ({ config, valueRef}) => {
 
+    
   const {globalBpPerUnit, tsconfig, genomeLength} = config;
   const [zoomAxis, setZoomAxis] = useState("Y");
   const [panDirection, setPanDirection] = useState(null);
   const [xzoom, setXzoom] = useState(window.screen.width < 600 ? -1 : 0);
   const xStopZoomRef = useRef(false);
+
+  const [genomicValues, setGenomicValues] = useState(valueRef.current);
 
   const [viewState, setViewState] = useState(null);
 
@@ -93,18 +96,15 @@ class MyOrthographicController extends OrthographicController {
   const updateValueRef = useCallback(() => {
 
     if (!viewState) return;
-    
-    // let treeSpacing = 1.03;
+        // let treeSpacing = 1.03;
     let width = decksize.width;
-
 
     let tzoom = viewState['ortho'].zoom[0];
     const W_w = width/ (Math.pow(2, tzoom));
 
-    let x0 = viewState['ortho'].target[0] - W_w / 2;
-    let x1 = viewState['ortho'].target[0] + W_w / 2;
-    
-
+    let x0 = viewState['genome-positions'].target[0] - (W_w / 2);
+    let x1 = viewState['genome-positions'].target[0] + (W_w / 2);
+  
     if (globalBpPerUnit) {
       const newValue = [
         Math.max(0, Math.round((x0) * globalBpPerUnit)),
@@ -130,27 +130,27 @@ class MyOrthographicController extends OrthographicController {
       let [x0, x1] = [val[0]/globalBpPerUnit, val[1]/globalBpPerUnit];
       let spacing = 0;
       // const Z = Math.log2((viewPortCoords['ortho']['viewport'].width * globalBpPerUnit) / (val[1] - val[0]))
-      const Z = Math.log2((width * globalBpPerUnit) / (val[1] - val[0]))
+      // const Z = Math.log2((width * globalBpPerUnit) / (val[1] - val[0]))
+      const Z = Math.log2(width / (x1 - x0))
       const target = ((x1+spacing)+(x0+spacing))/2;
-      valueRef.current = val;
-
+      // valueRef.current = val;
       setViewState((prev) => {
         return {
           ...prev,
           ['ortho']: {
             ...prev['ortho'],
            'target': [target, prev['ortho'].target[1]],
-            'zoom': [Z>=1 ? Z : 1, prev['ortho'].zoom[1]],
+            'zoom': [Z, prev['ortho'].zoom[1]],
           },
           ['genome-positions']: {
             ...prev['genome-positions'],
             'target': [target, prev['genome-positions'].target[1]],
-            'zoom': [Z>=1 ? Z : 1, prev['genome-positions'].zoom[1]],
+            'zoom': [Z, prev['genome-positions'].zoom[1]],
           },
           ['genome-info']: {
             ...prev['genome-info'],
             'target': [target, prev['genome-info'].target[1]],
-            'zoom': [Z>=1 ? Z : 1, prev['genome-info'].zoom[1]],
+            'zoom': [Z, prev['genome-info'].zoom[1]],
           },
         }
       })
@@ -207,23 +207,24 @@ class MyOrthographicController extends OrthographicController {
   const debouncedUpdateRef = useMemo(
     () => debounce((newValue) => {
         valueRef.current = newValue;
+        setGenomicValues(newValue);
       }, 
       100 // Adjust this delay (in milliseconds) to control frequency
     ),
-    [valueRef, viewState]
+    []
   );
   
   useEffect(() => {
     if (!tsconfig) return;
 
     if (tsconfig?.value && !valueRef.current){
-      console.log("changing view to", tsconfig.value);
       changeView(tsconfig.value);
     }else{
       const newValue = updateValueRef();
       newValue && debouncedUpdateRef(newValue);
     }
   }, [viewState, tsconfig])
+
 
   useEffect(() => {
     if (!decksize) return;
@@ -269,7 +270,6 @@ class MyOrthographicController extends OrthographicController {
       let zoom = [...oldViewState.zoom];
       let target = [...oldViewState.target];
       let panStep = 0;
-
       if(panDirection === null) { 
         if(zoomAxis==='Y'){
           zoom[1] = newViewState.zoom[1] <= maxZoom ? newViewState.zoom[1] : maxZoom; 
@@ -317,7 +317,6 @@ class MyOrthographicController extends OrthographicController {
       let x0 = target[0] - W_w / 2;
       let x1 = target[0] + W_w / 2;
       let xstop = false;
-      let newValue = [];
       if (globalBpPerUnit) {
         const newValue = [
           Math.max(0, Math.round((x0) * globalBpPerUnit)),
@@ -329,9 +328,7 @@ class MyOrthographicController extends OrthographicController {
       }
       if (xstop) {
         zoom[0] = oldViewState.zoom[0];
-      } else {
-        // valueRef.current = newValue;
-      }
+      } 
 
       const newViewStates = {
         ...prev,
@@ -455,7 +452,8 @@ const stopPan = useCallback(() => {
       stopPan,
       decksize,
       setDecksize,
-      viewReset
+      viewReset,
+      genomicValues
     };
   }, [
     viewState,
@@ -473,7 +471,8 @@ const stopPan = useCallback(() => {
    stopPan,
    decksize,
    setDecksize,
-   viewReset
+   viewReset,
+   genomicValues
   ]);
 
   return output;

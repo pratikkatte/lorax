@@ -3,10 +3,7 @@ import { useMemo, useEffect, useState, useRef, useCallback } from "react";
 import debounce from "lodash.debounce";
 import memoizeOne from "memoize-one";
 
-// ────────────────────────────────
 // Utility functions
-// ────────────────────────────────
-
 function niceStep(step) {
   const exp = Math.floor(Math.log10(step));
   const base = Math.pow(10, exp);
@@ -29,10 +26,7 @@ const getLocalCoordinates = memoizeOne((lo, hi) => {
   });
 });
 
-// ────────────────────────────────
 // getDynamicBpPerUnit
-// ────────────────────────────────
-
 function getDynamicBpPerUnit(globalBpPerUnit, zoom, baseZoom = 8) {
   const zoomDiff = zoom - baseZoom;
   const scaleFactor = Math.max(1, Math.pow(2, -zoomDiff));
@@ -40,19 +34,13 @@ function getDynamicBpPerUnit(globalBpPerUnit, zoom, baseZoom = 8) {
   return globalBpPerUnit * scaleFactor;
 }
 
-// ────────────────────────────────
 // useRegions Hook
-// ────────────────────────────────
-
 const useRegions = ({ backend, valueRef, viewState, globalBpPerUnit, tsconfig, setStatusMessage, pathArray }) => {
   const { queryNodes, queryLocalBins } = backend;
   const [localBins, setLocalBins] = useState(null);
   // const localBinsRef = useRef(localBins);
   const isFetching = useRef(false);
   const [times, setTimes] = useState([]);
-
-  // keep latest localBins for stable debounced callback
-  // useEffect(() => { localBinsRef.current = localBins; }, [localBins]);
 
   const debouncedQuery = useMemo(
     () => debounce(async (val) => {
@@ -74,7 +62,6 @@ const useRegions = ({ backend, valueRef, viewState, globalBpPerUnit, tsconfig, s
         const results = await queryNodes([], rangeArray);
 
         setLocalBins(prev => {
-          // Clone the previous Map to preserve immutability
           const updated = new Map(prev);
         
           for (const { global_index } of rangeArray) {
@@ -85,15 +72,11 @@ const useRegions = ({ backend, valueRef, viewState, globalBpPerUnit, tsconfig, s
                 ...prevEntry,
                 path: results.paths?.[global_index] || null
               });
-              // pathArray[global_index] = results.paths?.[global_index] || null;
             }
           }
           return updated;
         });
-        
-        // rangeArray.forEach(({ global_index }) => {
-        //   local_bins[global_index].path = results.paths[global_index] || null;
-        // });
+      
       }
       
       setStatusMessage(null);
@@ -114,7 +97,7 @@ const useRegions = ({ backend, valueRef, viewState, globalBpPerUnit, tsconfig, s
     const bufferFrac = 0.1;
     const range = hi - lo;
     return getLocalCoordinates(lo - bufferFrac * range, hi + bufferFrac * range);
-  }, [valueRef.current?.[0], valueRef.current?.[1]]);
+  }, [valueRef.current]);
 
   useEffect(() => {
     if (tsconfig && tsconfig?.times){

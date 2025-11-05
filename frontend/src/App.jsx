@@ -24,8 +24,6 @@ function App() {
 
   const config = useConfig({backend, setStatusMessage, timeRef});
 
-
-
   const upload = useFileUpload({
     config,
     setProject,
@@ -35,7 +33,6 @@ function App() {
   return (
     <>
     <Routes>
-      {/* <Route path="/:filename" element={<Trees />} /> */}
       <Route
         path="/"
         element={

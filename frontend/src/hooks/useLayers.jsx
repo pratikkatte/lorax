@@ -7,7 +7,6 @@ import { GenomeInfoLayer } from '../layers/GenomeInfoLayer';
 import { TimeGridLayer } from '../layers/TimeGridLayer';
 
 const useLayers = ({
-  valueRef,
   hoveredTreeIndex,
   backend,
   regions,
@@ -54,7 +53,6 @@ populationFilter,
           d.end.toLocaleString("en-US", { maximumFractionDigits: 0 }),
         viewId: "genome-positions",
         showLabels: true,
-        // filterRange: valueRef?.current ? [valueRef?.current?.[0] - valueRef?.current?.[0]*0.1, valueRef?.current?.[1] + valueRef?.current?.[1]*0.1] :[],
       });
     }, [localCoordinates, globalBpPerUnit]);
 
@@ -72,7 +70,6 @@ populationFilter,
         getText: d =>
           d.end.toLocaleString("en-US", { maximumFractionDigits: 0 }),
         viewId: "genome-info",
-        // filterRange: valueRef?.current ? [valueRef?.current?.[0] - valueRef?.current?.[0]*0.1, valueRef?.current?.[1] + valueRef?.current?.[1]*0.1] :[],
       });
     }, [bins, globalBpPerUnit]);
 

@@ -18,10 +18,6 @@ export default function LoraxViewer({ backend, config, settings, setSettings, pr
   const { file } = useParams();
   const {API_BASE} = useLoraxConfig();
   const [searchParams, setSearchParams] = useSearchParams();
-  // const navigate = useNavigate();
-
-  const {connect} = backend;
-
   // UI state
   const [showInfo, setShowInfo] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -39,13 +35,6 @@ export default function LoraxViewer({ backend, config, settings, setSettings, pr
     }
   }, [file]);
 
-  // if (file==='ucgb') {
-  //   ucgbMode.current = true;
-  // } else {
-  //   console.log("load config", tsconfig);
-  //   ucgbMode.current = false;
-  // }
-
   const qp = {
     file: file,
     project: searchParams.get("project"),
@@ -54,7 +43,7 @@ export default function LoraxViewer({ backend, config, settings, setSettings, pr
     genomiccoordend: searchParams.get("genomiccoordend")
   }
 
-
+  // return to home page.
   if (!file && !searchParams.get("chrom")) {
     return <Navigate to="/" replace />;
   }
@@ -88,7 +77,6 @@ export default function LoraxViewer({ backend, config, settings, setSettings, pr
   }, [ucgbMode]);
 
   const handleNormalMode = useCallback(() => {
-    // console.log("in handleNormalMode")
     if (qp.project && (qp.genomiccoordstart && qp.genomiccoordend) && !tsconfig) {
       setProject(qp.project);
       axios.get(
@@ -125,10 +113,7 @@ export default function LoraxViewer({ backend, config, settings, setSettings, pr
   return (
     <>
         <div
-          className="fixed top-0 right-0 h-full w-10 bg-gray-800 text-white z-[101] p-3 shadow-lg flex flex-col items-center space-y-6"
-          onMouseLeave={(e) => {
-          }}
-        >
+        className="fixed top-0 right-0 h-full w-10 bg-gray-800 text-white z-[101] p-3 shadow-lg flex flex-col items-center space-y-6">
           <div 
             className="text-2xl hover:text-gray-300 transition-colors cursor-pointer p-2 hover:bg-gray-700 rounded" 
             onClick={handleInfoClick}

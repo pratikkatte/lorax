@@ -7,7 +7,7 @@ function formatNumber(num) {
   return Number(num).toLocaleString();
 }
 
-export default function EditableRange({ valueRef, onChange }) {
+export default function EditableRange({ valueRef, onChange, genomeLength }) {
   const [start, setStart] = useState(valueRef?.current?.[0] || 0);
   const [end, setEnd] = useState(valueRef?.current?.[1] || 0);
   const [hasChanges, setHasChanges] = useState(false);
@@ -35,8 +35,16 @@ export default function EditableRange({ valueRef, onChange }) {
 
   const handleSubmit = () => {
     if (hasChanges) {
-      onChange([start, end]);
-      setHasChanges(false);
+      if (start < 0) start = 0;
+      if (end > genomeLength) end = genomeLength;
+
+      if (start > end) console.log("start > end");
+      else {
+        console.log("changing valueRef to", [start, end]);
+        onChange([start, end]);
+        setHasChanges(false);
+      }
+      
     }
   };
 

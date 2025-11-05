@@ -189,7 +189,6 @@ function Deck({
     const { layers, layerFilter } = useLayers({
       xzoom,
       tsconfig,
-      valueRef,
       deckRef,
       backend,
       regions,
@@ -256,7 +255,7 @@ function Deck({
   
 useEffect(() => {
     getLayerPixelPositions(deckRef)
-}, [regions, valueRef.current, tsconfig, saveViewports.current])
+}, [regions, tsconfig, saveViewports.current])
 
   const handleAfterRender = useCallback(() => {
 

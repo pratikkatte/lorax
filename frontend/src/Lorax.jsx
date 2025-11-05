@@ -2,7 +2,7 @@ import "./App.css";
 import React from "react";
 import Deck from "./Deck";
 import useView from "./hooks/useView";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import PositionSlider from './components/PositionSlider'
 
 function Lorax({backend, config, settings, setSettings, project, ucgbMode, statusMessage, setStatusMessage}) {

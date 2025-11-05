@@ -39,8 +39,6 @@ function DatasetFiles({ project, files = [],loadFile, loadingFile, setLoadingFil
                 onClick={e => {
                   e.currentTarget.disabled = loadingFile?true:false;
                   setLoadingFile(name);
-                  // timeRef.current = {start: new Date().getTime() / 1000};
-                  // console.log("timeRef", timeRef.current);
                   loadFile?.({ project, file: name});
                 }}
               />
