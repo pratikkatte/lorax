@@ -52,7 +52,6 @@ ALLOWED_ORIGINS = [
     o.strip() for o in os.getenv("ALLOWED_ORIGINS", "http://localhost:5173").split(",")
 ]
 print("ALLOWED_ORIGINS:", ALLOWED_ORIGINS)
-# app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
 
 app.add_middleware(
     CORSMiddleware,
@@ -152,7 +151,7 @@ else:
     
     sio = socketio.AsyncServer(
         async_mode="asgi",
-        cors_allowed_origins=ALLOWED_ORIGINS,
+        cors_allowed_origins="*",
         logger=False,
         engineio_logger=False,
     )
@@ -210,6 +209,7 @@ async def get_file(
         file = "1kg_chr20.trees.tsz"
         file_path = UPLOAD_DIR / (project or "1000Genomes") / file
     try:
+ 
         viz_config, chat_config = await handle_upload(str(file_path))
     except Exception as e:
         print(f"❌ Error loading file: {e}")
@@ -267,7 +267,6 @@ async def load_file(request: Request, response: Response):
         else:
             print("using gcs mount point")
             file_path = UPLOAD_DIR / project / filename
-        
 
     if not file_path.exists():
         return JSONResponse(status_code=404, content={"error": "File not found."})
@@ -275,6 +274,7 @@ async def load_file(request: Request, response: Response):
     session.file_path = str(file_path)
     await save_session(session)
     
+    print("loading file", file_path, os.getpid())
     viz_config, chat_config = await handle_upload(str(file_path))
 
 
@@ -333,8 +333,10 @@ async def query(sid, data):
             print(f"⚠️ No file loaded for session {lorax_sid}")
             return
 
-        print(os.getpid())
+
+        print("fetch query in ", session.sid, os.getpid())
         result = await handle_query(session.file_path, data.get("localTrees"))
+        print("sending data to", sid)
         await sio.emit("query-result", {"data": json.loads(result)}, to=sid)
     except Exception as e:
         print(f"❌ Query error: {e}")

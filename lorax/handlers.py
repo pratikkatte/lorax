@@ -11,6 +11,7 @@ import asyncio
 
 # Global cache for loaded tree sequences
 _ts_cache = {}
+_config_cache = {}
 
 def get_or_load_ts(file_path):
     """
@@ -27,6 +28,14 @@ def get_or_load_ts(file_path):
         ts = tskit.load(file_path)
     _ts_cache[file_path] = ts
     return ts
+
+def get_or_load_config(ts, file_path):
+    if file_path and file_path in _config_cache:
+        print("Using cached config from file_path:", file_path)
+        return _config_cache[file_path]
+    config = get_config(ts, file_path)
+    _config_cache[file_path] = config
+    return config
 
 async def handle_query(file_path, localTrees):
     """
@@ -59,7 +68,8 @@ def get_config(ts, file_path):
             "description": meta.get("description"),
             "super_population": meta.get("super_population")
             }
-    nodes_population = [n.population for n in ts.nodes()]
+    # nodes_population = [n.population for n in ts.nodes()]
+    nodes_population = [ts.node(n).population for n in ts.samples()]
 
     config = {'genome_length': ts.sequence_length, 'times':times, 'new_intervals':new_intervals,'filename': str(file_path).split('/')[-1], 'populations':populations, 'nodes_population':nodes_population}
     return config
@@ -67,13 +77,15 @@ def get_config(ts, file_path):
 async def handle_upload(file_path):
     """
     """
-    basefilename = os.path.basename(file_path)
-    if basefilename.endswith('.tsz'):
-        ts = tszip.load(file_path)
-    else:
-        ts = tskit.load(file_path)
+    # basefilename = os.path.basename(file_path)
+    # if basefilename.endswith('.tsz'):
+    #     ts = tszip.load(file_path)
+    # else:
+    #     ts = tskit.load(file_path)
 
-    config = await asyncio.to_thread(get_config, ts, file_path)
+    ts = get_or_load_ts(file_path)
+
+    config = await asyncio.to_thread(get_or_load_config, ts, file_path)
     return config, None
 
 async def get_projects(upload_dir, sid=None):

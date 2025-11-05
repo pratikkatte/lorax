@@ -25,10 +25,11 @@ RUN pip install --upgrade pip wheel && pip wheel --no-cache-dir -r requirements.
 FROM node:22 AS frontend-builder
 WORKDIR /frontend
 
-COPY package.json yarn.lock ./
+COPY frontend/ .
+
+
 RUN yarn install --frozen-lockfile
 
-COPY frontend/ .
 RUN yarn build
 
 # ===============================
@@ -44,7 +45,6 @@ RUN apt-get update && \
     sed -i 's|include /etc/nginx/sites-enabled/\*;|# include /etc/nginx/sites-enabled/*;|g' /etc/nginx/nginx.conf && \
     rm -rf /etc/nginx/sites-available /etc/nginx/sites-enabled && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
-
 
 # Create directories
 WORKDIR /app
@@ -66,10 +66,6 @@ COPY lorax/ /app/lorax/
 COPY gunicorn_config.py /app/
 COPY entrypoint.sh /app/
 RUN chmod +x /app/entrypoint.sh
-
-# Copy SSL certs (optional)
-COPY localhost+2.pem /app/
-COPY localhost+2-key.pem /app/
 
 # Copy frontend built assets
 COPY --from=frontend-builder /frontend/dist /var/www/html/

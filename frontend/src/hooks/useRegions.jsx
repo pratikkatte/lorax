@@ -26,20 +26,22 @@ const getLocalCoordinates = memoizeOne((lo, hi) => {
   });
 });
 
-// getDynamicBpPerUnit
 function getDynamicBpPerUnit(globalBpPerUnit, zoom, baseZoom = 8) {
   const zoomDiff = zoom - baseZoom;
   const scaleFactor = Math.max(1, Math.pow(2, -zoomDiff));
-  // return globalBpPerUnit * Math.floor(scaleFactor);
   return globalBpPerUnit * scaleFactor;
 }
 
+const pathsData = new Map();
+
 // useRegions Hook
-const useRegions = ({ backend, valueRef, viewState, globalBpPerUnit, tsconfig, setStatusMessage, pathArray }) => {
+const useRegions = ({ backend, valueRef, globalBpPerUnit, tsconfig, setStatusMessage, pathArray, xzoom }) => {
   const { queryNodes, queryLocalBins } = backend;
+
   const [localBins, setLocalBins] = useState(null);
-  // const localBinsRef = useRef(localBins);
+  
   const isFetching = useRef(false);
+
   const [times, setTimes] = useState([]);
 
   const debouncedQuery = useMemo(
@@ -47,7 +49,8 @@ const useRegions = ({ backend, valueRef, viewState, globalBpPerUnit, tsconfig, s
       if (isFetching.current) return;
 
       const [lo, hi] = val;
-      const zoom = viewState["ortho"]?.zoom?.[0] ?? 8;
+      // const zoom = viewState["ortho"]?.zoom?.[0] ?? 8;
+      const zoom = xzoom ?? 8;
       const new_globalBp = getDynamicBpPerUnit(globalBpPerUnit, zoom);
 
       isFetching.current = true;

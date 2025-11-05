@@ -157,7 +157,7 @@ function Deck({
 
   const {queryDetails} = backend;
 
-  const regions = useRegions({backend, viewState, valueRef, saveViewports: saveViewports.current, globalBpPerUnit, tsconfig, setStatusMessage});
+  const regions = useRegions({backend, viewState, valueRef, saveViewports: saveViewports.current, globalBpPerUnit, tsconfig, setStatusMessage, xzoom});
 
   const onClickOrMouseMove = useCallback(
     (event) => {

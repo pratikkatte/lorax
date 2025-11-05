@@ -11,23 +11,23 @@ let globalPanDirection = () => {};
 
 const INITIAL_VIEW_STATE = {
   'genome-positions':{
-    target: [961,1],
-    zoom: [8,8],
+    target: [1000,1],
+    zoom: [0,8],
     // minZoom: 1,
   },
   'genome-info':{
-    target: [961,1],
-    zoom: [8,8],
+    target: [1000,1],
+    zoom: [0,8],
     // minZoom: 1,
   },
   'tree-time':{
     target: [0.5 ,0],
-    zoom: [8,8],
+    zoom: [0,8],
     // minZoom: 1,
   },
   'ortho': {
-    target: [961,0],
-    zoom: [8,8],
+    target: [1000,0],
+    zoom: [0,8],
     // minZoom: 1,
   }
 }
