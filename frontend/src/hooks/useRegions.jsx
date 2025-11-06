@@ -32,7 +32,7 @@ function getDynamicBpPerUnit(globalBpPerUnit, zoom, baseZoom = 8) {
   return globalBpPerUnit * scaleFactor;
 }
 
-const pathsData = new Map();
+
 
 // useRegions Hook
 const useRegions = ({ backend, valueRef, globalBpPerUnit, tsconfig, setStatusMessage, pathArray, xzoom }) => {
@@ -44,6 +44,16 @@ const useRegions = ({ backend, valueRef, globalBpPerUnit, tsconfig, setStatusMes
 
   const [times, setTimes] = useState([]);
 
+  const pathsData = useRef(new Map());
+
+  const deleteRangeByValue = useCallback((min, max) => {
+    for (const [key, value] of pathsData.current) {
+      if (key < min || key > max) {
+        pathsData.current.delete(key);
+      }
+    }
+  }, [pathsData.current]);
+
   const debouncedQuery = useMemo(
     () => debounce(async (val) => {
       if (isFetching.current) return;
@@ -54,9 +64,24 @@ const useRegions = ({ backend, valueRef, globalBpPerUnit, tsconfig, setStatusMes
       const new_globalBp = getDynamicBpPerUnit(globalBpPerUnit, zoom);
 
       isFetching.current = true;
-      const { local_bins, rangeArray } = await queryLocalBins(
-        lo, hi, localBins, globalBpPerUnit, null, new_globalBp
+
+      const { local_bins, lower_bound, upper_bound, displayArray} = await queryLocalBins(
+        lo, hi, globalBpPerUnit, null, new_globalBp
       );
+
+      const rangeArray = [];
+      for (const idx of displayArray){
+        if (local_bins.has(idx)){
+          
+          const path = pathsData.current.has(idx) ? pathsData.current.get(idx) : null;
+          if (!path) rangeArray.push({ global_index: idx });
+
+          local_bins.set(idx, {
+            ...local_bins.get(idx),
+            path: path
+          });
+        }
+      }
       setLocalBins(local_bins);
 
       if (rangeArray.length > 0) {
@@ -75,12 +100,17 @@ const useRegions = ({ backend, valueRef, globalBpPerUnit, tsconfig, setStatusMes
                 ...prevEntry,
                 path: results.paths?.[global_index] || null
               });
+
+              pathsData.current.set(global_index, results.paths?.[global_index] || null);
             }
           }
           return updated;
         });
       
       }
+
+      deleteRangeByValue(lower_bound, upper_bound);
+
       
       setStatusMessage(null);
       isFetching.current = false;
