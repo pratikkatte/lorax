@@ -82,7 +82,7 @@ function useConnect({ setGettingDetails, settings }) {
     socket.on("disconnect", (reason) => {
       console.log("⚠️ Socket.IO disconnected:", reason);
       setIsConnected(false);
-      socketRef.current = null;
+      // socketRef.current = null;
     });
 
     // 📦 Handle incoming events
@@ -183,7 +183,6 @@ function useConnect({ setGettingDetails, settings }) {
     });
 
     onValueChangedReceipt = (receivedData) => {
-      console.log("valueChanged result", receivedData);
       setResult([receivedData.data.i0, receivedData.data.i1]);
     };
   }, []);
@@ -215,11 +214,27 @@ function useConnect({ setGettingDetails, settings }) {
           resolve(receivedData);
         }
       });
-    },
+    },[]);
 
+    const queryFile = useCallback((payload) => {
+      console.log("queryFile", payload);
+      return new Promise((resolve, reject) => {
+        if (!socketRef.current) {
+          reject(new Error("Socket not connected"));
+          return;
+        }
     
-    []
-  );
+        const handleResult = (message) => {
+          console.log("📦 Received load-file-result:", message);
+          socketRef.current.off("load-file-result", handleResult); // cleanup listener
+          resolve(message);
+        };
+    
+        socketRef.current.once("load-file-result", handleResult);
+    
+        socketRef.current.emit("load_file", { ...payload, lorax_sid: sidRef.current });
+      });
+    }, []);
 
   const queryDetails = useCallback(
     (clickedObject) => {
@@ -246,6 +261,7 @@ function useConnect({ setGettingDetails, settings }) {
       queryLocalBins,
       valueChanged,
       connect,
+      queryFile
     }),
     [
       connect,
@@ -257,6 +273,7 @@ function useConnect({ setGettingDetails, settings }) {
       queryConfig,
       queryLocalBins,
       valueChanged,
+      queryFile
     ]
   );
 }

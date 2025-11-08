@@ -312,6 +312,59 @@ async def ping(sid, data):
     await sio.emit("pong", {"type": "pong", "time": datetime.utcnow().isoformat()}, to=sid)
 
 @sio.event
+async def load_file(sid, data):
+    try:
+        lorax_sid = data.get("lorax_sid")
+        if not lorax_sid:
+            print(f"⚠️ Missing lorax_sid")
+            return
+        # session = sessions[lorax_sid]
+
+        if USE_REDIS:
+            raw = await redis_client.get(f"sessions:{lorax_sid}")
+            if not raw:
+                print(f"⚠️ Unknown sid {lorax_sid}")
+                return
+            session = Session.from_dict(json.loads(raw))
+        else:
+            session = sessions.get(lorax_sid)
+
+        project = data.get("project")
+        filename = data.get("file")
+
+        if not filename:
+            return JSONResponse(status_code=400, content={"error": "Missing 'file'."})
+    
+        if project == 'uploads':
+            file_path = UPLOAD_DIR / sid / filename
+        else:
+            file_path = UPLOAD_DIR / project / filename
+        if BUCKET_NAME:
+            print(f"Downloading file {project}/{filename} from {BUCKET_NAME}")
+            if file_path.exists():
+                print(f"File {file_path} already exists, skipping download.")
+            else:
+                await download_gcs_file(BUCKET_NAME, f"{project}/{filename}", str(file_path))
+        else:
+            print("using gcs mount point")
+            file_path = UPLOAD_DIR / project / filename
+
+        if not file_path.exists():
+            return JSONResponse(status_code=404, content={"error": "File not found."})
+
+        session.file_path = str(file_path)
+        await save_session(session)
+    
+        print("loading file", file_path, os.getpid())
+        viz_config, chat_config = await handle_upload(str(file_path))
+
+        await sio.emit("load-file-result", {"message": "File loaded", "sid": sid, "filename": filename, "config": viz_config}, to=sid)
+
+    except Exception as e:
+        print(f"❌ Load file error: {e}")
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+@sio.event
 async def query(sid, data):
     try:
         lorax_sid = data.get("lorax_sid")

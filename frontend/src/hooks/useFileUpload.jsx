@@ -34,8 +34,7 @@ export default function useFileUpload({
 } = {}) {
   const { API_BASE } = useLoraxConfig();
 
-  const {connect} = backend;
-  const navigate = useNavigate(); 
+  const {queryFile} = backend;
 
   const {tsconfig, setConfig, handleConfigUpdate} = config;
   const [loadingFile, setLoadingFile] = useState(null);
@@ -103,16 +102,19 @@ export default function useFileUpload({
         const url = `${API_BASE}/load_file`;
         const payload = project;
         console.log("payload", payload);
-        const res = await axios.post(url, payload, {
-          withCredentials: true,
-          headers: {
-            "Content-Type": "application/json",
-          },
-        });
+
+        const res = await queryFile(payload);
+
+        // const res = await axios.post(url, payload, {
+        //   withCredentials: true,
+        //   headers: {
+        //     "Content-Type": "application/json",
+        //   },
+        // });
         const end = performance.now();
         console.log(`loadFile response time: ${((end - start) / 1000).toFixed(2)}s`);
         
-        _finishSuccess(res?.data, { name: project.file, project: project.project });
+        _finishSuccess(res, { name: project.file, project: project.project });
       } catch (err) {
         console.log("err", err);
         _finishError(err);
