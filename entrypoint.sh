@@ -17,6 +17,10 @@ echo "Redis started successfully"
 export LORAX_ENV='prod'
 export REDIS_URL='redis://127.0.0.1:6379/0'
 
+
+redis-cli CONFIG SET client-output-buffer-limit "pubsub 512mb 256mb 60"
+
+
 # Start backend (Gunicorn)
 echo "[INFO] Starting Gunicorn (FastAPI backend)..."
 gunicorn -c /app/gunicorn_config.py lorax.lorax_app:sio_app &

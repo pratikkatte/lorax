@@ -87,7 +87,7 @@ export default function PositionSlider({ config, project, ucgbMode, view, valueR
           Lorax
         </span>
       </a>
-      <div className="flex justify-center items-center gap-2" style={{ width: "100%" }}>
+      <div className="flex justify-center items-center gap-2" >
         {filename && (
           <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">
             {filename}
