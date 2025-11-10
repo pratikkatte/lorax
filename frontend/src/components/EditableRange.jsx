@@ -35,8 +35,8 @@ export default function EditableRange({ valueRef, onChange, genomeLength }) {
 
   const handleSubmit = () => {
     if (hasChanges) {
-      if (start < 0) start = 0;
-      if (end > genomeLength) end = genomeLength;
+      if (start < 0) setStart(0);
+      if (end > genomeLength) setEnd(genomeLength);
 
       if (start > end) console.log("start > end");
       else {

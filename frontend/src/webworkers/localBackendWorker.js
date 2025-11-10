@@ -124,7 +124,7 @@ function upperBound(arr, x) {
 }
 
 let intervalKeys = [];
-const newLocalBins = new Map();
+let newLocalBins = new Map();
 
 async function getLocalData(start, end, globalBpPerUnit, nTrees, new_globalBp) {
   // if (!(localBins instanceof Map)) localBins = new Map();
@@ -140,6 +140,8 @@ async function getLocalData(start, end, globalBpPerUnit, nTrees, new_globalBp) {
   const lower_bound = nearestIndex(intervalKeys, bufferStart);
   const upper_bound = upperBound(intervalKeys, bufferEnd);
 
+  const local_bins = new Map();
+
   // ────────────────────────────────
   // Utility to quickly add bins
   // ────────────────────────────────
@@ -147,7 +149,7 @@ async function getLocalData(start, end, globalBpPerUnit, nTrees, new_globalBp) {
     for (let i = lo; i <= hi; i++) {
       const temp_bin = tsconfig.new_intervals[intervalKeys[i]];
       if (!temp_bin) continue;
-      newLocalBins.set(i, {
+      local_bins.set(i, {
         s: temp_bin[0],
         e: temp_bin[1],
         path: null,
@@ -158,7 +160,7 @@ async function getLocalData(start, end, globalBpPerUnit, nTrees, new_globalBp) {
 
   const deleteBins = (lo, hi) => {
     for (let i = lo; i <= hi; i++) {
-      newLocalBins.delete(i);
+      local_bins.delete(i);
     }
   };
 
@@ -176,25 +178,29 @@ async function getLocalData(start, end, globalBpPerUnit, nTrees, new_globalBp) {
     addBins(lower_bound, upper_bound);
   } else {
 
-    if (lower_bound > lastStart) {
-      deleteBins(lastStart, lower_bound - 1);
-    }
-    if (upper_bound < lastEnd) {
-      deleteBins(upper_bound + 1, lastEnd);
-    }
+    // if (lower_bound > lastStart) {
+    //   console.log("delete bins lower", lastStart, lower_bound - 1);
+    //   // deleteBins(lastStart, lower_bound - 1);
+    // }
+    // if (upper_bound < lastEnd) {
+    //   console.log("delete bins upper", upper_bound + 1, lastEnd);
+    //   // deleteBins(upper_bound + 1, lastEnd);
+    // }
     // Overlapping → reuse bins where possible
     for (let i = lower_bound; i <= upper_bound; i++) {
       if (!newLocalBins.has(i)) {
 
         const temp_bin = tsconfig.new_intervals[intervalKeys[i]];
         if (temp_bin) {
-          newLocalBins.set(i, {
+          local_bins.set(i, {
             s: temp_bin[0],
             e: temp_bin[1],
             path: null,
             global_index: i
           });
         }
+      } else {
+        local_bins.set(i, newLocalBins.get(i));
       }
     }
   }
@@ -202,16 +208,15 @@ async function getLocalData(start, end, globalBpPerUnit, nTrees, new_globalBp) {
   // ────────────────────────────────
   // Sampling / range computation
   // ────────────────────────────────
-  const {return_local_bins, displayArray} = new_complete_experiment_map(newLocalBins,  globalBpPerUnit, new_globalBp);
+  console.log("newLocalBins",local_bins,new_globalBp, lower_bound, upper_bound);
+  const {return_local_bins, displayArray} = new_complete_experiment_map(local_bins,  globalBpPerUnit, new_globalBp);
 
   lastStart = lower_bound;
   lastEnd = upper_bound;
-  // localBins = return_local_bins;
-
+  newLocalBins = return_local_bins;
 
   return { local_bins: return_local_bins, lower_bound, upper_bound, displayArray};
 }
-
 
 export const queryConfig = async (data) => {
   
@@ -238,6 +243,8 @@ export const queryValueChanged = async (value) => {
 const tempMatrix = new Matrix4();
 
 export function new_complete_experiment_map(localBins, globalBpPerUnit, new_globalBp) {
+
+  console.log("localBins", localBins);
   const spacing = 1.05;
   const bins = new Map();            // replaces plain object
 
@@ -271,6 +278,8 @@ export function new_complete_experiment_map(localBins, globalBpPerUnit, new_glob
   // ────────────────────────────────
   // PASS 2: compute transforms
   // ────────────────────────────────
+
+  console.log("bins", bins);
   for (const [binKey, { indexes, spans }] of bins.entries()) {
     const n = indexes.length;
 
@@ -355,7 +364,7 @@ export function new_complete_experiment_map(localBins, globalBpPerUnit, new_glob
 
     const binStart = localBins.get(indexes[0]).s;
     const translateX = binStart / globalBpPerUnit;
-    const scaleX = totalSpan / (globalBpPerUnit * spacing);
+    const scaleX = totalSpan / (globalBpPerUnit * (spacing));
 
     for (let i = 0; i < n; i++) {
       const idx = indexes[i];
@@ -389,6 +398,8 @@ export function new_complete_experiment_map(localBins, globalBpPerUnit, new_glob
       }
     }
   }
+
+  console.log("localBins", localBins);
 
   return { return_local_bins:localBins, displayArray };
 }

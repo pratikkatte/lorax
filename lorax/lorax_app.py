@@ -322,6 +322,7 @@ async def load_file(sid, data):
 
         if USE_REDIS:
             raw = await redis_client.get(f"sessions:{lorax_sid}")
+            print("raw", raw)
             if not raw:
                 print(f"⚠️ Unknown sid {lorax_sid}")
                 return
