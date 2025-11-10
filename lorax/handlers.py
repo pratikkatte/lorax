@@ -42,8 +42,8 @@ class LRUCache:
     def clear(self):
         self.cache.clear()
 
-_ts_cache = LRUCache(max_size=5)        
-_config_cache = LRUCache(max_size=10)
+_ts_cache = LRUCache(max_size=1)        
+_config_cache = LRUCache(max_size=2)
 
 async def get_or_load_ts(file_path):
     """
