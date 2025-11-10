@@ -7,42 +7,94 @@ import tszip
 import numpy as np
 import os
 import asyncio
+import psutil,sys
 
+_cache_lock = asyncio.Lock()
+
+
+from collections import OrderedDict
 
 # Global cache for loaded tree sequences
-_ts_cache = {}
-_config_cache = {}
 
-def get_or_load_ts(file_path):
+class LRUCache:
+    """Simple LRU cache with eviction for large in-memory tskit/tszip objects."""
+    def __init__(self, max_size=5):
+        self.max_size = max_size
+        self.cache = OrderedDict()
+
+    def get(self, key):
+        if key in self.cache:
+            # Move to the end to mark as recently used
+            self.cache.move_to_end(key)
+            return self.cache[key]
+        return None
+
+    def set(self, key, value):
+        if key in self.cache:
+            # Update existing and mark as recently used
+            self.cache.move_to_end(key)
+        self.cache[key] = value
+        # Evict if too big
+        if len(self.cache) > self.max_size:
+            old_key, old_val = self.cache.popitem(last=False)
+            print(f"🧹 Evicted {old_key} from LRU cache to free memory")
+
+    def clear(self):
+        self.cache.clear()
+
+_ts_cache = LRUCache(max_size=5)        
+_config_cache = LRUCache(max_size=10)
+
+async def get_or_load_ts(file_path):
     """
-    Load a tree sequence from a file, using a global cache to avoid reloading.
+    Load a tree sequence from file_path.
     """
-    if file_path and file_path in _ts_cache:
-        print("Using cached tree sequence from file_path:", file_path)
-        return _ts_cache[file_path]
-    if file_path.endswith('.tsz'):
-        print("Loading tree sequence from file_path:", file_path)
-        ts = tszip.load(file_path)
-    else:
-        print("Loading tree sequence from file_path:", file_path)
-        ts = tskit.load(file_path)
-    _ts_cache[file_path] = ts
-    return ts
+
+    async with _cache_lock:
+
+        ts = _ts_cache.get(file_path)
+        if ts is not None:
+            print(f"✅ Using cached tree sequence: {file_path}")
+            return ts
+        print(f"📂 Loading tree sequence from: {file_path}")
+        try:
+            ts = await asyncio.to_thread(lambda: tszip.load(file_path) if file_path.endswith('.tsz') else tskit.load(file_path))
+            _ts_cache.set(file_path, ts)
+            return ts
+        except Exception as e:
+            print(f"❌ Failed to load {file_path}: {e}")
+            return None
 
 def get_or_load_config(ts, file_path):
-    if file_path and file_path in _config_cache:
-        print("Using cached config from file_path:", file_path)
-        return _config_cache[file_path]
+    config = _config_cache.get(file_path)
+    if config is not None:
+        print(f"✅ Using cached config: {file_path}")
+        return config
+
     config = get_config(ts, file_path)
-    _config_cache[file_path] = config
+    _config_cache.set(file_path, config)
     return config
+
+async def cache_status():
+    process = psutil.Process(os.getpid())
+    mem_info = process.memory_info()
+    rss_mb = mem_info.rss / (1024 * 1024)   # Resident set size (MB)
+    vms_mb = mem_info.vms / (1024 * 1024)   # Virtual memory (MB)
+    return {
+        "rss_MB": round(rss_mb, 2),
+        "vms_MB": round(vms_mb, 2),
+        # "num_sessions": len(sessions) if not USE_REDIS else "Redis mode",
+        "ts_cache_size": len(_ts_cache.cache) if "_ts_cache" in globals() else "n/a",
+        "config_cache_size": len(_config_cache.cache) if "_config_cache" in globals() else "n/a",
+        "pid": os.getpid(),
+    }
 
 async def handle_query(file_path, localTrees):
     """
 
     """
     # get object from file_path using get_or_load_ts
-    ts = get_or_load_ts(file_path)
+    ts = await get_or_load_ts(file_path)
     if ts is None:
         return json.dumps({"error": "Tree sequence (ts) is not set. Please upload a file first. Or file_path is not valid or not found."})
     try:
@@ -83,7 +135,7 @@ async def handle_upload(file_path):
     # else:
     #     ts = tskit.load(file_path)
 
-    ts = get_or_load_ts(file_path)
+    ts = await get_or_load_ts(file_path)
 
     config = await asyncio.to_thread(get_or_load_config, ts, file_path)
     return config, None
