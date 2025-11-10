@@ -49,16 +49,51 @@ export default function PositionSlider({ config, project, ucgbMode, view, valueR
         borderColor: 'black',
         display: 'flex',
         justifyContent: 'center',
+        position: 'relative'
       }}
-      // className="flex justify-center items-center"
     >
-      <div className="flex justify-center items-center gap-2">
-  {filename && (
-            <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">
-              {filename}
-            </span>
-          )}
-        </div>
+      {/* Professional Lorax logo in top left corner, clickable, links to home */}
+      <a
+        href="/"
+        style={{
+          position: 'absolute',
+          left: '1.5rem',
+          top: '0.5rem',
+          zIndex: 20,
+          display: 'flex',
+          alignItems: 'center',
+          padding: '0.1rem 0.7rem 0.1rem 0.7rem',
+          background: 'rgba(255,255,255,0.90)',
+          borderRadius: '0.3rem',
+          boxShadow: '0 2px 8px rgba(41,58,88,0.07)',
+          textDecoration: 'none',
+          minWidth: '96px',
+          minHeight: '2.2rem',
+          transition: 'box-shadow 0.2s',
+          border: '1px solid #e2e8f0',
+        }}
+        title="Go to Lorax Home"
+      >
+        <span
+          style={{
+            fontWeight: 700,
+            color: '#10b981',
+            fontSize: '1.25rem',
+            fontFamily: 'Inter, Arial, Helvetica, sans-serif',
+            letterSpacing: '0.025em',
+            transition: 'color 0.14s'
+          }}
+        >
+          Lorax
+        </span>
+      </a>
+      <div className="flex justify-center items-center gap-2" style={{ width: "100%" }}>
+        {filename && (
+          <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">
+            {filename}
+          </span>
+        )}
+      </div>
       <button
         onMouseDown={() => startPan('L')}
         onMouseUp={stopPan}
@@ -71,6 +106,7 @@ export default function PositionSlider({ config, project, ucgbMode, view, valueR
           fontSize: '16px',
           color: 'black',
         }}
+        // aria-label="Pan left"
       >
         ←
       </button>
@@ -89,6 +125,7 @@ export default function PositionSlider({ config, project, ucgbMode, view, valueR
           fontSize: '16px',
           color: 'black',
         }}
+        // aria-label="Pan right"
       >
         →
       </button>
@@ -105,6 +142,7 @@ export default function PositionSlider({ config, project, ucgbMode, view, valueR
           color: '#18b34c',
         }}
         title="Reset view"
+        aria-label="Reset view"
       >
         <FontAwesomeIcon icon={faArrows} style={{ color: 'black' }} />
       </button>

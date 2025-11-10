@@ -15,7 +15,6 @@ from datetime import datetime
 from dotenv import load_dotenv
 from lorax.utils.gcs_utils import download_gcs_file, BUCKET_NAME, get_public_gcs_dict
 import time
-
 load_dotenv()
 
 from http.cookies import SimpleCookie
@@ -28,7 +27,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 
-from lorax.handlers import LoraxHandler, handle_upload, handle_query, get_projects
+from lorax.handlers import LoraxHandler, handle_upload, handle_query, get_projects, cache_status
 
 # Setup
 
@@ -193,6 +192,11 @@ async def projects():
 
     return {"projects": projects}
 
+@app.get("/memory_status")
+async def memory_status():
+    print("cache-status")
+    return await cache_status()
+
 @app.get("/{file}")
 async def get_file(
     request: Request,
@@ -282,6 +286,7 @@ async def load_file(request: Request, response: Response):
     print(f"Time taken to load file: {end - start} seconds")
 
     return {"message": "File loaded", "sid": sid, "filename": filename, "config": viz_config}
+
 
 
 # ─────────────────────────────────────────────
