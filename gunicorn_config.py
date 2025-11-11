@@ -50,7 +50,7 @@ loglevel = "info"
 reload = False
 
 # Pre-load application
-preload_app = True
+preload_app = False
 
 # Server mechanics
 daemon = False

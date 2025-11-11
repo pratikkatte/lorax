@@ -130,7 +130,7 @@ async function getLocalData(start, end, globalBpPerUnit, nTrees, new_globalBp) {
   // if (!(localBins instanceof Map)) localBins = new Map();
 
   let scaleFactor = new_globalBp/globalBpPerUnit
-  const buffer = 0.01;
+  const buffer = scaleFactor > 1 ? 0.01 : 0.0001;
   const bufferStart = Math.max(0, start - start * buffer);
   const bufferEnd = end + end * buffer;
 
