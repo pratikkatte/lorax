@@ -8,7 +8,7 @@ import axios from "axios";
 import useLoraxConfig from "../globalconfig.js";
 import ErrorAlert from "./ErrorAlert.jsx";
 
-function DatasetFiles({ project, files = [],loadFile, loadingFile, setLoadingFile, timeRef}) {
+function DatasetFiles({ project, files = [],loadFile, loadingFile, setLoadingFile, isConnected}) {
   const [q, setQ] = useState("");
   
   const visible = useMemo(() => {
@@ -95,6 +95,7 @@ export default function LandingPage({
   upload,
   version = "pre‑release",
   timeRef,
+  isConnected
 }) {
 
   const {API_BASE} = useLoraxConfig();
@@ -105,7 +106,7 @@ export default function LandingPage({
 
   useEffect(() => {
     let active = true;
-    if(projects.length === 0) {
+    if(projects.length === 0 && isConnected) {
       getProjects(API_BASE).then(projectsData => {
 
         console.log("projectsData", projectsData);
@@ -121,7 +122,7 @@ export default function LandingPage({
         setExpandedId(null);
       };
     }
-  },[API_BASE])
+  },[API_BASE, isConnected])
 
   return (
     <div className="min-h-screen w-full flex flex-col bg-gradient-to-b from-slate-50 to-white text-slate-900">
@@ -267,7 +268,7 @@ export default function LandingPage({
             <div className="overflow-hidden">
               <div className="px-6 pb-6 pt-1">
                 {/* Optional inline file filter */}
-                <DatasetFiles project={p.folder} files={files} loadFile={upload.loadFile} loadingFile={upload.loadingFile} setLoadingFile={upload.setLoadingFile} timeRef={timeRef}/>
+                <DatasetFiles project={p.folder} files={files} loadFile={upload.loadFile} loadingFile={upload.loadingFile} setLoadingFile={upload.setLoadingFile}/>
               </div>
             </div>
           </div>

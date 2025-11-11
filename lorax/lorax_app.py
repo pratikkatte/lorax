@@ -145,6 +145,9 @@ if USE_REDIS:
         client_manager=socketio.AsyncRedisManager(REDIS_URL),
         logger=False,
         engineio_logger=False,
+        # ping_timeout=10,
+        # ping_interval=5,
+
     )
 else:
     
@@ -316,8 +319,7 @@ async def disconnect(sid):
 async def ping(sid, data):
     await sio.emit("pong", {"type": "pong", "time": datetime.utcnow().isoformat()}, to=sid)
 
-@sio.event
-async def load_file(sid, data):
+async def background_load_file(sid, data):
     try:
         lorax_sid = data.get("lorax_sid")
         if not lorax_sid:
@@ -369,6 +371,11 @@ async def load_file(sid, data):
     except Exception as e:
         print(f"❌ Load file error: {e}")
         return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+@sio.event
+async def load_file(sid, data):
+        asyncio.create_task(background_load_file(sid, data))
 
 @sio.event
 async def query(sid, data):

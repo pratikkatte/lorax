@@ -30,6 +30,7 @@ function App() {
     backend
   });
 
+  const {isConnected } = backend;
   return (
     <>
     <Routes>
@@ -40,6 +41,7 @@ function App() {
             API_BASE={API_BASE}
             upload={upload}
             timeRef={timeRef}
+            isConnected={isConnected}
           />
         }
       />
