@@ -15,7 +15,7 @@ function getXArray(globalBins) {
 
 function distribute(total, spans, alpha = 0.5) {
   const n = spans.length;
-  const spacing = 0.05;
+  const spacing = 0.0;
   const S = spans.reduce((a, b) => a + b, 0);
   return spans.map(s => total * (alpha * (1 / n) + (1 - alpha) * (s / S)) - spacing);
 }
@@ -129,10 +129,21 @@ let newLocalBins = new Map();
 async function getLocalData(start, end, globalBpPerUnit, nTrees, new_globalBp) {
   // if (!(localBins instanceof Map)) localBins = new Map();
 
-  let scaleFactor = new_globalBp/globalBpPerUnit
-  const buffer = scaleFactor > 1 ? 0.01 : 0.0001;
-  const bufferStart = Math.max(0, start - start * buffer);
-  const bufferEnd = end + end * buffer;
+  let scaleFactor = new_globalBp / globalBpPerUnit
+
+  // Calculate buffer so that it increases with region size, decreases as region shrinks
+  const regionWidth = Math.max(1, end - start); // avoid 0/neg
+  // For example, min: 0.00001, max: 0.03 (tune as appropriate)
+  // Grows logarithmically: buffer = 0.00001 + 0.015 * log10(regionWidth+1)
+  const baseBuffer = 0.00001;
+  const bufferGrowthRate = 0.00015; 
+  const buffer = baseBuffer + bufferGrowthRate * Math.log10(regionWidth + 1)
+  
+  // Optionally, also consider scaleFactor if needed, e.g.:
+  // const buffer = (baseBuffer + bufferGrowthRate * Math.log10(regionWidth+1)) * Math.max(1, scaleFactor);
+
+  const bufferStart = Math.max(0, start - regionWidth * buffer);
+  const bufferEnd = end + (regionWidth * buffer);
 
   if (intervalKeys.length === 0) return { local_bins: new Map(), rangeArray: [] };
 
