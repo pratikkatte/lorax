@@ -35,7 +35,7 @@ function getDynamicBpPerUnit(globalBpPerUnit, zoom, baseZoom = 8) {
 
 
 // useRegions Hook
-const useRegions = ({ backend, valueRef, globalBpPerUnit, tsconfig, setStatusMessage, pathArray, xzoom }) => {
+const useRegions = ({ backend, valueRef, globalBpPerUnit, tsconfig, setStatusMessage, xzoom }) => {
   const { queryNodes, queryLocalBins } = backend;
 
   const [localBins, setLocalBins] = useState(null);

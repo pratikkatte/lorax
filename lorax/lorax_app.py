@@ -392,7 +392,6 @@ async def query(sid, data):
             print(f"⚠️ No file loaded for session {lorax_sid}")
             return
 
-
         print("fetch query in ", session.sid, os.getpid())
         result = await handle_query(session.file_path, data.get("localTrees"))
         print("sending data to", sid)

@@ -130,7 +130,7 @@ async function getLocalData(start, end, globalBpPerUnit, nTrees, new_globalBp) {
   // if (!(localBins instanceof Map)) localBins = new Map();
 
   let scaleFactor = new_globalBp/globalBpPerUnit
-  const buffer = 0.1;
+  const buffer = 0.01;
   const bufferStart = Math.max(0, start - start * buffer);
   const bufferEnd = end + end * buffer;
 
@@ -208,7 +208,6 @@ async function getLocalData(start, end, globalBpPerUnit, nTrees, new_globalBp) {
   // ────────────────────────────────
   // Sampling / range computation
   // ────────────────────────────────
-  console.log("newLocalBins",local_bins,new_globalBp, lower_bound, upper_bound);
   const {return_local_bins, displayArray} = new_complete_experiment_map(local_bins,  globalBpPerUnit, new_globalBp);
 
   lastStart = lower_bound;
@@ -244,7 +243,6 @@ const tempMatrix = new Matrix4();
 
 export function new_complete_experiment_map(localBins, globalBpPerUnit, new_globalBp) {
 
-  console.log("localBins", localBins);
   const spacing = 1.05;
   const bins = new Map();            // replaces plain object
 
@@ -279,7 +277,6 @@ export function new_complete_experiment_map(localBins, globalBpPerUnit, new_glob
   // PASS 2: compute transforms
   // ────────────────────────────────
 
-  console.log("bins", bins);
   for (const [binKey, { indexes, spans }] of bins.entries()) {
     const n = indexes.length;
 
@@ -398,8 +395,6 @@ export function new_complete_experiment_map(localBins, globalBpPerUnit, new_glob
       }
     }
   }
-
-  console.log("localBins", localBins);
 
   return { return_local_bins:localBins, displayArray };
 }

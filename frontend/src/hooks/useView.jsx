@@ -8,30 +8,6 @@ import {
 let globalSetZoomAxis = () => {};
 let globalPanDirection = () => {};
 
-
-const INITIAL_VIEW_STATE = {
-  'genome-positions':{
-    target: [1000,1],
-    zoom: [5,8],
-    // minZoom: 1,
-  },
-  'genome-info':{
-    target: [1000,1],
-    zoom: [5,8],
-    // minZoom: 1,
-  },
-  'tree-time':{
-    target: [0.5 ,0],
-    zoom: [0,8],
-    // minZoom: 1,
-  },
-  'ortho': {
-    target: [1000,0],
-    zoom: [5,8],
-    // minZoom: 1,
-  }
-}
-
 class MyOrthographicController extends OrthographicController {
   
   handleEvent(event) {
@@ -73,18 +49,55 @@ class MyOrthographicController extends OrthographicController {
   }
 }
 
+const INITIAL_VIEW_STATE = {
+  'genome-positions':{
+    target: [0,1],
+    zoom: [-3,8],
+    // minZoom: 1,
+  },
+  'genome-info':{
+    target: [0,1],
+    zoom: [-3,8],
+    // minZoom: 1,
+  },
+  'tree-time':{
+    target: [0.5 ,0],
+    zoom: [0,8],
+    // minZoom: 1,
+  },
+  'ortho': {
+    target: [0,0],
+    zoom: [-3,8],
+    // minZoom: 1,
+  }
+}
+
   const useView = ({ config, valueRef}) => {
 
     
   const {globalBpPerUnit, tsconfig, genomeLength} = config;
+
+  // 
+  
+
+  
   const [zoomAxis, setZoomAxis] = useState("Y");
   const [panDirection, setPanDirection] = useState(null);
-  const [xzoom, setXzoom] = useState(window.screen.width < 600 ? -1 : 0);
+  const [xzoom, setXzoom] = useState(window.screen.width < 600 ? -1 : -3);
   const xStopZoomRef = useRef(false);
 
   const [genomicValues, setGenomicValues] = useState(valueRef.current);
 
   const [viewState, setViewState] = useState(null);
+
+  useEffect(() => {
+    if (!viewState && genomeLength.current) {
+      const initial_position = parseInt((genomeLength.current/globalBpPerUnit)/2, 10);
+      INITIAL_VIEW_STATE['ortho'].target = [initial_position,0];
+      INITIAL_VIEW_STATE['genome-positions'].target = [initial_position,1];
+      INITIAL_VIEW_STATE['genome-info'].target = [initial_position,1];
+    }
+  }, [viewState])
 
   globalSetZoomAxis = setZoomAxis;
   globalPanDirection = setPanDirection;
@@ -114,7 +127,7 @@ class MyOrthographicController extends OrthographicController {
         xStopZoomRef.current = true;
       } else {
         xStopZoomRef.current = false;
-      }
+      }       
       return newValue;
     }
   }, [globalBpPerUnit, viewState, tsconfig]);
@@ -134,7 +147,7 @@ class MyOrthographicController extends OrthographicController {
       const Z = Math.log2(width / (x1 - x0))
       const target = ((x1+spacing)+(x0+spacing))/2;
       // valueRef.current = val;
-      setViewState((prev) => {
+      setViewState((prev) => {      
         return {
           ...prev,
           ['ortho']: {

@@ -80,57 +80,127 @@ def new_tree_samples(tree_indexes, ts, n_jobs=4):
 
     return tree_dict
 
+# def old_new_tree_samples(tree_indexes, ts):
+
+#     tree_dict = []
+#     min_time = float('inf')
+#     max_time = float('-inf')
+    
+#     # ✅ Create populations once, not for every tree (they're the same for all trees)
+#     populations = [{"id": int(ts.node(n).id), "population": ts.node(n).population} for n in ts.samples()]
+
+#     for i, treee in enumerate(tree_indexes):
+#         try:
+#             global_index = treee['global_index']
+#             print("global_index", global_index)
+#             global_index = int(global_index)
+#             tree = ts.at_index(global_index)
+#             node_ids = list(tree.nodes())
+#             node_times = [ts.node(u).time for u in node_ids]
+#             start_time = min(node_times)
+#             end_time = -1 * max(node_times)
+#             time_range = {'start': start_time, 'end': end_time}
+#             tree_newick = ''
+#             labels = {u: str(u) for u in node_ids}
+#             if tree.num_roots != 1:
+#                 tree_newick = "".join([tree.as_newick(root=root, node_labels=labels) for root in tree.roots])
+#             else:
+#                 tree_newick = tree.as_newick(node_labels=labels)
+            
+#             tree_index = ts.at(tree.interval.left).index
+#             positions = {'start': tree.interval.left, 'end': tree.interval.right}
+
+#             # Mutations
+#             mut_map = {}
+#             for site in tree.sites():
+#                 ancestral = site.ancestral_state
+#                 pos = int(site.position)
+#                 for mut in site.mutations:
+#                     mut_str = f"{ancestral}{pos}{mut.derived_state}"
+#                     key = str(mut.node)
+#                     mut_map.setdefault(key, []).append(mut_str)
+
+#             tree_dict.append({
+#                 'newick': tree_newick,
+#                 'time_range': time_range,
+#                 'positions': positions,
+#                 'mutations': mut_map,
+#                 'min_time': ts.min_time,
+#                 'max_time': -ts.max_time,
+#                 'global_index': global_index,
+#                 'populations': populations 
+#             })
+#         except Exception as e:
+#             print(f"Error in new_tree_samples: {e}")
+#             continue
+    
+#     return tree_dict
+
 def old_new_tree_samples(tree_indexes, ts):
+    from operator import attrgetter
 
     tree_dict = []
-    min_time = float('inf')
-    max_time = float('-inf')
-    
-    # ✅ Create populations once, not for every tree (they're the same for all trees)
-    populations = [{"id": int(ts.node(n).id), "population": ts.node(n).population} for n in ts.samples()]
 
-    for i, treee in enumerate(tree_indexes):
+    # Precompute populations (same across trees)
+    populations = [
+        {"id": int(n.id), "population": n.population}
+        for n in map(ts.node, ts.samples())
+    ]
+
+    # Pre-bind functions for speed (avoids repeated attribute lookups)
+    ts_node = ts.node
+    ts_at_index = ts.at_index
+    ts_at = ts.at
+    Node_time = attrgetter("time")
+    Node_id = attrgetter("id")
+
+    min_time, max_time = ts.min_time, -ts.max_time
+
+    for t in tree_indexes:
         try:
-            global_index = treee['global_index']
-            global_index = int(global_index)
-            tree = ts.at_index(global_index)
+            global_index = int(t["global_index"])
+            tree = ts_at_index(global_index)
             node_ids = list(tree.nodes())
-            node_times = [ts.node(u).time for u in node_ids]
-            start_time = min(node_times)
-            end_time = -1 * max(node_times)
-            time_range = {'start': start_time, 'end': end_time}
-            tree_newick = ''
-            labels = {u: str(u) for u in node_ids}
-            if tree.num_roots != 1:
-                tree_newick = "".join([tree.as_newick(root=root, node_labels=labels) for root in tree.roots])
-            else:
-                tree_newick = tree.as_newick(node_labels=labels)
-            
-            tree_index = ts.at(tree.interval.left).index
-            positions = {'start': tree.interval.left, 'end': tree.interval.right}
 
-            # Mutations
+            # Vectorized node time retrieval
+            node_times = [ts_node(u).time for u in node_ids]
+            start_time, end_time = min(node_times), -max(node_times)
+
+            labels = {u: str(u) for u in node_ids}
+            if tree.num_roots == 1:
+                tree_newick = tree.as_newick(node_labels=labels)
+            else:
+                # Join once, avoids string concat overhead
+                tree_newick = "".join(
+                    tree.as_newick(root=root, node_labels=labels)
+                    for root in tree.roots
+                )
+
+            interval = tree.interval
+            positions = {"start": interval.left, "end": interval.right}
+
+            # Build mutation map efficiently
             mut_map = {}
             for site in tree.sites():
                 ancestral = site.ancestral_state
                 pos = int(site.position)
                 for mut in site.mutations:
                     mut_str = f"{ancestral}{pos}{mut.derived_state}"
-                    key = str(mut.node)
-                    mut_map.setdefault(key, []).append(mut_str)
+                    mut_map.setdefault(str(mut.node), []).append(mut_str)
 
             tree_dict.append({
-                'newick': tree_newick,
-                'time_range': time_range,
-                'positions': positions,
-                'mutations': mut_map,
-                'min_time': ts.min_time,
-                'max_time': -ts.max_time,
-                'global_index': global_index,
-                'populations': populations 
+                "newick": tree_newick,
+                "time_range": {"start": start_time, "end": end_time},
+                "positions": positions,
+                "mutations": mut_map,
+                "min_time": min_time,
+                "max_time": max_time,
+                "global_index": global_index,
+                "populations": populations
             })
+
         except Exception as e:
-            print(f"Error in new_tree_samples: {e}")
+            print(f"[WARN] Error at tree index {t}: {e}")
             continue
-    
+
     return tree_dict
