@@ -140,9 +140,9 @@ if USE_REDIS:
         client_manager=socketio.AsyncRedisManager(REDIS_URL),
         logger=False,
         engineio_logger=False,
-        # ping_timeout=10,
-        # ping_interval=5,
-
+        ping_timeout=60, 
+        ping_interval=25,
+        max_http_buffer_size=50_000_000
     )
 else:
     

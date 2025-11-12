@@ -67,6 +67,12 @@ function useConnect({ setGettingDetails, settings }) {
       withCredentials: true,
       // query: { sid },
       path: IS_PROD ? path : "/socket.io/",
+      reconnection: true,
+      reconnectionAttempts: 10,
+      reconnectionDelay: 3000,
+      timeout: 60000,
+      pingTimeout: 60000,   // ⏱ match server
+      pingInterval: 25000,  // ⏱ match server
     });
 
     socketRef.current = socket;
