@@ -6,7 +6,7 @@ import { LuTreePine } from "react-icons/lu";
 import { BsChevronDown } from "react-icons/bs";
 import useLoraxConfig from "../globalconfig.js";
 import ErrorAlert from "./ErrorAlert.jsx";
-
+import LoraxMessage from "./loraxMessage.jsx";
 function DatasetFiles({ project, files = [],loadFile, loadingFile, setLoadingFile, isConnected}) {
   const [q, setQ] = useState("");
   
@@ -148,7 +148,7 @@ export default function LandingPage({
             {upload.selectedFileName && (
               <p className="mt-3 text-sm text-slate-500">
                 Selected: <span className="font-medium">{upload.selectedFileName}</span>
-                <button onClick={upload.remove} className="ml-3 text-rose-600 hover:underline">remove</button>
+                {/* <button onClick={upload.remove} className="ml-3 text-rose-600 hover:underline">remove</button> */}
               </p>
             )}
 
@@ -181,7 +181,7 @@ export default function LandingPage({
         </section>
         <section className="mx-auto max-w-7xl px-6 pt-4 pb-16">
   <h2 className="text-2xl font-semibold mb-4">Load Existing Inferred ARGs</h2>
-
+  {upload.statusMessage && <LoraxMessage status={upload.statusMessage.status} message={upload.statusMessage.message} />}
   <ul className="space-y-4">
     {Object.keys(projects ?? {}).map((p) => {
 
@@ -257,16 +257,6 @@ export default function LandingPage({
               title="Local trees, global context"
               desc="Scroll through local genealogies, jump to recombination breakpoints, and keep orientation with a timeline strip."
             />
-            {/* <FeatureCard
-              icon={<FaMagnifyingGlassChart />}
-              title="Read‑level evidence"
-              desc="Inspect pileups, unaccounted alleles, and haplotype placements to validate signals from wastewater or clinical data."
-            />
-            <FeatureCard
-              icon={<RiRobot2Line />}
-              title="LLM‑assisted analysis"
-              desc="Ask natural‑language questions and let the assistant generate code or compute quick stats on the fly."
-            /> */}
           </div>
         </section>
       </main>

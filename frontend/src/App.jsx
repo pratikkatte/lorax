@@ -27,7 +27,9 @@ function App() {
   const upload = useFileUpload({
     config,
     setProject,
-    backend
+    backend,
+    statusMessage,
+    setStatusMessage
   });
 
   return (
@@ -39,6 +41,7 @@ function App() {
           <LandingPage
             API_BASE={API_BASE}
             upload={upload}
+            statusMessage={statusMessage}
           />
         }
       />

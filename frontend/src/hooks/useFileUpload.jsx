@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useRef, useState, useEffect } from "react";
 import axios from "axios";
 import useLoraxConfig from "../globalconfig.js";
+import LoraxMessage from "../components/loraxMessage.jsx";
 
 export default function useFileUpload({
   config,
@@ -9,7 +10,9 @@ export default function useFileUpload({
   accept = ".trees,.tsz",
   autoClearOnError = true,
   setProject,
-  backend
+  backend,
+  statusMessage,
+  setStatusMessage
 } = {}) {
   const { API_BASE } = useLoraxConfig();
 
@@ -18,6 +21,7 @@ export default function useFileUpload({
   const [projects, setProjects] = useState([]);
 
   const [fileUploaded, setFileUploaded] = useState(false);
+  
 
   useEffect(() => {
     if((isConnected && fileUploaded) || (isConnected && projects.length === 0)) {
@@ -49,6 +53,7 @@ export default function useFileUpload({
   const [dragOver, setDragOver] = useState(false);
   const [error, setError] = useState(null);
   const [uploadStatus, setUploadStatus] = useState(null);
+
 
   const acceptAttr = useMemo(() => (Array.isArray(accept) ? accept.join(",") : accept), [accept]);
 
@@ -175,6 +180,14 @@ export default function useFileUpload({
   const onInputChange = useCallback(
     async (e) => {
       const file = e?.target?.files?.[0];
+  
+      // setStatusMessage({status: "ERROR", message: "uploading file..."});
+
+      const maxSize = 50 * 1024 * 1024; // 25 MB
+      if (file.size > maxSize) {
+        setError(`File "${file.name}" exceeds 25 MB limit.`);
+        return;
+      }
       await uploadFile(file);
     },
     [uploadFile]
@@ -266,6 +279,8 @@ export default function useFileUpload({
     projects,
     setProjects,
     getProjects,
-    uploadStatus
+    uploadStatus,
+    statusMessage,
+    setStatusMessage
   };
 }
