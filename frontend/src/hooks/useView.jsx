@@ -250,6 +250,7 @@ const INITIAL_VIEW_STATE = {
     'tree-time': INITIAL_VIEW_STATE['tree-time'],
     'genome-info': INITIAL_VIEW_STATE['genome-info']
   }));
+  
   }, [decksize])
 
   function getPanStep({zoomX, baseStep = 8, sensitivity = 0.5}) {

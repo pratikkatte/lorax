@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Optional
 from datetime import datetime
 from dotenv import load_dotenv
-from lorax.utils.gcs_utils import download_gcs_file, BUCKET_NAME, get_public_gcs_dict
+from lorax.utils.gcs_utils import download_gcs_file, BUCKET_NAME, get_public_gcs_dict, upload_to_gcs
 import time
 load_dotenv()
 
@@ -34,14 +34,7 @@ from lorax.handlers import LoraxHandler, handle_upload, handle_query, get_projec
 app = FastAPI(title="Lorax Backend", version="1.0.0")
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
-IS_VM = os.getenv("IS_VM", False)
-
-print("IS_VM:", IS_VM)
-
-if IS_VM:
-    UPLOAD_DIR = Path("/mnt/gcs")
-else:
-    UPLOAD_DIR = Path("uploads")
+UPLOAD_DIR = Path("uploads")
 
 UPLOAD_DIR.mkdir(exist_ok=True)
 
@@ -186,10 +179,12 @@ async def init_session(request: Request, response: Response):
 lorax_handler_global = LoraxHandler()
 
 @app.get("/projects")
-async def projects():
+async def projects(request: Request, response: Response):
     
+    sid, session = await get_or_create_session(request, response)
+
     if BUCKET_NAME:
-        projects = get_public_gcs_dict(BUCKET_NAME)
+        projects = get_public_gcs_dict(BUCKET_NAME, allowed_folders={'1000Genomes': '1000Genomes', f'{sid}': 'Uploads'})
     else:
         projects = await get_projects(UPLOAD_DIR)
 
@@ -241,8 +236,15 @@ async def upload(request: Request, response: Response, file: UploadFile = File(.
         async with aiofiles.open(file_path, "wb") as f:
             while chunk := await file.read(1024 * 1024):
                 await f.write(chunk)
-        viz_config, _ = await session.handler.handle_upload(str(file_path))
-        return {"message": "File uploaded", "sid": sid, "filename": file.filename}
+
+        # Upload to GCS asynchronously
+        gcs_url = await upload_to_gcs(BUCKET_NAME, file_path, sid)
+
+        # viz_config, _ = await handle_upload(str(file_path))
+        return JSONResponse(
+            status_code=200,
+            content={"message": "File uploaded", "sid": sid, "filename": file.filename}
+        )
     except Exception as e:
         print("❌ Upload error:", e)
         return JSONResponse(status_code=500, content={"error": str(e)})
@@ -290,17 +292,11 @@ async def load_file(request: Request, response: Response):
 
     return {"message": "File loaded", "sid": sid, "filename": filename, "config": viz_config}
 
-
-
-# ─────────────────────────────────────────────
-# Socket.IO Events
-# ─────────────────────────────────────────────
 @sio.event
 async def connect(sid, environ, auth=None):
     print(f"🔌 Socket.IO connected: {sid}")
 
     cookie = environ.get("HTTP_COOKIE", "")
-
 
     cookies = SimpleCookie()
     cookies.load(cookie)
@@ -344,9 +340,11 @@ async def background_load_file(sid, data):
             return JSONResponse(status_code=400, content={"error": "Missing 'file'."})
     
         if project == 'uploads':
-            file_path = UPLOAD_DIR / sid / filename
+            file_path = UPLOAD_DIR / lorax_sid / filename
         else:
             file_path = UPLOAD_DIR / project / filename
+
+        print("file_path", file_path)
         if BUCKET_NAME:
             print(f"Downloading file {project}/{filename} from {BUCKET_NAME}")
             if file_path.exists():

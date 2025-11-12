@@ -1,44 +1,45 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState, useEffect } from "react";
 import axios from "axios";
 import useLoraxConfig from "../globalconfig.js";
-import { useNavigate } from "react-router-dom";
 
-/**
- * useFileUpload
- * A reusable hook that encapsulates file-upload behavior for the Lorax app.
- *
- * Features:
- * - Hidden <input type="file"> management via ref
- * - Click-to-browse, drag & drop, remove/reset
- * - Upload with progress to `${API_BASE}/upload`
- * - Pluggable callbacks for success/error, optional setConfig wiring
- *
- * @param {Object} options
- * @param {(cfg:any)=>void} [options.setConfig] - If provided, setConfig will be called with `{...config, file: file.name}` or with the value returned by `mapResponseToConfig`.
- * @param {any} [options.config] - Current config (if you want us to mutate it after upload).
- * @param {(resp:any, file:File)=>any} [options.mapResponseToConfig] - Convert upload response -> config object. Defaults to `(resp)=>({...config, file: file.name})`.
- * @param {(resp:any, file:File)=>void} [options.onUploaded] - Called after successful upload.
- * @param {(err:any)=>void} [options.onError] - Called on error.
- * @param {string|string[]} [options.accept] - Accept string(s) for input. Default covers .trees / newick / BED / bigBed / json.
- * @param {boolean} [options.autoClearOnError=true] - Clear <input> if upload fails.
- * @returns helpers and state for wiring inputs and dropzones
- */
 export default function useFileUpload({
   config,
   mapResponseToConfig,
   onError,
-  accept = ".trees,.ts,.tree,.newick,.nwk,.json,.bb,.bed,.bed.gz",
+  accept = ".trees,.tsz",
   autoClearOnError = true,
   setProject,
   backend
 } = {}) {
   const { API_BASE } = useLoraxConfig();
 
-  const {queryFile} = backend;
+  const {queryFile, isConnected} = backend;
+
+  const [projects, setProjects] = useState([]);
+
+  const [fileUploaded, setFileUploaded] = useState(false);
+
+  useEffect(() => {
+    if((isConnected && fileUploaded) || (isConnected && projects.length === 0)) {
+      getProjects(API_BASE).then(projectsData => {
+        console.log("projectsData", projectsData);
+        setProjects((prev) => ({...prev, ...projectsData}));
+      })
+      .catch(error => {
+        console.error('Failed to load projects:', error);
+      });
+
+      setFileUploaded(false);
+
+      return () => {
+        console.log("cleanup projects");
+        // setProjects([]);
+      };
+    }
+  },[API_BASE, isConnected, fileUploaded])
 
   const {tsconfig, setConfig, handleConfigUpdate} = config;
   const [loadingFile, setLoadingFile] = useState(null);
-
 
   const inputRef = useRef(null);
   const loadingRequestRef = useRef(false);
@@ -47,6 +48,7 @@ export default function useFileUpload({
   const [selectedFileName, setSelectedFileName] = useState("");
   const [dragOver, setDragOver] = useState(false);
   const [error, setError] = useState(null);
+  const [uploadStatus, setUploadStatus] = useState(null);
 
   const acceptAttr = useMemo(() => (Array.isArray(accept) ? accept.join(",") : accept), [accept]);
 
@@ -56,8 +58,7 @@ export default function useFileUpload({
 
   const _finishSuccess = useCallback(
     (resp, file) => {
-      try {
-
+      try {    
         if (resp.filename) {
 
           setProject(file.project);
@@ -137,7 +138,10 @@ export default function useFileUpload({
       formData.append("file", file);
 
       try {
+
+        setUploadStatus("uploading file...");
         const response = await axios.post(`${API_BASE}/upload`, formData, {
+          withCredentials: true,
           maxRedirects: 0,
           onUploadProgress: (evt) => {
             const total = evt.total ?? 0;
@@ -145,7 +149,18 @@ export default function useFileUpload({
             setUploadProgress(percent);
           },
         });
-        _finishSuccess(response?.data, file);
+
+        if (response.status === 200) {
+
+          setUploadStatus("loading inferred ARG....");
+
+          const payload = {
+            project: 'uploads',
+            file: response?.data?.filename,
+          }
+          setFileUploaded(true);
+          await loadFile(payload);
+        }
       } catch (err) {
         console.error("Error uploading file:", err);
         _finishError(err);
@@ -187,6 +202,17 @@ export default function useFileUpload({
   const onDragEnter = useCallback((e) => { e.preventDefault(); setDragOver(true); }, []);
   const onDragOver = useCallback((e) => { e.preventDefault(); }, []);
   const onDragLeave = useCallback((e) => { e.preventDefault(); setDragOver(false); }, []);
+
+  const getProjects = useCallback((API_BASE) => {
+    return axios.get(`${API_BASE}/projects`, { withCredentials: true })
+      .then(response => {
+        return response.data.projects;
+      })
+      .catch(error => {
+        console.error('Error fetching projects:', error);
+        return [];
+      });
+  }, []);
 
   // Props helpers (optional convenience)
   const getInputProps = useCallback(() => ({
@@ -237,5 +263,9 @@ export default function useFileUpload({
     // convenience prop getters
     getInputProps,
     getDropzoneProps,
+    projects,
+    setProjects,
+    getProjects,
+    uploadStatus
   };
 }

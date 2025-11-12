@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback} from "react";
 import websocketEvents from '../webworkers/websocketEvents';
-import FileUploadInput from './FileUploadInput';
 
 const Info = ({backend, gettingDetails, setGettingDetails, setShowInfo, config, setConfig,  selectedFileName, setSelectedFileName}) => {
 

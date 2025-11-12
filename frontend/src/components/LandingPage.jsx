@@ -4,7 +4,6 @@ import { LuFileText } from "react-icons/lu";
 import { LuTreePine } from "react-icons/lu";
 
 import { BsChevronDown } from "react-icons/bs";
-import axios from "axios";
 import useLoraxConfig from "../globalconfig.js";
 import ErrorAlert from "./ErrorAlert.jsx";
 
@@ -79,50 +78,18 @@ function FilePill({ name, onClick, loading = false }) {
     </button>
   );
 }
-
-function getProjects(API_BASE) {
-  return axios.get(`${API_BASE}/projects`)
-    .then(response => {
-      return response.data.projects;
-    })
-    .catch(error => {
-      console.error('Error fetching projects:', error);
-      return [];
-    });
-}
-
 export default function LandingPage({
   upload,
   version = "pre‑release",
-  timeRef,
-  isConnected
 }) {
 
   const {API_BASE} = useLoraxConfig();
 
-  const [projects, setProjects] = useState([]);
+  const {projects} = upload;
   
   const [expandedId, setExpandedId] = useState(null);
 
-  useEffect(() => {
-    let active = true;
-    if(projects.length === 0 && isConnected) {
-      getProjects(API_BASE).then(projectsData => {
-
-        console.log("projectsData", projectsData);
-        if (active) setProjects(projectsData);
-      })
-      .catch(error => {
-        console.error('Failed to load projects:', error);
-      });
-
-      return () => {
-        active = false;
-        setProjects([]);
-        setExpandedId(null);
-      };
-    }
-  },[API_BASE, isConnected])
+  
 
   return (
     <div className="min-h-screen w-full flex flex-col bg-gradient-to-b from-slate-50 to-white text-slate-900">
@@ -174,14 +141,8 @@ export default function LandingPage({
                 className="inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-5 py-3 text-white font-medium shadow-sm hover:bg-emerald-700"
                 disabled={upload.isUploading}
               >
-                <BsCloudUpload className="text-lg" /> {upload.isUploading ? `${upload.uploadProgress}%` : "Load a .trees file"}
+                <BsCloudUpload className="text-lg" /> {upload.isUploading ? upload.uploadStatus : "Load a .trees file"}
               </button>
-              {/* <button
-                onClick={onStartDemo}
-                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 px-5 py-3 font-medium hover:bg-slate-50"
-              >
-                <BsPlayCircle className="text-lg" /> 
-              </button> */}
             </div>
 
             {upload.selectedFileName && (
@@ -222,10 +183,18 @@ export default function LandingPage({
   <h2 className="text-2xl font-semibold mb-4">Load Existing Inferred ARGs</h2>
 
   <ul className="space-y-4">
-    {(projects ?? []).map((p) => {
-      const id = p.id ?? p.slug ?? p.name;
+    {Object.keys(projects ?? {}).map((p) => {
+
+      const project_details = projects[p] ?? {};
+
+      // const id = p.id ?? p.slug ?? p.name;
+      const id = p;
       const isOpen = expandedId === id;
-      const files = Array.isArray(p.files) ? p.files : (p.files ? [p.files] : []);
+      const files = Array.isArray(project_details?.files) ? project_details.files :  [];
+
+      const name = project_details?.name ?? "";
+      const description = project_details?.description ?? "";
+
 
       return (
         <li
@@ -239,10 +208,10 @@ export default function LandingPage({
             aria-expanded={isOpen}
           >
             <div className="min-w-0">
-              <h3 className="text-xl font-semibold tracking-tight">{p.name}</h3>
-              {p.description && (
+              <h3 className="text-xl font-semibold tracking-tight">{name}</h3>
+              {description && (
                 <p className="text-sm text-slate-500 mt-1 line-clamp-2">
-                  {p.description}
+                  {description}
                 </p>
               )}
             </div>
