@@ -231,6 +231,8 @@ function useConnect({ setGettingDetails, settings }) {
         };
     
         socketRef.current.once("load-file-result", handleResult);
+
+        console.log("payload", payload, sidRef.current);
     
         socketRef.current.emit("load_file", { ...payload, lorax_sid: sidRef.current });
       });

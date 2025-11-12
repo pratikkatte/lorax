@@ -155,8 +155,8 @@ export default function useFileUpload({
           setUploadStatus("loading inferred ARG....");
 
           const payload = {
-            project: 'uploads',
-            file: response?.data?.filename,
+            project: "uploads",
+            file: response?.data?.filename
           }
           setFileUploaded(true);
           await loadFile(payload);

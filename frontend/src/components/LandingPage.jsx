@@ -237,7 +237,7 @@ export default function LandingPage({
             <div className="overflow-hidden">
               <div className="px-6 pb-6 pt-1">
                 {/* Optional inline file filter */}
-                <DatasetFiles project={p.folder} files={files} loadFile={upload.loadFile} loadingFile={upload.loadingFile} setLoadingFile={upload.setLoadingFile}/>
+                <DatasetFiles project={project_details.folder} files={files} loadFile={upload.loadFile} loadingFile={upload.loadingFile} setLoadingFile={upload.setLoadingFile}/>
               </div>
             </div>
           </div>

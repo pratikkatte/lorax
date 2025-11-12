@@ -36,6 +36,8 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 UPLOAD_DIR = Path("uploads")
 
+IS_VM = os.getenv("IS_VM", True)
+
 UPLOAD_DIR.mkdir(exist_ok=True)
 
 BUCKET_NAME = os.getenv("BUCKET_NAME", 'lorax_projects')
@@ -184,7 +186,15 @@ async def projects(request: Request, response: Response):
     sid, session = await get_or_create_session(request, response)
 
     if BUCKET_NAME:
-        projects = get_public_gcs_dict(BUCKET_NAME, allowed_folders={'1000Genomes': '1000Genomes', f'{sid}': 'Uploads'})
+        if IS_VM:
+            projects = get_public_gcs_dict(BUCKET_NAME, allowed_folders={'1000Genomes': '1000Genomes', f'{sid}': 'Uploads'})
+        else:
+            projects = get_public_gcs_dict(
+                BUCKET_NAME, 
+                allowed_folders= {'1000Genomes': '1000Genomes'}
+                )
+            # local_uploads = get_local_uploads(UPLOAD_DIR) # TODO: to get local uploads
+
     else:
         projects = await get_projects(UPLOAD_DIR)
 
@@ -333,9 +343,9 @@ async def background_load_file(sid, data):
         else:
             session = sessions.get(lorax_sid)
 
-        project = data.get("project")
-        filename = data.get("file")
-
+        project = str(data.get("project"))
+        filename = str(data.get("file"))
+        print("lorax_sid", lorax_sid, project, filename)
         if not filename:
             return JSONResponse(status_code=400, content={"error": "Missing 'file'."})
     
@@ -367,7 +377,7 @@ async def background_load_file(sid, data):
         await sio.emit("load-file-result", {"message": "File loaded", "sid": sid, "filename": filename, "config": viz_config}, to=sid)
 
     except Exception as e:
-        print(f"❌ Load file error: {e}")
+        print(f"Load file error: {e}")
         return JSONResponse(status_code=500, content={"error": str(e)})
 
 

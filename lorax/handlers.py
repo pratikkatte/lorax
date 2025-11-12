@@ -126,6 +126,11 @@ def get_config(ts, file_path):
     config = {'genome_length': ts.sequence_length, 'times':times, 'new_intervals':new_intervals,'filename': str(file_path).split('/')[-1], 'populations':populations, 'nodes_population':nodes_population}
     return config
 
+def get_local_uploads(upload_dir, sid):
+    """
+    TODO: IMPLEMENT THIS LATER
+    """
+
 async def handle_upload(file_path):
     """
     """
