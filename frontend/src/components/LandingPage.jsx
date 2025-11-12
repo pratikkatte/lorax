@@ -170,7 +170,7 @@ export default function LandingPage({
               </div>
               <div className="absolute inset-0 grid place-items-center">
                 <div className="rounded-2xl bg-white/80 backdrop-blur px-4 py-2 text-sm text-slate-600">
-                  {upload.isUploading ? `Uploading… ${upload.uploadProgress}%` : "Drag & drop a file here"}
+                  {upload.isUploading ? upload.uploadStatus : "Drag & drop a file here"}
                 </div>
               </div>
             </div>

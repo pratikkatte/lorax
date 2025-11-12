@@ -207,6 +207,11 @@ export default function useFileUpload({
       e.preventDefault();
       setDragOver(false);
       const file = e.dataTransfer?.files?.[0];
+      const maxSize = 50 * 1024 * 1024;
+      if (file.size > maxSize) {
+        setError(`File "${file.name}" exceeds 25 MB limit.`);
+        return;
+      }
       if (file) await uploadFile(file);
     },
     [uploadFile]
