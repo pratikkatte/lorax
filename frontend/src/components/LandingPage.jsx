@@ -192,7 +192,7 @@ export default function LandingPage({
       const isOpen = expandedId === id;
       const files = Array.isArray(project_details?.files) ? project_details.files :  [];
 
-      const name = project_details?.name ?? "";
+      const name = p;
       const description = project_details?.description ?? "";
 
 
