@@ -151,6 +151,104 @@ async def get_projects(upload_dir, sid=None):
         final_projects = [project for project in projects if os.path.exists(os.path.join(upload_dir, project.get("folder", "")))]
         return final_projects
     
+
+# def make_json_serializable(obj):
+#     """Convert byte data and other non-serializable objects to JSON serializable format"""
+#     if isinstance(obj, bytes):
+#         return obj.decode('utf-8', errors='replace')
+#     elif isinstance(obj, dict):
+#         return {k: make_json_serializable(v) for k, v in obj.items()}
+#     elif isinstance(obj, list):
+#         return [make_json_serializable(item) for item in obj]
+#     elif hasattr(obj, '__dict__'):
+#         return make_json_serializable(obj.__dict__)    
+#     elif isinstance(obj, np.ndarray):
+#         return obj.tolist()
+#     else:
+#         return obj
+    
+
+def make_json_serializable(obj):
+    """Convert to JSON-safe Python structures and decode nested JSON strings."""
+    import json
+    if isinstance(obj, bytes):
+        try:
+            text = obj.decode('utf-8')
+            return make_json_serializable(json.loads(text))
+        except Exception:
+            return text
+    elif isinstance(obj, str):
+        # Try to parse JSON strings like '{"family_id": "ST082"}'
+        try:
+            parsed = json.loads(obj)
+            return make_json_serializable(parsed)
+        except Exception:
+            return obj
+    elif isinstance(obj, dict):
+        return {k: make_json_serializable(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [make_json_serializable(i) for i in obj]
+    elif hasattr(obj, '__dict__'):
+        return make_json_serializable(obj.__dict__)
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+    else:
+        return obj
+
+def get_node_details(ts, node_name):
+    node = ts.node(node_name)
+    data = {
+        "id": node.id,
+        "time": node.time,
+        "population": node.population,
+        "individual": node.individual,
+        "metadata": make_json_serializable(node.metadata)
+    }
+    return data
+
+def get_tree_details(ts, tree_index):
+    tree = ts.at_index(tree_index)
+    data = {
+        "interval": tree.interval,
+        "num_roots": tree.num_roots,
+        "num_nodes": tree.num_nodes
+        }
+    return data
+
+def get_individual_details(ts, individual_id):
+    individual = ts.individual(individual_id)
+    data = { 
+        "id": individual.id,
+        "nodes": make_json_serializable(individual.nodes),
+        "metadata": make_json_serializable(individual.metadata)
+    }
+    return data
+
+async def handle_details(file_path, data):
+    print("handle_details", data)
+
+    try:
+        ts = await get_or_load_ts(file_path)
+        if ts is None:
+            return json.dumps({"error": "Tree sequence (ts) is not set. Please upload a file first. Or file_path is not valid or not found."})
+        return_data = {}
+        tree_index = data.get("treeIndex")
+        if tree_index:
+            tree_details = get_tree_details(ts, tree_index)
+            return_data["tree"] = tree_details
+
+        node_name = data.get("node")
+        if node_name:
+            node_details = get_node_details(ts, int(node_name))
+            return_data["node"] = node_details
+            if node_details.get("individual") != -1:
+                individual_details = get_individual_details(ts, node_details.get("individual"))
+                return_data["individual"] = individual_details
+
+        return json.dumps(return_data)
+    except Exception as e:
+        return json.dumps({"error": f"Error getting details: {str(e)}"})
+
 class LoraxHandler:
     def __init__(self):
         self.ts = None  # Set when a file is uploaded

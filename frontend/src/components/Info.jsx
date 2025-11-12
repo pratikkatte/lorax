@@ -14,6 +14,7 @@ const [activeTab, setActiveTab] = useState('metadata');
 const [coloryby, setColoryby] = useState({'population': 'Population', 'super_population': "Super Population"});
 const [selectedColorBy, setSelectedColorBy] = useState('population');
 const [enabledValues, setEnabledValues] = useState(new Set());
+const [populationDetails, setPopulationDetails] = useState(null);
 
 // Initialize enabled values to all options for the selectedColorBy
 useEffect(() => {
@@ -31,14 +32,23 @@ useEffect(() => {
   }));
 }, [selectedColorBy, enabledValues]);
 
+const safeParse = (v) => {
+  if (typeof v !== "string") return v;
+  try { return JSON.parse(v); } catch { return v; }
+};
 
 const handleDetails = useCallback((incoming_data) => {
+
     if (incoming_data.role === "details-result") {
       
-      var data = JSON.parse(incoming_data.data)
+      var data = safeParse(incoming_data.data)
+
+      console.log("data", data);
       setShowInfo(true);
       setTreeDetails(data?.tree? data.tree : null);
       setNodeDetails(data?.node? data.node : null);
+
+      setPopulationDetails(populations[data?.node?.population]);
       setIndividualDetails(data?.individual? data.individual : null);
     }
   }, []);
@@ -122,7 +132,8 @@ const handleDetails = useCallback((incoming_data) => {
                 <DetailRow label="ID" value={nodeDetails.id} />
                 <DetailRow label="Time" value={nodeDetails.time} />
                 <DetailRow label="Individual" value={nodeDetails.individual} />
-                <DetailRow label="Population" value={nodeDetails.population} />
+                {/* <DetailRow label="Population" value={nodeDetails.population} /> */}
+                <DetailRow label="Population" value={nodeDetails.population ? populations[nodeDetails?.population].population : populationDetails?.population} />
                 <DetailRow 
                   label="Metadata" 
                   value={typeof nodeDetails.metadata === 'object' 
@@ -139,11 +150,11 @@ const handleDetails = useCallback((incoming_data) => {
                 <DetailRow label="Father ID" value={individualDetails?.metadata?.father_id} />
                 <DetailRow label="Mother ID" value={individualDetails?.metadata?.mother_id} />
                 <DetailRow label="Participant Type" value={individualDetails?.metadata?.participant_type} />
-                <DetailRow label="Population" value={individualDetails?.metadata?.population} />
+                <DetailRow label="Population" value={individualDetails?.metadata?.population ?? populationDetails?.population} />
                 <DetailRow label="Sample Data Time" value={individualDetails?.metadata?.sample_data_time} />
                 <DetailRow label="Sample ID" value={individualDetails?.metadata?.sample_id} />
                 <DetailRow label="Sex" value={individualDetails?.metadata?.sex} />
-                <DetailRow label="Superpopulation" value={individualDetails?.metadata?.superpopulation} />
+                <DetailRow label="Superpopulation" value={individualDetails?.metadata?.superpopulation ?? populationDetails?.super_population} />
                 <DetailRow 
                   label="Nodes" 
                   value={Array.isArray(individualDetails?.nodes) 

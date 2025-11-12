@@ -102,7 +102,7 @@ function useConnect({ setGettingDetails, settings }) {
     });
 
     socket.on("details-result", (message) => {
-      console.log("details-result", message);
+      websocketEvents.emit("viz", {role: "details-result", data: message.data});
       setGettingDetails(false);
     });
 
@@ -241,7 +241,9 @@ function useConnect({ setGettingDetails, settings }) {
   const queryDetails = useCallback(
     (clickedObject) => {
       setGettingDetails(true);
-      socketRef.current?.emit("details", clickedObject);
+      console.log("queryDetails", clickedObject, sidRef.current);
+      const payload = {lorax_sid: sidRef.current, ...clickedObject};
+      socketRef.current?.emit("details", payload);
     },
     [setGettingDetails]
   );

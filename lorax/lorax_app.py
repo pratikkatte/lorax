@@ -27,7 +27,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 
-from lorax.handlers import LoraxHandler, handle_upload, handle_query, get_projects, cache_status
+from lorax.handlers import LoraxHandler, handle_upload, handle_query, get_projects, cache_status, handle_details
 
 # Setup
 
@@ -418,12 +418,24 @@ async def query(sid, data):
 @sio.event
 async def details(sid, data):
     try:
-        lorax_sid = data.get("sid")
-        if not lorax_sid or lorax_sid not in sessions:
-            print(f"⚠️ Unknown sid {lorax_sid}, ignoring details")
+        lorax_sid = data.get("lorax_sid")
+        if USE_REDIS:
+            raw = await redis_client.get(f"sessions:{lorax_sid}")
+            if not raw:
+                print(f"⚠️ Unknown sid {lorax_sid}")
+                return
+
+            session = Session.from_dict(json.loads(raw))
+        else:
+            session = sessions.get(lorax_sid)
+
+        if not session or not session.file_path:
+            print(f"⚠️ No file loaded for session {lorax_sid}")
             return
-        session = sessions[lorax_sid]
-        result = await session.handler.handle_details(data)
+        
+        print("fetch details in ", session.sid, os.getpid())
+
+        result = await handle_details(session.file_path, data)
         await sio.emit("details-result", {"data": json.loads(result)}, to=sid)
     except Exception as e:
         print(f"❌ Details error: {e}")

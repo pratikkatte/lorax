@@ -77,34 +77,46 @@ const INITIAL_VIEW_STATE = {
     
   const {globalBpPerUnit, tsconfig, genomeLength} = config;
 
-  // 
-  
-
-  
   const [zoomAxis, setZoomAxis] = useState("Y");
   const [panDirection, setPanDirection] = useState(null);
   const [xzoom, setXzoom] = useState(window.screen.width < 600 ? -1 : -3);
   const xStopZoomRef = useRef(false);
 
+  const [isRendered, setIsRendered] = useState(false);
   const [genomicValues, setGenomicValues] = useState(valueRef.current);
 
-  const [viewState, setViewState] = useState(null);
+// Compute initial state only once genomeLength and globalBpPerUnit are available
+const initialState = useMemo(() => {
+  if (!genomeLength.current || !globalBpPerUnit) return null;
 
-  useEffect(() => {
-    if (!viewState && genomeLength.current) {
-      const initial_position = parseInt((genomeLength.current/globalBpPerUnit)/2, 10);
-      INITIAL_VIEW_STATE['ortho'].target = [initial_position,0];
-      INITIAL_VIEW_STATE['genome-positions'].target = [initial_position,1];
-      INITIAL_VIEW_STATE['genome-info'].target = [initial_position,1];
-    }
-  }, [viewState])
+  const initial_position = Math.floor((genomeLength.current / globalBpPerUnit) / 2);
+
+  return {
+    'ortho': {
+      ...INITIAL_VIEW_STATE['ortho'],
+      target: [initial_position, 0],
+    },
+    'genome-positions': {
+      ...INITIAL_VIEW_STATE['genome-positions'],
+      target: [initial_position, 1],
+    },
+    'genome-info': {
+      ...INITIAL_VIEW_STATE['genome-info'],
+      target: [initial_position, 1],
+    },
+    'tree-time': INITIAL_VIEW_STATE['tree-time'],
+  };
+}, [genomeLength.current, globalBpPerUnit]);
+
+// Initialize viewState once from computed initialState
+const [viewState, setViewState] = useState(null);
 
   globalSetZoomAxis = setZoomAxis;
   globalPanDirection = setPanDirection;
 
   const maxZoom = 17;
 
-  const [decksize, setDecksize] = useState({});
+  const [decksize, setDecksize] = useState(null);
 
   const updateValueRef = useCallback(() => {
 
@@ -142,11 +154,8 @@ const INITIAL_VIEW_STATE = {
       
       let [x0, x1] = [val[0]/globalBpPerUnit, val[1]/globalBpPerUnit];
       let spacing = 0;
-      // const Z = Math.log2((viewPortCoords['ortho']['viewport'].width * globalBpPerUnit) / (val[1] - val[0]))
-      // const Z = Math.log2((width * globalBpPerUnit) / (val[1] - val[0]))
       const Z = Math.log2(width / (x1 - x0))
       const target = ((x1+spacing)+(x0+spacing))/2;
-      // valueRef.current = val;
       setViewState((prev) => {      
         return {
           ...prev,
@@ -242,15 +251,14 @@ const INITIAL_VIEW_STATE = {
   useEffect(() => {
     if (!decksize) return;
 
-
-    setViewState(prev => ({
-      ...prev,
-    'ortho': INITIAL_VIEW_STATE['ortho'],
-    'genome-positions': INITIAL_VIEW_STATE['genome-positions'],
-    'tree-time': INITIAL_VIEW_STATE['tree-time'],
-    'genome-info': INITIAL_VIEW_STATE['genome-info']
-  }));
-  
+    if (isRendered) return;
+    setViewState(prev => {
+      return {
+        ...prev,
+        ...initialState
+    };
+  });
+  setIsRendered(true); 
   }, [decksize])
 
   function getPanStep({zoomX, baseStep = 8, sensitivity = 0.5}) {
@@ -380,11 +388,9 @@ const INITIAL_VIEW_STATE = {
       return newViewStates;
     });
     
-  }, [zoomAxis, panDirection, tsconfig, xStopZoomRef, decksize])
+  }, [zoomAxis, panDirection, tsconfig, xStopZoomRef, decksize, genomicValues])
 
   const panInterval = useRef(null);
-
-
 
   const viewReset = useCallback(() => {
     setViewState(prev => (

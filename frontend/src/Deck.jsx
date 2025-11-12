@@ -31,7 +31,7 @@ const ViewportOverlay = React.memo(() => (
         left: '2%',
         height: '85%',
         width: '98%',
-        zIndex: 10,
+        zIndex: 1,
         pointerEvents: 'none',
         border: '2px solid #b5b5b5',
         borderRadius: '8px',
@@ -150,6 +150,8 @@ function Deck({
 }) {
 
   const {tsconfig, globalBpPerUnit, populations, populationFilter, pathArray} = config;
+
+  
   const saveViewports = useRef({});
   const clickedTree = useRef(null);
 
@@ -178,8 +180,10 @@ function Deck({
         reactEvent._reactName === "onClick"
       ) {
         if (pickInfo.layer.id.includes("main")) {
-          queryDetails(clickedTree.current)
-          // setHoveredTreeIndex({...hoveredTreeIndex, path: pickInfo.object?.path})
+          console.log("clickedTree", clickedTree.current)
+          if (clickedTree.current?.treeIndex) {
+            queryDetails(clickedTree.current)
+          }
         }
       }
     },
@@ -291,12 +295,22 @@ useEffect(() => {
           const { srcEvent } = event;
         const x = srcEvent.clientX;
         const y = srcEvent.clientY;
-        // setHoveredTreeIndex({path: info.object?.path, center: [x, y]})
-        setHoveredTreeIndex({path: info.object?.path, center: null})
+
+
+        const sample_population_id = populations?.nodes_population[parseInt(info.object?.name)];
+        const sample_population = populations?.populations[sample_population_id]
+        const tree_index = info.layer?.props?.bin?.global_index
+        console.log("tree_index", tree_index)
+        if (tree_index) {
+          setHoveredTreeIndex({tree_index: tree_index, path: info.object?.path, name: info.object?.name, center: [x, y], 'population':sample_population?.['population'], 'super_population':sample_population?.['super_population']})
+        }
+        }
+        else {
+          setHoveredTreeIndex(null)
         }
       }}
       onClick={(info, event) => {
-        clickedTree.current = {treeIndex: info.layer.props.bin.global_index, node: info.object?.name}
+        clickedTree.current = {treeIndex: info.layer?.props?.bin?.global_index, node: info.object?.name}
       }}
       pickingRadius={10}
       layers={layers}
@@ -317,15 +331,15 @@ useEffect(() => {
             {statusMessage?.status === "loading" && <LoraxMessage status={statusMessage.status} message={statusMessage.message} />}
 
       {/* Tooltip on hoveredTreeIndex */}
-      {hoveredTreeIndex && hoveredTreeIndex.path && hoveredTreeIndex.center && typeof hoveredTreeIndex.center[0] === "number" && typeof hoveredTreeIndex.center[1] === "number" && (
+      {hoveredTreeIndex && hoveredTreeIndex.tree_index && hoveredTreeIndex.center && typeof hoveredTreeIndex.center[0] === "number" && typeof hoveredTreeIndex.center[1] === "number" && (
         <div
           style={{
             position: 'fixed',
             left: hoveredTreeIndex.center[0] + 15,
             top: hoveredTreeIndex.center[1] - 15,
-            zIndex: 51,
+            zIndex: 9999,
             pointerEvents: 'none',
-            backgroundColor: 'rgba(255,255,255,0.98)',
+            backgroundColor: 'rgba(255,255,255,255)',
             boxShadow: '0 2px 8px 0 rgba(0,0,0,0.08)',
             borderRadius: 8,
             padding: "6px 12px",
@@ -337,11 +351,37 @@ useEffect(() => {
           }}
         >
           {/* Display tree index and path */}
-          {/* <div>
-            <b>Tree Info:</b> some data
-          </div> */}
+          <div>
+            <b>Metadata:</b> 
+            {hoveredTreeIndex.tree_index && 
+            <span>
+              <br />
+              <b>Tree Index:</b> {hoveredTreeIndex.tree_index}</span>
+            }
+
+            {hoveredTreeIndex.name && 
+            <span>
+              <br />
+              <b>Name:</b> {hoveredTreeIndex.name}
+              </span>
+            }
+
+{hoveredTreeIndex.population && 
+            <span>
+              <br />
+              <b>Population:</b> {hoveredTreeIndex.population}
+              </span>
+            }
+            {hoveredTreeIndex.super_population && 
+            <span>
+              <br />
+              <b>super_population:</b> {hoveredTreeIndex.super_population}
+              </span>
+            }
+          </div>
         </div>
       )}
+
       </View>
       <View id="genome-positions">
       </View>
