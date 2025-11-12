@@ -185,7 +185,7 @@ export default function useFileUpload({
 
       const maxSize = 50 * 1024 * 1024; // 25 MB
       if (file.size > maxSize) {
-        setError(`File "${file.name}" exceeds 25 MB limit.`);
+        setError(`File "${file.name}" exceeds 50 MB limit.`);
         return;
       }
       await uploadFile(file);
