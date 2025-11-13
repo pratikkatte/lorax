@@ -1,5 +1,7 @@
 from google.cloud import storage
+from datetime import datetime, timezone
 from pathlib import Path
+import zoneinfo
 import aiofiles
 import asyncio
 import requests
@@ -33,41 +35,6 @@ async def download_gcs_file(bucket_name: str, blob_path: str, local_path: str):
                     await f.write(chunk)
 
     return Path(local_path)
-
-# def get_public_gcs_dict(bucket_name: str, prefix: str = ""):
-#     """List all objects under a public GCS bucket and return dict {folder: [file_urls]}"""
-#     api_url = f"https://storage.googleapis.com/storage/v1/b/{bucket_name}/o"
-#     params = {"prefix": prefix, "fields": "items(name)"}
-#     resp = requests.get(api_url, params=params)
-#     resp.raise_for_status()
-#     items = resp.json().get("items", [])
-    
-#     result = []
-#     index = -1
-#     project_name = None
-
-#     print("items", items)
-#     for item in items:
-#         name = item["name"]
-#         if not name.endswith("/"):  # skip directory placeholder objects
-#             parts = name.split("/", 1)
-#             if len(parts) == 2:
-#                 folder, filename = parts
-#                 # result.setdefault(folder, []).append(
-#                 #     f"https://storage.googleapis.com/{bucket_name}/{name}"
-#                 # )
-#                 result[index]['files'].append(f"{name.split('/')[-1]}")
-#         else:
-#             project_name = name.split("/")[0]
-#             index += 1
-#             result.append({
-#                 'name': project_name,
-#                 'folder': project_name,
-#                 'description': 'something about the project',
-#                 'files': []
-#             })
-#     return result
-
 
 def get_public_gcs_dict(bucket_name: str, prefix: str = "", allowed_folders: dict[str, str] = {}):
     api_url = f"https://storage.googleapis.com/storage/v1/b/{bucket_name}/o"
@@ -113,5 +80,15 @@ def _upload_file_sync(bucket_name: str, local_path: Path, blob_path: str):
     bucket = client.bucket(bucket_name)
     blob = bucket.blob(blob_path)
     blob.upload_from_filename(str(local_path))
+    blob.custom_time = datetime.utcnow()
+    pacific_tz = zoneinfo.ZoneInfo("America/Los_Angeles")
+    now_pacific = datetime.now(pacific_tz)
+
+    # Convert to UTC (GCS expects UTC timestamps)
+    now_utc = now_pacific.astimezone(timezone.utc)
+
+    # Assign custom_time so GCS lifecycle rule can delete it after 7 days
+    blob.custom_time = now_utc
+    blob.patch()
     # blob.make_public()  # Optional: make public for browser access
-    print(f"✅ Uploaded {local_path.name} to gs://{bucket_name}/{blob_path}")
+    print(f"Uploaded {local_path.name} to gs://{bucket_name}/{blob_path}")
