@@ -72,7 +72,7 @@ const INITIAL_VIEW_STATE = {
   }
 }
 
-  const useView = ({ config, valueRef}) => {
+  const useView = ({ config, valueRef, clickedGenomeInfo}) => {
 
     
   const {globalBpPerUnit, tsconfig, genomeLength} = config;
@@ -108,6 +108,8 @@ const initialState = useMemo(() => {
   };
 }, [genomeLength.current, globalBpPerUnit]);
 
+
+
 // Initialize viewState once from computed initialState
 const [viewState, setViewState] = useState(null);
 
@@ -117,6 +119,10 @@ const [viewState, setViewState] = useState(null);
   const maxZoom = 17;
 
   const [decksize, setDecksize] = useState(null);
+
+  useEffect(() => {
+    console.log("decksize", decksize)
+  }, [decksize])
 
   const updateValueRef = useCallback(() => {
 
@@ -148,6 +154,7 @@ const [viewState, setViewState] = useState(null);
   
     if (!val) return;
     
+    console.log("changeView", decksize, val)
     if (globalBpPerUnit && decksize.width) {
 
       let width = decksize.width;
@@ -179,6 +186,16 @@ const [viewState, setViewState] = useState(null);
       
     }
   }, [globalBpPerUnit, viewState, decksize])
+
+  useEffect(() => {
+
+    if (clickedGenomeInfo) {
+    console.log("clickedGenomeInfo useView", clickedGenomeInfo)
+
+    changeView([clickedGenomeInfo.s, clickedGenomeInfo.e])
+    }
+  }, [clickedGenomeInfo])
+
 
   const views = useMemo(() => {
     return [

@@ -23,7 +23,6 @@ export default class TreeLayer extends CompositeLayer {
     const { bin, viewId, hoveredTreeIndex, populationFilter } = this.props;
     if (!bin || !bin.path) return null
 
-
     return [
       new PathLayer({
         id: `${this.props.id}-path-${bin.global_index}`,

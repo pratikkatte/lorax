@@ -142,6 +142,7 @@ async def handle_upload(file_path):
 
     ts = await get_or_load_ts(file_path)
 
+    print("File loading complete")
     config = await asyncio.to_thread(get_or_load_config, ts, file_path)
     return config, None
 

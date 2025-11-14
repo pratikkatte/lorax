@@ -13,8 +13,9 @@ function Lorax({backend, config, settings, setSettings, project, ucgbMode, statu
   const [hoveredTreeIndex, setHoveredTreeIndex] = useState({path: null, node: null, treeIndex: null}); // this is for knowing which tree is hovered. 
   const deckRef = useRef(); // reference to the deck component. 
   const valueRef = useRef(null);
+  const [clickedGenomeInfo, setClickedGenomeInfo] = useState(null);
 
-  const view = useView({config, valueRef});
+  const view = useView({config, valueRef, clickedGenomeInfo});
 
   return (
     <>
@@ -42,6 +43,8 @@ function Lorax({backend, config, settings, setSettings, project, ucgbMode, statu
               valueRef={valueRef}
               statusMessage={statusMessage}
               setStatusMessage={setStatusMessage}
+              clickedGenomeInfo={clickedGenomeInfo}
+              setClickedGenomeInfo={setClickedGenomeInfo}
             />
 
           </div>

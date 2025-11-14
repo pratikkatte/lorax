@@ -112,7 +112,7 @@ const ViewportOverlay = React.memo(() => (
   </>
 ));
 
-const GenomeVisualization = React.memo(({ pointsArray, skipArray }) => (
+const GenomeVisualization = React.memo(({ pointsArray }) => (
   <svg
     style={{
       position: 'absolute',
@@ -120,16 +120,17 @@ const GenomeVisualization = React.memo(({ pointsArray, skipArray }) => (
       left: 0,
       width: '100%',
       height: '100%',
-      pointerEvents: 'none'
+      pointerEvents: 'none',
     }}
   >
     {pointsArray?.map((points, idx) => (
-      <polygon
-        key={idx}
-        points={points.map(([x, y]) => `${x},${y}`).join(" ")}
-        fill="rgba(145, 194, 244, 0.18)"
-        // stroke="rgba(0,0,0,0.3)"
-      />
+      <React.Fragment key={idx}>
+        <polygon
+          points={points.map(([x, y]) => `${x},${y}`).join(' ')}
+          fill="rgba(145, 194, 244, 0.18)"
+          // stroke="rgba(0,0,0,0.3)"
+        />
+      </React.Fragment>
     ))}
   </svg>
 ));
@@ -147,48 +148,69 @@ function Deck({
   valueRef,
   statusMessage,
   setStatusMessage,
+  clickedGenomeInfo,
+  setClickedGenomeInfo
 }) {
 
   const {tsconfig, globalBpPerUnit, populations, populationFilter, pathArray} = config;
-
-  
   const saveViewports = useRef({});
-  const clickedTree = useRef(null);
+  const {views, xzoom, viewState, handleViewStateChange, decksize, setDecksize, changeView} = view
 
-  const {views, xzoom, viewState, handleViewStateChange, decksize, setDecksize} = view
+  const [hoveredGenomeInfo, setHoveredGenomeInfo] = useState(null);
 
   const {queryDetails} = backend;
 
   const regions = useRegions({backend, viewState, valueRef, saveViewports: saveViewports.current, globalBpPerUnit, tsconfig, setStatusMessage, xzoom});
 
   const onClickOrMouseMove = useCallback(
-    (event) => {
-      const reactEvent = event;
-      if (event.buttons === 0 && reactEvent._reactName === "onPointerMove") {
-
-        return false;
-      }
-      const pickInfo = deckRef.current?.pickObject({
-        x: event.nativeEvent.offsetX,
-        y: event.nativeEvent.offsetY,
-        radius: 10,
-      });
-
+    (info, event) => {
+      const isClick = event.type === "click";
+      const isHover = !isClick;      
       if (
-        pickInfo &&
-        pickInfo.viewport?.id === "ortho" &&
-        reactEvent._reactName === "onClick"
+        info && isClick
       ) {
-        if (pickInfo.layer.id.includes("main")) {
-          console.log("clickedTree", clickedTree.current)
-          if (clickedTree.current?.treeIndex) {
-            queryDetails(clickedTree.current)
-          }
+        if (info.layer.id.includes("main")) {
+          const data = {treeIndex: info.layer?.props?.bin?.global_index, node: info.object?.name}
+          queryDetails(data)
+        }
+        else if (info.layer.id.includes("genome-info")) {
+
+          const {bins} = regions;
+          console.log("clicked genome info", info.object, bins)
+          setClickedGenomeInfo(info.object)
+
         }
       }
-    },
-    [clickedTree.current]
-  )
+      if (isHover) {
+        if(info.object) {
+
+          if (info.layer.id.includes("main")) {
+          const { srcEvent } = event;
+            const x = srcEvent.clientX;
+            const y = srcEvent.clientY;
+
+            const sample_population_id = populations?.nodes_population[parseInt(info.object?.name)];
+            const sample_population = populations?.populations[sample_population_id]
+            const tree_index = info.layer?.props?.bin?.global_index
+            if (tree_index) {
+              setHoveredTreeIndex({tree_index: tree_index, path: info.object?.path, name: info.object?.name, center: [x, y], 'population':sample_population?.['population'], 'super_population':sample_population?.['super_population']})
+            }
+          }
+
+          else if (info.layer.id.includes("genome-info")) {
+            setHoveredGenomeInfo(info.object.global_index)
+          }
+          else{
+            setHoveredGenomeInfo(null)
+            setHoveredTreeIndex(null)
+          }
+        }
+        else{
+          setHoveredTreeIndex(null)
+          setHoveredGenomeInfo(null)
+        }
+      }
+    },[])
  
     const { layers, layerFilter } = useLayers({
       xzoom,
@@ -201,6 +223,7 @@ function Deck({
       setHoveredTreeIndex,
       populations,
       populationFilter,
+      hoveredGenomeInfo,
     });
 
 
@@ -223,9 +246,10 @@ function Deck({
       if (!(bins instanceof Map)) return;
   
       // Iterate directly over map entries — much faster than Object.values()
+
       for (const [key, b] of bins) {
         if (!b?.visible) continue;
-  
+       
         const modelMatrix = b.modelMatrix;
         const coords_s = [b.s / globalBpPerUnit, 0];
         const coords_e = [b.e / globalBpPerUnit, 0];
@@ -271,9 +295,6 @@ useEffect(() => {
       const vpOrtho = deck.getViewports().find(v => v.id === 'ortho');
 
       if (!vpGenome || !vpOrtho) return;
-
-
-      
       saveViewports.current = {
         'ortho': vpOrtho,
         'genome-positions': vpGenome
@@ -281,37 +302,14 @@ useEffect(() => {
       }, [deckRef, tsconfig])
 
   return (
-    <div className="w-full"
-    onClick={onClickOrMouseMove}
-    // onPointerMove={onClickOrMouseMove}
-    // onPointerDown={onClickOrMouseMove}
-    > 
+    <div className="w-full"> 
     <>
-    <div className="w-full h-full flex justify-center items-center relative">
+    <div className="w-full h-full flex justify-center items-center relative" 
+    >
     <DeckGL
       ref={deckRef}
-      onHover={(info, event) => {
-        if(info.object) {
-          const { srcEvent } = event;
-        const x = srcEvent.clientX;
-        const y = srcEvent.clientY;
-
-
-        const sample_population_id = populations?.nodes_population[parseInt(info.object?.name)];
-        const sample_population = populations?.populations[sample_population_id]
-        const tree_index = info.layer?.props?.bin?.global_index
-        console.log("tree_index", tree_index)
-        if (tree_index) {
-          setHoveredTreeIndex({tree_index: tree_index, path: info.object?.path, name: info.object?.name, center: [x, y], 'population':sample_population?.['population'], 'super_population':sample_population?.['super_population']})
-        }
-        }
-        else {
-          setHoveredTreeIndex(null)
-        }
-      }}
-      onClick={(info, event) => {
-        clickedTree.current = {treeIndex: info.layer?.props?.bin?.global_index, node: info.object?.name}
-      }}
+      onHover={onClickOrMouseMove}
+      onClick={onClickOrMouseMove}
       pickingRadius={10}
       layers={layers}
       layerFilter={layerFilter}
@@ -326,7 +324,7 @@ useEffect(() => {
       <View id="ortho">
         {/* {no_data && <LoadingSpinner />} */}
       {dummy && dummy.pointsArray.length > 0 && (
-              <GenomeVisualization pointsArray={dummy.pointsArray} skipArray={dummy.skipArray} />
+              <GenomeVisualization pointsArray={dummy.pointsArray} />
             )}
             {statusMessage?.status === "loading" && <LoraxMessage status={statusMessage.status} message={statusMessage.message} />}
 
