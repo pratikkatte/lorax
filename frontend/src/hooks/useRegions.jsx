@@ -61,6 +61,7 @@ const useRegions = ({ backend, valueRef, globalBpPerUnit, tsconfig, setStatusMes
       const [lo, hi] = val;
       // const zoom = viewState["ortho"]?.zoom?.[0] ?? 8;
       const zoom = xzoom ?? 8;
+
       const new_globalBp = getDynamicBpPerUnit(globalBpPerUnit, zoom);
 
       isFetching.current = true;
@@ -115,12 +116,12 @@ const useRegions = ({ backend, valueRef, globalBpPerUnit, tsconfig, setStatusMes
       setStatusMessage(null);
       isFetching.current = false;
     }, 400, { leading: false, trailing: true }),
-    [isFetching.current, valueRef.current]
+    [isFetching.current, valueRef.current, xzoom]
   );
 
   useEffect(() => {
     if (valueRef.current) debouncedQuery(valueRef.current);
-  }, [valueRef.current]);
+  }, [valueRef.current, xzoom]);
 
   useEffect(() => () => debouncedQuery.cancel(), [debouncedQuery]);
 

@@ -42,7 +42,6 @@ export class GenomeInfoLayer extends CompositeLayer {
 
     if (binArray.length === 0) return [];
 
-
     const visbile_data = Array.from(data.values()).filter(d => d.visible).map(b => ({"s": b.position,"global_index":b.global_index, "e": (b.position + b.span)}));
 
     return [

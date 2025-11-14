@@ -154,7 +154,6 @@ const [viewState, setViewState] = useState(null);
   
     if (!val) return;
     
-    console.log("changeView", decksize, val)
     if (globalBpPerUnit && decksize.width) {
 
       let width = decksize.width;
@@ -163,6 +162,8 @@ const [viewState, setViewState] = useState(null);
       let spacing = 0;
       const Z = Math.log2(width / (x1 - x0))
       const target = ((x1+spacing)+(x0+spacing))/2;
+
+      setXzoom(Z)
       setViewState((prev) => {      
         return {
           ...prev,
