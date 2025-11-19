@@ -74,12 +74,12 @@ const INITIAL_VIEW_STATE = {
 
   const useView = ({ config, valueRef, clickedGenomeInfo}) => {
 
-    
   const {globalBpPerUnit, tsconfig, genomeLength} = config;
 
   const [zoomAxis, setZoomAxis] = useState("Y");
   const [panDirection, setPanDirection] = useState(null);
   const [xzoom, setXzoom] = useState(window.screen.width < 600 ? -1 : -3);
+  const [yzoom, setYzoom] = useState(8);
   const xStopZoomRef = useRef(false);
 
   const [isRendered, setIsRendered] = useState(false);
@@ -108,15 +108,11 @@ const initialState = useMemo(() => {
   };
 }, [genomeLength.current, globalBpPerUnit]);
 
-
-
 // Initialize viewState once from computed initialState
 const [viewState, setViewState] = useState(null);
 
   globalSetZoomAxis = setZoomAxis;
   globalPanDirection = setPanDirection;
-
-  const maxZoom = 17;
 
   const [decksize, setDecksize] = useState(null);
 
@@ -160,6 +156,7 @@ const [viewState, setViewState] = useState(null);
       const target = ((x1+spacing)+(x0+spacing))/2;
 
       setXzoom(Z)
+
       setViewState((prev) => {      
         return {
           ...prev,
@@ -380,7 +377,7 @@ const [viewState, setViewState] = useState(null);
       };
 
       setXzoom(zoom[0])
-
+      setYzoom(zoom[1])
       if (prev['genome-positions']) {
         newViewStates['genome-positions'] = {
           ...prev['genome-positions'],
@@ -491,7 +488,9 @@ const stopPan = useCallback(() => {
       decksize,
       setDecksize,
       viewReset,
-      genomicValues
+      genomicValues,
+      yzoom,
+      setYzoom
     };
   }, [
     viewState,
@@ -510,7 +509,9 @@ const stopPan = useCallback(() => {
    decksize,
    setDecksize,
    viewReset,
-   genomicValues
+   genomicValues,
+   yzoom,
+   setYzoom
   ]);
 
   return output;

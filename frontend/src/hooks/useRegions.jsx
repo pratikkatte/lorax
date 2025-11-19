@@ -35,7 +35,7 @@ function getDynamicBpPerUnit(globalBpPerUnit, zoom, baseZoom = 8) {
 
 
 // useRegions Hook
-const useRegions = ({ backend, valueRef, globalBpPerUnit, tsconfig, setStatusMessage, xzoom }) => {
+const useRegions = ({ backend, valueRef, globalBpPerUnit, tsconfig, setStatusMessage, xzoom, yzoom }) => {
   const { queryNodes, queryLocalBins } = backend;
 
   const [localBins, setLocalBins] = useState(null);
@@ -133,24 +133,55 @@ const useRegions = ({ backend, valueRef, globalBpPerUnit, tsconfig, setStatusMes
     return getLocalCoordinates(lo - bufferFrac * range, hi + bufferFrac * range);
   }, [valueRef.current]);
 
+  // useEffect(() => {
+  //   if (tsconfig && tsconfig?.times){
+  //     setTimes((prev) => {
+  //       let newTime = [];
+  //       const maxTime = tsconfig.times[1];
+  //       const minTime = tsconfig.times[0];
+  //       for (let i = tsconfig.times[1]; i >= minTime; i--){
+  //         if (i % 500 == 0) {
+  //         let position = (maxTime - i) / (maxTime - minTime);
+  //         newTime.push({position, text: i})
+  //         }
+
+  //     }
+  //     // console.log('newTime', newTime);
+  //     return newTime;
+  //   })
+  //   }
+  // }, [tsconfig]);
+
   useEffect(() => {
-    if (tsconfig && tsconfig?.times){
+    if (tsconfig && tsconfig?.times) {
       setTimes((prev) => {
         let newTime = [];
         const maxTime = tsconfig.times[1];
         const minTime = tsconfig.times[0];
-        for (let i = tsconfig.times[1]; i >= minTime; i--){
-          if (i % 500 == 0) {
-          let position = (maxTime - i) / (maxTime - minTime);
-          newTime.push({position, text: i})
-          }
 
-      }
-      // console.log('newTime', newTime);
-      return newTime;
-    })
+        // Calculate step size based on xzoom value
+        // Finer steps for higher zoom (smaller intervals)
+        let step;
+
+        if (yzoom >= 18) step = 1;
+        else if (yzoom >= 16) step = 5;
+        else if (yzoom >= 14) step = 10;
+        else if (yzoom >= 12) step = 50;
+        else if (yzoom >= 10) step = 100;
+        else if (yzoom >= 8) step = 500;
+        else if (yzoom >= 5) step = 1000;
+        else step = 1000;
+
+        for (let i = maxTime; i >= minTime; i--) {
+          if (i % step === 0) {
+            let position = (maxTime - i) / (maxTime - minTime);
+            newTime.push({ position, text: i });
+          }
+        }
+        return newTime;
+      });
     }
-  }, [tsconfig]);
+  }, [tsconfig, yzoom]);
 
   return useMemo(() => ({
     bins: localBins,

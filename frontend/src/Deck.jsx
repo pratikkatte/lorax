@@ -154,13 +154,13 @@ function Deck({
 
   const {tsconfig, globalBpPerUnit, populations, populationFilter} = config;
   const saveViewports = useRef({});
-  const {views, xzoom, viewState, handleViewStateChange, setDecksize} = view
+  const {views, xzoom, viewState, handleViewStateChange, setDecksize, yzoom} = view
 
   const [hoveredGenomeInfo, setHoveredGenomeInfo] = useState(null);
 
   const {queryDetails} = backend;
 
-  const regions = useRegions({backend, viewState, valueRef, saveViewports: saveViewports.current, globalBpPerUnit, tsconfig, setStatusMessage, xzoom});
+  const regions = useRegions({backend, viewState, valueRef, saveViewports: saveViewports.current, globalBpPerUnit, tsconfig, setStatusMessage, xzoom, yzoom});
 
   const onClickOrMouseMove = useCallback(
     (info, event) => {
