@@ -16,6 +16,7 @@ echo "Redis started successfully"
 
 export LORAX_ENV='prod'
 export REDIS_URL='redis://127.0.0.1:6379/0'
+export ALLOWED_ORIGINS='http://localhost:5173,https://lorax.in'
 
 
 redis-cli CONFIG SET client-output-buffer-limit "pubsub 512mb 256mb 60"
@@ -23,7 +24,8 @@ redis-cli CONFIG SET client-output-buffer-limit "pubsub 512mb 256mb 60"
 
 # Start backend (Gunicorn)
 echo "[INFO] Starting Gunicorn (FastAPI backend)..."
-gunicorn -c /app/gunicorn_config.py lorax.lorax_app:sio_app &
+# gunicorn -c /app/gunicorn_config.py lorax.lorax_app:sio_app &
+uvicorn lorax.lorax_app:sio_app --host 0.0.0.0 --port 8080 --workers 4 &
 BACKEND_PID=$!
 
 # Start Nginx (frontend proxy)

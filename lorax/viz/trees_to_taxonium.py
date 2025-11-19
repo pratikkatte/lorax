@@ -135,10 +135,11 @@ def new_tree_samples(tree_indexes, ts, n_jobs=4):
 #             continue
     
 #     return tree_dict
+import time
 
 def old_new_tree_samples(tree_indexes, ts):
-    from operator import attrgetter
 
+    start_timer = time.time()
     tree_dict = []
 
     # Precompute populations (same across trees)
@@ -150,9 +151,6 @@ def old_new_tree_samples(tree_indexes, ts):
     # Pre-bind functions for speed (avoids repeated attribute lookups)
     ts_node = ts.node
     ts_at_index = ts.at_index
-    ts_at = ts.at
-    Node_time = attrgetter("time")
-    Node_id = attrgetter("id")
 
     min_time, max_time = ts.min_time, -ts.max_time
 
@@ -203,4 +201,6 @@ def old_new_tree_samples(tree_indexes, ts):
             print(f"[WARN] Error at tree index {t}: {e}")
             continue
 
+    end_timer = time.time()
+    print(f"Time taken: {end_timer - start_timer} seconds")
     return tree_dict
