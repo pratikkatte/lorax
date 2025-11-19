@@ -24,8 +24,7 @@ redis-cli CONFIG SET client-output-buffer-limit "pubsub 512mb 256mb 60"
 
 # Start backend (Gunicorn)
 echo "[INFO] Starting Gunicorn (FastAPI backend)..."
-# gunicorn -c /app/gunicorn_config.py lorax.lorax_app:sio_app &
-uvicorn lorax.lorax_app:sio_app --host 0.0.0.0 --port 8080 --workers 4 &
+gunicorn -c /app/gunicorn_config.py lorax.lorax_app:sio_app &
 BACKEND_PID=$!
 
 # Start Nginx (frontend proxy)
