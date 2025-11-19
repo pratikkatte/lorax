@@ -74,7 +74,7 @@ function useConfig({backend, setStatusMessage, timeRef}) {
       
       setPopulations({'populations': assignUniqueColors(data.populations), 'nodes_population': data.nodes_population});
 
-      let number_of_intervals = Object.keys(data.new_intervals).length;
+      let number_of_intervals = data.intervals.length
       setGlobalBpPerUnit(data.genome_length/(number_of_intervals));
       pathArray.current = Array(number_of_intervals).fill(null);
 

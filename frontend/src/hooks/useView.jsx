@@ -120,10 +120,6 @@ const [viewState, setViewState] = useState(null);
 
   const [decksize, setDecksize] = useState(null);
 
-  useEffect(() => {
-    console.log("decksize", decksize)
-  }, [decksize])
-
   const updateValueRef = useCallback(() => {
 
     if (!viewState) return;

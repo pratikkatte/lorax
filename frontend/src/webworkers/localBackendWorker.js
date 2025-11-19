@@ -158,7 +158,8 @@ async function getLocalData(start, end, globalBpPerUnit, nTrees, new_globalBp) {
   // ────────────────────────────────
   const addBins = (lo, hi) => {
     for (let i = lo; i <= hi; i++) {
-      const temp_bin = tsconfig.new_intervals[intervalKeys[i]];
+      const temp_bin = tsconfig.intervals[i];
+      // const temp_bin = tsconfig.new_intervals[intervalKeys[i]];
       if (!temp_bin) continue;
       local_bins.set(i, {
         s: temp_bin[0],
@@ -168,13 +169,6 @@ async function getLocalData(start, end, globalBpPerUnit, nTrees, new_globalBp) {
       });
     }
   };
-
-  const deleteBins = (lo, hi) => {
-    for (let i = lo; i <= hi; i++) {
-      local_bins.delete(i);
-    }
-  };
-
   // ────────────────────────────────
   // Region management (no per-key delete)
   // ────────────────────────────────
@@ -188,20 +182,12 @@ async function getLocalData(start, end, globalBpPerUnit, nTrees, new_globalBp) {
     // Non-overlapping → rebuild completely
     addBins(lower_bound, upper_bound);
   } else {
-
-    // if (lower_bound > lastStart) {
-    //   console.log("delete bins lower", lastStart, lower_bound - 1);
-    //   // deleteBins(lastStart, lower_bound - 1);
-    // }
-    // if (upper_bound < lastEnd) {
-    //   console.log("delete bins upper", upper_bound + 1, lastEnd);
-    //   // deleteBins(upper_bound + 1, lastEnd);
-    // }
     // Overlapping → reuse bins where possible
     for (let i = lower_bound; i <= upper_bound; i++) {
       if (!newLocalBins.has(i)) {
 
-        const temp_bin = tsconfig.new_intervals[intervalKeys[i]];
+        const temp_bin = tsconfig.intervals[i];
+        // const temp_bin = tsconfig.new_intervals[intervalKeys[i]];
         if (temp_bin) {
           local_bins.set(i, {
             s: temp_bin[0],
@@ -232,9 +218,11 @@ export const queryConfig = async (data) => {
   
   try {
     tsconfig = data.data;
-    intervalKeys = Object.keys(tsconfig.new_intervals)
-    .map(Number)
 
+    // intervalKeys = Object.keys(tsconfig.new_intervals).map(Number)
+
+    intervalKeys = tsconfig.intervals.map(interval => interval[0]);
+    
     return;
   } catch (error) {
     console.log("error", error);

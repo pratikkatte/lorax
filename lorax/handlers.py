@@ -108,8 +108,8 @@ async def handle_query(file_path, localTrees):
         return json.dumps({"error": f"Error processing query: {str(e)}"})
 
 def get_config(ts, file_path):
-    new_intervals = {int(tree.interval[0]): [int(tree.interval[0]), int(tree.interval[1])] for tree in ts.trees()}
-    ts_intervals = new_intervals
+    # new_intervals = {int(tree.interval[0]): [int(tree.interval[0]), int(tree.interval[1])] for tree in ts.trees()}
+    intervals = [[int(tree.interval[0]), int(tree.interval[1])] for tree in ts.trees()]
     times = [ts.min_time, ts.max_time]
     populations = {}
 
@@ -123,7 +123,7 @@ def get_config(ts, file_path):
     # nodes_population = [n.population for n in ts.nodes()]
     nodes_population = [ts.node(n).population for n in ts.samples()]
 
-    config = {'genome_length': ts.sequence_length, 'times':times, 'new_intervals':new_intervals,'filename': str(file_path).split('/')[-1], 'populations':populations, 'nodes_population':nodes_population}
+    config = {'genome_length': ts.sequence_length, 'times':times, 'intervals':intervals,'filename': str(file_path).split('/')[-1], 'populations':populations, 'nodes_population':nodes_population}
     return config
 
 def get_local_uploads(upload_dir, sid):
