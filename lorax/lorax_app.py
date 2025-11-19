@@ -155,7 +155,6 @@ else:
 
 sio_app = socketio.ASGIApp(sio, other_asgi_app=app)
 
-
 @app.get("/health")
 async def healthz():
     if USE_REDIS:
@@ -170,7 +169,6 @@ async def favicon():
 @app.get("/")
 async def root():
     return Response(content="Lorax Backend is running", media_type="text/html")
-
 
 @app.post("/init-session")
 async def init_session(request: Request, response: Response):
@@ -194,7 +192,6 @@ async def projects(request: Request, response: Response):
                 allowed_folders= {'1000Genomes': '1000Genomes'}
                 )
             # local_uploads = get_local_uploads(UPLOAD_DIR) # TODO: to get local uploads
-
     else:
         projects = await get_projects(UPLOAD_DIR)
 
@@ -262,9 +259,7 @@ async def upload(request: Request, response: Response, file: UploadFile = File(.
 @app.post('/load_file')
 async def load_file(request: Request, response: Response):
     """Reload an existing file for this session."""
-
     start = time.time()
-        
     sid, session = await get_or_create_session(request, response)
     data = await request.json()
     project = data.get("project")
@@ -272,16 +267,16 @@ async def load_file(request: Request, response: Response):
 
     if not filename:
         return JSONResponse(status_code=400, content={"error": "Missing 'file'."})
-    
+
     if project == 'uploads':
         file_path = UPLOAD_DIR / sid / filename
     else:
         file_path = UPLOAD_DIR / project / filename
         if BUCKET_NAME:
-            print(f"Downloading file {project}/{filename} from {BUCKET_NAME}")
             if file_path.exists():
                 print(f"File {file_path} already exists, skipping download.")
             else:
+                print(f"Downloading file {project}/{filename} from {BUCKET_NAME}")
                 await download_gcs_file(BUCKET_NAME, f"{project}/{filename}", str(file_path))
         else:
             print("using gcs mount point")

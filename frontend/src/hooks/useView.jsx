@@ -312,8 +312,10 @@ const [viewState, setViewState] = useState(null);
       let panStep = 0;
       if(panDirection === null) { 
         if(zoomAxis==='Y'){
-          zoom[1] = newViewState.zoom[1] <= maxZoom ? newViewState.zoom[1] : maxZoom; 
-          target[1] = zoom[1] >= maxZoom ? oldViewState.target[1] : newViewState.target[1]; 
+          // zoom[1] = newViewState.zoom[1] <= maxZoom ? newViewState.zoom[1] : maxZoom;
+          zoom[1] = newViewState.zoom[1];
+          // target[1] = zoom[1] >= maxZoom ? oldViewState.target[1] : newViewState.target[1]; 
+          target[1] = newViewState.target[1];
           zoom[0] = oldViewState.zoom[0];
           target[0] = oldViewState.target[0];
         }
@@ -321,9 +323,11 @@ const [viewState, setViewState] = useState(null);
           if (xStopZoomRef.current) {
             zoom[0] = oldViewState.zoom[0];
           } else {
-          zoom[0] = newViewState.zoom[0] <= maxZoom ? newViewState.zoom[0] : maxZoom; 
+          // zoom[0] = newViewState.zoom[0] <= maxZoom ? newViewState.zoom[0] : maxZoom; 
+          zoom[0] = newViewState.zoom[0];
         }
-        target[0] = zoom[0] >= maxZoom ? oldViewState.target[0] : newViewState.target[0]; 
+        // target[0] = zoom[0] >= maxZoom ? oldViewState.target[0] : newViewState.target[0]; 
+        target[0] = newViewState.target[0];
           zoom[1] = oldViewState.zoom[1];
           target[1] = oldViewState.target[1];
         }

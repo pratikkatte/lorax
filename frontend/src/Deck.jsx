@@ -152,9 +152,9 @@ function Deck({
   setClickedGenomeInfo
 }) {
 
-  const {tsconfig, globalBpPerUnit, populations, populationFilter, pathArray} = config;
+  const {tsconfig, globalBpPerUnit, populations, populationFilter} = config;
   const saveViewports = useRef({});
-  const {views, xzoom, viewState, handleViewStateChange, decksize, setDecksize, changeView} = view
+  const {views, xzoom, viewState, handleViewStateChange, setDecksize} = view
 
   const [hoveredGenomeInfo, setHoveredGenomeInfo] = useState(null);
 
@@ -185,6 +185,7 @@ function Deck({
         if(info.object) {
 
           if (info.layer.id.includes("main")) {
+
           const { srcEvent } = event;
             const x = srcEvent.clientX;
             const y = srcEvent.clientY;
