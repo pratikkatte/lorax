@@ -547,8 +547,10 @@ function kn_reorder_num_tips(root) {
  function kn_global_calxy(tree, globalMinTime = null, globalMaxTime = null, startTime = 0) {
   let i, j, scale;
 
+
   let is_real = true;
-  if (!startTime) is_real = false;
+  // if (!startTime) is_real = false;
+
   // --------- Y COORDINATES ---------
   scale = tree.n_tips - 1;
   for (i = j = 0; i < tree.node.length; ++i) {
@@ -577,6 +579,8 @@ function kn_reorder_num_tips(root) {
     }
 
     if (scale === 0.0) is_real = false;
+
+    if (!startTime) startTime = -1*(scale-1);
   }
 
   if (!is_real) {
