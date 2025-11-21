@@ -116,12 +116,12 @@ const useRegions = ({ backend, valueRef, globalBpPerUnit, tsconfig, setStatusMes
       setStatusMessage(null);
       isFetching.current = false;
     }, 400, { leading: false, trailing: true }),
-    [isFetching.current, valueRef.current, xzoom, genomicValues]
+    [isFetching.current, valueRef.current, xzoom]
   );
 
   useEffect(() => {
     if (valueRef.current) debouncedQuery(valueRef.current);
-  }, [valueRef.current, xzoom, genomicValues]);
+  }, [valueRef.current, xzoom]);
 
   useEffect(() => () => debouncedQuery.cancel(), [debouncedQuery]);
 

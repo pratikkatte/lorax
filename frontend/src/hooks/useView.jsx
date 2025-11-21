@@ -109,7 +109,7 @@ const initialState = useMemo(() => {
     'tree-time': INITIAL_VIEW_STATE['tree-time'],
   };
 
-}, [genomeLength.current, globalBpPerUnit, xzoom, yzoom]);
+}, [genomeLength.current, globalBpPerUnit]);
 
 // Initialize viewState once from computed initialState
 const [viewState, setViewState] = useState(null);
@@ -143,7 +143,7 @@ const [viewState, setViewState] = useState(null);
       }       
       return newValue;
     }
-  }, [globalBpPerUnit, viewState, tsconfig, xzoom, yzoom]);
+  }, [globalBpPerUnit, viewState, tsconfig]);
 
   const changeView = useCallback((val) => {
   
@@ -405,7 +405,7 @@ const [viewState, setViewState] = useState(null);
       return newViewStates;
     });
     
-  }, [zoomAxis, panDirection, tsconfig, xStopZoomRef, decksize, genomicValues, xzoom, yzoom])
+  }, [zoomAxis, panDirection, tsconfig, xStopZoomRef, decksize, genomicValues])
 
   const panInterval = useRef(null);
 

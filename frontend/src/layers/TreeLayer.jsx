@@ -78,7 +78,7 @@ export default class TreeLayer extends CompositeLayer {
           if (populationFilter.enabledValues.includes(sample_population)) {
             return id_populations[sample_population].color
           } else {
-            return [200, 200, 200, 100]
+            return [0, 0, 0, 255]
           }
         },
         getLineColor: [80, 80, 180, 255],
