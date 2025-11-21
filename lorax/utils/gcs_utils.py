@@ -36,7 +36,7 @@ async def download_gcs_file(bucket_name: str, blob_path: str, local_path: str):
 
     return Path(local_path)
 
-def get_public_gcs_dict(bucket_name: str, prefix: str = "", allowed_folders: dict[str, str] = {}):
+def get_public_gcs_dict(bucket_name: str, prefix: str = "", allowed_folders = {}):
     api_url = f"https://storage.googleapis.com/storage/v1/b/{bucket_name}/o"
     params = {"prefix": prefix, "fields": "items(name)"}
     resp = requests.get(api_url, params=params)
@@ -52,9 +52,8 @@ def get_public_gcs_dict(bucket_name: str, prefix: str = "", allowed_folders: dic
             if filename != '' and folder in allowed_folders.keys(): grouped.setdefault(folder, []).append(filename)
         # else:
             # grouped.setdefault("root", []).append(parts[0])
-
     return {
-        allowed_folders[k]: {"folder": k, "files": v, "description": 'something about the project'} for k, v in grouped.items()
+        allowed_folders[k][0]: {"folder": k, "files": v, "description": allowed_folders[k][1]} for k, v in grouped.items()
         }
 
 

@@ -21,7 +21,7 @@ const StatusMessage = React.memo(({status, message}) => (
   </div>
 ));
 
-const ViewportOverlay = React.memo(() => (
+const ViewportOverlay = React.memo(({is_time}) => (
   <>
     {/* Outer border */}
     <div
@@ -106,7 +106,7 @@ const ViewportOverlay = React.memo(() => (
           letterSpacing: '2px',
         }}
       >
-        Coalescent time 
+      {is_time ? "Coalescent time" : "No Time Data"}
       </div>
     </div>
   </>
@@ -142,25 +142,22 @@ function Deck({
   deckRef,
   hoveredTreeIndex,
   setHoveredTreeIndex,
-  settings,
   config,
-  setViewPortCoords,
   valueRef,
   statusMessage,
   setStatusMessage,
-  clickedGenomeInfo,
   setClickedGenomeInfo
 }) {
 
   const {tsconfig, globalBpPerUnit, populations, populationFilter} = config;
   const saveViewports = useRef({});
-  const {views, xzoom, viewState, handleViewStateChange, setDecksize, yzoom} = view
+  const {views, xzoom, viewState, handleViewStateChange, setDecksize, yzoom, genomicValues} = view
 
   const [hoveredGenomeInfo, setHoveredGenomeInfo] = useState(null);
 
   const {queryDetails} = backend;
 
-  const regions = useRegions({backend, viewState, valueRef, saveViewports: saveViewports.current, globalBpPerUnit, tsconfig, setStatusMessage, xzoom, yzoom});
+  const regions = useRegions({backend, viewState, valueRef, saveViewports: saveViewports.current, globalBpPerUnit, tsconfig, setStatusMessage, xzoom, yzoom, genomicValues});
 
   const onClickOrMouseMove = useCallback(
     (info, event) => {
@@ -264,6 +261,8 @@ function Deck({
           modelMatrix[12] + modelMatrix[0],
           1,
         ]);
+
+        // console.log("modelMatrix", modelMatrix, b.global_index);
   
         pointsArray.push([
           [x0, y1 * 0.1],
@@ -385,7 +384,7 @@ useEffect(() => {
       <View id="genome-positions">
       </View>
     </DeckGL>
-    <ViewportOverlay />
+    <ViewportOverlay is_time={tsconfig?.times ? true : false}/>
     </div>
     </>
   

@@ -1,13 +1,14 @@
 # handlers.py
 import json
 # from lorax.chat.langgraph_tskit import api_interface
-from lorax.viz.trees_to_taxonium import new_tree_samples,old_new_tree_samples
+from lorax.viz.trees_to_taxonium import old_new_tree_samples, process_csv
 import tskit
 import tszip
 import numpy as np
 import os
 import asyncio
-import psutil,sys
+import psutil
+import pandas as pd
 
 _cache_lock = asyncio.Lock()
 
@@ -58,7 +59,15 @@ async def get_or_load_ts(file_path):
             return ts
         print(f"📂 Loading tree sequence from: {file_path}")
         try:
-            ts = await asyncio.to_thread(lambda: tszip.load(file_path) if file_path.endswith('.tsz') else tskit.load(file_path))
+            def choose_file_loader(fp):
+                if fp.endswith('.tsz'):
+                    return tszip.load(fp)
+                elif fp.endswith('.trees'):
+                    return tskit.load(fp)
+                else:
+                    return pd.read_csv(fp)
+
+            ts = await asyncio.to_thread(choose_file_loader, file_path)
             _ts_cache.set(file_path, ts)
             return ts
         except Exception as e:
@@ -71,7 +80,10 @@ def get_or_load_config(ts, file_path):
         print(f"✅ Using cached config: {file_path}")
         return config
 
-    config = get_config(ts, file_path)
+    if file_path.endswith('.tsz') or file_path.endswith('.trees'):
+        config = get_config(ts, file_path)
+    else:
+        config = get_config_csv(ts, file_path)
     _config_cache.set(file_path, config)
     return config
 
@@ -98,7 +110,11 @@ async def handle_query(file_path, localTrees):
     if ts is None:
         return json.dumps({"error": "Tree sequence (ts) is not set. Please upload a file first. Or file_path is not valid or not found."})
     try:
-        tree_dict = await asyncio.to_thread(old_new_tree_samples, localTrees, ts)
+        if file_path.endswith('.tsz') or file_path.endswith('.trees'):
+            tree_dict = await asyncio.to_thread(old_new_tree_samples, localTrees, ts)
+        else:
+            tree_dict = await asyncio.to_thread(process_csv, ts, localTrees)
+        # tree_dict = await asyncio.to_thread(old_new_tree_samples, localTrees, ts)
         data = json.dumps({
             "tree_dict": tree_dict
             })
@@ -106,6 +122,35 @@ async def handle_query(file_path, localTrees):
     except Exception as e:
         print("Error in handle_query", e)
         return json.dumps({"error": f"Error processing query: {str(e)}"})
+
+def get_config_csv(df, file_path, window_size=50000):
+    # Ensure all numeric types are converted to native Python ints for JSON serializability
+    genome_length = int(df['genomic_positions'].max())
+    times = None ## Hard Coded here
+
+    intervals = []
+    for _, row in df.iterrows():
+        # Get the next row's genomic position if available, otherwise use current + window_size
+        current_pos = int(row['genomic_positions'])
+        next_row = row.name + 1  # rely on DataFrame index (assumes default integer)
+        if next_row < len(df):
+            next_pos = int(df.iloc[next_row]['genomic_positions'])
+        else:
+            next_pos = current_pos + window_size
+        intervals.append([current_pos, next_pos])
+
+    populations = {}
+    nodes_population = []
+    config = {
+        'genome_length': genome_length,
+        'times': times,
+        'intervals': intervals,
+        'filename': str(file_path).split('/')[-1],
+        'populations': populations,
+        'nodes_population': nodes_population
+    }
+    return config
+
 
 def get_config(ts, file_path):
     # new_intervals = {int(tree.interval[0]): [int(tree.interval[0]), int(tree.interval[1])] for tree in ts.trees()}

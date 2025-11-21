@@ -544,9 +544,11 @@ function kn_reorder_num_tips(root) {
  ***** Functions for plotting a tree *****
  *****************************************/
 
- function kn_global_calxy(tree, is_real, globalMinTime = null, globalMaxTime = null, startTime = 0) {
+ function kn_global_calxy(tree, globalMinTime = null, globalMaxTime = null, startTime = 0) {
   let i, j, scale;
 
+  let is_real = true;
+  if (!startTime) is_real = false;
   // --------- Y COORDINATES ---------
   scale = tree.n_tips - 1;
   for (i = j = 0; i < tree.node.length; ++i) {
@@ -578,6 +580,7 @@ function kn_reorder_num_tips(root) {
   }
 
   if (!is_real) {
+    
     scale = tree.node[tree.node.length - 1].x = 1.0;
 
     for (i = tree.node.length - 2; i >= 0; --i) {
@@ -591,10 +594,14 @@ function kn_reorder_num_tips(root) {
         tree.node[i].x = scale;
       }
     }
+    startTime = -1*(scale-1);
   }
+
 
   const applyGlobalNormalization = globalMinTime !== null && globalMaxTime !== null;
   const range = applyGlobalNormalization ? (globalMaxTime - globalMinTime || 1) : 1;
+
+  // console.log("scale", scale, applyGlobalNormalization);
 
   for (i = 0; i < tree.node.length; ++i) {
     let x = tree.node[i].x + startTime;

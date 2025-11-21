@@ -52,12 +52,12 @@ class MyOrthographicController extends OrthographicController {
 const INITIAL_VIEW_STATE = {
   'genome-positions':{
     target: [0,1],
-    zoom: [-3,8],
+    zoom: [5,8],
     // minZoom: 1,
   },
   'genome-info':{
     target: [0,1],
-    zoom: [-3,8],
+    zoom: [5,8],
     // minZoom: 1,
   },
   'tree-time':{
@@ -67,7 +67,7 @@ const INITIAL_VIEW_STATE = {
   },
   'ortho': {
     target: [0,0],
-    zoom: [-3,8],
+    zoom: [5,8],
     // minZoom: 1,
   }
 }
@@ -91,6 +91,8 @@ const initialState = useMemo(() => {
 
   const initial_position = Math.floor((genomeLength.current / globalBpPerUnit) / 2);
 
+  setXzoom(INITIAL_VIEW_STATE['ortho'].zoom[0])
+  setYzoom(INITIAL_VIEW_STATE['ortho'].zoom[1])
   return {
     'ortho': {
       ...INITIAL_VIEW_STATE['ortho'],
@@ -106,7 +108,8 @@ const initialState = useMemo(() => {
     },
     'tree-time': INITIAL_VIEW_STATE['tree-time'],
   };
-}, [genomeLength.current, globalBpPerUnit]);
+
+}, [genomeLength.current, globalBpPerUnit, xzoom, yzoom]);
 
 // Initialize viewState once from computed initialState
 const [viewState, setViewState] = useState(null);
@@ -140,7 +143,7 @@ const [viewState, setViewState] = useState(null);
       }       
       return newValue;
     }
-  }, [globalBpPerUnit, viewState, tsconfig]);
+  }, [globalBpPerUnit, viewState, tsconfig, xzoom, yzoom]);
 
   const changeView = useCallback((val) => {
   
@@ -156,6 +159,7 @@ const [viewState, setViewState] = useState(null);
       const target = ((x1+spacing)+(x0+spacing))/2;
 
       setXzoom(Z)
+      
 
       setViewState((prev) => {      
         return {
@@ -293,8 +297,6 @@ const [viewState, setViewState] = useState(null);
     return target;
   }, [genomeLength, globalBpPerUnit]);
 
-
-
   const handleViewStateChange = useCallback(({viewState:newViewState, viewId, oldViewState}) => {
     if (!viewId || !newViewState) return;
 
@@ -403,7 +405,7 @@ const [viewState, setViewState] = useState(null);
       return newViewStates;
     });
     
-  }, [zoomAxis, panDirection, tsconfig, xStopZoomRef, decksize, genomicValues])
+  }, [zoomAxis, panDirection, tsconfig, xStopZoomRef, decksize, genomicValues, xzoom, yzoom])
 
   const panInterval = useRef(null);
 
@@ -434,9 +436,6 @@ const [viewState, setViewState] = useState(null);
     }
   ));
   }, [viewState]);
-  
-
-
 
 const startPan = useCallback((direction) => {
   if (panInterval.current) return;

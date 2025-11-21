@@ -137,6 +137,46 @@ def new_tree_samples(tree_indexes, ts, n_jobs=4):
 #     return tree_dict
 import time
 
+def process_csv(df, tree_indexes, window_size=50000, is_time=False):
+    tree_dict = []
+
+    min_time = 0.0 if is_time else None
+    max_time = -6.0 if is_time else None
+
+    for t in tree_indexes:
+        global_index = int(t["global_index"])
+        specific_row = df.loc[df.index == global_index]
+        next_row = df.loc[df.index == global_index + 1]
+        if next_row.empty:
+            interval_end = int(specific_row['genomic_positions'].values[0]) + window_size
+        else:
+            interval_end = int(next_row['genomic_positions'].values[0])
+        mut_map = {}
+
+        # Extract values as native Python types to ensure JSON serializability
+        newick = specific_row['newick'].values[0]
+
+        genomic_positions = int(specific_row['genomic_positions'].values[0])
+        time_range = {
+            "start": 0.0 if is_time else None,
+            "end": -6.0 if is_time else None
+        }
+        positions = {
+            "start": genomic_positions,
+            "end": interval_end
+        }
+        tree_dict.append({
+            "newick": newick,
+            "time_range": time_range,
+            "positions": positions,
+            "mutations": mut_map,
+            "min_time": min_time,
+            "max_time": max_time,
+            "global_index": global_index,
+            "populations": []
+        })
+    return tree_dict
+
 def old_new_tree_samples(tree_indexes, ts):
 
     start_timer = time.time()

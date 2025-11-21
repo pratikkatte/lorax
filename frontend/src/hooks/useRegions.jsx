@@ -35,7 +35,7 @@ function getDynamicBpPerUnit(globalBpPerUnit, zoom, baseZoom = 8) {
 
 
 // useRegions Hook
-const useRegions = ({ backend, valueRef, globalBpPerUnit, tsconfig, setStatusMessage, xzoom, yzoom }) => {
+const useRegions = ({ backend, valueRef, globalBpPerUnit, tsconfig, setStatusMessage, xzoom, yzoom, genomicValues }) => {
   const { queryNodes, queryLocalBins } = backend;
 
   const [localBins, setLocalBins] = useState(null);
@@ -116,12 +116,12 @@ const useRegions = ({ backend, valueRef, globalBpPerUnit, tsconfig, setStatusMes
       setStatusMessage(null);
       isFetching.current = false;
     }, 400, { leading: false, trailing: true }),
-    [isFetching.current, valueRef.current, xzoom]
+    [isFetching.current, valueRef.current, xzoom, genomicValues]
   );
 
   useEffect(() => {
     if (valueRef.current) debouncedQuery(valueRef.current);
-  }, [valueRef.current, xzoom]);
+  }, [valueRef.current, xzoom, genomicValues]);
 
   useEffect(() => () => debouncedQuery.cancel(), [debouncedQuery]);
 
@@ -132,25 +132,6 @@ const useRegions = ({ backend, valueRef, globalBpPerUnit, tsconfig, setStatusMes
     const range = hi - lo;
     return getLocalCoordinates(lo - bufferFrac * range, hi + bufferFrac * range);
   }, [valueRef.current]);
-
-  // useEffect(() => {
-  //   if (tsconfig && tsconfig?.times){
-  //     setTimes((prev) => {
-  //       let newTime = [];
-  //       const maxTime = tsconfig.times[1];
-  //       const minTime = tsconfig.times[0];
-  //       for (let i = tsconfig.times[1]; i >= minTime; i--){
-  //         if (i % 500 == 0) {
-  //         let position = (maxTime - i) / (maxTime - minTime);
-  //         newTime.push({position, text: i})
-  //         }
-
-  //     }
-  //     // console.log('newTime', newTime);
-  //     return newTime;
-  //   })
-  //   }
-  // }, [tsconfig]);
 
   useEffect(() => {
     if (tsconfig && tsconfig?.times) {

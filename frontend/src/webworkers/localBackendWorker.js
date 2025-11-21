@@ -88,6 +88,86 @@ function extractSquarePaths(node, vertical_mode, segments = []) {
   return segments;
 }
 
+function extractSquarePaths_subsampled(node, vertical_mode, segments = [], lastKept = {x: -Infinity, y: -Infinity}) {
+
+  const isVertical = vertical_mode;
+
+  const nodeX = node.x;
+  const nodeY = node.y;
+  const children = node.child;
+  const nChildren = children.length;
+
+  // LOD thresholds (tune these)
+  const min_dx = 1e-2;      // skip nodes too close horizontally
+  const min_dy = 1e-2;      // skip nodes too close vertically
+  const min_branch = 1e-2;  // collapse very short branches
+
+  // ---------------------------------------------------------
+  // 1. LOD rule: collapse very short branches with 1 child
+  // ---------------------------------------------------------
+  if (node.d >= 0 && node.d < min_branch) {
+    // skip drawing this node entirely
+    return segments;
+  }
+
+  // ---------------------------------------------------------
+  // 2. LOD rule: skip nodes that are too close in (x,y)
+  // ---------------------------------------------------------
+  if (Math.abs(nodeX - lastKept.x) < min_dx ||
+      Math.abs(nodeY - lastKept.y) < min_dy) {
+    // Skip drawing this node
+    // BUT still traverse children, in case they are farther apart
+    for (let child of children) {
+      extractSquarePaths_subsampled(child, vertical_mode, segments, lastKept);
+    }
+    return segments;
+  }
+
+  // Mark this node as last kept
+  lastKept.x = nodeX;
+  lastKept.y = nodeY;
+
+  // ---------------------------------------------------------
+  // 3. Draw edges for kept nodes
+  // ---------------------------------------------------------
+  if (nChildren > 0) {
+    for (let child of children) {
+
+      const cX = child.x;
+      const cY = child.y;
+
+      // Only draw edge if parent is kept (child decision handled later)
+      segments.push({
+        path: isVertical
+          ? [[nodeX, nodeY], [nodeX, cY], [nodeX, cY], [cX, cY]]
+          : [[nodeY, nodeX], [cY, nodeX], [cY, nodeX], [cY, cX]],
+      });
+
+      extractSquarePaths_subsampled(child, vertical_mode, segments, lastKept);
+    }
+  } else {
+    // ---------------------------------------------------------
+    // 4. Leaf marker (applies LOD: only if leaf is kept)
+    // ---------------------------------------------------------
+    segments.push({
+      name: node.name,
+      position: isVertical ? [nodeX, nodeY] : [nodeY, nodeX],
+    });
+  }
+
+  // ---------------------------------------------------------
+  // 5. Mutations marker (also subject to LOD)
+  // ---------------------------------------------------------
+  if (node.mutations) {
+    segments.push({
+      mutations: node.mutations,
+      name: node.name,
+      position: isVertical ? [nodeX, nodeY] : [nodeY, nodeX],
+    });
+  }
+
+  return segments;
+}
 
 const sendStatusMessage = (status_obj) => {
   postMessage({
@@ -218,6 +298,7 @@ export const queryConfig = async (data) => {
   
   try {
     tsconfig = data.data;
+
 
     // intervalKeys = Object.keys(tsconfig.new_intervals).map(Number)
 
@@ -469,7 +550,7 @@ function processNewick(nwk_str, mutations, globalMinTime, globalMaxTime, times) 
   }
 
   // kn_calxy(tree, true);
-  kn_global_calxy(tree, true, globalMinTime, globalMaxTime, start_time)
+  kn_global_calxy(tree, globalMinTime, globalMaxTime, start_time)
   // sort on y:
   tree.node.sort((a, b) => a.y - b.y);
   cleanup(tree);
@@ -544,7 +625,7 @@ function processData(localTrees, sendStatusMessage, vertical_mode) {
         tree.max_time,
         tree.min_time,
         tree.time_range,
-        tree.populations
+        // tree.populations
       );
 
       paths[tree.global_index] = extractSquarePaths(processedTree.root, vertical_mode);

@@ -49,7 +49,7 @@ print("ALLOWED_ORIGINS:", ALLOWED_ORIGINS)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins='*',
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -185,11 +185,15 @@ async def projects(request: Request, response: Response):
 
     if BUCKET_NAME:
         if IS_VM:
-            projects = get_public_gcs_dict(BUCKET_NAME, allowed_folders={'1000Genomes': '1000Genomes', f'{sid}': 'Uploads'})
+            projects = get_public_gcs_dict(BUCKET_NAME, allowed_folders={
+                '1000Genomes': ['1000Genomes', "something about the project"],
+                'butterfly': ['Heliconiini',"Whole-genome Heliconiini dataset used to study introgression across a butterfly radiation."],
+                f'{sid}': ['Uploads', "something about the project"]
+                })
         else:
             projects = get_public_gcs_dict(
                 BUCKET_NAME, 
-                allowed_folders= {'1000Genomes': '1000Genomes'}
+                allowed_folders= {'1000Genomes': '1000Genomes', 'butterfly': 'Heliconiini'}
                 )
             # local_uploads = get_local_uploads(UPLOAD_DIR) # TODO: to get local uploads
     else:
