@@ -10,6 +10,7 @@ let onQueryReceipt = (receivedData) => {};
 let onStatusReceipt = (receivedData) => console.log("STATUS:", receivedData.data);
 let onConfigReceipt = (receivedData) => {};
 let onLocalBinsReceipt = (receivedData) => {};
+let onGetTreeDataReceipt = (receivedData) => {};
 let onDetailsReceipt = (receivedData) => {};
 let onValueChangedReceipt = (receivedData) => {};
 
@@ -99,7 +100,7 @@ function useConnect({ setGettingDetails, settings }) {
     });
 
     socket.on("query-result", (message) => {
-      console.log("query-result", message);
+      // console.log("query-result", message);
       workerRef.current?.postMessage({
         type: "query",
         data: message.data,
@@ -135,6 +136,7 @@ function useConnect({ setGettingDetails, settings }) {
         if (event.data.type === "details") onDetailsReceipt(event.data.data);
         if (event.data.type === "local-bins")
           onLocalBinsReceipt(event.data);
+        if (event.data.type === "gettree") onGetTreeDataReceipt(event.data);
         if (event.data.type === "value-changed")
           onValueChangedReceipt(event.data);
       };
@@ -171,6 +173,19 @@ function useConnect({ setGettingDetails, settings }) {
   // ───────────────────────────────
   // Query and worker-bound methods
   // ───────────────────────────────
+  const getTreeData = useCallback((global_index, precision) => {
+    return new Promise((resolve) => {
+      workerRef.current?.postMessage({
+        type: "gettree",
+        global_index,
+        precision,
+      });
+
+      onGetTreeDataReceipt = (receivedData) => {
+        resolve(receivedData.data);
+      };
+    });
+  }, []);
   const queryConfig = useCallback((configData, globalBpPerUnit = null) => {
     return new Promise((resolve) => {
       workerRef.current?.postMessage({
@@ -211,12 +226,12 @@ function useConnect({ setGettingDetails, settings }) {
 
   const queryNodes = useCallback(
     (value, localTrees) => {
-      console.log("queryNodes", value, localTrees);
+      // console.log("queryNodes", value, localTrees);
       return new Promise((resolve) => {
         socketRef.current?.emit("query", { value, localTrees, lorax_sid: sidRef.current });
 
         onQueryReceipt = (receivedData) => {
-          console.log("query", receivedData);
+          // console.log("query", receivedData);
           resolve(receivedData);
         }
       });
@@ -271,7 +286,8 @@ function useConnect({ setGettingDetails, settings }) {
       queryLocalBins,
       valueChanged,
       connect,
-      queryFile
+      queryFile,
+      getTreeData
     }),
     [
       connect,
@@ -283,7 +299,8 @@ function useConnect({ setGettingDetails, settings }) {
       queryConfig,
       queryLocalBins,
       valueChanged,
-      queryFile
+      queryFile,
+      getTreeData
     ]
   );
 }

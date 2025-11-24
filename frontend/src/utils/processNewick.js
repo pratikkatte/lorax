@@ -185,6 +185,60 @@ export async function processNewick(data, sendStatusMessage) {
     });
   }
   assignNumTips(tree.root);
+
+  const minTipsToKeep = data.minTipsPerNode || data.tipSubsampleThreshold;
+
+  function pruneSparseTips(node, threshold, isRoot = false) {
+    const survivingChildren = [];
+
+    node.child.forEach((child) => {
+      const prunedDescendants = pruneSparseTips(child, threshold, false);
+      prunedDescendants.forEach((descendant) => {
+        descendant.parent = node;
+        survivingChildren.push(descendant);
+      });
+    });
+
+    node.child = survivingChildren;
+
+    node.num_tips =
+      node.child.length === 0
+        ? 1
+        : node.child.reduce((sum, child) => sum + child.num_tips, 0);
+
+    if (!isRoot && node.num_tips < threshold) {
+      if (node.child.length === 0) {
+        return [];
+      }
+
+      node.child.forEach((child) => {
+        child.parent = node.parent;
+      });
+
+      return node.child;
+    }
+
+    return [node];
+  }
+
+  if (minTipsToKeep && minTipsToKeep > 1) {
+    const [prunedRoot = tree.root] = pruneSparseTips(
+      tree.root,
+      minTipsToKeep,
+      true
+    );
+    tree.root = prunedRoot;
+
+    const rebuildNodeList = [];
+    function collectNodes(node) {
+      rebuildNodeList.push(node);
+      node.child.forEach((child) => collectNodes(child));
+    }
+    collectNodes(tree.root);
+    tree.node = rebuildNodeList;
+  }
+
+  assignNumTips(tree.root);
   const total_tips = tree.root.num_tips;
 
   if (data.ladderize) {

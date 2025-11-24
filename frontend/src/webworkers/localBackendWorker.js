@@ -88,86 +88,6 @@ function extractSquarePaths(node, vertical_mode, segments = []) {
   return segments;
 }
 
-function extractSquarePaths_subsampled(node, vertical_mode, segments = [], lastKept = {x: -Infinity, y: -Infinity}) {
-
-  const isVertical = vertical_mode;
-
-  const nodeX = node.x;
-  const nodeY = node.y;
-  const children = node.child;
-  const nChildren = children.length;
-
-  // LOD thresholds (tune these)
-  const min_dx = 1e-2;      // skip nodes too close horizontally
-  const min_dy = 1e-2;      // skip nodes too close vertically
-  const min_branch = 1e-2;  // collapse very short branches
-
-  // ---------------------------------------------------------
-  // 1. LOD rule: collapse very short branches with 1 child
-  // ---------------------------------------------------------
-  if (node.d >= 0 && node.d < min_branch) {
-    // skip drawing this node entirely
-    return segments;
-  }
-
-  // ---------------------------------------------------------
-  // 2. LOD rule: skip nodes that are too close in (x,y)
-  // ---------------------------------------------------------
-  if (Math.abs(nodeX - lastKept.x) < min_dx ||
-      Math.abs(nodeY - lastKept.y) < min_dy) {
-    // Skip drawing this node
-    // BUT still traverse children, in case they are farther apart
-    for (let child of children) {
-      extractSquarePaths_subsampled(child, vertical_mode, segments, lastKept);
-    }
-    return segments;
-  }
-
-  // Mark this node as last kept
-  lastKept.x = nodeX;
-  lastKept.y = nodeY;
-
-  // ---------------------------------------------------------
-  // 3. Draw edges for kept nodes
-  // ---------------------------------------------------------
-  if (nChildren > 0) {
-    for (let child of children) {
-
-      const cX = child.x;
-      const cY = child.y;
-
-      // Only draw edge if parent is kept (child decision handled later)
-      segments.push({
-        path: isVertical
-          ? [[nodeX, nodeY], [nodeX, cY], [nodeX, cY], [cX, cY]]
-          : [[nodeY, nodeX], [cY, nodeX], [cY, nodeX], [cY, cX]],
-      });
-
-      extractSquarePaths_subsampled(child, vertical_mode, segments, lastKept);
-    }
-  } else {
-    // ---------------------------------------------------------
-    // 4. Leaf marker (applies LOD: only if leaf is kept)
-    // ---------------------------------------------------------
-    segments.push({
-      name: node.name,
-      position: isVertical ? [nodeX, nodeY] : [nodeY, nodeX],
-    });
-  }
-
-  // ---------------------------------------------------------
-  // 5. Mutations marker (also subject to LOD)
-  // ---------------------------------------------------------
-  if (node.mutations) {
-    segments.push({
-      mutations: node.mutations,
-      name: node.name,
-      position: isVertical ? [nodeX, nodeY] : [nodeY, nodeX],
-    });
-  }
-
-  return segments;
-}
 
 const sendStatusMessage = (status_obj) => {
   postMessage({
@@ -225,11 +145,14 @@ async function getLocalData(start, end, globalBpPerUnit, nTrees, new_globalBp) {
   const bufferStart = Math.max(0, start - regionWidth * buffer);
   const bufferEnd = end + (regionWidth * buffer);
 
+
   if (intervalKeys.length === 0) return { local_bins: new Map(), rangeArray: [] };
 
   // const lower_bound = lowerBound(intervalKeys, bufferStart);
   const lower_bound = nearestIndex(intervalKeys, bufferStart);
   const upper_bound = upperBound(intervalKeys, bufferEnd);
+  deleteRangeByValue(lower_bound, upper_bound);
+
 
   const local_bins = new Map();
 
@@ -382,7 +305,8 @@ export function new_complete_experiment_map(localBins, globalBpPerUnit, new_glob
         modelMatrix,
         visible: true,
         position: s,
-        span
+        span,
+        precision: 6
       });
 
       displayArray.push(idx);
@@ -417,7 +341,8 @@ export function new_complete_experiment_map(localBins, globalBpPerUnit, new_glob
           modelMatrix,
           visible: true,
           position: pos,
-          span: totalSpan
+          span: totalSpan,
+          precision: 6
         });
 
         displayArray.push(idx);
@@ -470,7 +395,8 @@ export function new_complete_experiment_map(localBins, globalBpPerUnit, new_glob
           visible: false,
           position: null,
           span: null,
-          path: null
+          path: null,
+          precision: 2
         });
       }
     }
@@ -499,6 +425,35 @@ export const queryNodes = async (localTrees, vertical_mode) => {
     // console.error("Error in queryNodes: ", error);
   }
 };
+
+function dedupeSegments(segments, precision = 9) {
+
+  const normalizeValue = (value) => Number.parseFloat(value).toFixed(precision);
+  const buildPathKey = (path) => path
+    .map(([x, y]) => `${normalizeValue(x)},${normalizeValue(y)}`)
+    .join("|");
+
+  const seen = new Set();
+  const result = [];
+
+  for (const segment of segments) {
+    if (segment.path) {
+      const key = buildPathKey(segment.path);
+      if (seen.has(key)) continue;
+      seen.add(key);
+    } else if (segment.position) {
+      const key = buildPathKey([segment.position]);
+      if (seen.has(key)) continue;
+      seen.add(key);
+    }
+
+    result.push(segment);
+  }
+
+  return result;
+}
+
+const pathsData = new Map();
 
 function processNewick(nwk_str, mutations, globalMinTime, globalMaxTime, times) {
   let ladderize = true;
@@ -614,6 +569,25 @@ export async function globalCleanup(allTrees) {
   }
 }
 
+
+function deleteRangeByValue(min, max) {
+  for (const [key, value] of pathsData.entries()) {
+    if (key < min || key > max) {
+      pathsData.delete(key);
+    }
+  }
+}
+
+export function getTreeData(global_index, precision) {
+  if (pathsData.has(global_index)){
+    const processedTree = pathsData.get(global_index);
+    const segments = extractSquarePaths(processedTree.root, false);
+    const dedupedSegments = dedupeSegments(segments, precision);
+    return dedupedSegments;
+  }
+  return null;
+}
+
 function processData(localTrees, sendStatusMessage, vertical_mode) {
   const paths = {};
 
@@ -628,7 +602,13 @@ function processData(localTrees, sendStatusMessage, vertical_mode) {
         // tree.populations
       );
 
-      paths[tree.global_index] = extractSquarePaths(processedTree.root, vertical_mode);
+      pathsData.set(tree.global_index, processedTree);
+
+      const segments = getTreeData(tree.global_index);
+
+      // const segments = extractSquarePaths(processedTree.root, false);
+      // const dedupedSegments = dedupeSegments(segments);
+      paths[tree.global_index] = segments;
     });
   }
 
@@ -645,6 +625,11 @@ onmessage = async (event) => {
     console.log("upload value: TO IMPLEMENT")
 
   } else {
+
+    if (data.type === "gettree") {
+      const result = await getTreeData(data.global_index, data.precision);
+      postMessage({ type: "gettree", data: result });
+    }
     if (data.type === "query") {
 
       const result = await queryNodes(data.data.tree_dict, data.vertical_mode);

@@ -32,27 +32,15 @@ function getDynamicBpPerUnit(globalBpPerUnit, zoom, baseZoom = 8) {
   return globalBpPerUnit * scaleFactor;
 }
 
-
-
 // useRegions Hook
 const useRegions = ({ backend, valueRef, globalBpPerUnit, tsconfig, setStatusMessage, xzoom, yzoom, genomicValues }) => {
-  const { queryNodes, queryLocalBins } = backend;
+  const { queryNodes, queryLocalBins, getTreeData } = backend;
 
   const [localBins, setLocalBins] = useState(null);
   
   const isFetching = useRef(false);
 
   const [times, setTimes] = useState([]);
-
-  const pathsData = useRef(new Map());
-
-  const deleteRangeByValue = useCallback((min, max) => {
-    for (const [key, value] of pathsData.current) {
-      if (key < min || key > max) {
-        pathsData.current.delete(key);
-      }
-    }
-  }, [pathsData.current]);
 
   const debouncedQuery = useMemo(
     () => debounce(async (val) => {
@@ -73,8 +61,8 @@ const useRegions = ({ backend, valueRef, globalBpPerUnit, tsconfig, setStatusMes
       const rangeArray = [];
       for (const idx of displayArray){
         if (local_bins.has(idx)){
-          
-          const path = pathsData.current.has(idx) ? pathsData.current.get(idx) : null;
+
+          const path = await getTreeData(idx, local_bins.get(idx).precision);
           if (!path) rangeArray.push({ global_index: idx });
 
           local_bins.set(idx, {
@@ -102,16 +90,12 @@ const useRegions = ({ backend, valueRef, globalBpPerUnit, tsconfig, setStatusMes
                 path: results.paths?.[global_index] || null
               });
 
-              pathsData.current.set(global_index, results.paths?.[global_index] || null);
             }
           }
           return updated;
         });
       
       }
-
-      deleteRangeByValue(lower_bound, upper_bound);
-
       
       setStatusMessage(null);
       isFetching.current = false;
