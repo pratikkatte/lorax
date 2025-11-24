@@ -42,6 +42,7 @@ const useRegions = ({ backend, valueRef, globalBpPerUnit, tsconfig, setStatusMes
 
   const [times, setTimes] = useState([]);
 
+
   const debouncedQuery = useMemo(
     () => debounce(async (val) => {
       if (isFetching.current) return;
@@ -76,8 +77,13 @@ const useRegions = ({ backend, valueRef, globalBpPerUnit, tsconfig, setStatusMes
       if (rangeArray.length > 0) {
         setStatusMessage({status: "loading", message: "Fetching data from backend..."});
 
-        const results = await queryNodes([], rangeArray);
+        await queryNodes([], rangeArray);
 
+        const result_paths = {};
+        for (const { global_index } of rangeArray) {
+          const path = await getTreeData(global_index, local_bins.get(global_index).precision);
+          result_paths[global_index] = path;
+        }
         setLocalBins(prev => {
           const updated = new Map(prev);
         
@@ -87,7 +93,7 @@ const useRegions = ({ backend, valueRef, globalBpPerUnit, tsconfig, setStatusMes
               
               updated.set(global_index, {
                 ...prevEntry,
-                path: results.paths?.[global_index] || null
+                path: result_paths?.[global_index] || null
               });
 
             }

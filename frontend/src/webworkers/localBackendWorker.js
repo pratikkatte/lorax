@@ -168,7 +168,8 @@ async function getLocalData(start, end, globalBpPerUnit, nTrees, new_globalBp) {
         s: temp_bin[0],
         e: temp_bin[1],
         path: null,
-        global_index: i
+        global_index: i,
+        precision: 2
       });
     }
   };
@@ -196,7 +197,8 @@ async function getLocalData(start, end, globalBpPerUnit, nTrees, new_globalBp) {
             s: temp_bin[0],
             e: temp_bin[1],
             path: null,
-            global_index: i
+            global_index: i,
+            precision: 2
           });
         }
       } else {
@@ -368,6 +370,19 @@ export function new_complete_experiment_map(localBins, globalBpPerUnit, new_glob
     const translateX = binStart / globalBpPerUnit;
     const scaleX = totalSpan / (globalBpPerUnit * (spacing));
 
+    let precision = 2;
+
+    function computePrecision(totalSpan, maxSpan) {
+      const diff = Math.max(1, totalSpan - maxSpan); // avoid log10(0)
+      const logVal = Math.log10(diff);
+    
+      // map logVal range [0 → 4+] into precision [6 → 2]
+      let precision = 6 - Math.min(4, Math.max(0, logVal));
+      return Math.round(precision);
+    }
+
+    precision = computePrecision(totalSpan, maxSpan);
+
     for (let i = 0; i < n; i++) {
       const idx = indexes[i];
       const bin = localBins.get(idx);
@@ -396,7 +411,7 @@ export function new_complete_experiment_map(localBins, globalBpPerUnit, new_glob
           position: null,
           span: null,
           path: null,
-          precision: 2
+          precision: precision
         });
       }
     }
@@ -604,15 +619,15 @@ function processData(localTrees, sendStatusMessage, vertical_mode) {
 
       pathsData.set(tree.global_index, processedTree);
 
-      const segments = getTreeData(tree.global_index);
+      // const segments = getTreeData(tree.global_index, 2);
 
       // const segments = extractSquarePaths(processedTree.root, false);
       // const dedupedSegments = dedupeSegments(segments);
-      paths[tree.global_index] = segments;
+      // paths[tree.global_index] = segments;
     });
   }
 
-  return paths;
+  return null;
 }
 
 onmessage = async (event) => {

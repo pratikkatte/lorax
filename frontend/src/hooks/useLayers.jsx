@@ -81,6 +81,7 @@ hoveredGenomeInfo,
       const newLayers = [];
     
       // Iterate directly over map entries
+
       for (const [key, bin] of bins.entries()) {
         const id = `main-layer-${bin.global_index}`;
 
