@@ -3,6 +3,8 @@
 import { CompositeLayer } from '@deck.gl/core';
 import { PathLayer, ScatterplotLayer, IconLayer, TextLayer } from '@deck.gl/layers';
 import {COORDINATE_SYSTEM} from '@deck.gl/core';
+import {GL} from '@luma.gl/constants' // Note the ESM import
+
 
 export default class TreeLayer extends CompositeLayer {
   static defaultProps = {
@@ -38,12 +40,15 @@ export default class TreeLayer extends CompositeLayer {
           })
           return transformedPath
         },
+        jointRounded: true,
+        capRounded: true,
         getColor: d =>
           hoveredTreeIndex && d.path === hoveredTreeIndex.path
-            ? [0, 0, 0, 255]
-            : [150, 150, 150, 255],
+            ? [0, 0, 0, 255]             
+            : [150, 145, 140, 230],
+
         getWidth: d =>
-          hoveredTreeIndex && d.path === hoveredTreeIndex.path ? 3 : 2,
+          hoveredTreeIndex && d.path === hoveredTreeIndex.path ? 2 : 1.2,
         widthUnits: 'pixels',
         viewId,
         modelMatrix:null,
@@ -106,15 +111,16 @@ export default class TreeLayer extends CompositeLayer {
         getFillColor: d => { 
           const sample_population = nodes_population[parseInt(d.name)];
           if (populationFilter.enabledValues.includes(sample_population)) {
-            return id_populations[sample_population].color
+            return [...id_populations[sample_population].color.slice(0, 3), 200]
           } else {
-            return [0, 0, 0, 255]
+            return [90, 90, 90, 200];     
           }
         },
-        getLineColor: [80, 80, 180, 255],
-        getLineWidth: 1,
+        // getLineColor: [80, 80, 180, 255],
+        getLineColor: [120, 120, 120, 120],
+        getLineWidth: 0.5,
         getRadius: 2,
-        radiusMinPixels: 2,
+        radiusMinPixels: 1.2,
         radiusUnits: 'pixels',
         coordinateSystem: COORDINATE_SYSTEM.IDENTITY,
         pickable: true,

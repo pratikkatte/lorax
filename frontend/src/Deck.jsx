@@ -283,8 +283,6 @@ function Deck({
   );
   
 useEffect(() => {
-  
-  if (tsconfig) console.log("tsconfig", )
     getLayerPixelPositions(deckRef)
 }, [regions, tsconfig, saveViewports.current])
 

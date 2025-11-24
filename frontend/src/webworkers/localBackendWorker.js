@@ -370,10 +370,9 @@ export function new_complete_experiment_map(localBins, globalBpPerUnit, new_glob
       const logVal = Math.log10(diff);
     
       // map logVal range [0 → 4+] into precision [6 → 2]
-      let precision = 6 - Math.min(4, Math.max(0, logVal));
+      let precision = 5 - Math.min(3, Math.max(0, logVal));
       return Math.round(precision);
     }
-
     precision = computePrecision(totalSpan, maxSpan);
 
     for (let i = 0; i < n; i++) {
@@ -392,7 +391,8 @@ export function new_complete_experiment_map(localBins, globalBpPerUnit, new_glob
           modelMatrix,
           visible: true,
           position: binStart,
-          span: totalSpan
+          span: totalSpan,
+          precision: precision
         });
         displayArray.push(idx);
       } else {
@@ -404,7 +404,7 @@ export function new_complete_experiment_map(localBins, globalBpPerUnit, new_glob
           position: null,
           span: null,
           path: null,
-          precision: precision
+          precision: null,
         });
       }
     }
@@ -630,8 +630,6 @@ function processData(localTrees, sendStatusMessage, vertical_mode) {
 
   if (Array.isArray(localTrees)) {
     localTrees.forEach((tree, index) => {
-      console.log("localTrees",tree.global_index, tree.newick);
-
       const processedTree = processNewick(
         tree.newick,
         tree.mutations,
