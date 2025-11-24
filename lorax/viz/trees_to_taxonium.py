@@ -136,6 +136,14 @@ def new_tree_samples(tree_indexes, ts, n_jobs=4):
     
 #     return tree_dict
 import time
+import re
+
+def min_max_branch_length_from_newick(nwk):
+    values = re.findall(r":([0-9.eE+-]+)", nwk)
+    if not values:
+        return 0.0, 0.0
+    floats = list(map(float, values))
+    return min(floats), max(floats)
 
 def process_csv(df, tree_indexes, window_size=50000, is_time=False):
     tree_dict = []
@@ -156,10 +164,12 @@ def process_csv(df, tree_indexes, window_size=50000, is_time=False):
         # Extract values as native Python types to ensure JSON serializability
         newick = specific_row['newick'].values[0]
 
+        min_br, max_br = min_max_branch_length_from_newick(newick)
+
         genomic_positions = int(specific_row['genomic_positions'].values[0])
         time_range = {
-            "start": 0.0 if is_time else None,
-            "end": -6.0 if is_time else None
+            "start":min_br,
+            "end": -max_br
         }
         positions = {
             "start": genomic_positions,
@@ -170,8 +180,8 @@ def process_csv(df, tree_indexes, window_size=50000, is_time=False):
             "time_range": time_range,
             "positions": positions,
             "mutations": mut_map,
-            "min_time": min_time,
-            "max_time": max_time,
+            # "min_time": min_time,
+            # "max_time": max_time,
             "global_index": global_index,
             "populations": []
         })

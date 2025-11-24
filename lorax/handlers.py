@@ -9,6 +9,7 @@ import os
 import asyncio
 import psutil
 import pandas as pd
+import re
 
 _cache_lock = asyncio.Lock()
 
@@ -123,15 +124,25 @@ async def handle_query(file_path, localTrees):
         print("Error in handle_query", e)
         return json.dumps({"error": f"Error processing query: {str(e)}"})
 
+def max_branch_length_from_newick(nwk):
+    values = re.findall(r":([0-9.eE+-]+)", nwk)
+    if not values:
+        return 0.0
+    return max(map(float, values))
+
 def get_config_csv(df, file_path, window_size=50000):
     # Ensure all numeric types are converted to native Python ints for JSON serializability
     genome_length = int(df['genomic_positions'].max())
     times = None ## Hard Coded here
 
     intervals = []
+    max_branch_length_all = 0
     for _, row in df.iterrows():
         # Get the next row's genomic position if available, otherwise use current + window_size
         current_pos = int(row['genomic_positions'])
+        max_br = max_branch_length_from_newick(row['newick'])
+        if max_br > max_branch_length_all:
+            max_branch_length_all = max_br
         next_row = row.name + 1  # rely on DataFrame index (assumes default integer)
         if next_row < len(df):
             next_pos = int(df.iloc[next_row]['genomic_positions'])
@@ -139,18 +150,19 @@ def get_config_csv(df, file_path, window_size=50000):
             next_pos = current_pos + window_size
         intervals.append([current_pos, next_pos])
 
+
     populations = {}
     nodes_population = []
+    times = [0, max_branch_length_all]
     config = {
         'genome_length': genome_length,
         'times': times,
         'intervals': intervals,
         'filename': str(file_path).split('/')[-1],
         'populations': populations,
-        'nodes_population': nodes_population
+        'nodes_population': nodes_population,
     }
     return config
-
 
 def get_config(ts, file_path):
     # new_intervals = {int(tree.interval[0]): [int(tree.interval[0]), int(tree.interval[1])] for tree in ts.trees()}

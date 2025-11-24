@@ -40,6 +40,8 @@ const useRegions = ({ backend, valueRef, globalBpPerUnit, tsconfig, setStatusMes
   
   const isFetching = useRef(false);
 
+  // const [maxScale, setMaxScale] = useState(null);
+
   const [times, setTimes] = useState([]);
 
 
@@ -78,6 +80,10 @@ const useRegions = ({ backend, valueRef, globalBpPerUnit, tsconfig, setStatusMes
         setStatusMessage({status: "loading", message: "Fetching data from backend..."});
 
         await queryNodes([], rangeArray);
+
+        // if (!tsconfig?.times){
+        //   setMaxScale(scale.paths);
+        // }
 
         const result_paths = {};
         for (const { global_index } of rangeArray) {
@@ -125,33 +131,44 @@ const useRegions = ({ backend, valueRef, globalBpPerUnit, tsconfig, setStatusMes
 
   useEffect(() => {
     if (tsconfig && tsconfig?.times) {
+
       setTimes((prev) => {
         let newTime = [];
-        const maxTime = tsconfig.times[1];
-        const minTime = tsconfig.times[0];
+        let maxTime, minTime;
+        maxTime = tsconfig?.times[1].toFixed(0); 
+        minTime = tsconfig?.times[0].toFixed(0);
 
+        const range = maxTime - minTime;
+        
         // Calculate step size based on xzoom value
         // Finer steps for higher zoom (smaller intervals)
         let step;
 
-        if (yzoom >= 18) step = 1;
-        else if (yzoom >= 16) step = 5;
-        else if (yzoom >= 14) step = 10;
-        else if (yzoom >= 12) step = 50;
-        else if (yzoom >= 10) step = 100;
-        else if (yzoom >= 8) step = 500;
-        else if (yzoom >= 5) step = 1000;
-        else step = 1000;
+          if (yzoom >= 18) step = 1;
+          else if (yzoom >= 16) step = range/1000;
+          else if (yzoom >= 14) step = range/500;
+          else if (yzoom >= 12) step = range/100;
+          else if (yzoom >= 10) step = range/50;
+          else if (yzoom >= 8) step = range/10;
+          else if (yzoom >= 5) step = range/5;
+          else step = 1000;
 
-        for (let i = maxTime; i >= minTime; i--) {
-          if (i % step === 0) {
-            let position = (maxTime - i) / (maxTime - minTime);
-            newTime.push({ position, text: i });
-          }
+        // const divisions = 10;
+        
+        // const rawStep = (maxTime - minTime) / divisions;
+        // const stepSize = niceStep(rawStep);
+        // console.log("stepSize", stepSize);
+        // step = 1;
+        for (let i = Number(maxTime); i >= Number(minTime); i -= step) {
+          // For decimal steps, ensure correct floating point logic
+          let roundedI = Math.abs(step) < 1 ? Number(i.toFixed(3)) : Math.round(i);
+          let position = (maxTime - roundedI) / (maxTime - minTime);
+          newTime.push({ position, text: roundedI });
         }
         return newTime;
       });
     }
+
   }, [tsconfig, yzoom]);
 
   return useMemo(() => ({

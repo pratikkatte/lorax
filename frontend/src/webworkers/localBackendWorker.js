@@ -470,10 +470,21 @@ function dedupeSegments(segments, precision = 9) {
 
 const pathsData = new Map();
 
+function quantile(arr, q) {
+  const sorted = [...arr].sort((a, b) => a - b);
+  const pos = (sorted.length - 1) * q;
+  const base = Math.floor(pos);
+  const rest = pos - base;
+  if (sorted[base + 1] !== undefined) {
+    return sorted[base] + rest * (sorted[base + 1] - sorted[base]);
+  } else {
+    return sorted[base];
+  }
+}
+
 function processNewick(nwk_str, mutations, globalMinTime, globalMaxTime, times) {
   let ladderize = true;
-  let start_time = times['end']
-  
+  let start_time = times['end']  
   // const tree = kn_parse(nwk_str)
   const tree = kn_parse_auto(nwk_str)
 
@@ -519,13 +530,30 @@ function processNewick(nwk_str, mutations, globalMinTime, globalMaxTime, times) 
     tree.node = kn_expand_node(tree.root);
   }
 
+//   const raw = tree.node.map(n => n.d).filter(d => d >= 0);
+//   const q95 = quantile(raw, 0.95);
+//   const q99 = quantile(raw, 0.99);
+//   const q100 = quantile(raw, 1.0);
+
+//   const TRIM_LIMIT = q95 * 1.2;
+
+// // 2. Trim only extraordinarily large branches
+// for (const node of tree.node) {
+//   if (node.d > TRIM_LIMIT) {
+//     node.original_d = node.d;
+//     node.d = TRIM_LIMIT;
+//     node.trimmed = true;
+//   } else {
+//     node.trimmed = false;
+//     node.original_d = node.d;
+//   }
+// }
   // kn_calxy(tree, true);
   kn_global_calxy(tree, globalMinTime, globalMaxTime, start_time)
   // sort on y:
   tree.node.sort((a, b) => a.y - b.y);
   cleanup(tree);
-
-  return tree
+  return tree;
 }
 
 
@@ -603,6 +631,7 @@ export function getTreeData(global_index, precision) {
   return null;
 }
 
+let MAX_SCALE = 0;
 function processData(localTrees, sendStatusMessage, vertical_mode) {
   const paths = {};
 
@@ -611,9 +640,14 @@ function processData(localTrees, sendStatusMessage, vertical_mode) {
       const processedTree = processNewick(
         tree.newick,
         tree.mutations,
-        tree.max_time,
-        tree.min_time,
+        -1*tsconfig.times[1],
+        tsconfig.times[0],
+        // tree.max_time,
+        // tree.min_time,
+        // tsconfig.times[0],
+        // -1*tsconfig.times[1],
         tree.time_range,
+        
         // tree.populations
       );
 

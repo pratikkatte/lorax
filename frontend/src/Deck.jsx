@@ -157,7 +157,8 @@ function Deck({
 
   const {queryDetails} = backend;
 
-  const regions = useRegions({backend, viewState, valueRef, saveViewports: saveViewports.current, globalBpPerUnit, tsconfig, setStatusMessage, xzoom, yzoom, genomicValues});
+  const regions = useRegions({backend, valueRef, saveViewports: saveViewports.current, globalBpPerUnit, tsconfig, setStatusMessage, xzoom, yzoom, genomicValues});
+
 
   const onClickOrMouseMove = useCallback(
     (info, event) => {
@@ -384,7 +385,7 @@ useEffect(() => {
       <View id="genome-positions">
       </View>
     </DeckGL>
-    <ViewportOverlay is_time={tsconfig?.times ? true : false}/>
+    <ViewportOverlay is_time={tsconfig?.times?.length > 0 ? true : false}/>
     </div>
     </>
   

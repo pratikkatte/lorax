@@ -547,9 +547,7 @@ function kn_reorder_num_tips(root) {
  function kn_global_calxy(tree, globalMinTime = null, globalMaxTime = null, startTime = 0) {
   let i, j, scale;
 
-
   let is_real = true;
-  // if (!startTime) is_real = false;
 
   // --------- Y COORDINATES ---------
   scale = tree.n_tips - 1;
@@ -580,7 +578,7 @@ function kn_reorder_num_tips(root) {
 
     if (scale === 0.0) is_real = false;
 
-    if (!startTime) startTime = -1*(scale-1);
+    // if (!startTime) startTime = -1*(scale-1);
   }
 
   if (!is_real) {
@@ -598,7 +596,7 @@ function kn_reorder_num_tips(root) {
         tree.node[i].x = scale;
       }
     }
-    startTime = -1*(scale-1);
+    // startTime = -1*(scale-1);
   }
 
 
@@ -612,10 +610,11 @@ function kn_reorder_num_tips(root) {
     if (applyGlobalNormalization) {
       x = (x - globalMinTime) / range;
     }
-    tree.node[i].x = x;
+
+    tree.node[i].x = Math.min(x, 1); // clipping it not to prevent overflow. But FIX IT later. 
   }
 
-  return is_real;
+  return is_real; // return the number of nodes
 }
 
 

@@ -110,6 +110,8 @@ export async function cleanup(tree) {
       x_dist: node.x,
       mutations: emptyList,
       y: node.y,
+      // trimmed: node.trimmed,
+      // original_d: node.original_d,
       num_tips: node.num_tips,
       is_tip: node.child.length === 0,
       node_id: node.node_id,
