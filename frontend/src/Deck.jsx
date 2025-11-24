@@ -21,7 +21,7 @@ const StatusMessage = React.memo(({status, message}) => (
   </div>
 ));
 
-const ViewportOverlay = React.memo(({is_time}) => (
+const ViewportOverlay = React.memo(({is_time, times_type}) => (
   <>
     {/* Outer border */}
     <div
@@ -106,7 +106,7 @@ const ViewportOverlay = React.memo(({is_time}) => (
           letterSpacing: '2px',
         }}
       >
-      {is_time ? "Coalescent time" : "No Time Data"}
+      {is_time ? times_type : "No Time Data"}
       </div>
     </div>
   </>
@@ -283,6 +283,8 @@ function Deck({
   );
   
 useEffect(() => {
+  
+  if (tsconfig) console.log("tsconfig", )
     getLayerPixelPositions(deckRef)
 }, [regions, tsconfig, saveViewports.current])
 
@@ -385,7 +387,7 @@ useEffect(() => {
       <View id="genome-positions">
       </View>
     </DeckGL>
-    <ViewportOverlay is_time={tsconfig?.times?.length > 0 ? true : false}/>
+    <ViewportOverlay is_time={tsconfig?.times?.values?.length > 0 ? true : false} times_type={tsconfig?.times?.type} />
     </div>
     </>
   

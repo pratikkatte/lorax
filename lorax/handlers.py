@@ -156,7 +156,7 @@ def get_config_csv(df, file_path, window_size=50000):
     times = [0, max_branch_length_all]
     config = {
         'genome_length': genome_length,
-        'times': times,
+        'times': {'type': 'branch length', 'values': times},
         'intervals': intervals,
         'filename': str(file_path).split('/')[-1],
         'populations': populations,
@@ -180,7 +180,13 @@ def get_config(ts, file_path):
     # nodes_population = [n.population for n in ts.nodes()]
     nodes_population = [ts.node(n).population for n in ts.samples()]
 
-    config = {'genome_length': ts.sequence_length, 'times':times, 'intervals':intervals,'filename': str(file_path).split('/')[-1], 'populations':populations, 'nodes_population':nodes_population}
+    config = {'genome_length': ts.sequence_length, 
+    'times': {'type': 'coalescent time', 'values': times},
+    'intervals':intervals, 
+    'filename': str(file_path).split('/')[-1], 
+    'populations':populations, 
+    'nodes_population':nodes_population
+    }
     return config
 
 def get_local_uploads(upload_dir, sid):

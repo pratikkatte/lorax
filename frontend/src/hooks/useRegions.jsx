@@ -81,10 +81,6 @@ const useRegions = ({ backend, valueRef, globalBpPerUnit, tsconfig, setStatusMes
 
         await queryNodes([], rangeArray);
 
-        // if (!tsconfig?.times){
-        //   setMaxScale(scale.paths);
-        // }
-
         const result_paths = {};
         for (const { global_index } of rangeArray) {
           const path = await getTreeData(global_index, local_bins.get(global_index).precision);
@@ -130,13 +126,13 @@ const useRegions = ({ backend, valueRef, globalBpPerUnit, tsconfig, setStatusMes
   }, [valueRef.current]);
 
   useEffect(() => {
-    if (tsconfig && tsconfig?.times) {
+    if (tsconfig && tsconfig?.times?.values) {
 
       setTimes((prev) => {
         let newTime = [];
         let maxTime, minTime;
-        maxTime = tsconfig?.times[1].toFixed(0); 
-        minTime = tsconfig?.times[0].toFixed(0);
+        maxTime = tsconfig?.times.values[1].toFixed(0); 
+        minTime = tsconfig?.times.values[0].toFixed(0);
 
         const range = maxTime - minTime;
         

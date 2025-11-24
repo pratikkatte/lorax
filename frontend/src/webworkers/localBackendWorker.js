@@ -640,8 +640,8 @@ function processData(localTrees, sendStatusMessage, vertical_mode) {
       const processedTree = processNewick(
         tree.newick,
         tree.mutations,
-        -1*tsconfig.times[1],
-        tsconfig.times[0],
+        -1*tsconfig.times.values[1],
+        tsconfig.times.values[0],
         // tree.max_time,
         // tree.min_time,
         // tsconfig.times[0],
