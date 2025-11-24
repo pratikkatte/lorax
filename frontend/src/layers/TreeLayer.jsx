@@ -59,6 +59,36 @@ export default class TreeLayer extends CompositeLayer {
         },
       }),
 
+      // new TextLayer({
+      //   id: `${this.props.id}-text-${bin.global_index}`,
+      //   data: bin.path.filter(d => 
+      //     d?.position !== undefined && 
+      //     d?.position !== null && 
+      //     d?.mutations === undefined
+      //   ),
+      //   getPosition: d => {
+      //     const m = bin.modelMatrix;
+      //     const translate_position = m[12];
+      //     const scale_position = m[0];
+      //     const position = [d.position[0] * scale_position + translate_position, d.position[1]];
+      //     return position;
+      //   },
+      //   getText: d => d.name,
+      //   getColor: [0, 0, 0, 255],
+      //   viewId,
+      //   modelMatrix:null,
+      //   coordinateSystem: COORDINATE_SYSTEM.IDENTITY,
+      //   fp64: true,
+      //   updateTriggers: {
+      //     data: [bin.modelMatrix, bin.path],
+      //   },
+      //   sizeUnits: 'pixels',
+      //   getSize: 12,
+      //   getAlignmentBaseline: 'center',
+      //   getTextAnchor: 'end',
+      //   getAngle: 90,
+      // }),
+
       new ScatterplotLayer({
         id: `${this.props.id}-smaples-${bin.global_index}`,
         data: bin.path.filter(d => 

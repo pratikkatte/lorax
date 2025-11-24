@@ -133,18 +133,11 @@ async function getLocalData(start, end, globalBpPerUnit, nTrees, new_globalBp) {
 
   // Calculate buffer so that it increases with region size, decreases as region shrinks
   const regionWidth = Math.max(1, end - start); // avoid 0/neg
-  // For example, min: 0.00001, max: 0.03 (tune as appropriate)
-  // Grows logarithmically: buffer = 0.00001 + 0.015 * log10(regionWidth+1)
-  const baseBuffer = 0.00001;
-  const bufferGrowthRate = 0.00015; 
-  const buffer = baseBuffer + bufferGrowthRate * Math.log10(regionWidth + 1)
   
-  // Optionally, also consider scaleFactor if needed, e.g.:
-  // const buffer = (baseBuffer + bufferGrowthRate * Math.log10(regionWidth+1)) * Math.max(1, scaleFactor);
+  const buffer = 0.1;
 
   const bufferStart = Math.max(0, start - regionWidth * buffer);
   const bufferEnd = end + (regionWidth * buffer);
-
 
   if (intervalKeys.length === 0) return { local_bins: new Map(), rangeArray: [] };
 
@@ -637,6 +630,8 @@ function processData(localTrees, sendStatusMessage, vertical_mode) {
 
   if (Array.isArray(localTrees)) {
     localTrees.forEach((tree, index) => {
+      console.log("localTrees",tree.global_index, tree.newick);
+
       const processedTree = processNewick(
         tree.newick,
         tree.mutations,
@@ -651,6 +646,7 @@ function processData(localTrees, sendStatusMessage, vertical_mode) {
         // tree.populations
       );
 
+      // 
       pathsData.set(tree.global_index, processedTree);
 
       // const segments = getTreeData(tree.global_index, 2);
