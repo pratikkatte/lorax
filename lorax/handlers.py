@@ -166,7 +166,10 @@ def get_config_csv(df, file_path, window_size=50000):
 
 def get_config(ts, file_path):
     # new_intervals = {int(tree.interval[0]): [int(tree.interval[0]), int(tree.interval[1])] for tree in ts.trees()}
-    intervals = [[int(tree.interval[0]), int(tree.interval[1])] for tree in ts.trees()]
+    # intervals = [[int(tree.interval[0]), int(tree.interval[1])] for tree in ts.trees()]
+    # start_intervals = [tree.interval[0] for tree in ts.trees()]
+    # end_intervals = [tree.interval[1] for tree in ts.trees()]
+    intervals = [tree.interval[0] for tree in ts.trees()]
     times = [ts.min_time, ts.max_time]
     populations = {}
 
@@ -180,7 +183,9 @@ def get_config(ts, file_path):
     # nodes_population = [n.population for n in ts.nodes()]
     nodes_population = [ts.node(n).population for n in ts.samples()]
 
-    config = {'genome_length': ts.sequence_length, 
+    config = {'genome_length': ts.sequence_length,
+    # 'start_intervals': start_intervals,
+    # 'end_intervals': end_intervals,
     'times': {'type': 'coalescent time', 'values': times},
     'intervals':intervals, 
     'filename': str(file_path).split('/')[-1], 

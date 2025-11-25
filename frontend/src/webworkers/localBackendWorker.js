@@ -123,7 +123,7 @@ function upperBound(arr, x) {
   return lo;
 }
 
-let intervalKeys = [];
+// let intervalKeys = [];
 let newLocalBins = new Map();
 
 async function getLocalData(start, end, globalBpPerUnit, nTrees, new_globalBp) {
@@ -139,11 +139,11 @@ async function getLocalData(start, end, globalBpPerUnit, nTrees, new_globalBp) {
   const bufferStart = Math.max(0, start - regionWidth * buffer);
   const bufferEnd = end + (regionWidth * buffer);
 
-  if (intervalKeys.length === 0) return { local_bins: new Map(), rangeArray: [] };
+  // if (intervalKeys.length === 0) return { local_bins: new Map(), rangeArray: [] };
 
   // const lower_bound = lowerBound(intervalKeys, bufferStart);
-  const lower_bound = nearestIndex(intervalKeys, bufferStart);
-  const upper_bound = upperBound(intervalKeys, bufferEnd);
+  const lower_bound = nearestIndex(tsconfig.intervals, bufferStart);
+  const upper_bound = upperBound(tsconfig.intervals, bufferEnd);
   deleteRangeByValue(lower_bound, upper_bound);
 
 
@@ -155,11 +155,12 @@ async function getLocalData(start, end, globalBpPerUnit, nTrees, new_globalBp) {
   const addBins = (lo, hi) => {
     for (let i = lo; i <= hi; i++) {
       const temp_bin = tsconfig.intervals[i];
+      const next_bin_start = tsconfig.intervals[i + 1] ? tsconfig.intervals[i + 1] : tsconfig.genome_length;
       // const temp_bin = tsconfig.new_intervals[intervalKeys[i]];
       if (!temp_bin) continue;
       local_bins.set(i, {
-        s: temp_bin[0],
-        e: temp_bin[1],
+        s: temp_bin,
+        e: next_bin_start,
         path: null,
         global_index: i,
         precision: 2
@@ -177,6 +178,7 @@ async function getLocalData(start, end, globalBpPerUnit, nTrees, new_globalBp) {
     lower_bound > lastEnd
   ) {
     // Non-overlapping → rebuild completely
+    console.log("non-overlapping");
     addBins(lower_bound, upper_bound);
   } else {
     // Overlapping → reuse bins where possible
@@ -184,11 +186,13 @@ async function getLocalData(start, end, globalBpPerUnit, nTrees, new_globalBp) {
       if (!newLocalBins.has(i)) {
 
         const temp_bin = tsconfig.intervals[i];
+        const next_bin_start = tsconfig.intervals[i + 1] ? tsconfig.intervals[i + 1] : tsconfig.genome_length;
         // const temp_bin = tsconfig.new_intervals[intervalKeys[i]];
         if (temp_bin) {
           local_bins.set(i, {
-            s: temp_bin[0],
-            e: temp_bin[1],
+            s: temp_bin,
+            e: next_bin_start,
+            // e: temp_bin[1],
             path: null,
             global_index: i,
             precision: 2
@@ -220,7 +224,8 @@ export const queryConfig = async (data) => {
 
     // intervalKeys = Object.keys(tsconfig.new_intervals).map(Number)
 
-    intervalKeys = tsconfig.intervals.map(interval => interval[0]);
+    // intervalKeys = tsconfig.intervals.map(interval => interval[);
+    // intervalKeys = tsconfig.intervals;
     
     return;
   } catch (error) {
@@ -396,7 +401,6 @@ export function new_complete_experiment_map(localBins, globalBpPerUnit, new_glob
         });
         displayArray.push(idx);
       } else {
-        // deactivate others in this group
         localBins.set(idx, {
           ...bin,
           modelMatrix: null,
