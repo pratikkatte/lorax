@@ -37,10 +37,10 @@ RUN yarn build
 # ===============================
 FROM python:3.11-slim
 
-# Install runtime deps: Redis + Nginx + curl + certs
+# Install runtime deps: Nginx + curl + certs
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-    redis-server nginx curl ca-certificates && \
+    nginx curl ca-certificates && \
     # Disable Debian's default site configs
     sed -i 's|include /etc/nginx/sites-enabled/\*;|# include /etc/nginx/sites-enabled/*;|g' /etc/nginx/nginx.conf && \
     rm -rf /etc/nginx/sites-available /etc/nginx/sites-enabled && \

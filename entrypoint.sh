@@ -4,23 +4,21 @@ set -e
 echo " Starting Lorax Full Stack"
 
 # Start Redis
-echo "Starting Redis..."
-redis-server --bind 127.0.0.1 --port 6379 --daemonize yes --loglevel notice
+# echo "Starting Redis..."
+# redis-server --bind 127.0.0.1 --port 6379 --daemonize yes --loglevel notice
 
-sleep 2
-if ! redis-cli ping > /dev/null 2>&1; then
-    echo "[ERROR] Redis failed to start"
-    exit 1
-fi
-echo "Redis started successfully"
+# sleep 2
+# if ! redis-cli ping > /dev/null 2>&1; then
+#     echo "[ERROR] Redis failed to start"
+#     exit 1
+# fi
+# echo "Redis started successfully"
 
 export LORAX_ENV='prod'
-export REDIS_URL='redis://127.0.0.1:6379/0'
+# export REDIS_URL='redis://127.0.0.1:6379/0'
 export ALLOWED_ORIGINS='http://localhost:5173,https://lorax.in'
 
-
-redis-cli CONFIG SET client-output-buffer-limit "pubsub 512mb 256mb 60"
-
+# redis-cli CONFIG SET client-output-buffer-limit "pubsub 512mb 256mb 60"
 
 # Start backend (Gunicorn)
 echo "[INFO] Starting Gunicorn (FastAPI backend)..."
