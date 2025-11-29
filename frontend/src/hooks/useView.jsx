@@ -415,22 +415,23 @@ const [viewState, setViewState] = useState(null);
       ...prev,
       'ortho': {
         ...prev['ortho'],
-        zoom: INITIAL_VIEW_STATE['ortho'].zoom,
+        zoom: [prev['ortho'].zoom[0], INITIAL_VIEW_STATE['ortho'].zoom[1]],
         target: [prev['ortho'].target[0], INITIAL_VIEW_STATE['ortho'].target[1]]
       },
       'genome-positions': {
         ...prev['genome-positions'],
-        zoom: INITIAL_VIEW_STATE['genome-positions'].zoom,
+        zoom: [prev['genome-positions'].zoom[0], INITIAL_VIEW_STATE['genome-positions'].zoom[1]],
         target: [prev['genome-positions'].target[0], INITIAL_VIEW_STATE['genome-positions'].target[1]]
       },
       'tree-time': {
         ...prev['tree-time'],
-        zoom: INITIAL_VIEW_STATE['tree-time'].zoom,
+        zoom: [prev['tree-time'].zoom[0], INITIAL_VIEW_STATE['tree-time'].zoom[1]],
         target: [prev['tree-time'].target[0], INITIAL_VIEW_STATE['tree-time'].target[1]]
       },
       'genome-info': {
         ...prev['genome-info'],
-        zoom: INITIAL_VIEW_STATE['genome-info'].zoom,
+        zoom: [prev['genome-info'].zoom[0], INITIAL_VIEW_STATE['genome-info'].zoom[1]],
+
         target: [prev['genome-info'].target[0], INITIAL_VIEW_STATE['genome-info'].target[1]]
       }
     }

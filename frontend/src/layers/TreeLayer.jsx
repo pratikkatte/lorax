@@ -44,7 +44,7 @@ export default class TreeLayer extends CompositeLayer {
         capRounded: true,
         getColor: d =>
           hoveredTreeIndex && d.path === hoveredTreeIndex.path
-            ? [0, 0, 0, 255]             
+            ? [50, 50, 50, 255]             
             : [150, 145, 140, 230],
 
         getWidth: d =>
@@ -63,36 +63,6 @@ export default class TreeLayer extends CompositeLayer {
           getPath: [bin.modelMatrix, bin.path],
         },
       }),
-
-      // new TextLayer({
-      //   id: `${this.props.id}-text-${bin.global_index}`,
-      //   data: bin.path.filter(d => 
-      //     d?.position !== undefined && 
-      //     d?.position !== null && 
-      //     d?.mutations === undefined
-      //   ),
-      //   getPosition: d => {
-      //     const m = bin.modelMatrix;
-      //     const translate_position = m[12];
-      //     const scale_position = m[0];
-      //     const position = [d.position[0] * scale_position + translate_position, d.position[1]];
-      //     return position;
-      //   },
-      //   getText: d => d.name,
-      //   getColor: [0, 0, 0, 255],
-      //   viewId,
-      //   modelMatrix:null,
-      //   coordinateSystem: COORDINATE_SYSTEM.IDENTITY,
-      //   fp64: true,
-      //   updateTriggers: {
-      //     data: [bin.modelMatrix, bin.path],
-      //   },
-      //   sizeUnits: 'pixels',
-      //   getSize: 12,
-      //   getAlignmentBaseline: 'center',
-      //   getTextAnchor: 'end',
-      //   getAngle: 90,
-      // }),
 
       new ScatterplotLayer({
         id: `${this.props.id}-smaples-${bin.global_index}`,
@@ -113,7 +83,7 @@ export default class TreeLayer extends CompositeLayer {
           if (populationFilter.enabledValues.includes(sample_population)) {
             return [...id_populations[sample_population].color.slice(0, 3), 200]
           } else {
-            return [90, 90, 90, 200];     
+            return [150, 150, 150, 100];     
           }
         },
         // getLineColor: [80, 80, 180, 255],
@@ -134,6 +104,46 @@ export default class TreeLayer extends CompositeLayer {
         },
       }),
 
+  //     new TextLayer({
+  //       id: `${this.props.id}-text-${bin.global_index}`,
+  //       data: bin.path.filter(d => 
+  //         d?.position !== undefined && 
+  //         d?.position !== null && 
+  //         d?.mutations === undefined
+  //       ),
+  //       getPosition: d => {
+  //         const m = bin.modelMatrix;
+  //         const translate_position = m[12];
+  //         const scale_position = m[0];
+  //         const position = [d.position[0] * scale_position + translate_position, d.position[1]];
+  //         return position;
+  //       },
+  //       getText: d => d.name,
+  //       fontFamily: "'Inter', 'Roboto', 'Arial', sans-serif",
+  //       getColor: [20, 20, 20, 255],
+  //       getBackgroundColor: [255, 255, 255, 230],
+  //       getPixelOffset: [0, 6],
+  //       // background: true,
+  //       // getBackgroundColor: [255, 255, 255, 220],
+  //       backgroundPadding: [4, 2],
+  //       // slight drop-shadow for readability
+  // shadowColor: [0, 0, 0, 180],
+  // shadowBlur: 2,
+  //       viewId,
+  //       modelMatrix:null,
+  //       coordinateSystem: COORDINATE_SYSTEM.IDENTITY,
+  //       fp64: true,
+  //       updateTriggers: {
+  //         data: [bin.modelMatrix, bin.path],
+  //       },
+  //       sizeUnits: 'pixels',
+  //       getSize: 11,
+  //       minSize: 8,
+  //       getAlignmentBaseline: 'center',
+  //       getTextAnchor: 'end',
+  //       getAngle: 45,
+        
+  //     }),
       new IconLayer({
         id: `${this.props.id}-icons-${bin.global_index}`,
         data: bin.path.filter(d => d?.mutations !== undefined && d?.mutations !== null),
