@@ -148,7 +148,7 @@ def get_config_csv(df, file_path, window_size=50000):
             next_pos = int(df.iloc[next_row]['genomic_positions'])
         else:
             next_pos = current_pos + window_size
-        intervals.append([current_pos, next_pos])
+        intervals.append(current_pos)
 
 
     populations = {}
