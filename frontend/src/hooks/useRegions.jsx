@@ -39,6 +39,8 @@ const useRegions = ({ backend, valueRef, globalBpPerUnit, tsconfig, setStatusMes
   const [localBins, setLocalBins] = useState(null);
   
   const isFetching = useRef(false);
+  
+  const regionWidth = useRef(null);
 
   // const [maxScale, setMaxScale] = useState(null);
 
@@ -55,10 +57,15 @@ const useRegions = ({ backend, valueRef, globalBpPerUnit, tsconfig, setStatusMes
 
       const new_globalBp = getDynamicBpPerUnit(globalBpPerUnit, zoom);
 
+      if (new_globalBp == globalBpPerUnit) {
+        if (regionWidth.current == null) regionWidth.current = hi - lo;
+      } else {
+        regionWidth.current = null;
+      }
       isFetching.current = true;
 
       const { local_bins, lower_bound, upper_bound, displayArray} = await queryLocalBins(
-        lo, hi, globalBpPerUnit, null, new_globalBp
+        lo, hi, globalBpPerUnit, null, new_globalBp, regionWidth.current
       );
 
       const rangeArray = [];

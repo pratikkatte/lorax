@@ -126,18 +126,23 @@ function upperBound(arr, x) {
 // let intervalKeys = [];
 let newLocalBins = new Map();
 
-async function getLocalData(start, end, globalBpPerUnit, nTrees, new_globalBp) {
+async function getLocalData(start, end, globalBpPerUnit, nTrees, new_globalBp, regionWidth=null) {
   // if (!(localBins instanceof Map)) localBins = new Map();
 
   let scaleFactor = new_globalBp / globalBpPerUnit
 
   // Calculate buffer so that it increases with region size, decreases as region shrinks
-  const regionWidth = Math.max(1, end - start); // avoid 0/neg
+  let local_regionWidth = regionWidth ?? Math.max(1, end - start); // avoid 0/neg
   
-  const buffer = 0.1;
-
-  const bufferStart = Math.max(0, start - regionWidth * buffer);
-  const bufferEnd = end + (regionWidth * buffer);
+  console.log("local_regionWidth", local_regionWidth, (end - start));
+  let buffer = 0.1;
+  if (scaleFactor > 1) {
+    buffer = buffer * local_regionWidth;
+  } else {
+    buffer = local_regionWidth;
+  }
+  const bufferStart = Math.max(0, start - buffer);
+  const bufferEnd = end + (buffer);
 
   // if (intervalKeys.length === 0) return { local_bins: new Map(), rangeArray: [] };
 
@@ -178,7 +183,6 @@ async function getLocalData(start, end, globalBpPerUnit, nTrees, new_globalBp) {
     lower_bound > lastEnd
   ) {
     // Non-overlapping → rebuild completely
-    console.log("non-overlapping");
     addBins(lower_bound, upper_bound);
   } else {
     // Overlapping → reuse bins where possible
@@ -217,8 +221,7 @@ async function getLocalData(start, end, globalBpPerUnit, nTrees, new_globalBp) {
 }
 
 export const queryConfig = async (data) => {
-  
-  try {
+  try {    
     tsconfig = data.data;
 
 
@@ -664,8 +667,10 @@ function processData(localTrees, sendStatusMessage, vertical_mode) {
 
 onmessage = async (event) => {
   //Process uploaded data:
-  console.log("Worker onmessage");
   const { data } = event;
+  console.log("Worker onmessage");
+
+  console.log("data", data);
 
   if (data.type === "upload")
   {
@@ -678,7 +683,7 @@ onmessage = async (event) => {
       postMessage({ type: "gettree", data: result });
     }
     if (data.type === "query") {
-
+      console.log("query nodes", data.data.tree_dict);
       const result = await queryNodes(data.data.tree_dict, data.vertical_mode);
       postMessage({ type: "query", data: result });
     }
@@ -692,7 +697,7 @@ onmessage = async (event) => {
     }
 
     if (data.type === "local-bins") {
-      let result = await getLocalData(data.data.start, data.data.end, data.data.globalBpPerUnit, data.data.nTrees, data.data.new_globalBp);
+      let result = await getLocalData(data.data.start, data.data.end, data.data.globalBpPerUnit, data.data.nTrees, data.data.new_globalBp, data.data.regionWidth);
       postMessage({ type: "local-bins", data: result });
   }
 
