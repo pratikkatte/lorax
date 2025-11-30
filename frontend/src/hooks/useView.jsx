@@ -436,6 +436,9 @@ const [viewState, setViewState] = useState(null);
       }
     }
   ));
+
+  setYzoom(INITIAL_VIEW_STATE['ortho'].zoom[1])
+  
   }, [viewState]);
 
 const startPan = useCallback((direction) => {
