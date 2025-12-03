@@ -611,8 +611,8 @@ function kn_reorder_num_tips(root) {
       x = (x - globalMinTime) / range;
     }
 
-    // tree.node[i].x = Math.min(x, 1); // clipping it not to prevent overflow. But FIX IT later. 
-    tree.node[i].x = x;
+    tree.node[i].x = Math.min(x, 1); // clipping it not to prevent overflow. But FIX IT later. 
+    // tree.node[i].x = x;
   }
 
   return is_real; // return the number of nodes

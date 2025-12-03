@@ -1,6 +1,7 @@
 import datetime
 import numpy as np
 from concurrent.futures import ProcessPoolExecutor, as_completed
+from ete3 import Tree
 
 
 
@@ -145,7 +146,7 @@ def min_max_branch_length_from_newick(nwk):
     floats = list(map(float, values))
     return min(floats), max(floats)
 
-def process_csv(df, tree_indexes, window_size=50000, is_time=False):
+def process_csv(df, tree_indexes, window_size=50000, is_time=False, outgroup=None):
     tree_dict = []
 
     min_time = 0.0 if is_time else None
@@ -163,6 +164,9 @@ def process_csv(df, tree_indexes, window_size=50000, is_time=False):
 
         # Extract values as native Python types to ensure JSON serializability
         newick = specific_row['newick'].values[0]
+
+        if outgroup:
+            newick = remove_outgroup(newick, outgroup)
 
         min_br, max_br = min_max_branch_length_from_newick(newick)
 
@@ -186,6 +190,27 @@ def process_csv(df, tree_indexes, window_size=50000, is_time=False):
             "populations": []
         })
     return tree_dict
+
+def remove_outgroup(newick, outgroup):
+    t = Tree(newick, format=1)
+
+    if outgroup not in t.get_leaf_names():
+        raise ValueError(f"Outgroup '{outgroup}' not found")
+
+    # Reroot on outgroup
+    t.set_outgroup(outgroup)
+
+    # Prune outgroup
+    (t & outgroup).delete()
+
+    # Remove root branch
+    t.dist = 0.0
+    for child in t.get_children():
+        child.dist = 0.0
+
+    # Ensure single semicolon
+    nwk = t.write(format=1).rstrip(";")
+    return nwk + ";"
 
 def old_new_tree_samples(tree_indexes, ts):
 

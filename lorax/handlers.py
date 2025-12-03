@@ -114,7 +114,7 @@ async def handle_query(file_path, localTrees):
         if file_path.endswith('.tsz') or file_path.endswith('.trees'):
             tree_dict = await asyncio.to_thread(old_new_tree_samples, localTrees, ts)
         else:
-            tree_dict = await asyncio.to_thread(process_csv, ts, localTrees)
+            tree_dict = await asyncio.to_thread(process_csv, ts, localTrees, outgroup="Etal")
         # tree_dict = await asyncio.to_thread(old_new_tree_samples, localTrees, ts)
         data = json.dumps({
             "tree_dict": tree_dict
