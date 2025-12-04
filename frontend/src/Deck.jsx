@@ -111,7 +111,7 @@ const ViewportOverlay = React.memo(({is_time, times_type}) => (
   </>
 ));
 
-const GenomeVisualization = React.memo(({ pointsArray }) => (
+const GenomeVisualization = React.memo(({ pointsArray, pointsGenomePositionsInfo, setHoveredPolygonIndex}) => (
   <svg
     style={{
       position: 'absolute',
@@ -128,6 +128,21 @@ const GenomeVisualization = React.memo(({ pointsArray }) => (
           points={points.map(([x, y]) => `${x},${y}`).join(' ')}
           fill="rgba(145, 194, 244, 0.18)"
           // stroke="rgba(0,0,0,0.3)"
+          style={{
+            cursor: 'pointer',
+            pointerEvents: 'auto',
+            zIndex: -1,
+            position: 'relative',
+          }}
+
+          onMouseEnter={event => {
+            event.target.setAttribute('fill', 'rgba(145, 194, 244, 0.4)');
+            setHoveredPolygonIndex(pointsGenomePositionsInfo?.[idx]);
+          }}
+          onMouseLeave={event => {
+            event.target.setAttribute('fill', 'rgba(145, 194, 244, 0.18)');
+            setHoveredPolygonIndex(null);
+          }}
         />
       </React.Fragment>
     ))}
@@ -156,28 +171,34 @@ function Deck({
 
   const {queryDetails} = backend;
 
-  const regions = useRegions({backend, valueRef, saveViewports: saveViewports.current, globalBpPerUnit, tsconfig, setStatusMessage, xzoom, yzoom, genomicValues});
+  const [hoveredPolygonIndex, setHoveredPolygonIndex] = useState(null);
 
+  const regions = useRegions({backend, valueRef, saveViewports: saveViewports.current, globalBpPerUnit, tsconfig, setStatusMessage, xzoom, yzoom, genomicValues});
 
   const onClickOrMouseMove = useCallback(
     (info, event) => {
       const isClick = event.type === "click";
-      const isHover = !isClick;      
-      if (
-        info && isClick
-      ) {
-        if (info.layer.id.includes("main")) {
+      const isHover = !isClick;
+      const {bins} = regions;
+
+      if (info && isClick) {
+        if (info?.layer?.id?.includes("main")) {
+          console.log("clicked on the tree", info)
           const data = {treeIndex: info.layer?.props?.bin?.global_index, node: info.object?.name}
           queryDetails(data)
+          return;
         }
-        else if (info.layer.id.includes("genome-info")) {
-
-          const {bins} = regions;
-          console.log("clicked genome info", info.object, bins)
+        else if (info?.layer?.id?.includes("genome-info")) {
           setClickedGenomeInfo(info.object)
-
+          return;
         }
       }
+      if (isClick && hoveredPolygonIndex) {
+        const bin = bins.get(hoveredPolygonIndex);
+        setClickedGenomeInfo(bin)
+        return;
+      }
+
       if (isHover) {
         if(info.object) {
 
@@ -208,7 +229,7 @@ function Deck({
           setHoveredGenomeInfo(null)
         }
       }
-    },[])
+    },[hoveredPolygonIndex])
  
     const { layers, layerFilter } = useLayers({
       xzoom,
@@ -225,8 +246,6 @@ function Deck({
       yzoom,
       xzoom,
     });
-
-
     const [dummy, setDummy] = useState(null);
 
   const getLayerPixelPositions = useCallback(
@@ -234,6 +253,7 @@ function Deck({
       if (!deckRef?.current?.deck) return;
       const deck = deckRef.current.deck;
       const pointsArray = [];
+      const pointsGenomePositionsInfo = [];
   
       const genomeVP = saveViewports.current?.["genome-positions"];
       const orthoVP = saveViewports.current?.["ortho"];
@@ -274,10 +294,12 @@ function Deck({
           [x1, y1],
           [x0, y1],
         ]);
+        pointsGenomePositionsInfo.push(b.global_index);
+
       }
   
       if (pointsArray.length > 0) {
-        setDummy({ pointsArray });
+        setDummy({ pointsArray, pointsGenomePositionsInfo });
       }
     },
     [deckRef, saveViewports, globalBpPerUnit, regions]
@@ -306,12 +328,14 @@ useEffect(() => {
   return (
     <div className="w-full"> 
     <>
-    <div className="w-full h-full flex justify-center items-center relative" 
-    >
+    <div className="w-full h-full flex justify-center items-center relative" >
     <DeckGL
       ref={deckRef}
       onHover={onClickOrMouseMove}
-      onClick={onClickOrMouseMove}
+      // onClick={onClickOrMouseMove}
+      onClick={(info, event) => {
+        onClickOrMouseMove(info, event);
+      }}
       pickingRadius={10}
       layers={layers}
       layerFilter={layerFilter}
@@ -326,7 +350,7 @@ useEffect(() => {
       <View id="ortho">
         {/* {no_data && <LoadingSpinner />} */}
       {dummy && dummy.pointsArray.length > 0 && (
-              <GenomeVisualization pointsArray={dummy.pointsArray} />
+              <GenomeVisualization pointsArray={dummy.pointsArray} pointsGenomePositionsInfo={dummy.pointsGenomePositionsInfo} setHoveredPolygonIndex={setHoveredPolygonIndex}/>
             )}
             {statusMessage?.status === "loading" && <LoraxMessage status={statusMessage.status} message={statusMessage.message} />}
 
@@ -386,7 +410,7 @@ useEffect(() => {
       <View id="genome-positions">
       </View>
     </DeckGL>
-    <ViewportOverlay is_time={tsconfig?.times?.values?.length > 0 ? true : false} times_type={tsconfig?.times?.type} />
+    <ViewportOverlay is_time={tsconfig?.times?.values?.length > 0 ? true : false} times_type={tsconfig?.times?.type}/>
     </div>
     </>
   
