@@ -124,7 +124,7 @@ function upperBound(arr, x) {
 }
 
 // let intervalKeys = [];
-let newLocalBins = new Map();
+let globalLocalBins = new Map();
 
 async function getLocalData(start, end, globalBpPerUnit, nTrees, new_globalBp, regionWidth=null) {
   // if (!(localBins instanceof Map)) localBins = new Map();
@@ -134,7 +134,6 @@ async function getLocalData(start, end, globalBpPerUnit, nTrees, new_globalBp, r
   // Calculate buffer so that it increases with region size, decreases as region shrinks
   let local_regionWidth = regionWidth ?? Math.max(1, end - start); // avoid 0/neg
   
-  console.log("local_regionWidth", local_regionWidth, (end - start));
   let buffer = 0.1;
   if (scaleFactor > 1) {
     buffer = buffer * local_regionWidth;
@@ -159,6 +158,7 @@ async function getLocalData(start, end, globalBpPerUnit, nTrees, new_globalBp, r
   // ────────────────────────────────
   const addBins = (lo, hi) => {
     for (let i = lo; i <= hi; i++) {
+      
       const temp_bin = tsconfig.intervals[i];
       const next_bin_start = tsconfig.intervals[i + 1] ? tsconfig.intervals[i + 1] : tsconfig.genome_length;
       // const temp_bin = tsconfig.new_intervals[intervalKeys[i]];
@@ -187,12 +187,12 @@ async function getLocalData(start, end, globalBpPerUnit, nTrees, new_globalBp, r
   } else {
     // Overlapping → reuse bins where possible
     for (let i = lower_bound; i <= upper_bound; i++) {
-      if (!newLocalBins.has(i)) {
-
+      if (!globalLocalBins.has(i)) {
+        
         const temp_bin = tsconfig.intervals[i];
         const next_bin_start = tsconfig.intervals[i + 1] ? tsconfig.intervals[i + 1] : tsconfig.genome_length;
         // const temp_bin = tsconfig.new_intervals[intervalKeys[i]];
-        if (temp_bin) {
+        if (temp_bin != null) {
           local_bins.set(i, {
             s: temp_bin,
             e: next_bin_start,
@@ -203,19 +203,16 @@ async function getLocalData(start, end, globalBpPerUnit, nTrees, new_globalBp, r
           });
         }
       } else {
-        local_bins.set(i, newLocalBins.get(i));
+        local_bins.set(i, globalLocalBins.get(i));
       }
     }
   }
-
-  // ────────────────────────────────
-  // Sampling / range computation
-  // ────────────────────────────────
   const {return_local_bins, displayArray} = new_complete_experiment_map(local_bins,  globalBpPerUnit, new_globalBp);
 
   lastStart = lower_bound;
   lastEnd = upper_bound;
-  newLocalBins = return_local_bins;
+  globalLocalBins = return_local_bins;
+
 
   return { local_bins: return_local_bins, lower_bound, upper_bound, displayArray};
 }
@@ -669,8 +666,6 @@ onmessage = async (event) => {
   //Process uploaded data:
   const { data } = event;
   console.log("Worker onmessage");
-
-  console.log("data", data);
 
   if (data.type === "upload")
   {

@@ -100,7 +100,7 @@ function useConnect({ setGettingDetails, settings }) {
     });
 
     socket.on("query-result", (message) => {
-      // console.log("query-result", message);
+
       workerRef.current?.postMessage({
         type: "query",
         data: message.data,
@@ -226,7 +226,6 @@ function useConnect({ setGettingDetails, settings }) {
 
   const queryNodes = useCallback(
     (value, localTrees) => {
-      // console.log("queryNodes", value, localTrees);
       return new Promise((resolve) => {
         socketRef.current?.emit("query", { value, localTrees, lorax_sid: sidRef.current });
 

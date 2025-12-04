@@ -5,7 +5,6 @@ import { PathLayer, ScatterplotLayer, IconLayer, TextLayer } from '@deck.gl/laye
 import {COORDINATE_SYSTEM} from '@deck.gl/core';
 import {GL} from '@luma.gl/constants' // Note the ESM import
 
-
 export default class TreeLayer extends CompositeLayer {
   static defaultProps = {
     bin: null,
@@ -16,14 +15,33 @@ export default class TreeLayer extends CompositeLayer {
     hoveredTreeIndex: null,
     populations: null,
     populationFilter: null,
+    yzoom: null,
+    xzoom: null,
   };
 
   renderLayers() {
     const id_populations = this.props.populations.populations;
     const nodes_population = this.props.populations.nodes_population;
 
-    const { bin, viewId, hoveredTreeIndex, populationFilter } = this.props;
+    const { bin, viewId, hoveredTreeIndex, populationFilter, xzoom } = this.props;
     if (!bin || !bin.path || !bin.modelMatrix || !bin.visible) return null
+
+    const nodes =  bin.path.filter(d => 
+      d?.position !== undefined && 
+      d?.position !== null && 
+      d?.mutations === undefined
+    )
+
+    const len_nodes = nodes.length;
+    const m = bin.modelMatrix;
+    const scale_position = m[0];
+    let display_labels = false;
+
+    const proportionOfNodesOnTree = len_nodes / (2 ** xzoom * scale_position);
+    if (proportionOfNodesOnTree < 0.2) {
+      display_labels = true;
+    }
+
     return [
       new PathLayer({
         id: `${this.props.id}-path-${bin.global_index}`,
@@ -46,7 +64,6 @@ export default class TreeLayer extends CompositeLayer {
           hoveredTreeIndex && d.path === hoveredTreeIndex.path
             ? [50, 50, 50, 255]             
             : [150, 145, 140, 230],
-
         getWidth: d =>
           hoveredTreeIndex && d.path === hoveredTreeIndex.path ? 2 : 1.2,
         widthUnits: 'pixels',
@@ -78,12 +95,12 @@ export default class TreeLayer extends CompositeLayer {
           const position = [d.position[0] * scale_position + translate_position, d.position[1]];
           return position;
         },
-        getFillColor: d => { 
+        getFillColor: d => {
           const sample_population = nodes_population[parseInt(d.name)];
           if (populationFilter.enabledValues.includes(sample_population)) {
             return [...id_populations[sample_population].color.slice(0, 3), 200]
           } else {
-            return [150, 150, 150, 100];     
+            return [150, 150, 150, 100];
           }
         },
         // getLineColor: [80, 80, 180, 255],
@@ -96,7 +113,6 @@ export default class TreeLayer extends CompositeLayer {
         pickable: true,
         modelMatrix:null,
         viewId,
-        fp64: true,
         updateTriggers: {
           getFillColor: [populationFilter.colorBy, populationFilter.enabledValues],
           data: [bin.modelMatrix, bin.path],
@@ -104,46 +120,47 @@ export default class TreeLayer extends CompositeLayer {
         },
       }),
 
-  //     new TextLayer({
-  //       id: `${this.props.id}-text-${bin.global_index}`,
-  //       data: bin.path.filter(d => 
-  //         d?.position !== undefined && 
-  //         d?.position !== null && 
-  //         d?.mutations === undefined
-  //       ),
-  //       getPosition: d => {
-  //         const m = bin.modelMatrix;
-  //         const translate_position = m[12];
-  //         const scale_position = m[0];
-  //         const position = [d.position[0] * scale_position + translate_position, d.position[1]];
-  //         return position;
-  //       },
-  //       getText: d => d.name,
-  //       fontFamily: "'Inter', 'Roboto', 'Arial', sans-serif",
-  //       getColor: [20, 20, 20, 255],
-  //       getBackgroundColor: [255, 255, 255, 230],
-  //       getPixelOffset: [0, 6],
-  //       // background: true,
-  //       // getBackgroundColor: [255, 255, 255, 220],
-  //       backgroundPadding: [4, 2],
-  //       // slight drop-shadow for readability
-  // shadowColor: [0, 0, 0, 180],
-  // shadowBlur: 2,
-  //       viewId,
-  //       modelMatrix:null,
-  //       coordinateSystem: COORDINATE_SYSTEM.IDENTITY,
-  //       fp64: true,
-  //       updateTriggers: {
-  //         data: [bin.modelMatrix, bin.path],
-  //       },
-  //       sizeUnits: 'pixels',
-  //       getSize: 11,
-  //       minSize: 8,
-  //       getAlignmentBaseline: 'center',
-  //       getTextAnchor: 'end',
-  //       getAngle: 45,
-        
-  //     }),
+      display_labels && new TextLayer({
+        id: `${this.props.id}-text-${bin.global_index}`,
+        data: bin.path.filter(d => 
+          d?.position !== undefined && 
+          d?.position !== null && 
+          d?.mutations === undefined
+        ),
+        getPosition: d => {
+          const m = bin.modelMatrix;
+          const translate_position = m[12];
+          const scale_position = m[0];
+          const position = [d.position[0] * scale_position + translate_position, d.position[1]];
+          return position;
+        },
+        getText: d => d.name,
+        fontFamily: "'Inter', 'Roboto', 'Arial', sans-serif",
+        getColor: [100, 100, 100, 255],
+        getBackgroundColor: [255, 255, 255, 230],
+        getPixelOffset: [0, 6],
+        // background: true,
+        // getBackgroundColor: [255, 255, 255, 220],
+        backgroundPadding: [4, 2],
+        // slight drop-shadow for readability
+  shadowColor: [100, 100, 100, 180],
+  shadowBlur: 2,
+        viewId,
+        modelMatrix:null,
+        coordinateSystem: COORDINATE_SYSTEM.IDENTITY,
+        // fp64: true,
+        sizeUnits: 'pixels',
+        // getSize: 8 + (xzoom ? xzoom * 1 : 0),
+        // getSize: () => (8 + (2**xzoom/ 2 ** (xzoom-1))),
+        getSize: () => (6 + Math.log2(Math.max(xzoom, 1))),
+        // minSize: 8,
+        getAlignmentBaseline: 'center',
+        getTextAnchor: 'end',
+        getAngle: 90,
+    updateTriggers: {
+      data: [bin.modelMatrix, bin.path],
+      getText: [bin.path]
+    }}),
       new IconLayer({
         id: `${this.props.id}-icons-${bin.global_index}`,
         data: bin.path.filter(d => d?.mutations !== undefined && d?.mutations !== null),

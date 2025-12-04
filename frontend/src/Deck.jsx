@@ -57,7 +57,6 @@ const ViewportOverlay = React.memo(({is_time, times_type}) => (
         boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
       }}
     />
-
     {/* genome info */}
     <div
       style={{
@@ -73,7 +72,6 @@ const ViewportOverlay = React.memo(({is_time, times_type}) => (
         boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
       }}
     />
-
     {/* tree time */}
     <div
       style={{
@@ -104,6 +102,7 @@ const ViewportOverlay = React.memo(({is_time, times_type}) => (
           color: '#333',
           fontWeight: 500,
           letterSpacing: '2px',
+          padding: '0 10px',
         }}
       >
       {is_time ? times_type : "No Time Data"}
@@ -223,6 +222,8 @@ function Deck({
       populations,
       populationFilter,
       hoveredGenomeInfo,
+      yzoom,
+      xzoom,
     });
 
 

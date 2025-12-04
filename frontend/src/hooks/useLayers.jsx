@@ -7,6 +7,8 @@ import { GenomeInfoLayer } from '../layers/GenomeInfoLayer';
 import { TimeGridLayer } from '../layers/TimeGridLayer';
 
 const useLayers = ({
+  yzoom,
+  xzoom,
   hoveredTreeIndex,
   backend,
   regions,
@@ -99,6 +101,9 @@ hoveredGenomeInfo,
           hoveredTreeIndex,
           populations,
           populationFilter,
+          yzoom,
+          xzoom,
+          globalBpPerUnit
         });
     
         newLayers.push(newLayer);
