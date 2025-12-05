@@ -185,11 +185,7 @@ async def projects(request: Request, response: Response):
 
     if BUCKET_NAME:
         if IS_VM:
-            projects = get_public_gcs_dict(BUCKET_NAME, allowed_folders={
-                '1000Genomes': ['1000Genomes', "something about the project"],
-                'butterfly': ['Heliconiini',"Whole-genome Heliconiini dataset used to study introgression across a butterfly radiation."],
-                f'{sid}': ['Uploads', "something about the project"]
-                })
+            projects = get_public_gcs_dict(BUCKET_NAME, sid=sid)
         else:
             projects = get_public_gcs_dict(
                 BUCKET_NAME, 
@@ -239,6 +235,12 @@ async def get_file(
 
 @app.post("/upload")
 async def upload(request: Request, response: Response, file: UploadFile = File(...)):
+    """
+    Upload a file to the server. 
+
+    ## TODO for local uploads, we need to upload the file to the local directory and not upload it to GCS. 
+    
+    """
     sid, session = await get_or_create_session(request, response)
     user_dir = UPLOAD_DIR / sid
     user_dir.mkdir(parents=True, exist_ok=True)

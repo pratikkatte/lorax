@@ -36,27 +36,46 @@ async def download_gcs_file(bucket_name: str, blob_path: str, local_path: str):
 
     return Path(local_path)
 
-def get_public_gcs_dict(bucket_name: str, prefix: str = "", allowed_folders = {}):
+def get_public_gcs_dict(bucket_name: str, sid: str, prefix: str = ""):
     api_url = f"https://storage.googleapis.com/storage/v1/b/{bucket_name}/o"
     params = {"prefix": prefix, "fields": "items(name)"}
     resp = requests.get(api_url, params=params)
     resp.raise_for_status()
     items = resp.json().get("items", [])
 
-    grouped = {}
+    base_folder_structure = {'files': [], 'description': 'Something about the project'}
+    folders = {
+        'Uploads': {'folder': sid, 'files': [], 'description': 'Something about the project'}
+    }
+
     for item in items:
-        name = item["name"]
-        parts = name.split("/", 1)
-        if len(parts) == 2:  # has a folder prefix
-            folder, filename = parts
-            if filename != '' and folder in allowed_folders.keys(): grouped.setdefault(folder, []).append(filename)
-        # else:
-            # grouped.setdefault("root", []).append(parts[0])
-    return {
-        allowed_folders[k][0]: {"folder": k, "files": v, "description": allowed_folders[k][1]} for k, v in grouped.items()
-        }
+        name = item['name']
+        path_parts = name.split("/")
+        
+        # Must have at least a top-level directory (e.g., 'folder/')
+        if len(path_parts) < 2:
+            continue
+        name_first = path_parts[0]
+        second_part = path_parts[1]
 
-
+        # Initialize new folder if it doesn't exist
+        if name_first not in folders:
+            folders[name_first] = {'folder': name_first,'files': [], 'description': 'Something about the project'}
+        
+        # Append file/subfolder name based on path structure
+        # Special case for 'Uploads' requiring a third part (a file)
+        if name_first == 'Uploads' and len(path_parts) >= 3 and path_parts[1] == sid:
+            # Assuming part[2] is the actual file name
+            file_name = path_parts[2]
+            if file_name:
+                folders[name_first]['files'].append(file_name)
+        # General case for all other top-level folders
+        elif name_first != 'Uploads' and second_part:
+            print(path_parts)
+            folders[name_first]['files'].append(second_part)
+            
+    return folders
+    
 async def upload_to_gcs(bucket_name: str, local_path: Path, sid: str):
     """
     Upload file to GCS under session-specific folder.
@@ -66,7 +85,7 @@ async def upload_to_gcs(bucket_name: str, local_path: Path, sid: str):
         local_path (Path): Local file to upload
         sid (str): Session ID (used as prefix)
     """
-    blob_path = f"{sid}/{local_path.name}"
+    blob_path = f"Uploads/{sid}/{local_path.name}"
 
     # Use executor to avoid blocking event loop
     loop = asyncio.get_event_loop()

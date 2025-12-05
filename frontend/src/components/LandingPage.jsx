@@ -197,7 +197,7 @@ export default function LandingPage({
 
 
       return (
-        <li
+        files.length > 0 && <li
           key={id}
           className="rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden"
         >

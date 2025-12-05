@@ -527,24 +527,6 @@ function processNewick(nwk_str, mutations, globalMinTime, globalMaxTime, times) 
     tree.node = kn_expand_node(tree.root);
   }
 
-//   const raw = tree.node.map(n => n.d).filter(d => d >= 0);
-//   const q95 = quantile(raw, 0.95);
-//   const q99 = quantile(raw, 0.99);
-//   const q100 = quantile(raw, 1.0);
-
-//   const TRIM_LIMIT = q95 * 1.2;
-
-// // 2. Trim only extraordinarily large branches
-// for (const node of tree.node) {
-//   if (node.d > TRIM_LIMIT) {
-//     node.original_d = node.d;
-//     node.d = TRIM_LIMIT;
-//     node.trimmed = true;
-//   } else {
-//     node.trimmed = false;
-//     node.original_d = node.d;
-//   }
-// }
   // kn_calxy(tree, true);
   kn_global_calxy(tree, globalMinTime, globalMaxTime, start_time)
   // sort on y:

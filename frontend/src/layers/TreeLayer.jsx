@@ -136,7 +136,7 @@ export default class TreeLayer extends CompositeLayer {
         },
         getText: d => d.name,
         fontFamily: "'Inter', 'Roboto', 'Arial', sans-serif",
-        getColor: [100, 100, 100, 255],
+        getColor: [10, 10, 10, 255],
         getBackgroundColor: [255, 255, 255, 230],
         getPixelOffset: [0, 6],
         // background: true,
