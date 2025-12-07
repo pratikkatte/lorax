@@ -160,7 +160,7 @@ export default function useFileUpload({
           setUploadStatus("loading inferred ARG....");
 
           const payload = {
-            project: "uploads",
+            project: "Uploads",
             file: response?.data?.filename
           }
           setFileUploaded(true);
@@ -183,7 +183,7 @@ export default function useFileUpload({
   
       // setStatusMessage({status: "ERROR", message: "uploading file..."});
 
-      const maxSize = 50 * 1024 * 1024; // 25 MB
+      const maxSize = 50 * 1024 * 1024; // 50 MB
       if (file.size > maxSize) {
         setError(`File "${file.name}" exceeds 50 MB limit.`);
         return;
@@ -209,7 +209,7 @@ export default function useFileUpload({
       const file = e.dataTransfer?.files?.[0];
       const maxSize = 50 * 1024 * 1024;
       if (file.size > maxSize) {
-        setError(`File "${file.name}" exceeds 25 MB limit.`);
+        setError(`File "${file.name}" exceeds 50 MB limit.`);
         return;
       }
       if (file) await uploadFile(file);

@@ -36,17 +36,12 @@ async def download_gcs_file(bucket_name: str, blob_path: str, local_path: str):
 
     return Path(local_path)
 
-def get_public_gcs_dict(bucket_name: str, sid: str, prefix: str = ""):
+def get_public_gcs_dict(bucket_name: str, sid: str, prefix: str = "", projects={}):
     api_url = f"https://storage.googleapis.com/storage/v1/b/{bucket_name}/o"
-    params = {"prefix": prefix, "fields": "items(name)"}
+    params = {"prefix": '', "fields": "items(name)"}
     resp = requests.get(api_url, params=params)
     resp.raise_for_status()
     items = resp.json().get("items", [])
-
-    base_folder_structure = {'files': [], 'description': 'Something about the project'}
-    folders = {
-        'Uploads': {'folder': sid, 'files': [], 'description': 'Something about the project'}
-    }
 
     for item in items:
         name = item['name']
@@ -59,22 +54,21 @@ def get_public_gcs_dict(bucket_name: str, sid: str, prefix: str = ""):
         second_part = path_parts[1]
 
         # Initialize new folder if it doesn't exist
-        if name_first not in folders:
-            folders[name_first] = {'folder': name_first,'files': [], 'description': 'Something about the project'}
-        
-        # Append file/subfolder name based on path structure
-        # Special case for 'Uploads' requiring a third part (a file)
-        if name_first == 'Uploads' and len(path_parts) >= 3 and path_parts[1] == sid:
-            # Assuming part[2] is the actual file name
-            file_name = path_parts[2]
-            if file_name:
-                folders[name_first]['files'].append(file_name)
-        # General case for all other top-level folders
-        elif name_first != 'Uploads' and second_part:
-            print(path_parts)
-            folders[name_first]['files'].append(second_part)
-            
-    return folders
+        if name_first == 'Uploads' and sid is None:
+            continue
+
+        if name_first not in projects:
+            projects[name_first] = {'folder': name_first,'files': [], 'description': ''}
+
+        if name_first != 'Uploads' and second_part:
+            if second_part not in projects[name_first]['files']:
+                projects[name_first]['files'].append(second_part)
+
+        elif name_first == 'Uploads' and sid is not None and second_part == sid:
+            # projects[name_first]['folder'] = sid
+            if path_parts[2] not in projects[name_first]['files']:
+                projects[name_first]['files'].append(path_parts[2])
+    return projects
     
 async def upload_to_gcs(bucket_name: str, local_path: Path, sid: str):
     """

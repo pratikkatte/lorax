@@ -1,4 +1,5 @@
 # handlers.py
+import os
 import json
 # from lorax.chat.langgraph_tskit import api_interface
 from lorax.viz.trees_to_taxonium import old_new_tree_samples, process_csv
@@ -10,6 +11,7 @@ import asyncio
 import psutil
 import pandas as pd
 import re
+from lorax.utils.gcs_utils import get_public_gcs_dict
 
 _cache_lock = asyncio.Lock()
 
@@ -214,28 +216,44 @@ async def handle_upload(file_path):
     config = await asyncio.to_thread(get_or_load_config, ts, file_path)
     return config, None
 
-async def get_projects(upload_dir, sid=None):
-    with open(f'{upload_dir}/projects.json', 'r') as f:
-        projects = json.load(f)
-        final_projects = [project for project in projects if os.path.exists(os.path.join(upload_dir, project.get("folder", "")))]
-        return final_projects
+def list_project_files(directory, projects):
+        """
+        Recursively list files and folders for the given directory.
+        If subdirectories are found, they are added as keys and populated similarly.
+        """
     
+        for item in os.listdir(directory):
+            item_path = os.path.join(directory, item)
+            if os.path.isdir(item_path):
+                # Recursive call for subdirectory
+                projects[item] = {
+                    "folder": item,
+                    "files": [],
+                    "description": "",
+                }
+                projects = list_project_files(item_path, projects)
+            else:
+                directory_basename = os.path.basename(directory)
+                
+                if os.path.isfile(item_path) and (
+                    item.endswith(".trees") or item.endswith(".trees.tsz") or item.endswith(".csv")
+                ):
+                    if item not in projects[directory_basename]["files"]:
+                        projects[directory_basename]["files"].append(item)
+        return projects
 
-# def make_json_serializable(obj):
-#     """Convert byte data and other non-serializable objects to JSON serializable format"""
-#     if isinstance(obj, bytes):
-#         return obj.decode('utf-8', errors='replace')
-#     elif isinstance(obj, dict):
-#         return {k: make_json_serializable(v) for k, v in obj.items()}
-#     elif isinstance(obj, list):
-#         return [make_json_serializable(item) for item in obj]
-#     elif hasattr(obj, '__dict__'):
-#         return make_json_serializable(obj.__dict__)    
-#     elif isinstance(obj, np.ndarray):
-#         return obj.tolist()
-#     else:
-#         return obj
+async def get_projects(upload_dir, BUCKET_NAME):
+    f"""
+    # Read the local uploads folder (or a root "uploads" or upload_dir directory in upload_dir).
+    # List all subfolders (each represents a project), and enumerate files in each.
+    """    
+
+    projects = {}
+    upload_dir = str(upload_dir)
     
+    projects = list_project_files(upload_dir, projects)
+    projects = get_public_gcs_dict(BUCKET_NAME, sid=None, projects=projects)
+    return projects
 
 def make_json_serializable(obj):
     """Convert to JSON-safe Python structures and decode nested JSON strings."""

@@ -108,7 +108,7 @@ export default function LandingPage({
           <div className="flex items-center gap-2">
             <Badge pill>{version}</Badge>
             <a
-              href="https://github.com/" target="_blank" rel="noreferrer"
+              href="https://github.com/pratikkatte/lorax/" target="_blank" rel="noreferrer"
               className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm hover:bg-slate-50"
             >
               <BsGithub className="opacity-70" /> GitHub

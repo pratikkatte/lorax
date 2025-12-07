@@ -298,12 +298,12 @@ const [viewState, setViewState] = useState(null);
   }, [genomeLength, globalBpPerUnit]);
 
   const handleViewStateChange = useCallback(({viewState:newViewState, viewId, oldViewState}) => {
-    if (!viewId || !newViewState) return;
+    if (!viewId || !newViewState ) return;
 
     
     setViewState((prev) => {
-      let zoom = [...oldViewState.zoom];
-      let target = [...oldViewState.target];
+      let zoom = [...oldViewState?.zoom];
+      let target = [...oldViewState?.target] || [0,0];
       let panStep = 0;
       if(panDirection === null) { 
         if(zoomAxis==='Y'){

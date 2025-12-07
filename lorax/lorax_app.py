@@ -5,6 +5,13 @@ Run with:
     uvicorn lorax_socketio_app:sio_app --host 0.0.0.0 --port 8080 --reload
 """
 
+"""
+
+TODO
+1. write all the combination test cases for testing upload and download from GCS and local directory. in local and production.
+2. remove the need for key and folder name in the get_projects dict. 
+3. change Uploads to LORAX_UPLOADS. 
+"""
 import os
 import json
 import asyncio
@@ -34,9 +41,10 @@ from lorax.handlers import LoraxHandler, handle_upload, handle_query, get_projec
 app = FastAPI(title="Lorax Backend", version="1.0.0")
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
-UPLOAD_DIR = Path("uploads")
+UPLOAD_DIR = Path("UPLOADS")
 
 IS_VM = os.getenv("IS_VM", True)
+IS_VM = False
 
 UPLOAD_DIR.mkdir(exist_ok=True)
 
@@ -95,17 +103,17 @@ class Session:
 
 sessions = {}  # sid → Session
 
+
 async def get_or_create_session(request: Request, response: Response):
     sid = request.cookies.get(SESSION_COOKIE)
     secure = request.url.scheme == "https"
-
-    print("sid", sid, request.url)
+        
     if USE_REDIS:
         if not sid:
             sid = str(uuid4())
             session = Session(sid)
             await redis_client.setex(f"sessions:{sid}", COOKIE_MAX_AGE, json.dumps(session.to_dict()))
-            print("setting cookie", sid, secure)
+
             response.set_cookie(key=SESSION_COOKIE, value=sid, httponly=True, samesite="Lax", max_age=COOKIE_MAX_AGE, secure=False) # HARDCODED FALSE. FIX IT LATER. 
             return sid, session
 
@@ -151,6 +159,9 @@ else:
         cors_allowed_origins="*",
         logger=False,
         engineio_logger=False,
+        ping_timeout=60, 
+        ping_interval=25,
+        max_http_buffer_size=50_000_000
     )
 
 sio_app = socketio.ASGIApp(sio, other_asgi_app=app)
@@ -182,19 +193,11 @@ lorax_handler_global = LoraxHandler()
 async def projects(request: Request, response: Response):
     
     sid, session = await get_or_create_session(request, response)
-
-    if BUCKET_NAME:
-        if IS_VM:
-            projects = get_public_gcs_dict(BUCKET_NAME, sid=sid)
-        else:
-            projects = get_public_gcs_dict(
-                BUCKET_NAME, 
-                allowed_folders= {'1000Genomes': '1000Genomes', 'butterfly': 'Heliconiini'}
-                )
-            # local_uploads = get_local_uploads(UPLOAD_DIR) # TODO: to get local uploads
+    projects = {}
+    if IS_VM:
+        projects = get_public_gcs_dict(BUCKET_NAME, sid=sid, projects=projects)
     else:
-        projects = await get_projects(UPLOAD_DIR)
-
+        projects = await get_projects(UPLOAD_DIR, BUCKET_NAME)
     return {"projects": projects}
 
 @app.get("/memory_status")
@@ -242,17 +245,23 @@ async def upload(request: Request, response: Response, file: UploadFile = File(.
     
     """
     sid, session = await get_or_create_session(request, response)
-    user_dir = UPLOAD_DIR / sid
+
+    user_dir = UPLOAD_DIR /"Uploads"/sid if IS_VM else UPLOAD_DIR /"Uploads"
     user_dir.mkdir(parents=True, exist_ok=True)
+
+    # file_path = user_dir / file.filename if IS_VM else user_dir / file.filename
     file_path = user_dir / file.filename
+
+    print("file_path", file_path)
     try:
         async with aiofiles.open(file_path, "wb") as f:
             while chunk := await file.read(1024 * 1024):
                 await f.write(chunk)
 
         # Upload to GCS asynchronously
-        gcs_url = await upload_to_gcs(BUCKET_NAME, file_path, sid)
-
+        if IS_VM:
+            gcs_url = await upload_to_gcs(BUCKET_NAME, file_path, sid)
+        
         # viz_config, _ = await handle_upload(str(file_path))
         return JSONResponse(
             status_code=200,
@@ -260,48 +269,52 @@ async def upload(request: Request, response: Response, file: UploadFile = File(.
         )
     except Exception as e:
         print("❌ Upload error:", e)
-        return JSONResponse(status_code=500, content={"error": str(e)})
+        return JSONResponse(status_code=500, content={"error": "Upload error"})
 
-@app.post('/load_file')
-async def load_file(request: Request, response: Response):
-    """Reload an existing file for this session."""
-    start = time.time()
-    sid, session = await get_or_create_session(request, response)
-    data = await request.json()
-    project = data.get("project")
-    filename = data.get("file")
+# @app.post('/load_file')
+# async def load_file(request: Request, response: Response):
+#     """Reload an existing file for this session."""
+#     start = time.time()
+#     sid, session = await get_or_create_session(request, response)
+#     data = await request.json()
+#     project = data.get("project")
+#     filename = data.get("file")
 
-    if not filename:
-        return JSONResponse(status_code=400, content={"error": "Missing 'file'."})
+#     if not filename:
+#         return JSONResponse(status_code=400, content={"error": "Missing 'file'."})
 
-    if project == 'uploads':
-        file_path = UPLOAD_DIR / sid / filename
-    else:
-        file_path = UPLOAD_DIR / project / filename
-        if BUCKET_NAME:
-            if file_path.exists():
-                print(f"File {file_path} already exists, skipping download.")
-            else:
-                print(f"Downloading file {project}/{filename} from {BUCKET_NAME}")
-                await download_gcs_file(BUCKET_NAME, f"{project}/{filename}", str(file_path))
-        else:
-            print("using gcs mount point")
-            file_path = UPLOAD_DIR / project / filename
-
-    if not file_path.exists():
-        return JSONResponse(status_code=404, content={"error": "File not found."})
-
-    session.file_path = str(file_path)
-    await save_session(session)
     
-    print("loading file", file_path, os.getpid())
-    viz_config, chat_config = await handle_upload(str(file_path))
+#     print("project", project, filename, IS_VM)
+#     if project == 'Uploads' and IS_VM:
+#         file_path = UPLOAD_DIR / project /  sid / filename
+#     else:
+#         file_path = UPLOAD_DIR / project / filename
+
+#         print("file_path", file_path)
+#         if BUCKET_NAME:
+#             if file_path.exists():
+#                 print(f"File {file_path} already exists, skipping download.")
+#             else:
+#                 print(f"Downloading file {project}/{filename} from {BUCKET_NAME}")
+#                 await download_gcs_file(BUCKET_NAME, f"{file_path}", str(file_path))
+#         else:
+#             print("using gcs mount point")
+#             file_path = UPLOAD_DIR / project / filename
+
+#     if not file_path.exists():
+#         return JSONResponse(status_code=404, content={"error": "File not found."})
+
+#     session.file_path = str(file_path)
+#     await save_session(session)
+    
+#     print("loading file", file_path, os.getpid())
+#     viz_config, chat_config = await handle_upload(str(file_path))
 
 
-    end = time.time()
-    print(f"Time taken to load file: {end - start} seconds")
+#     end = time.time()
+#     print(f"Time taken to load file: {end - start} seconds")
 
-    return {"message": "File loaded", "sid": sid, "filename": filename, "config": viz_config}
+#     return {"message": "File loaded", "sid": sid, "filename": filename, "config": viz_config}
 
 @sio.event
 async def connect(sid, environ, auth=None):
@@ -350,18 +363,21 @@ async def background_load_file(sid, data):
         if not filename:
             return JSONResponse(status_code=400, content={"error": "Missing 'file'."})
     
-        if project == 'uploads':
-            file_path = UPLOAD_DIR / lorax_sid / filename
+        if project == 'Uploads' and IS_VM:
+            file_path = UPLOAD_DIR / project / lorax_sid / filename
+            blob_path = f"{project}/{lorax_sid}/{filename}"
         else:
             file_path = UPLOAD_DIR / project / filename
+            blob_path = f"{project}/{filename}"
 
         print("file_path", file_path)
         if BUCKET_NAME:
-            print(f"Downloading file {project}/{filename} from {BUCKET_NAME}")
             if file_path.exists():
                 print(f"File {file_path} already exists, skipping download.")
             else:
-                await download_gcs_file(BUCKET_NAME, f"{project}/{filename}", str(file_path))
+                print(f"Downloading file {file_path} from {BUCKET_NAME}")
+
+                await download_gcs_file(BUCKET_NAME, f"{blob_path}", str(file_path))
         else:
             print("using gcs mount point")
             file_path = UPLOAD_DIR / project / filename
@@ -441,10 +457,3 @@ async def details(sid, data):
     except Exception as e:
         print(f"❌ Details error: {e}")
         await sio.emit("details-result", {"error": str(e)}, to=sid)
-
-# ─────────────────────────────────────────────
-# Entry Point (no Gunicorn)
-# ─────────────────────────────────────────────
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("lorax_socketio_app:sio_app", host="0.0.0.0", port=8080, reload=True)

@@ -1,53 +1,83 @@
-# 🧬 Lorax: Visualization Framework for Ancestral Recombination Graphs
+# Lorax
 
-**Lorax** is an interactive, GPU-accelerated platform for exploring Ancestral Recombination Graphs (ARGs) and **tree sequence data. It provides real-time visualization and querying of genomic relationships at population scale.
+**Lorax** is an essential tool for the **interactive exploration and visualization of Ancestral Recombination Graphs (ARGs)**.
 
----
+> Visit the official Lorax Website: [https://lorax.in/](https://lorax.in/)
 
-## Features
+## Local Installation and Usage
 
-* Tree-sequence visualization: Explore recombination-aware local trees.
-* GPU-accelerated rendering: Powered by WebGL and Deck.gl.
-* Real-time updates: WebSocket-based communication via Socket.IO.
-* Flexible data formats: Supports `.trees`, `.tsz`, and `.jsonl` formats.
-* Scalable backend: Async FastAPI with Redis-based session handling.
+### Option 1: Using the Pre-built Docker Image (Recommended)
 
----
+The simplest way to get started is by pulling the image directly from Docker Hub.
 
-## Installation with Docker
+```bash
+docker pull pratikkatte7/lorax
+```
+### Option 2: Building the Docker Image from Source
 
-### Clone the Repository
+If you prefer to build the image locally, follow these steps:
 
+1. Clone the Repository
 ```bash
 git clone https://github.com/pratikkatte/lorax.git
 cd lorax
 ```
-
-### Build the Docker Image
+2. Built the docker image. 
 
 ```bash
 docker build -t lorax .
 ```
 
-### Run the Container
+### Running Lorax and Accessing the Interface
+
+Once the Docker image is available (either pulled or built), you can run the container and access the web interface.
+
+#### Running the Container
+
+Use the following command to run Lorax. It maps the container's internal port 80 to your machine's port 80 (or any other port you specify).
 
 ```bash
+# Maps container port 80 to host port 80
 docker run -it -p 80:80 lorax
 ```
 
-Once running, visit **[http://localhost/](http://localhost/)** in your browser to access the Lorax UI.
+> ⚠️ Note: If port 80 is in use on your system, you can choose a different host port, such as 5173:
+> ```bash
+> docker run -it -p 5173:80 lorax
+> ```
+-- The tool can be accessed via http://localhost:80. You can provide any other port. For instance 5173, http://localhost:5173
 
+### Accessing the Tool
 
----
+After running the container, open your web browser and navigate to the appropriate address:
 
-## Citation
+- If you used port 80: http://localhost:80/
+> If you used other port: http://localhost:[port]/
 
-NA
+## Using Your Own ARG Data Files
+Lorax supports files in `.trees`, `.tsz` (tskit format) or `.csv` format.
+
+1. Simple File Upload via Web Interface
+
+For smaller files, you can easily use the dedicated upload panel located within the Lorax web page once the tool is running.
+
+2. Mounting a Local Directory (Recommended for Large Datasets)
+
+This method is the easiest and fastest when working with large ARG files, as it avoids slow web uploads by directly sharing your file system with the container.
+
+To make a local directory of your data available inside the container, use the -v (volume mount) flag:
+
+- Example: If your ARG files are located in a folder named ts_files in your current directory (`$(pwd)`), use this command:
+> ```
+> docker run -it -p 80:80 -v $(pwd)/ts_files:/app/UPLOADS/ts_files lorax
+> ```
+
+After the volume is mounted, your files will be accessible by Lorax when you use the interface.
+
 ---
 
 ## Maintainer
 
-**Pratik Katte**
-Department of Biomolecular Engineering & Bioinformatics
+**Pratik Katte** \
+Department of Biomolecular Engineering & Bioinformatics \
 University of California, Santa Cruz
-[https://pratikkatte.github.io](https://pratikkatte.github.io)
