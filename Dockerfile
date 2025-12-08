@@ -50,19 +50,10 @@ RUN apt-get update && \
 WORKDIR /app
 RUN mkdir -p /app/uploads /var/www/html
 
-# # Copy backend venv and app
-# COPY --from=python-builder /opt/venv /opt/venv
-# ENV PATH="/opt/venv/bin:$PATH"
-
 COPY --from=python-builder /wheels /wheels
-# RUN pip install --no-cache-dir /wheels/*
 RUN find /wheels -name '*.whl' -print0 | xargs -0 pip install --no-cache-dir
 
-# ENV PATH="/opt/venv/bin:$PATH"
-
-
 COPY lorax/ /app/lorax/
-# COPY uploads/ /app/uploads/
 COPY gunicorn_config.py /app/
 COPY entrypoint.sh /app/
 RUN chmod +x /app/entrypoint.sh
@@ -74,7 +65,6 @@ COPY --from=frontend-builder /frontend/dist /var/www/html/
 COPY nginx/nginx.conf /etc/nginx/conf.d/default.conf
 
 RUN rm -rf /etc/nginx/sites-enabled
-
 
 EXPOSE 80 8080
 

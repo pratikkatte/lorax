@@ -62,7 +62,7 @@ function useConnect({ setGettingDetails, settings }) {
     
     const path = `${url.pathname}/socket.io/`; 
 
-    console.log(`Connecting Socket.IO to host: ${host} with path: ${path}`);
+    // console.log(`Connecting Socket.IO to host: ${host} with path: ${path}`);
     const socket = io(host, {
       transports: ["websocket"],
       withCredentials: true,
@@ -210,6 +210,7 @@ function useConnect({ setGettingDetails, settings }) {
 
   const queryLocalBins = useCallback(
     (start, end, globalBpPerUnit, nTrees, new_globalBp, regionWidth=null) => {
+
       return new Promise((resolve) => {
         workerRef.current?.postMessage({
           type: "local-bins",
@@ -226,6 +227,8 @@ function useConnect({ setGettingDetails, settings }) {
 
   const queryNodes = useCallback(
     (value, localTrees) => {
+
+
       return new Promise((resolve) => {
         socketRef.current?.emit("query", { value, localTrees, lorax_sid: sidRef.current });
 
@@ -245,14 +248,14 @@ function useConnect({ setGettingDetails, settings }) {
         }
     
         const handleResult = (message) => {
-          console.log("📦 Received load-file-result:", message);
+          // console.log("📦 Received load-file-result:", message);
           socketRef.current.off("load-file-result", handleResult); // cleanup listener
           resolve(message);
         };
     
         socketRef.current.once("load-file-result", handleResult);
 
-        console.log("payload", payload, sidRef.current);
+        // console.log("payload", payload, sidRef.current);
     
         socketRef.current.emit("load_file", { ...payload, lorax_sid: sidRef.current });
       });
@@ -261,7 +264,7 @@ function useConnect({ setGettingDetails, settings }) {
   const queryDetails = useCallback(
     (clickedObject) => {
       setGettingDetails(true);
-      console.log("queryDetails", clickedObject, sidRef.current);
+      // console.log("queryDetails", clickedObject, sidRef.current);
       const payload = {lorax_sid: sidRef.current, ...clickedObject};
       socketRef.current?.emit("details", payload);
     },

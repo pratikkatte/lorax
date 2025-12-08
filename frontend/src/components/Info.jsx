@@ -133,7 +133,7 @@ const handleDetails = useCallback((incoming_data) => {
                 <DetailRow label="Time" value={nodeDetails.time} />
                 <DetailRow label="Individual" value={nodeDetails.individual} />
                 {/* <DetailRow label="Population" value={nodeDetails.population} /> */}
-                <DetailRow label="Population" value={nodeDetails.population ? populations[nodeDetails?.population].population : populationDetails?.population} />
+                <DetailRow label="Population" value={nodeDetails.population ? populations[nodeDetails?.population]?.population : populationDetails?.population} />
                 <DetailRow 
                   label="Metadata" 
                   value={typeof nodeDetails.metadata === 'object' 

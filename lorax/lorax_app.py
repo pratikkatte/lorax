@@ -54,8 +54,6 @@ BUCKET_NAME = os.getenv("BUCKET_NAME", 'lorax_projects')
 ALLOWED_ORIGINS = [
     o.strip() for o in os.getenv("ALLOWED_ORIGINS", "http://localhost:5173").split(",")
 ]
-print("ALLOWED_ORIGINS:", ALLOWED_ORIGINS)
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
@@ -368,10 +366,10 @@ async def background_load_file(sid, data):
             file_path = UPLOAD_DIR / project / lorax_sid / filename
             blob_path = f"{project}/{lorax_sid}/{filename}"
         else:
+
             file_path = UPLOAD_DIR / project / filename
             blob_path = f"{project}/{filename}"
 
-        print("file_path", file_path)
         if BUCKET_NAME:
             if file_path.exists():
                 print(f"File {file_path} already exists, skipping download.")
@@ -425,7 +423,7 @@ async def query(sid, data):
             print(f"⚠️ No file loaded for session {lorax_sid}")
             return
 
-        print("fetch query in ", session.sid, os.getpid())
+
         result = await handle_query(session.file_path, data.get("localTrees"))
         print("sending data to", sid)
         await sio.emit("query-result", {"data": json.loads(result)}, to=sid)

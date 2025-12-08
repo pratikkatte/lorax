@@ -1,6 +1,6 @@
 
 import { cleanup } from "../utils/processNewick.js";
-import { kn_parse,kn_parse_auto, kn_calxy, kn_expand_node, kn_global_calxy, compare_tree} from "../utils/jstree";
+import { kn_parse,kn_parse_auto, kn_calxy, kn_expand_node, kn_global_calxy} from "../utils/jstree";
 import { Matrix4 } from "@math.gl/core";
 
 console.log("[Worker] Initialized");

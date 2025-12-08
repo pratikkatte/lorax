@@ -20,13 +20,18 @@ export ALLOWED_ORIGINS='http://localhost:5173,https://lorax.in'
 
 # redis-cli CONFIG SET client-output-buffer-limit "pubsub 512mb 256mb 60"
 
+echo "Starting Lorax..."
+echo "Lorax will be available at http://localhost:80 or to your forwarded port"
+echo "Press Ctrl+C to stop."
+echo "--------------------------------"
+
 # Start backend (Gunicorn)
-echo "[INFO] Starting Gunicorn (FastAPI backend)..."
+# echo "[INFO] Starting Gunicorn (FastAPI backend)..."
 gunicorn -c /app/gunicorn_config.py lorax.lorax_app:sio_app &
 BACKEND_PID=$!
 
 # Start Nginx (frontend proxy)
-echo "[INFO] Starting Nginx (serving frontend + proxying API)..."
+# echo "[INFO] Starting Nginx (serving frontend + proxying API)..."
 nginx -g "daemon off;" &
 
 # Keep container alive

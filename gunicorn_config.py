@@ -44,7 +44,7 @@ proc_name = "lorax-fastapi"
 access_log_format = '%(h)s %(l)s %(u)s %(t)s "%(r)s" %(s)s %(b)s "%(f)s" "%(a)s" %(D)s'
 errorlog = "-"
 accesslog = "-"
-loglevel = "info"
+loglevel = "error"
 
 # Reload on file changes (disable in production)
 reload = False

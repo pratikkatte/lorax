@@ -109,6 +109,7 @@ async def handle_query(file_path, localTrees):
 
     """
     # get object from file_path using get_or_load_ts
+    
     ts = await get_or_load_ts(file_path)
     if ts is None:
         return json.dumps({"error": "Tree sequence (ts) is not set. Please upload a file first. Or file_path is not valid or not found."})
@@ -236,7 +237,6 @@ def get_config(ts, file_path):
         print("Error in get_config", e)
         return None
     
-
 def get_local_uploads(upload_dir, sid):
     """
     TODO: IMPLEMENT THIS LATER
@@ -252,35 +252,37 @@ async def handle_upload(file_path):
     #     ts = tskit.load(file_path)
 
     ts = await get_or_load_ts(file_path)
-
     print("File loading complete")
     config = await asyncio.to_thread(get_or_load_config, ts, file_path)
     return config, None
 
-def list_project_files(directory, projects):
+def list_project_files(directory, projects, root):
         """
         Recursively list files and folders for the given directory.
         If subdirectories are found, they are added as keys and populated similarly.
         """
-    
         for item in os.listdir(directory):
             item_path = os.path.join(directory, item)
             if os.path.isdir(item_path):
                 # Recursive call for subdirectory
-                projects[item] = {
-                    "folder": item,
+                directory_name = os.path.relpath(item_path, root)
+                directory_basename = os.path.basename(item_path)
+                projects[str(directory_basename)] = {
+                    "folder": str(directory_name),
                     "files": [],
                     "description": "",
                 }
-                projects = list_project_files(item_path, projects)
+                                
+                projects = list_project_files(item_path, projects, root=root)
             else:
+                # Get the relative path from root to directory
+                directory_name = os.path.relpath(directory, root)
                 directory_basename = os.path.basename(directory)
-                
                 if os.path.isfile(item_path) and (
                     item.endswith(".trees") or item.endswith(".trees.tsz") or item.endswith(".csv")
                 ):
-                    if item not in projects[directory_basename]["files"]:
-                        projects[directory_basename]["files"].append(item)
+                    if item not in projects[str(directory_basename)]["files"]:
+                        projects[str(directory_basename)]["files"].append(item)
         return projects
 
 async def get_projects(upload_dir, BUCKET_NAME):
@@ -291,8 +293,12 @@ async def get_projects(upload_dir, BUCKET_NAME):
 
     projects = {}
     upload_dir = str(upload_dir)
-    
-    projects = list_project_files(upload_dir, projects)
+    projects[upload_dir] = {
+        "folder": upload_dir,
+        "files": [],
+        "description": "",
+    }
+    projects = list_project_files(upload_dir, projects, root=upload_dir)
     projects = get_public_gcs_dict(BUCKET_NAME, sid=None, projects=projects)
     return projects
 
@@ -353,7 +359,7 @@ def get_individual_details(ts, individual_id):
     return data
 
 async def handle_details(file_path, data):
-    print("handle_details", data)
+    
 
     try:
         ts = await get_or_load_ts(file_path)
