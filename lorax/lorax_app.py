@@ -43,8 +43,7 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 UPLOAD_DIR = Path("UPLOADS")
 
-IS_VM = os.getenv("IS_VM", True)
-IS_VM = False
+IS_VM = os.getenv("IS_VM", False)
 
 UPLOAD_DIR.mkdir(exist_ok=True)
 

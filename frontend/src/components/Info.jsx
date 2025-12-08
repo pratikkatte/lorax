@@ -21,7 +21,8 @@ useEffect(() => {
   if (!populations) return;
   // Enable all population keys by default for the current grouping
   let data = selectedColorBy === 'sample_name' ? sampleNames.sample_names : populations;
-  const allKeys = new Set(Object.keys(data || {}).map(k => Number(k)));
+  const allKeys = new Set(Object.keys(data || {}).map(k => k));
+  console.log("allKeys", allKeys);
   setEnabledValues(allKeys);
 }, [selectedColorBy, populations, sampleNames]);
 
@@ -197,7 +198,7 @@ const handleDetails = useCallback((incoming_data) => {
                       Object.entries(data || {}).forEach(([key, p]) => {
                         const val = p?.[selectedColorBy] || 'N/A';
                         if (!valueToKeys.has(val)) valueToKeys.set(val, { keys: [], color: p?.color });
-                        valueToKeys.get(val).keys.push(Number(key));
+                        valueToKeys.get(val).keys.push(key);
                       });
                       const items = Array.from(valueToKeys.entries());
                       return items.length > 0 ? items.map(([val, info]) => {

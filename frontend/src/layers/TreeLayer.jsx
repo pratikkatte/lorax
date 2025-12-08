@@ -97,14 +97,14 @@ export default class TreeLayer extends CompositeLayer {
           return position;
         },
         getFillColor: d => {
-          let sample_population = nodes_population[parseInt(d.name)];
+          let sample_population = nodes_population[(d.name)];
           const colorBy = populationFilter.colorBy;
           let color = [150, 150, 150, 100];
 
           if (colorBy === 'sample_name') {
             // do something
             
-            let key = sampleNames.sample_names[parseInt(d.name)];
+            let key = sampleNames.sample_names[d.name];
             sample_population = key.sample_name;
             if (populationFilter.enabledValues.includes(sample_population)) { 
               return [...key.color, 200];
@@ -112,7 +112,7 @@ export default class TreeLayer extends CompositeLayer {
               return color;
             }
           }
-          if (populationFilter.enabledValues.includes(sample_population)) {
+          if (populationFilter.enabledValues.includes(String(sample_population))) {
             return [...id_populations[sample_population].color.slice(0, 3), 200]
           } else {
             return color;

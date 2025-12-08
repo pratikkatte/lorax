@@ -126,6 +126,19 @@ async def handle_query(file_path, localTrees):
         print("Error in handle_query", e)
         return json.dumps({"error": f"Error processing query: {str(e)}"})
 
+def extract_sample_names(newick_str):
+    tokens = re.findall(r'([^(),:]+):', newick_str)
+
+    samples = []
+    for t in tokens:
+        # Skip pure numbers (branch lengths)
+        if re.fullmatch(r'[0-9.+Ee-]+', t):
+            continue
+        samples.append(t)
+
+    # Remove duplicates while preserving order
+    return list(dict.fromkeys(samples))
+
 def max_branch_length_from_newick(nwk):
     values = re.findall(r":([0-9.eE+-]+)", nwk)
     if not values:
@@ -139,10 +152,15 @@ def get_config_csv(df, file_path, window_size=50000):
 
     intervals = []
     max_branch_length_all = 0
+
+    samples_set = set()
     for _, row in df.iterrows():
         # Get the next row's genomic position if available, otherwise use current + window_size
         current_pos = int(row['genomic_positions'])
         max_br = max_branch_length_from_newick(row['newick'])
+        sample_names = extract_sample_names(row['newick'])
+        samples_set.update(sample_names)
+
         if max_br > max_branch_length_all:
             max_branch_length_all = max_br
         next_row = row.name + 1  # rely on DataFrame index (assumes default integer)
@@ -156,6 +174,9 @@ def get_config_csv(df, file_path, window_size=50000):
     populations = {}
     nodes_population = []
     times = [0, max_branch_length_all]
+    sample_names = {}
+    for s in samples_set:
+        sample_names[str(s)] = {"sample_name": s}
     config = {
         'genome_length': genome_length,
         'times': {'type': 'branch length', 'values': times},
@@ -163,38 +184,58 @@ def get_config_csv(df, file_path, window_size=50000):
         'filename': str(file_path).split('/')[-1],
         'populations': populations,
         'nodes_population': nodes_population,
+        'sample_names': sample_names,
     }
     return config
+
+def ensure_json_dict(data):
+    # If already a dict, return as-is
+    if isinstance(data, dict):
+        return data
+    
+    # If bytes, decode to string
+    if isinstance(data, (bytes, bytearray)):
+        data = data.decode("utf-8")
+
+    # If string, parse JSON
+    if isinstance(data, str):
+        return json.loads(data)
+
+    raise TypeError(f"Unsupported data type: {type(data)}")
 
 def get_config(ts, file_path):
-    # new_intervals = {int(tree.interval[0]): [int(tree.interval[0]), int(tree.interval[1])] for tree in ts.trees()}
-    # intervals = [[int(tree.interval[0]), int(tree.interval[1])] for tree in ts.trees()]
-    # start_intervals = [tree.interval[0] for tree in ts.trees()]
-    # end_intervals = [tree.interval[1] for tree in ts.trees()]
-    intervals = [tree.interval[0] for tree in ts.trees()]
-    times = [ts.min_time, ts.max_time]
-    populations = {}
+    try:
+        intervals = [tree.interval[0] for tree in ts.trees()]
+        times = [ts.min_time, ts.max_time]
+        populations = {}
+        nodes_population = [ts.node(n).population for n in ts.samples()]
 
-    for s in ts.populations():
-        meta = json.loads(s.metadata)
-        populations[int(s.id)] = {
-            "population": meta.get("name"),
-            "description": meta.get("description"),
-            "super_population": meta.get("super_population")
-            }
-    # nodes_population = [n.population for n in ts.nodes()]
-    nodes_population = [ts.node(n).population for n in ts.samples()]
+        for s in ts.populations():
+            meta = ensure_json_dict(s.metadata)
+            populations[str(s.id)] = {
+                "population": meta.get("name"),
+                "description": meta.get("description"),
+                "super_population": meta.get("super_population")
+                }
 
-    config = {'genome_length': ts.sequence_length,
-    # 'start_intervals': start_intervals,
-    # 'end_intervals': end_intervals,
-    'times': {'type': 'coalescent time', 'values': times},
-    'intervals':intervals, 
-    'filename': str(file_path).split('/')[-1], 
-    'populations':populations, 
-    'nodes_population':nodes_population
-    }
-    return config
+        nodes_population = [ts.node(n).population for n in ts.samples()]
+        sample_names = {}
+        # for i, s in enumerate(ts.samples()):
+        #     sample_names[str(s)] = {"sample_name": str(s)}
+
+        config = {'genome_length': ts.sequence_length,
+        'times': {'type': 'coalescent time', 'values': times},
+        'intervals':intervals,
+        'filename': str(file_path).split('/')[-1], 
+        'populations':populations,
+        'nodes_population':nodes_population,
+        'sample_names':sample_names
+        }
+        return config
+    except Exception as e:
+        print("Error in get_config", e)
+        return None
+    
 
 def get_local_uploads(upload_dir, sid):
     """
