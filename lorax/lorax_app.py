@@ -45,6 +45,8 @@ UPLOAD_DIR = Path("UPLOADS")
 
 IS_VM = os.getenv("IS_VM", False)
 
+print("Running in VM:", IS_VM)
+
 UPLOAD_DIR.mkdir(exist_ok=True)
 
 BUCKET_NAME = os.getenv("BUCKET_NAME", 'lorax_projects')
