@@ -163,7 +163,7 @@ function Deck({
   setClickedGenomeInfo
 }) {
 
-  const {tsconfig, globalBpPerUnit, populations, populationFilter} = config;
+  const {tsconfig, globalBpPerUnit, populations, populationFilter, sampleNames} = config;
   const saveViewports = useRef({});
   const {views, xzoom, viewState, handleViewStateChange, setDecksize, yzoom, genomicValues} = view
 
@@ -245,6 +245,7 @@ function Deck({
       hoveredGenomeInfo,
       yzoom,
       xzoom,
+      sampleNames,
     });
     const [dummy, setDummy] = useState(null);
 

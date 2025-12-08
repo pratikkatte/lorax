@@ -17,12 +17,13 @@ export default class TreeLayer extends CompositeLayer {
     populationFilter: null,
     yzoom: null,
     xzoom: null,
+    sampleNames: null,
   };
 
   renderLayers() {
     const id_populations = this.props.populations.populations;
     const nodes_population = this.props.populations.nodes_population;
-
+    const sampleNames = this.props.sampleNames;
     const { bin, viewId, hoveredTreeIndex, populationFilter, xzoom } = this.props;
     if (!bin || !bin.path || !bin.modelMatrix || !bin.visible) return null
 
@@ -96,11 +97,25 @@ export default class TreeLayer extends CompositeLayer {
           return position;
         },
         getFillColor: d => {
-          const sample_population = nodes_population[parseInt(d.name)];
+          let sample_population = nodes_population[parseInt(d.name)];
+          const colorBy = populationFilter.colorBy;
+          let color = [150, 150, 150, 100];
+
+          if (colorBy === 'sample_name') {
+            // do something
+            
+            let key = sampleNames.sample_names[parseInt(d.name)];
+            sample_population = key.sample_name;
+            if (populationFilter.enabledValues.includes(sample_population)) { 
+              return [...key.color, 200];
+            } else {
+              return color;
+            }
+          }
           if (populationFilter.enabledValues.includes(sample_population)) {
             return [...id_populations[sample_population].color.slice(0, 3), 200]
           } else {
-            return [150, 150, 150, 100];
+            return color;
           }
         },
         // getLineColor: [80, 80, 180, 255],

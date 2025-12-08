@@ -14,6 +14,7 @@ function useConfig({backend, setStatusMessage, timeRef}) {
   const genomeLength = useRef(null);
   const pathArray = useRef([]);
   const [filename, setFilename] = useState("");
+  const [sampleNames, setSampleNames] = useState(null);
 
   const handleConfigUpdate = useCallback((data, value=null) => {
 
@@ -73,6 +74,7 @@ function useConfig({backend, setStatusMessage, timeRef}) {
       };
       
       setPopulations({'populations': assignUniqueColors(data.populations), 'nodes_population': data.nodes_population});
+      setSampleNames({'sample_names': assignUniqueColors(data.sample_names)});
 
       let number_of_intervals = data.intervals.length
       setGlobalBpPerUnit(data.genome_length/(number_of_intervals));
@@ -102,8 +104,9 @@ function useConfig({backend, setStatusMessage, timeRef}) {
     genomeLength,
     pathArray,
     filename,
+    sampleNames,
     handleConfigUpdate
-  }), [tsconfig, setConfig, globalBpPerUnit, populations, populationFilter, setPopulationFilter, genomeLength, pathArray, filename, handleConfigUpdate]);
+  }), [tsconfig, sampleNames, setConfig, globalBpPerUnit, populations, populationFilter, setPopulationFilter, genomeLength, pathArray, filename, handleConfigUpdate]);
 };
 
 export default useConfig;

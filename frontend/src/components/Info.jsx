@@ -5,13 +5,13 @@ const Info = ({backend, gettingDetails, setGettingDetails, setShowInfo, config, 
 
 const {socketRef, isConnected} = backend;
 
-const {tsconfig, populations: {populations}, populationFilter, setPopulationFilter} = config;
+const {tsconfig, populations: {populations}, populationFilter, sampleNames, setPopulationFilter} = config;
 
 const [nodeDetails, setNodeDetails] = useState(null);
 const [individualDetails, setIndividualDetails] = useState(null);
 const [treeDetails, setTreeDetails] = useState(null);
 const [activeTab, setActiveTab] = useState('metadata');
-const [coloryby, setColoryby] = useState({'population': 'Population', 'super_population': "Super Population"});
+const [coloryby, setColoryby] = useState({'population': 'Population', 'super_population': "Super Population", 'sample_name': "Sample Name"});
 const [selectedColorBy, setSelectedColorBy] = useState('population');
 const [enabledValues, setEnabledValues] = useState(new Set());
 const [populationDetails, setPopulationDetails] = useState(null);
@@ -20,9 +20,10 @@ const [populationDetails, setPopulationDetails] = useState(null);
 useEffect(() => {
   if (!populations) return;
   // Enable all population keys by default for the current grouping
-  const allKeys = new Set(Object.keys(populations || {}).map(k => Number(k)));
+  let data = selectedColorBy === 'sample_name' ? sampleNames.sample_names : populations;
+  const allKeys = new Set(Object.keys(data || {}).map(k => Number(k)));
   setEnabledValues(allKeys);
-}, [selectedColorBy, populations]);
+}, [selectedColorBy, populations, sampleNames]);
 
 useEffect(() => {
   setPopulationFilter(prev => ({
@@ -42,8 +43,6 @@ const handleDetails = useCallback((incoming_data) => {
     if (incoming_data.role === "details-result") {
       
       var data = safeParse(incoming_data.data)
-
-      console.log("data", data);
       setShowInfo(true);
       setTreeDetails(data?.tree? data.tree : null);
       setNodeDetails(data?.node? data.node : null);
@@ -191,10 +190,11 @@ const handleDetails = useCallback((incoming_data) => {
               <div>
                 <div className="text-sm font-medium text-gray-700 mb-1">Values</div>
                 <div className="max-h-64 overflow-auto border border-gray-100 rounded-md divide-y divide-gray-100">
-                  {populations ? (
+                  {populations || sampleNames ? (
                     (() => {
                       const valueToKeys = new Map();
-                      Object.entries(populations || {}).forEach(([key, p]) => {
+                      let data = selectedColorBy === 'sample_name' ? sampleNames.sample_names : populations;
+                      Object.entries(data || {}).forEach(([key, p]) => {
                         const val = p?.[selectedColorBy] || 'N/A';
                         if (!valueToKeys.has(val)) valueToKeys.set(val, { keys: [], color: p?.color });
                         valueToKeys.get(val).keys.push(Number(key));
@@ -202,6 +202,7 @@ const handleDetails = useCallback((incoming_data) => {
                       const items = Array.from(valueToKeys.entries());
                       return items.length > 0 ? items.map(([val, info]) => {
                         const { keys, color } = info;
+             
                         const allEnabled = keys.every(k => enabledValues.has(k));
                         return (
                           <button

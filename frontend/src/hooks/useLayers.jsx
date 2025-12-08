@@ -14,6 +14,7 @@ const useLayers = ({
   regions,
 globalBpPerUnit,
 populations,
+sampleNames,
 populationFilter,
 hoveredGenomeInfo,
 }) => {
@@ -101,6 +102,7 @@ hoveredGenomeInfo,
           hoveredTreeIndex,
           populations,
           populationFilter,
+          sampleNames,
           yzoom,
           xzoom,
           globalBpPerUnit
