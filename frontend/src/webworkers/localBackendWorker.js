@@ -1,6 +1,6 @@
 
 import { cleanup } from "../utils/processNewick.js";
-import { kn_parse,kn_parse_auto, kn_calxy, kn_expand_node, kn_global_calxy} from "../utils/jstree";
+import { kn_parse,kn_parse_auto, kn_calxy, kn_expand_node, kn_global_calxy, compare_tree} from "../utils/jstree";
 import { Matrix4 } from "@math.gl/core";
 
 console.log("[Worker] Initialized");
@@ -611,11 +611,14 @@ export function getTreeData(global_index, precision) {
 }
 
 let MAX_SCALE = 0;
+
 function processData(localTrees, sendStatusMessage, vertical_mode) {
   const paths = {};
 
+  let prev_tree = null;
   if (Array.isArray(localTrees)) {
     localTrees.forEach((tree, index) => {
+
       const processedTree = processNewick(
         tree.newick,
         tree.mutations,
@@ -630,14 +633,8 @@ function processData(localTrees, sendStatusMessage, vertical_mode) {
         // tree.populations
       );
 
-      // 
       pathsData.set(tree.global_index, processedTree);
 
-      // const segments = getTreeData(tree.global_index, 2);
-
-      // const segments = extractSquarePaths(processedTree.root, false);
-      // const dedupedSegments = dedupeSegments(segments);
-      // paths[tree.global_index] = segments;
     });
   }
 
@@ -647,7 +644,7 @@ function processData(localTrees, sendStatusMessage, vertical_mode) {
 onmessage = async (event) => {
   //Process uploaded data:
   const { data } = event;
-  console.log("Worker onmessage");
+  // console.log("Worker onmessage", data.type);
 
   if (data.type === "upload")
   {
@@ -660,7 +657,6 @@ onmessage = async (event) => {
       postMessage({ type: "gettree", data: result });
     }
     if (data.type === "query") {
-      console.log("query nodes", data.data.tree_dict);
       const result = await queryNodes(data.data.tree_dict, data.vertical_mode);
       postMessage({ type: "query", data: result });
     }
