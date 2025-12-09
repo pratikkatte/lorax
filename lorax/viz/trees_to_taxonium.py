@@ -218,10 +218,10 @@ def old_new_tree_samples(tree_indexes, ts):
     tree_dict = []
 
     # Precompute populations (same across trees)
-    populations = [
-        {"id": int(n.id), "population": n.population}
-        for n in map(ts.node, ts.samples())
-    ]
+    # populations = [
+    #     {"id": int(n.id), "population": n.population}
+    #     for n in map(ts.node, ts.samples())
+    # ]
 
     # Pre-bind functions for speed (avoids repeated attribute lookups)
     ts_node = ts.node
@@ -269,7 +269,7 @@ def old_new_tree_samples(tree_indexes, ts):
                 "min_time": min_time,
                 "max_time": max_time,
                 "global_index": global_index,
-                "populations": populations
+                # "populations": populations
             })
 
         except Exception as e:

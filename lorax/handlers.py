@@ -212,14 +212,14 @@ def get_config(ts, file_path):
         nodes_population = [ts.node(n).population for n in ts.samples()]
 
         for s in ts.populations():
-            meta = ensure_json_dict(s.metadata)
+            meta = ensure_json_dict(s.metadata) if s.metadata else {}
             populations[str(s.id)] = {
                 "population": meta.get("name"),
                 "description": meta.get("description"),
                 "super_population": meta.get("super_population")
                 }
 
-        nodes_population = [ts.node(n).population for n in ts.samples()]
+        # nodes_population = [ts.node(n).population for n in ts.samples()]
         sample_names = {}
         # for i, s in enumerate(ts.samples()):
         #     sample_names[str(s)] = {"sample_name": str(s)}
