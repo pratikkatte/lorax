@@ -68,7 +68,8 @@ export default function useFileUpload({
 
           setProject(file.project);
 
-          const sid = file.project === "Uploads" ? resp.owner_sid : null;
+          // Use share_sid if available (for shared links), otherwise use owner_sid from response
+          const sid = file.project === "Uploads" ? (file.share_sid || resp.owner_sid) : null;
           let value = null;
           if (file.genomiccoordstart && file.genomiccoordend) {
             value = [file.genomiccoordstart, file.genomiccoordend];
@@ -109,13 +110,13 @@ export default function useFileUpload({
       if (loadingRequestRef.current) return;
       loadingRequestRef.current = true;
   
-      console.log("in loadFile", project);
+      // console.log("in loadFile", project);
       try {
 
         const start = performance.now();
         const url = `${API_BASE}/load_file`;
         const payload = project;
-        console.log("payload", payload);
+        // console.log("payload", payload);
 
         const res = await queryFile(payload);
 
@@ -128,7 +129,7 @@ export default function useFileUpload({
         const end = performance.now();
         console.log(`loadFile response time: ${((end - start) / 1000).toFixed(2)}s`);
         
-        _finishSuccess(res, { name: project.file, project: project.project, value: project.value, genomiccoordstart: project.genomiccoordstart, genomiccoordend: project.genomiccoordend });
+        _finishSuccess(res, { name: project.file, project: project.project, value: project.value, genomiccoordstart: project.genomiccoordstart, genomiccoordend: project.genomiccoordend, share_sid: project.share_sid });
       } catch (err) {
         console.log("err", err);
         _finishError(err);
@@ -169,7 +170,8 @@ export default function useFileUpload({
 
           const payload = {
             project: "Uploads",
-            file: response?.data?.filename
+            file: response?.data?.filename,
+            share_sid: response?.data?.sid  // Pass the uploader's sid so the URL can be shared
           }
           setFileUploaded(true);
           await loadFile(payload);

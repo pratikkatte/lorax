@@ -271,7 +271,7 @@ function useConnect({ setGettingDetails, settings }) {
           // console.log("payload", payload, sidRef.current);
 
           console.log("payload", payload, sidRef.current);
-          socketRef.current.emit("load_file", { ...payload, lorax_sid: sidRef.current });
+          socketRef.current.emit("load_file", { ...payload, lorax_sid: sidRef.current, share_sid: payload.share_sid });
         };
 
         if (!socketRef.current) {

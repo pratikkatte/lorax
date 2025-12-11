@@ -24,21 +24,22 @@ export default function PositionSlider({ config, project, ucgbMode, view, valueR
   // Keep ref and search params in sync with React state
   useEffect(() => {
     if (valueRef.current) {
+      // Preserve existing search params and only update the ones we need to change
+      const updatedParams = new URLSearchParams(searchParams);
+      
       if (ucgbMode.current) {
-        setSearchParams({
-          chrom: tsconfig.chrom,
-          genomiccoordstart: valueRef.current[0],
-          genomiccoordend: valueRef.current[1],
-        });
+        updatedParams.set('chrom', tsconfig.chrom);
+        updatedParams.set('genomiccoordstart', valueRef.current[0]);
+        updatedParams.set('genomiccoordend', valueRef.current[1]);
       } else {
-        setSearchParams({
-          project,
-          genomiccoordstart: valueRef.current[0],
-          genomiccoordend: valueRef.current[1],
-        });
+        updatedParams.set('project', project);
+        updatedParams.set('genomiccoordstart', valueRef.current[0]);
+        updatedParams.set('genomiccoordend', valueRef.current[1]);
       }
+      
+      setSearchParams(updatedParams);
     }
-  }, [valueRef.current, tsconfig.chrom, project, ucgbMode, setSearchParams]);
+  }, [valueRef.current, tsconfig.chrom, project, ucgbMode, setSearchParams, searchParams]);
 
 
   return (

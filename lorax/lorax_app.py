@@ -43,7 +43,7 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 UPLOAD_DIR = Path("UPLOADS")
 
-IS_VM = os.getenv("IS_VM", True)
+IS_VM = os.getenv("IS_VM", False)
 
 print("Running in VM:", IS_VM)
 
@@ -268,12 +268,12 @@ async def upload(request: Request, response: Response, file: UploadFile = File(.
         # Upload to GCS asynchronously
         if IS_VM:
             print("uploading to gcs")
-            # gcs_url = await upload_to_gcs(BUCKET_NAME, file_path, sid)
+            gcs_url = await upload_to_gcs(BUCKET_NAME, file_path, sid)
         
         # viz_config, _ = await handle_upload(str(file_path))
         return JSONResponse(
             status_code=200,
-            content={"message": "File uploaded", "sid": sid, "filename": file.filename}
+            content={"message": "File uploaded", "sid": sid, "owner_sid": sid, "filename": file.filename}
         )
     except Exception as e:
         print("❌ Upload error:", e)
