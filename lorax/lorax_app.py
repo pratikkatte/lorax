@@ -34,7 +34,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 
-from lorax.handlers import LoraxHandler, handle_upload, handle_query, get_projects, cache_status, handle_details
+from lorax.handlers import handle_upload, handle_query, get_projects, cache_status, handle_details
 
 # Setup
 
@@ -43,7 +43,7 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 UPLOAD_DIR = Path("UPLOADS")
 
-IS_VM = os.getenv("IS_VM", False)
+IS_VM = os.getenv("IS_VM", True)
 
 print("Running in VM:", IS_VM)
 
@@ -84,7 +84,6 @@ class Session:
         self.sid = sid
         self.file_path = file_path
         self.created_at = datetime.utcnow().isoformat()
-        self.handler = LoraxHandler()
 
     def to_dict(self):
         return {
@@ -186,7 +185,6 @@ async def init_session(request: Request, response: Response):
     print("init-session:", sid)
     return {"sid": sid}
 
-lorax_handler_global = LoraxHandler()
 
 @app.get("/projects")
 async def projects(request: Request, response: Response):
@@ -212,16 +210,26 @@ async def get_file(
     project: Optional[str] = Query(None),
     genomiccoordstart: Optional[int] = Query(None),
     genomiccoordend: Optional[int] = Query(None),
+    share_sid: Optional[str] = Query(None),
 ):
     sid, session = await get_or_create_session(request, response)
     if file and file != "" and file != "ucgb":
-        file_path = UPLOAD_DIR / (project or "") / file
+        if project == 'Uploads' and IS_VM:
+            target_sid = share_sid if share_sid else sid
+            file_path = UPLOAD_DIR / project / target_sid / file
+        else:
+            file_path = UPLOAD_DIR / (project or "") / file
     else:
         file = "1kg_chr20.trees.tsz"
         file_path = UPLOAD_DIR / (project or "1000Genomes") / file
     try:
  
-        viz_config, chat_config = await handle_upload(str(file_path))
+        viz_config, chat_config = await handle_upload(str(file_path), UPLOAD_DIR)
+
+        # Update session with loaded file path
+        session.file_path = str(file_path)
+        await save_session(session)
+
     except Exception as e:
         print(f"❌ Error loading file: {e}")
         return {"error": str(e)}
@@ -259,7 +267,8 @@ async def upload(request: Request, response: Response, file: UploadFile = File(.
 
         # Upload to GCS asynchronously
         if IS_VM:
-            gcs_url = await upload_to_gcs(BUCKET_NAME, file_path, sid)
+            print("uploading to gcs")
+            # gcs_url = await upload_to_gcs(BUCKET_NAME, file_path, sid)
         
         # viz_config, _ = await handle_upload(str(file_path))
         return JSONResponse(
@@ -269,51 +278,6 @@ async def upload(request: Request, response: Response, file: UploadFile = File(.
     except Exception as e:
         print("❌ Upload error:", e)
         return JSONResponse(status_code=500, content={"error": "Upload error"})
-
-# @app.post('/load_file')
-# async def load_file(request: Request, response: Response):
-#     """Reload an existing file for this session."""
-#     start = time.time()
-#     sid, session = await get_or_create_session(request, response)
-#     data = await request.json()
-#     project = data.get("project")
-#     filename = data.get("file")
-
-#     if not filename:
-#         return JSONResponse(status_code=400, content={"error": "Missing 'file'."})
-
-    
-#     print("project", project, filename, IS_VM)
-#     if project == 'Uploads' and IS_VM:
-#         file_path = UPLOAD_DIR / project /  sid / filename
-#     else:
-#         file_path = UPLOAD_DIR / project / filename
-
-#         print("file_path", file_path)
-#         if BUCKET_NAME:
-#             if file_path.exists():
-#                 print(f"File {file_path} already exists, skipping download.")
-#             else:
-#                 print(f"Downloading file {project}/{filename} from {BUCKET_NAME}")
-#                 await download_gcs_file(BUCKET_NAME, f"{file_path}", str(file_path))
-#         else:
-#             print("using gcs mount point")
-#             file_path = UPLOAD_DIR / project / filename
-
-#     if not file_path.exists():
-#         return JSONResponse(status_code=404, content={"error": "File not found."})
-
-#     session.file_path = str(file_path)
-#     await save_session(session)
-    
-#     print("loading file", file_path, os.getpid())
-#     viz_config, chat_config = await handle_upload(str(file_path))
-
-
-#     end = time.time()
-#     print(f"Time taken to load file: {end - start} seconds")
-
-#     return {"message": "File loaded", "sid": sid, "filename": filename, "config": viz_config}
 
 @sio.event
 async def connect(sid, environ, auth=None):
@@ -341,6 +305,8 @@ async def ping(sid, data):
 async def background_load_file(sid, data):
     try:
         lorax_sid = data.get("lorax_sid")
+        share_sid = data.get("share_sid")
+
         if not lorax_sid:
             print(f"⚠️ Missing lorax_sid")
             return
@@ -363,8 +329,9 @@ async def background_load_file(sid, data):
             return JSONResponse(status_code=400, content={"error": "Missing 'file'."})
     
         if project == 'Uploads' and IS_VM:
-            file_path = UPLOAD_DIR / project / lorax_sid / filename
-            blob_path = f"{project}/{lorax_sid}/{filename}"
+            target_sid = share_sid if share_sid else lorax_sid
+            file_path = UPLOAD_DIR / project / target_sid / filename
+            blob_path = f"{project}/{target_sid}/{filename}"
         else:
 
             file_path = UPLOAD_DIR / project / filename
@@ -388,9 +355,10 @@ async def background_load_file(sid, data):
         await save_session(session)
     
         print("loading file", file_path, os.getpid())
-        viz_config, chat_config = await handle_upload(str(file_path))
+        viz_config, chat_config = await handle_upload(str(file_path), UPLOAD_DIR)
 
-        await sio.emit("load-file-result", {"message": "File loaded", "sid": sid, "filename": filename, "config": viz_config}, to=sid)
+        owner_sid = share_sid if share_sid else lorax_sid
+        await sio.emit("load-file-result", {"message": "File loaded", "sid": sid, "filename": filename, "config": viz_config, "owner_sid": owner_sid}, to=sid)
 
     except Exception as e:
         print(f"Load file error: {e}")

@@ -68,7 +68,14 @@ export default function useFileUpload({
 
           setProject(file.project);
 
-          handleConfigUpdate(resp.config);
+          const sid = file.project === "Uploads" ? resp.owner_sid : null;
+          let value = null;
+          if (file.genomiccoordstart && file.genomiccoordend) {
+            value = [file.genomiccoordstart, file.genomiccoordend];
+          } else if (file.value) {
+            value = file.value;
+          }
+          handleConfigUpdate(resp.config, value, file.project, sid);
           
         }
       } catch (e) {
@@ -102,6 +109,7 @@ export default function useFileUpload({
       if (loadingRequestRef.current) return;
       loadingRequestRef.current = true;
   
+      console.log("in loadFile", project);
       try {
 
         const start = performance.now();
@@ -120,7 +128,7 @@ export default function useFileUpload({
         const end = performance.now();
         console.log(`loadFile response time: ${((end - start) / 1000).toFixed(2)}s`);
         
-        _finishSuccess(res, { name: project.file, project: project.project });
+        _finishSuccess(res, { name: project.file, project: project.project, value: project.value, genomiccoordstart: project.genomiccoordstart, genomiccoordend: project.genomiccoordend });
       } catch (err) {
         console.log("err", err);
         _finishError(err);

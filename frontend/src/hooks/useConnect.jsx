@@ -18,34 +18,46 @@ function useConnect({ setGettingDetails, settings }) {
   const workerRef = useRef(null);
   const socketRef = useRef(null);
   const sidRef = useRef(null);
+  const initSessionPromiseRef = useRef(null);
   const [statusMessage, setStatusMessage] = useState({ message: null });
   const [isConnected, setIsConnected] = useState(false);
 
   const { API_BASE, IS_PROD } = useLoraxConfig();
 
   /** 🔑 Initialize session */
-  const initSession = useCallback(async () => {
-    try {
-      const response = await axios.post(
-        `${API_BASE}/init-session`,
-        {},
-        {
-          withCredentials: true,
-          headers: { "Content-Type": "application/json" },
-        }
-      );
-
-      const sid = response?.data?.sid;
-      if (sid) {
-        sidRef.current = sid;
-        console.log("Session initialized:", sid);
-        connect(sid); // connect socket.io after session init
-      } else {
-        console.warn("No SID received during session init");
-      }
-    } catch (error) {
-      console.error("Error initializing session:", error);
+  const initSession = useCallback(() => {
+    if (initSessionPromiseRef.current) {
+      return initSessionPromiseRef.current;
     }
+
+    initSessionPromiseRef.current = (async () => {
+      try {
+        const response = await axios.post(
+          `${API_BASE}/init-session`,
+          {},
+          {
+            withCredentials: true,
+            headers: { "Content-Type": "application/json" },
+          }
+        );
+
+        const sid = response?.data?.sid;
+        if (sid) {
+          sidRef.current = sid;
+          console.log("Session initialized:", sid);
+          connect(sid); // connect socket.io after session init
+        } else {
+          console.warn("No SID received during session init");
+        }
+      } catch (error) {
+        console.error("Error initializing session:", error);
+        throw error;
+      } finally {
+        initSessionPromiseRef.current = null;
+      }
+    })();
+
+    return initSessionPromiseRef.current;
   }, [API_BASE]);
 
   /** 🔌 Connect to Socket.IO */
@@ -101,6 +113,7 @@ function useConnect({ setGettingDetails, settings }) {
 
     socket.on("query-result", (message) => {
 
+      console.log("query-result", message);
       workerRef.current?.postMessage({
         type: "query",
         data: message.data,
@@ -242,24 +255,37 @@ function useConnect({ setGettingDetails, settings }) {
     const queryFile = useCallback((payload) => {
       console.log("queryFile", payload);
       return new Promise((resolve, reject) => {
-        if (!socketRef.current) {
-          reject(new Error("Socket not connected"));
-          return;
-        }
-    
-        const handleResult = (message) => {
-          // console.log("📦 Received load-file-result:", message);
-          socketRef.current.off("load-file-result", handleResult); // cleanup listener
-          resolve(message);
-        };
-    
-        socketRef.current.once("load-file-result", handleResult);
+        const execute = () => {
+          if (!socketRef.current) {
+            reject(new Error("Socket not available"));
+            return;
+          }
+          const handleResult = (message) => {
+            // console.log("📦 Received load-file-result:", message);
+            socketRef.current.off("load-file-result", handleResult); // cleanup listener
+            resolve(message);
+          };
 
-        // console.log("payload", payload, sidRef.current);
-    
-        socketRef.current.emit("load_file", { ...payload, lorax_sid: sidRef.current });
+          socketRef.current.once("load-file-result", handleResult);
+
+          // console.log("payload", payload, sidRef.current);
+
+          console.log("payload", payload, sidRef.current);
+          socketRef.current.emit("load_file", { ...payload, lorax_sid: sidRef.current });
+        };
+
+        if (!socketRef.current) {
+          initSession().then(() => {
+            console.log("session initialized");
+            execute();
+          }).catch((err) => {
+            reject(new Error("Failed to initialize session: " + err.message));
+          });
+        } else {
+          execute();
+        }
       });
-    }, []);
+    }, [initSession]);
 
   const queryDetails = useCallback(
     (clickedObject) => {

@@ -58,6 +58,7 @@ function App() {
             ucgbMode={ucgbMode}
             statusMessage={statusMessage}
             setStatusMessage={setStatusMessage}
+            loadFile={upload.loadFile}
           />
 
         }

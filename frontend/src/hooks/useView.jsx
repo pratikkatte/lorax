@@ -149,7 +149,7 @@ const [viewState, setViewState] = useState(null);
   
     if (!val) return;
     
-    if (globalBpPerUnit && decksize.width) {
+    if (globalBpPerUnit && decksize && decksize.width) {
 
       let width = decksize.width;
       
@@ -161,7 +161,8 @@ const [viewState, setViewState] = useState(null);
       setXzoom(Z)
       
 
-      setViewState((prev) => {      
+      setViewState((prev) => {
+        if (!prev) return prev;
         return {
           ...prev,
           ['ortho']: {
@@ -183,7 +184,7 @@ const [viewState, setViewState] = useState(null);
       })
       
     }
-  }, [globalBpPerUnit, viewState, decksize])
+  }, [globalBpPerUnit, decksize])
 
   useEffect(() => {
 
@@ -251,16 +252,26 @@ const [viewState, setViewState] = useState(null);
     []
   );
   
-  useEffect(() => {
-    if (!tsconfig) return;
+  const lastAppliedConfigRef = useRef(null);
 
-    if (tsconfig?.value && !valueRef.current){
-      changeView(tsconfig.value);
-    }else{
-      const newValue = updateValueRef();
-      newValue && debouncedUpdateRef(newValue);
+  // Effect to apply initial view from config (URL params)
+  useEffect(() => {
+    if (!tsconfig || !decksize?.width || !viewState) return;
+
+    if (tsconfig !== lastAppliedConfigRef.current) {
+        if (tsconfig.value){
+           changeView(tsconfig.value);
+        }
+        lastAppliedConfigRef.current = tsconfig;
     }
-  }, [viewState, tsconfig])
+  }, [tsconfig, decksize?.width, changeView, viewState])
+
+  // Effect to update refs when viewState changes (panning/zooming)
+  useEffect(() => {
+    if (!viewState) return;
+    const newValue = updateValueRef();
+    newValue && debouncedUpdateRef(newValue);
+  }, [viewState, updateValueRef, debouncedUpdateRef])
 
 
   useEffect(() => {

@@ -10,9 +10,7 @@ import useLoraxConfig from './globalconfig.js'
 import axios from 'axios';
 import LoraxMessage from "./components/loraxMessage";
 
-export default function LoraxViewer({ backend, config, settings, setSettings, project, setProject, ucgbMode, statusMessage, setStatusMessage}) {
-
-
+export default function LoraxViewer({ backend, config, settings, setSettings, project, setProject, ucgbMode, statusMessage, setStatusMessage, loadFile}) {
 
   const {tsconfig, setConfig, handleConfigUpdate} = config;
   const { file } = useParams();
@@ -24,24 +22,31 @@ export default function LoraxViewer({ backend, config, settings, setSettings, pr
   const [showSidebar, setShowSidebar] = useState(true);
   const [gettingDetails, setGettingDetails] = useState(false);
   const [selectedFileName, setSelectedFileName] = useState("");
+  const [qp, setQp] = useState(null);
+
+
+
 
   useEffect(() => {
+    const qp = {
+      file: file,
+      project: searchParams.get("project"),
+      chrom: searchParams.get("chrom"),
+      genomiccoordstart: searchParams.get("genomiccoordstart"),
+      genomiccoordend: searchParams.get("genomiccoordend"),
+      sid: searchParams.get("sid")
+    }
+    
     if (file && file === 'ucgb') {
       ucgbMode.current = true;
       handleUCGBMode();
     }else{
       ucgbMode.current = false;
-      handleNormalMode();
+      handleNormalMode(qp);
     }
   }, [file]);
 
-  const qp = {
-    file: file,
-    project: searchParams.get("project"),
-    chrom: searchParams.get("chrom"),
-    genomiccoordstart: searchParams.get("genomiccoordstart"),
-    genomiccoordend: searchParams.get("genomiccoordend")
-  }
+
 
   // return to home page.
   if (!file && !searchParams.get("chrom")) {
@@ -76,37 +81,19 @@ export default function LoraxViewer({ backend, config, settings, setSettings, pr
     }
   }, [ucgbMode]);
 
-  const handleNormalMode = useCallback(() => {
-    if (qp.project && (qp.genomiccoordstart && qp.genomiccoordend) && !tsconfig) {
+  const handleNormalMode = useCallback((qp) => {
+    console.log("qp", qp);
+    if (qp.project && !tsconfig) {
+
+      // loadfile
+
+      loadFile({
+        file: qp.file, 
+        project: qp.project, 
+        share_sid: qp.sid,
+        value: (qp.genomiccoordstart && qp.genomiccoordend) ? [qp.genomiccoordstart, qp.genomiccoordend] : null
+      });
       setProject(qp.project);
-      axios.get(
-        `${API_BASE}/${file}?project=${qp.project}&genomiccoordstart=${qp.genomiccoordstart}&genomiccoordend=${qp.genomiccoordend}`,
-        {
-          withCredentials: true,
-          headers: {
-            "Content-Type": "application/json",
-          },
-        }
-      ).then(response => {
-
-        if (response.data) {
-
-          handleConfigUpdate(response.data.config, [qp.genomiccoordstart, qp.genomiccoordend]);
-
-          setStatusMessage({status: "file-load", message: "loading file..."});
-        }
-        // console.log("config response", response.data, tsconfig)
-        if (response.data.error) {
-          console.log("error", response.data.error)
-        } else {
-
-          // connect(response.data.sid);
-          // console.log("config set", tsconfig, qp.project, qp.genomiccoordstart, qp.genomiccoordend)
-          // if (!tsconfig) {
-          // setConfig({project: qp.project, value: [qp.genomiccoordstart,qp.genomiccoordend]});
-          // }
-        }
-      })
     }
   }, [ucgbMode]);
 

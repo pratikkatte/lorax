@@ -16,7 +16,7 @@ function useConfig({backend, setStatusMessage, timeRef}) {
   const [filename, setFilename] = useState("");
   const [sampleNames, setSampleNames] = useState(null);
 
-  const handleConfigUpdate = useCallback((data, value=null) => {
+  const handleConfigUpdate = useCallback((data, value=null, project=null, sid=null) => {
 
       if (timeRef.current && timeRef.current.start) {
         
@@ -26,8 +26,8 @@ function useConfig({backend, setStatusMessage, timeRef}) {
         timeRef.current = {start: null};
       }
       
-      console.log("data", data, value);
-      setConfig({...tsconfig, ...data, value: value ? [parseInt(value[0], 10), parseInt(value[1], 10)] : null});
+      console.log("data", data, value, project, sid);
+      setConfig((prevConfig) => ({...prevConfig, ...data, value: value ? [parseInt(value[0], 10), parseInt(value[1], 10)] : null, project, sid}));
       
       setStatusMessage({status: "loaded", message: "config loaded"});
       setFilename(data.filename);
@@ -84,13 +84,22 @@ function useConfig({backend, setStatusMessage, timeRef}) {
 
       queryConfig(data);
       
-  }, [tsconfig]);
+  }, [queryConfig, setStatusMessage, timeRef]);
 
   useEffect(() => {
     if (tsconfig && tsconfig.filename) {
-      navigate(`/${encodeURIComponent(tsconfig.filename)}`);
+      const params = new URLSearchParams();
+      if (tsconfig.project) params.set("project", tsconfig.project);
+      if (tsconfig.sid) params.set("sid", tsconfig.sid);
+      if (tsconfig.value) {
+        params.set("genomiccoordstart", tsconfig.value[0]);
+        params.set("genomiccoordend", tsconfig.value[1]);
+      }
+      
+      const queryString = params.toString();
+      navigate(`/${encodeURIComponent(tsconfig.filename)}${queryString ? `?${queryString}` : ""}`);
     }
-  }, [tsconfig]);
+  }, [tsconfig, navigate]);
 
 
   
