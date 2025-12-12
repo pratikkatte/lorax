@@ -160,11 +160,19 @@ function Deck({
   valueRef,
   statusMessage,
   setStatusMessage,
-  setClickedGenomeInfo
+  setClickedGenomeInfo,
+  setVisibleTrees
 }) {
 
-  const {tsconfig, globalBpPerUnit, populations, populationFilter, sampleNames, sampleDetails, metadataColors} = config;
+  const {tsconfig, globalBpPerUnit, populations, populationFilter, sampleNames, sampleDetails, metadataColors, treeColors} = config;
+  
+  // Debug log
+  useEffect(() => {
+      console.log("Deck received treeColors:", treeColors);
+  }, [treeColors]);
+
   const saveViewports = useRef({});
+  const prevVisibleTreesRef = useRef([]);
   const {views, xzoom, viewState, handleViewStateChange, setDecksize, yzoom, genomicValues} = view
 
   const [hoveredGenomeInfo, setHoveredGenomeInfo] = useState(null);
@@ -261,6 +269,7 @@ function Deck({
       sampleNames,
       sampleDetails,
       metadataColors,
+      treeColors
     });
     const [dummy, setDummy] = useState(null);
 
@@ -270,6 +279,7 @@ function Deck({
       const deck = deckRef.current.deck;
       const pointsArray = [];
       const pointsGenomePositionsInfo = [];
+      const currentVisibleTrees = [];
   
       const genomeVP = saveViewports.current?.["genome-positions"];
       const orthoVP = saveViewports.current?.["ortho"];
@@ -285,6 +295,7 @@ function Deck({
 
       for (const [key, b] of bins) {
         if (!b?.visible) continue;
+        currentVisibleTrees.push(b.global_index);
        
         const modelMatrix = b.modelMatrix;
         const coords_s = [b.s / globalBpPerUnit, 0];
@@ -317,8 +328,17 @@ function Deck({
       if (pointsArray.length > 0) {
         setDummy({ pointsArray, pointsGenomePositionsInfo });
       }
+
+      if (setVisibleTrees) {
+        const sortedCurrent = currentVisibleTrees.sort((a, b) => a - b);
+        const sortedPrev = prevVisibleTreesRef.current;
+        if (JSON.stringify(sortedCurrent) !== JSON.stringify(sortedPrev)) {
+             prevVisibleTreesRef.current = sortedCurrent;
+             setVisibleTrees(sortedCurrent);
+        }
+      }
     },
-    [deckRef, saveViewports, globalBpPerUnit, regions]
+    [deckRef, saveViewports, globalBpPerUnit, regions, setVisibleTrees]
   );
   
 useEffect(() => {

@@ -20,13 +20,16 @@ export default class TreeLayer extends CompositeLayer {
     sampleNames: null,
     sampleDetails: null,
     metadataColors: null,
+    treeColors: null,
   };
 
   renderLayers() {
     const id_populations = this.props.populations.populations;
     const nodes_population = this.props.populations.nodes_population;
     const sampleNames = this.props.sampleNames;
-    const { bin, viewId, hoveredTreeIndex, populationFilter, xzoom, sampleDetails, metadataColors } = this.props;
+    const { bin, viewId, hoveredTreeIndex, populationFilter, xzoom, sampleDetails, metadataColors, treeColors } = this.props;
+  
+
     if (!bin || !bin.path || !bin.modelMatrix || !bin.visible) return null
 
     const nodes =  bin.path.filter(d => 
@@ -63,10 +66,23 @@ export default class TreeLayer extends CompositeLayer {
         },
         jointRounded: true,
         capRounded: true,
-        getColor: d =>
-          hoveredTreeIndex && d.path === hoveredTreeIndex.path
+        getColor: d => {
+          if (treeColors) {
+             const key = String(bin.global_index);
+             if (treeColors[key]) {
+                const hex = treeColors[key];
+                // console.log(`TreeLayer ${key} color override:`, hex);
+                const r = parseInt(hex.slice(1, 3), 16);
+                const g = parseInt(hex.slice(3, 5), 16);
+                const b = parseInt(hex.slice(5, 7), 16);
+                return [r, g, b, 255];
+             }
+          }
+
+          return hoveredTreeIndex && d.path === hoveredTreeIndex.path
             ? [50, 50, 50, 255]             
-            : [150, 145, 140, 230],
+            : [150, 145, 140, 230]
+        },
         getWidth: d =>
           hoveredTreeIndex && d.path === hoveredTreeIndex.path ? 2 : 1.2,
         widthUnits: 'pixels',
@@ -78,7 +94,7 @@ export default class TreeLayer extends CompositeLayer {
         fp64: true,
         updateTriggers: {
           getWidth: [hoveredTreeIndex],
-          getColor: [hoveredTreeIndex],
+          getColor: [hoveredTreeIndex, treeColors],
           data: [bin.path, bin.modelMatrix],
           getPath: [bin.modelMatrix, bin.path],
         },

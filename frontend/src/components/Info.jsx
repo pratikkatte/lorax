@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useCallback} from "react";
 import websocketEvents from '../webworkers/websocketEvents';
 
-const Info = ({backend, gettingDetails, setGettingDetails, setShowInfo, config, setConfig,  selectedFileName, setSelectedFileName}) => {
+const Info = ({backend, gettingDetails, setGettingDetails, setShowInfo, config, setConfig,  selectedFileName, setSelectedFileName, visibleTrees}) => {
 
 const {socketRef, isConnected} = backend;
 
-const {tsconfig, populations: {populations}, populationFilter, sampleNames, setPopulationFilter, sampleDetails, metadataColors} = config;
+const {tsconfig, populations: {populations}, populationFilter, sampleNames, setPopulationFilter, sampleDetails, metadataColors, treeColors, setTreeColors} = config;
 
 const [nodeDetails, setNodeDetails] = useState(null);
 const [individualDetails, setIndividualDetails] = useState(null);
@@ -342,6 +342,55 @@ const handleDetails = useCallback((incoming_data) => {
                     }
                   })()}
                 </div>
+              </div>
+              <div className="mt-4 border-t pt-4">
+                  <h3 className="text-sm font-medium text-gray-700 mb-2">Trees</h3>
+                  <div className="max-h-64 overflow-auto border border-gray-100 rounded-md divide-y divide-gray-100">
+                      {visibleTrees && visibleTrees.length > 0 ? (
+                          visibleTrees.map(treeIndex => (
+                              <div key={treeIndex} className="flex items-center justify-between px-2 py-1">
+                                  <span className="text-sm text-gray-800">Tree {treeIndex}</span>
+                                  <div className="flex items-center">
+                                      <input 
+                                          type="color" 
+                                          className="w-8 h-8 p-0 border-0 rounded cursor-pointer"
+                                          value={treeColors[treeIndex] || "#000000"} 
+                                          onChange={(e) => {
+                                              console.log("Color picker change", treeIndex, e.target.value);
+                                              if (setTreeColors) {
+                                                  setTreeColors(prev => {
+                                                      const newState = {...prev, [String(treeIndex)]: e.target.value};
+                                                      console.log("New treeColors state:", newState);
+                                                      return newState;
+                                                  });
+                                              } else {
+                                                  console.error("setTreeColors is missing");
+                                              }
+                                          }}
+                                      />
+                                      {treeColors[treeIndex] && (
+                                          <button 
+                                              className="ml-2 text-xs text-gray-500 hover:text-red-500"
+                                              onClick={() => {
+                                                  if (setTreeColors) {
+                                                      setTreeColors(prev => {
+                                                          const next = {...prev};
+                                                          delete next[treeIndex];
+                                                          return next;
+                                                      });
+                                                  }
+                                              }}
+                                          >
+                                              Clear
+                                          </button>
+                                      )}
+                                  </div>
+                              </div>
+                          ))
+                      ) : (
+                          <div className="px-2 py-2 text-sm text-gray-500">No visible trees</div>
+                      )}
+                  </div>
               </div>
             </div>
           </div>

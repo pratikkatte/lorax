@@ -19,7 +19,12 @@ const useLayers = ({
   hoveredGenomeInfo,
   sampleDetails,
   metadataColors,
+  treeColors
 }) => {
+  // Debug log
+  useEffect(() => {
+      console.log("useLayers received treeColors:", treeColors);
+  }, [treeColors]);
 
   const { bins = new Map(), localCoordinates = [], times = [] } = regions;
 
@@ -107,6 +112,7 @@ const useLayers = ({
           sampleNames,
           sampleDetails,
           metadataColors,
+          treeColors,
           yzoom,
           xzoom,
           globalBpPerUnit
@@ -116,7 +122,7 @@ const useLayers = ({
       }
     
       return newLayers;
-    }, [bins, globalBpPerUnit, hoveredTreeIndex, populations, populationFilter, sampleNames, sampleDetails, metadataColors]);
+    }, [bins, globalBpPerUnit, hoveredTreeIndex, populations, populationFilter, sampleNames, sampleDetails, metadataColors, treeColors]);
 
     const layers = useMemo(() => {
       const all = [...treeLayers];
