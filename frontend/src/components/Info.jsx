@@ -5,7 +5,7 @@ const Info = ({backend, gettingDetails, setGettingDetails, setShowInfo, config, 
 
 const {socketRef, isConnected} = backend;
 
-const {tsconfig, populations: {populations}, populationFilter, sampleNames, setPopulationFilter, sampleDetails, metadataColors, treeColors, setTreeColors} = config;
+const {tsconfig, populations: {populations}, populationFilter, sampleNames, setPopulationFilter, sampleDetails, metadataColors, treeColors, setTreeColors, searchTerm, setSearchTerm, searchTags, setSearchTags} = config;
 
 const [nodeDetails, setNodeDetails] = useState(null);
 const [individualDetails, setIndividualDetails] = useState(null);
@@ -244,6 +244,42 @@ const handleDetails = useCallback((incoming_data) => {
           <div className="bg-white rounded-lg shadow-md border border-gray-200 p-4 mb-3">
             <h2 className="text-lg font-semibold text-gray-800 mb-2 pb-1 border-b border-gray-200">Filter</h2>
             <div className="space-y-3">
+              <div>
+                <label className="text-sm font-medium text-gray-700 block mb-1">Search</label>
+                <input
+                    type="text"
+                    placeholder="Search sample or metadata..."
+                    className="w-full border border-gray-300 rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    value={searchTerm || ""}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                            e.preventDefault();
+                            const term = searchTerm.trim();
+                            if (term && !searchTags.includes(term)) {
+                                setSearchTags(prev => [...prev, term]);
+                                setSearchTerm("");
+                            }
+                        }
+                    }}
+                />
+                <div className="flex flex-wrap gap-2 mt-2">
+                    {searchTags && searchTags.map((tag, index) => (
+                        <div key={index} className="flex items-center bg-blue-100 text-blue-800 text-xs font-medium px-2 py-0.5 rounded">
+                            <span>{tag}</span>
+                            <button
+                                type="button"
+                                className="ml-1 text-blue-600 hover:text-blue-800 focus:outline-none"
+                                onClick={() => {
+                                    setSearchTags(prev => prev.filter((_, i) => i !== index));
+                                }}
+                            >
+                                ×
+                            </button>
+                        </div>
+                    ))}
+                </div>
+              </div>
               <div className="flex items-center">
                 <label className="text-sm font-medium text-gray-700 mr-3">Color by</label>
                 <select

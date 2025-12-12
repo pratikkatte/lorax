@@ -13,6 +13,7 @@ let onLocalBinsReceipt = (receivedData) => {};
 let onGetTreeDataReceipt = (receivedData) => {};
 let onDetailsReceipt = (receivedData) => {};
 let onValueChangedReceipt = (receivedData) => {};
+let onSearchResultReceipt = (receivedData) => {};
 
 function useConnect({ setGettingDetails, settings }) {
   const workerRef = useRef(null);
@@ -23,6 +24,8 @@ function useConnect({ setGettingDetails, settings }) {
   const [isConnected, setIsConnected] = useState(false);
 
   const { API_BASE, IS_PROD } = useLoraxConfig();
+
+  const searchRequests = useRef(new Map());
 
   /** 🔑 Initialize session */
   const initSession = useCallback(() => {
@@ -152,6 +155,17 @@ function useConnect({ setGettingDetails, settings }) {
         if (event.data.type === "gettree") onGetTreeDataReceipt(event.data);
         if (event.data.type === "value-changed")
           onValueChangedReceipt(event.data);
+        if (event.data.type === "search-result") {
+           const { id, data } = event.data;
+           const resolve = searchRequests.current.get(id);
+           if (resolve) {
+             resolve(data);
+             searchRequests.current.delete(id);
+           } else if (!id) {
+               // Fallback for calls without ID (if any)
+               onSearchResultReceipt(event.data);
+           }
+        }
       };
     }
 
@@ -197,6 +211,20 @@ function useConnect({ setGettingDetails, settings }) {
       onGetTreeDataReceipt = (receivedData) => {
         resolve(receivedData.data);
       };
+    });
+  }, []);
+
+  const searchLineage = useCallback((term, terms = []) => {
+    return new Promise((resolve) => {
+      const id = Math.random().toString(36).substring(7);
+      searchRequests.current.set(id, resolve);
+      
+      workerRef.current?.postMessage({
+        type: "search",
+        term,
+        terms,
+        id
+      });
     });
   }, []);
   const queryConfig = useCallback((configData, globalBpPerUnit = null) => {
@@ -315,7 +343,8 @@ function useConnect({ setGettingDetails, settings }) {
       valueChanged,
       connect,
       queryFile,
-      getTreeData
+      getTreeData,
+      searchLineage
     }),
     [
       connect,
@@ -328,7 +357,8 @@ function useConnect({ setGettingDetails, settings }) {
       queryLocalBins,
       valueChanged,
       queryFile,
-      getTreeData
+      getTreeData,
+      searchLineage
     ]
   );
 }

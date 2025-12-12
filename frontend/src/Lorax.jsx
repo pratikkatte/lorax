@@ -5,7 +5,7 @@ import useView from "./hooks/useView";
 import { useState, useRef, useEffect } from "react";
 import PositionSlider from './components/PositionSlider'
 
-function Lorax({backend, config, settings, setSettings, project, ucgbMode, statusMessage, setStatusMessage, setVisibleTrees}) {
+function Lorax({backend, config, settings, setSettings, project, ucgbMode, statusMessage, setStatusMessage, setVisibleTrees, lineagePaths}) {
 
   const {tsconfig} = config;
 
@@ -49,6 +49,7 @@ function Lorax({backend, config, settings, setSettings, project, ucgbMode, statu
               setGeneration={setGeneration}
               generation={generation}
               setVisibleTrees={setVisibleTrees}
+              lineagePaths={lineagePaths}
             />
 
           </div>

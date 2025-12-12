@@ -8,6 +8,72 @@ console.log("[Worker] Initialized");
 postMessage({ data: "Worker starting" });
 
 
+const findLineage = (tree, term) => {
+    const lineageNodes = new Set();
+    if (!term || !tree || term.trim() === '') return lineageNodes;
+    const lowerTerm = term.toLowerCase();
+    const matchingNodes = new Set();
+
+    // Helper to traverse and find matches
+    function traverse(node) {
+        if (node.name && node.name.toLowerCase() === lowerTerm) {
+             matchingNodes.add(node);
+        }
+        if (node.child) {
+            node.child.forEach(traverse);
+        }
+    }
+    
+    if (tree.root) traverse(tree.root);
+
+    // For each match, add ancestors (path to root)
+    matchingNodes.forEach(match => {
+        // Add the match itself
+        lineageNodes.add(match);
+        
+        // Add ancestors
+        let curr = match.parent;
+        while(curr) {
+            lineageNodes.add(curr);
+            curr = curr.parent;
+        }
+    });
+    return lineageNodes;
+};
+
+function extractLineagePaths(node, lineageNodes, vertical_mode, segments = []) {
+  if (!lineageNodes.has(node)) return segments;
+
+  const isVertical = vertical_mode;
+  const nodeX = node.x;
+  const nodeY = node.y;
+
+  const children = node.child;
+  const nChildren = children?.length || 0;
+
+  if (nChildren > 0) {
+    for (let i = 0; i < nChildren; i++) {
+      const child = children[i];
+      
+      // Only draw path if child is also in lineage
+      if (lineageNodes.has(child)) {
+          const cX = child.x;
+          const cY = child.y;
+
+          segments.push({
+            path: isVertical
+              ? [[nodeX, nodeY], [nodeX, cY], [nodeX, cY], [cX, cY]]
+              : [[nodeY, nodeX], [cY, nodeX], [cY, nodeX], [cY, cX]],
+          });
+          
+          extractLineagePaths(child, lineageNodes, vertical_mode, segments);
+      }
+    }
+  } 
+  
+  return segments;
+}
+
 // Extract the sorted x-array once
 function getXArray(globalBins) {
   return globalBins.map(b => b.acc);
@@ -661,7 +727,37 @@ onmessage = async (event) => {
       postMessage({ type: "query", data: result });
     }
     if (data.type === "search") {
-      console.log("search : TO IMPLEMENT")
+      const { term, terms, id } = data;
+      const lineageResults = {}; // global_index -> segments
+      
+      const activeTerms = [];
+      if (terms && Array.isArray(terms)) {
+          activeTerms.push(...terms);
+      }
+      if (term) {
+          activeTerms.push(term);
+      }
+      // Deduplicate and filter empty
+      const uniqueTerms = [...new Set(activeTerms.map(t => t.trim().toLowerCase()).filter(t => t !== ""))];
+
+
+      for (const [global_index, tree] of pathsData.entries()) {
+          const allLineageNodes = new Set();
+          
+          for (const currentTerm of uniqueTerms) {
+              const termNodes = findLineage(tree, currentTerm);
+              termNodes.forEach(node => allLineageNodes.add(node));
+          }
+
+          if (allLineageNodes.size > 0) {
+              const segments = extractLineagePaths(tree.root, allLineageNodes, false);
+              const deduped = dedupeSegments(segments);
+              if (deduped.length > 0) {
+                  lineageResults[global_index] = deduped;
+              }
+          }
+      }
+      postMessage({ type: "search-result", data: lineageResults, id });
     }
     if (data.type === "config") {
       const result = await queryConfig(data);

@@ -21,14 +21,22 @@ export default class TreeLayer extends CompositeLayer {
     sampleDetails: null,
     metadataColors: null,
     treeColors: null,
+    searchTerm: null,
+    searchTags: [],
+    lineagePaths: null,
   };
 
   renderLayers() {
     const id_populations = this.props.populations.populations;
     const nodes_population = this.props.populations.nodes_population;
     const sampleNames = this.props.sampleNames;
-    const { bin, viewId, hoveredTreeIndex, populationFilter, xzoom, sampleDetails, metadataColors, treeColors } = this.props;
+    const { bin, viewId, hoveredTreeIndex, populationFilter, xzoom, sampleDetails, metadataColors, treeColors, searchTerm, searchTags, lineagePaths } = this.props;
   
+
+    // when searched for a sample name.
+    // then disable the subsampling of the tree. 
+    // and whichever sample name is searched for, the node size should be increased. and the other nodes should be dimmed.
+
 
     if (!bin || !bin.path || !bin.modelMatrix || !bin.visible) return null
 
@@ -48,7 +56,7 @@ export default class TreeLayer extends CompositeLayer {
       display_labels = true;
     }
 
-    return [
+    const layers = [
       new PathLayer({
         id: `${this.props.id}-path-${bin.global_index}`,
         data: bin.path,
@@ -118,6 +126,7 @@ export default class TreeLayer extends CompositeLayer {
           let sample_population = nodes_population[(d.name)];
           const colorBy = populationFilter.colorBy;
           let color = [150, 150, 150, 100];
+          let computedColor = color;
 
           // Check if colorBy is a metadata key
           if (metadataColors && metadataColors[colorBy]) {
@@ -125,32 +134,87 @@ export default class TreeLayer extends CompositeLayer {
              // If value exists and is enabled, return its color
              if (val && populationFilter.enabledValues.includes(String(val))) {
                  const c = metadataColors[colorBy][val];
-                 if (c) return [...c.slice(0,3), 200];
+                 if (c) computedColor = [...c.slice(0,3), 200];
              }
-             return color;
-          }
-
-          if (colorBy === 'sample_name') {
+          } else if (colorBy === 'sample_name') {
             // do something
             
             let key = sampleNames.sample_names[d.name];
             sample_population = key.sample_name;
             if (populationFilter.enabledValues.includes(sample_population)) { 
-              return [...key.color, 200];
-            } else {
-              return color;
+              computedColor = [...key.color, 200];
             }
+          } else if (populationFilter.enabledValues.includes(String(sample_population))) {
+            computedColor = [...id_populations[sample_population].color.slice(0, 3), 200]
           }
-          if (populationFilter.enabledValues.includes(String(sample_population))) {
-            return [...id_populations[sample_population].color.slice(0, 3), 200]
-          } else {
-            return color;
+
+          // Apply search highlighting
+          const activeTerms = [
+              ...(searchTerm && searchTerm.trim() !== "" ? [searchTerm.trim().toLowerCase()] : []),
+              ...(searchTags || []).map(t => t.toLowerCase())
+          ];
+
+          if (activeTerms.length > 0) {
+              const dName = d.name ? d.name.toLowerCase() : "";
+              let matchesMeta = false;
+              let matchesName = false;
+
+              // Check if any term matches
+              const isMatch = activeTerms.some(term => {
+                   if (dName.includes(term)) return true;
+                   if (sampleDetails && sampleDetails[d.name]) {
+                       return Object.values(sampleDetails[d.name]).some(v => 
+                           v !== null && v !== undefined && String(v).toLowerCase().includes(term)
+                       );
+                   }
+                   return false;
+              });
+
+              if (isMatch) {
+                  // Highlight found nodes: keep color but max opacity
+                  // If original was gray, maybe make it red? 
+                  // Let's stick to making it distinct. 
+                  // If computedColor is gray [150,150,150,100], it means it was filtered out by other filters.
+                  // If we find it by search, should we show it even if filtered out?
+                  // Usually search overrides filter.
+                  // But to be safe, let's just use the computedColor (or red if it was gray) and max alpha.
+                  
+                  if (computedColor[0] === 150 && computedColor[1] === 150 && computedColor[2] === 150) {
+                      return [255, 0, 0, 255]; // Red for matches that were otherwise hidden/gray
+                  }
+                  return [computedColor[0], computedColor[1], computedColor[2], 255];
+              } else {
+                  // Dim non-matches
+                  return [200, 200, 200, 30];
+              }
           }
+
+          return computedColor;
         },
         // getLineColor: [80, 80, 180, 255],
         getLineColor: [120, 120, 120, 120],
         getLineWidth: 0.5,
-        getRadius: 2,
+        getRadius: d => {
+            const activeTerms = [
+                ...(searchTerm && searchTerm.trim() !== "" ? [searchTerm.trim().toLowerCase()] : []),
+                ...(searchTags || []).map(t => t.toLowerCase())
+            ];
+
+            if (activeTerms.length > 0) {
+                const dName = d.name ? d.name.toLowerCase() : "";
+                const isMatch = activeTerms.some(term => {
+                     if (dName.includes(term)) return true;
+                     if (sampleDetails && sampleDetails[d.name]) {
+                         return Object.values(sampleDetails[d.name]).some(v => 
+                             v !== null && v !== undefined && String(v).toLowerCase().includes(term)
+                         );
+                     }
+                     return false;
+                });
+                if (isMatch) return 4;
+            }
+            return 2;
+        },
         radiusMinPixels: 1.2,
         radiusUnits: 'pixels',
         coordinateSystem: COORDINATE_SYSTEM.IDENTITY,
@@ -158,13 +222,50 @@ export default class TreeLayer extends CompositeLayer {
         modelMatrix:null,
         viewId,
         updateTriggers: {
-          getFillColor: [populationFilter.colorBy, populationFilter.enabledValues],
+          getFillColor: [populationFilter.colorBy, populationFilter.enabledValues, searchTerm, searchTags],
+          getRadius: [searchTerm, searchTags],
           data: [bin.modelMatrix, bin.path],
           
         },
       }),
+    ];
 
-      display_labels && new TextLayer({
+    if (lineagePaths && lineagePaths[bin.global_index]) {
+       const lineageData = lineagePaths[bin.global_index];
+       layers.push(
+           new PathLayer({
+               id: `${this.props.id}-lineage-path-${bin.global_index}`,
+               data: lineageData,
+               getPath: d => { 
+                   if (!d?.path ) return null;
+                   const paths = d?.path;
+                   const m = bin.modelMatrix;
+                   
+                   const transformedPath = paths?.map(p => {
+                       const world = [p[0] * m[0] + m[12] , p[1]];
+                       return world;
+                   })
+                   return transformedPath
+               },
+               jointRounded: true,
+               capRounded: true,
+               getColor: [255, 0, 0, 255],
+               getWidth: 3,
+               widthUnits: 'pixels',
+               viewId,
+               modelMatrix: null,
+               coordinateSystem: COORDINATE_SYSTEM.IDENTITY,
+               zOffset: 1,
+               fp64: true,
+               updateTriggers: {
+                  data: [lineageData, bin.modelMatrix]
+               }
+           })
+       );
+    }
+
+    if (display_labels) {
+      layers.push(new TextLayer({
         id: `${this.props.id}-text-${bin.global_index}`,
         data: bin.path.filter(d => 
           d?.position !== undefined && 
@@ -183,32 +284,27 @@ export default class TreeLayer extends CompositeLayer {
         getColor: [10, 10, 10, 255],
         getBackgroundColor: [255, 255, 255, 230],
         getPixelOffset: [0, 6],
-        // background: true,
-        // getBackgroundColor: [255, 255, 255, 220],
         backgroundPadding: [4, 2],
-        // slight drop-shadow for readability
-  shadowColor: [100, 100, 100, 180],
-  shadowBlur: 2,
+        shadowColor: [100, 100, 100, 180],
+        shadowBlur: 2,
         viewId,
         modelMatrix:null,
         coordinateSystem: COORDINATE_SYSTEM.IDENTITY,
-        // fp64: true,
         sizeUnits: 'pixels',
-        // getSize: 8 + (xzoom ? xzoom * 1 : 0),
-        // getSize: () => (8 + (2**xzoom/ 2 ** (xzoom-1))),
         getSize: () => (6 + Math.log2(Math.max(xzoom, 1))),
-        // minSize: 8,
         getAlignmentBaseline: 'center',
         getTextAnchor: 'end',
         getAngle: 90,
-    updateTriggers: {
-      data: [bin.modelMatrix, bin.path],
-      getText: [bin.path]
-    }}),
-      new IconLayer({
+        updateTriggers: {
+          data: [bin.modelMatrix, bin.path],
+          getText: [bin.path]
+        }
+      }));
+    }
+
+    layers.push(new IconLayer({
         id: `${this.props.id}-icons-${bin.global_index}`,
         data: bin.path.filter(d => d?.mutations !== undefined && d?.mutations !== null),
-        // getPosition: d => d.position,
         getPosition: d => {
           const m = bin.modelMatrix;
           const translate_position = m[12];
@@ -217,13 +313,11 @@ export default class TreeLayer extends CompositeLayer {
           return position;
         },
         getIcon: () => 'marker',
-        // modelMatrix:bin.modelMatrix,
         modelMatrix:bin.modelMatrix,
         getColor: [255, 0, 0],
         viewId,
         getSize: 0.01,     
         sizeUnits: 'common',
-        // sizeScale: 1,    
         iconAtlas: '/X.png',
         iconMapping: {
           marker: {x: 0, y: 0, width: 128, height: 128, mask: true}
@@ -231,7 +325,8 @@ export default class TreeLayer extends CompositeLayer {
         updateTriggers: {
           data: [bin.path, bin.modelMatrix],
         },
-      }),
-    ];
+      }));
+
+    return layers;
   }
 }

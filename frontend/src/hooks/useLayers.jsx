@@ -19,7 +19,10 @@ const useLayers = ({
   hoveredGenomeInfo,
   sampleDetails,
   metadataColors,
-  treeColors
+  treeColors,
+  searchTerm,
+  searchTags,
+  lineagePaths
 }) => {
   // Debug log
   useEffect(() => {
@@ -115,14 +118,17 @@ const useLayers = ({
           treeColors,
           yzoom,
           xzoom,
-          globalBpPerUnit
+          globalBpPerUnit,
+          searchTerm,
+          searchTags,
+          lineagePaths
         });
     
         newLayers.push(newLayer);
       }
     
       return newLayers;
-    }, [bins, globalBpPerUnit, hoveredTreeIndex, populations, populationFilter, sampleNames, sampleDetails, metadataColors, treeColors]);
+    }, [bins, globalBpPerUnit, hoveredTreeIndex, populations, populationFilter, sampleNames, sampleDetails, metadataColors, treeColors, searchTerm, searchTags, lineagePaths]);
 
     const layers = useMemo(() => {
       const all = [...treeLayers];

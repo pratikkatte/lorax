@@ -161,10 +161,11 @@ function Deck({
   statusMessage,
   setStatusMessage,
   setClickedGenomeInfo,
-  setVisibleTrees
+  setVisibleTrees,
+  lineagePaths
 }) {
 
-  const {tsconfig, globalBpPerUnit, populations, populationFilter, sampleNames, sampleDetails, metadataColors, treeColors} = config;
+  const {tsconfig, globalBpPerUnit, populations, populationFilter, sampleNames, sampleDetails, metadataColors, treeColors, searchTerm, searchTags} = config;
   
   // Debug log
   useEffect(() => {
@@ -269,7 +270,10 @@ function Deck({
       sampleNames,
       sampleDetails,
       metadataColors,
-      treeColors
+      treeColors,
+      searchTerm,
+      searchTags,
+      lineagePaths
     });
     const [dummy, setDummy] = useState(null);
 

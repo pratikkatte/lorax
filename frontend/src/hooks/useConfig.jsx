@@ -18,6 +18,8 @@ function useConfig({backend, setStatusMessage, timeRef}) {
   const [sampleDetails, setSampleDetails] = useState(null);
   const [metadataColors, setMetadataColors] = useState(null);
   const [treeColors, setTreeColors] = useState({});
+  const [searchTerm, setSearchTerm] = useState("");
+  const [searchTags, setSearchTags] = useState([]);
 
   // Utility to generate a unique color for each key (using HSL and cycling through hue)
   const getColor = (i, total) => {
@@ -157,8 +159,12 @@ function useConfig({backend, setStatusMessage, timeRef}) {
     metadataColors,
     treeColors,
     setTreeColors,
+    searchTerm,
+    setSearchTerm,
+    searchTags,
+    setSearchTags,
     handleConfigUpdate
-  }), [tsconfig, sampleNames, setConfig, globalBpPerUnit, populations, populationFilter, setPopulationFilter, genomeLength, pathArray, filename, sampleDetails, metadataColors, treeColors, setTreeColors, handleConfigUpdate]);
+  }), [tsconfig, sampleNames, setConfig, globalBpPerUnit, populations, populationFilter, setPopulationFilter, genomeLength, pathArray, filename, sampleDetails, metadataColors, treeColors, setTreeColors, searchTerm, setSearchTerm, searchTags, setSearchTags, handleConfigUpdate]);
 };
 
 export default useConfig;

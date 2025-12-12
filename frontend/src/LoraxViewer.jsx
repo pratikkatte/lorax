@@ -24,9 +24,23 @@ export default function LoraxViewer({ backend, config, settings, setSettings, pr
   const [selectedFileName, setSelectedFileName] = useState("");
   const [qp, setQp] = useState(null);
   const [visibleTrees, setVisibleTrees] = useState([]);
+  const [lineagePaths, setLineagePaths] = useState({});
 
 
-
+  useEffect(() => {
+    if (backend && backend.isConnected) {
+        const hasSearchTerm = config.searchTerm && config.searchTerm.trim() !== "";
+        const hasSearchTags = config.searchTags && config.searchTags.length > 0;
+        
+        if (hasSearchTerm || hasSearchTags) {
+            backend.searchLineage(config.searchTerm, config.searchTags || []).then(data => {
+                setLineagePaths(data);
+            });
+        } else {
+            setLineagePaths({});
+        }
+    }
+  }, [config.searchTerm, config.searchTags, backend.isConnected, backend, visibleTrees]);
 
   useEffect(() => {
     const qp = {
@@ -122,7 +136,7 @@ export default function LoraxViewer({ backend, config, settings, setSettings, pr
 
         <div className={`${(showInfo || showSettings) ? (showSidebar ? 'w-[73%]' : 'w-3/4') :  (showSidebar ? 'w-[97%]' : 'w-full')} transition-all duration-200`}>
         {statusMessage?.status === "file-load" && <LoraxMessage status={statusMessage.status} message={statusMessage.message} />}
-        <Lorax backend={backend} config={config} settings={settings} setSettings={setSettings} project={project} ucgbMode={ucgbMode} statusMessage={statusMessage} setStatusMessage={setStatusMessage} setVisibleTrees={setVisibleTrees} />
+        <Lorax backend={backend} config={config} settings={settings} setSettings={setSettings} project={project} ucgbMode={ucgbMode} statusMessage={statusMessage} setStatusMessage={setStatusMessage} setVisibleTrees={setVisibleTrees} lineagePaths={lineagePaths} />
         </div>
         <div className={`transition-all relative ${showInfo ? '' : 'hidden'} shadow-2xl bg-gray-100 duration-200 ${showSidebar ? 'w-[25%]' : 'w-1/4'}`}>
             <Info backend={backend} gettingDetails={gettingDetails} setGettingDetails={setGettingDetails} setShowInfo={setShowInfo} config={config} setConfig={setConfig} selectedFileName={selectedFileName} setSelectedFileName={setSelectedFileName} visibleTrees={visibleTrees}/>
