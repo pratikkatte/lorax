@@ -223,6 +223,38 @@ def get_config(ts, file_path, root_dir):
         # for i, s in enumerate(ts.samples()):
         #     sample_names[str(s)] = {"sample_name": str(s)}
 
+        # Extract detailed metadata for each sample
+        sample_details = {}
+        for u in ts.samples():
+            node = ts.node(u)
+            details = {}
+            
+            # 1. Node metadata
+            if node.metadata:
+                try:
+                    meta = ensure_json_dict(node.metadata)
+                    if isinstance(meta, dict):
+                        details.update(meta)
+                except:
+                    pass
+
+            # 2. Individual metadata
+            if node.individual != -1:
+                try:
+                    ind = ts.individual(node.individual)
+                    if ind.metadata:
+                        meta = ensure_json_dict(ind.metadata)
+                        if isinstance(meta, dict):
+                            details.update(meta)
+                except:
+                    pass
+
+            # 3. Add explicit IDs
+            details["population_id"] = int(node.population)
+            details["individual_id"] = int(node.individual)
+
+            sample_details[str(u)] = make_json_serializable(details)
+
         filename = os.path.relpath(file_path, root_dir)
         filename = os.path.basename(filename)
         config = {'genome_length': ts.sequence_length,
@@ -231,7 +263,8 @@ def get_config(ts, file_path, root_dir):
         'filename': str(filename), 
         'populations':populations,
         'nodes_population':nodes_population,
-        'sample_names':sample_names
+        'sample_names':sample_names,
+        'sample_details': sample_details
         }
         return config
     except Exception as e:
@@ -273,8 +306,7 @@ def list_project_files(directory, projects, root):
                         "folder": str(directory_name),
                         "files": [],
                         "description": "",
-                    }
-                                
+                    }     
                     projects = list_project_files(item_path, projects, root=root)
             else:
                 # Get the relative path from root to directory

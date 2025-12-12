@@ -163,7 +163,7 @@ function Deck({
   setClickedGenomeInfo
 }) {
 
-  const {tsconfig, globalBpPerUnit, populations, populationFilter, sampleNames} = config;
+  const {tsconfig, globalBpPerUnit, populations, populationFilter, sampleNames, sampleDetails, metadataColors} = config;
   const saveViewports = useRef({});
   const {views, xzoom, viewState, handleViewStateChange, setDecksize, yzoom, genomicValues} = view
 
@@ -211,8 +211,21 @@ function Deck({
             const sample_population_id = populations?.nodes_population[parseInt(info.object?.name)];
             const sample_population = populations?.populations[sample_population_id]
             const tree_index = info.layer?.props?.bin?.global_index
+            
+            // Get sample metadata
+            const nodeId = info.object?.name;
+            const meta = sampleDetails && sampleDetails[nodeId];
+
             if (tree_index) {
-              setHoveredTreeIndex({tree_index: tree_index, path: info.object?.path, name: info.object?.name, center: [x, y], 'population':sample_population?.['population'], 'super_population':sample_population?.['super_population']})
+              setHoveredTreeIndex({
+                  tree_index: tree_index, 
+                  path: info.object?.path, 
+                  name: info.object?.name, 
+                  center: [x, y], 
+                  'population':sample_population?.['population'], 
+                  'super_population':sample_population?.['super_population'],
+                  metadata: meta
+              })
             }
           }
 
@@ -229,7 +242,7 @@ function Deck({
           setHoveredGenomeInfo(null)
         }
       }
-    },[hoveredPolygonIndex])
+    },[hoveredPolygonIndex, populations, sampleDetails])
  
     const { layers, layerFilter } = useLayers({
       xzoom,
@@ -246,6 +259,8 @@ function Deck({
       yzoom,
       xzoom,
       sampleNames,
+      sampleDetails,
+      metadataColors,
     });
     const [dummy, setDummy] = useState(null);
 
@@ -391,7 +406,7 @@ useEffect(() => {
               </span>
             }
 
-{hoveredTreeIndex.population && 
+            {hoveredTreeIndex.population && 
             <span>
               <br />
               <b>Population:</b> {hoveredTreeIndex.population}
@@ -403,6 +418,14 @@ useEffect(() => {
               <b>super_population:</b> {hoveredTreeIndex.super_population}
               </span>
             }
+            
+            {/* Display all metadata */}
+            {hoveredTreeIndex.metadata && Object.entries(hoveredTreeIndex.metadata).map(([k, v]) => (
+                <span key={k}>
+                  <br />
+                  <b>{k}:</b> {typeof v === 'object' ? JSON.stringify(v) : v}
+                </span>
+            ))}
           </div>
         </div>
       )}

@@ -5,7 +5,7 @@ const Info = ({backend, gettingDetails, setGettingDetails, setShowInfo, config, 
 
 const {socketRef, isConnected} = backend;
 
-const {tsconfig, populations: {populations}, populationFilter, sampleNames, setPopulationFilter} = config;
+const {tsconfig, populations: {populations}, populationFilter, sampleNames, setPopulationFilter, sampleDetails, metadataColors} = config;
 
 const [nodeDetails, setNodeDetails] = useState(null);
 const [individualDetails, setIndividualDetails] = useState(null);
@@ -16,15 +16,33 @@ const [selectedColorBy, setSelectedColorBy] = useState('population');
 const [enabledValues, setEnabledValues] = useState(new Set());
 const [populationDetails, setPopulationDetails] = useState(null);
 
+useEffect(() => {
+    const baseOptions = {'population': 'Population', 'super_population': "Super Population", 'sample_name': "Sample Name"};
+    if (metadataColors) {
+        Object.keys(metadataColors).forEach(key => {
+            baseOptions[key] = key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ' ');
+        });
+    }
+    setColoryby(baseOptions);
+}, [metadataColors]);
+
 // Initialize enabled values to all options for the selectedColorBy
 useEffect(() => {
-  if (!populations) return;
-  // Enable all population keys by default for the current grouping
-  let data = selectedColorBy === 'sample_name' ? sampleNames.sample_names : populations;
-  const allKeys = new Set(Object.keys(data || {}).map(k => k));
-  console.log("allKeys", allKeys);
-  setEnabledValues(allKeys);
-}, [selectedColorBy, populations, sampleNames]);
+  if (selectedColorBy === 'population' || selectedColorBy === 'super_population') {
+      if (!populations) return;
+      // Enable all population keys by default for the current grouping
+      const allKeys = new Set(Object.keys(populations || {}).map(k => k));
+      setEnabledValues(allKeys);
+  } else if (selectedColorBy === 'sample_name') {
+      if (!sampleNames || !sampleNames.sample_names) return;
+      const allKeys = new Set(Object.keys(sampleNames.sample_names || {}).map(k => k));
+      setEnabledValues(allKeys);
+  } else if (metadataColors && metadataColors[selectedColorBy]) {
+      // For metadata, enable all unique values
+      const allValues = new Set(Object.keys(metadataColors[selectedColorBy]));
+      setEnabledValues(allValues);
+  }
+}, [selectedColorBy, populations, sampleNames, metadataColors]);
 
 useEffect(() => {
   setPopulationFilter(prev => ({
@@ -51,7 +69,7 @@ const handleDetails = useCallback((incoming_data) => {
       setPopulationDetails(populations[data?.node?.population]);
       setIndividualDetails(data?.individual? data.individual : null);
     }
-  }, []);
+  }, [populations]);
   
   useEffect(() => { 
     if (!isConnected) return;
@@ -59,7 +77,7 @@ const handleDetails = useCallback((incoming_data) => {
     return () => {
       websocketEvents.off("viz", handleDetails);
     };
-  }, [isConnected]);
+  }, [isConnected, handleDetails]);
 
   const DetailCard = ({ title, children }) => (
     <div className="bg-white rounded-lg shadow-md border border-gray-200 p-4 mb-3">
@@ -132,7 +150,6 @@ const handleDetails = useCallback((incoming_data) => {
                 <DetailRow label="ID" value={nodeDetails.id} />
                 <DetailRow label="Time" value={nodeDetails.time} />
                 <DetailRow label="Individual" value={nodeDetails.individual} />
-                {/* <DetailRow label="Population" value={nodeDetails.population} /> */}
                 <DetailRow label="Population" value={nodeDetails.population ? populations[nodeDetails?.population]?.population : populationDetails?.population} />
                 <DetailRow 
                   label="Metadata" 
@@ -141,6 +158,15 @@ const handleDetails = useCallback((incoming_data) => {
                     : nodeDetails.metadata} 
                 />
               </DetailCard>
+            )}
+            
+            {/* Extended Sample Metadata if available */}
+            {nodeDetails && sampleDetails && sampleDetails[nodeDetails.id] && (
+               <DetailCard title="Extended Sample Metadata">
+                   {Object.entries(sampleDetails[nodeDetails.id]).map(([k, v]) => (
+                       <DetailRow key={k} label={k} value={typeof v === 'object' ? JSON.stringify(v) : v} />
+                   ))}
+               </DetailCard>
             )}
             
             {individualDetails && (
@@ -191,11 +217,47 @@ const handleDetails = useCallback((incoming_data) => {
               <div>
                 <div className="text-sm font-medium text-gray-700 mb-1">Values</div>
                 <div className="max-h-64 overflow-auto border border-gray-100 rounded-md divide-y divide-gray-100">
-                  {populations || sampleNames ? (
-                    (() => {
+                  {(() => {
+                    // Check if we are in metadata mode
+                    if (metadataColors && metadataColors[selectedColorBy]) {
+                         const valueToColor = metadataColors[selectedColorBy];
+                         const items = Object.entries(valueToColor);
+                         
+                         return items.length > 0 ? items.map(([val, color]) => {
+                             const isEnabled = enabledValues.has(val);
+                             return (
+                                <button
+                                  key={val}
+                                  type="button"
+                                  className={`w-full flex items-center px-2 py-1 text-left transition ${isEnabled ? '' : 'opacity-40'}`}
+                                  onClick={() => {
+                                      setEnabledValues(prev => {
+                                          const next = new Set(prev);
+                                          if (next.has(val)) next.delete(val);
+                                          else next.add(val);
+                                          return next;
+                                      });
+                                  }}
+                                >
+                                  <span
+                                    className="inline-block w-3 h-3 rounded-full mr-2 border border-gray-200"
+                                    style={{ backgroundColor: Array.isArray(color) ? `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${color[3] / 255})` : undefined }}
+                                  />
+                                  <span className="text-sm text-gray-800">{val}</span>
+                                </button>
+                             );
+                          }) : <div className="px-2 py-2 text-sm text-gray-500">No values</div>;
+                    }
+
+                    // Fallback to original logic for populations/sample_names
+                    if (populations || sampleNames) {
                       const valueToKeys = new Map();
                       let data = selectedColorBy === 'sample_name' ? sampleNames.sample_names : populations;
-                      Object.entries(data || {}).forEach(([key, p]) => {
+                      
+                      // Safety check if data is null/undefined
+                      if (!data) return <div className="px-2 py-2 text-sm text-gray-500">No data available</div>;
+
+                      Object.entries(data).forEach(([key, p]) => {
                         const val = p?.[selectedColorBy] || 'N/A';
                         if (!valueToKeys.has(val)) valueToKeys.set(val, { keys: [], color: p?.color });
                         valueToKeys.get(val).keys.push(key);
@@ -233,10 +295,10 @@ const handleDetails = useCallback((incoming_data) => {
                       }) : (
                         <div className="px-2 py-2 text-sm text-gray-500">No values</div>
                       );
-                    })()
-                  ) : (
-                    <div className="px-2 py-2 text-sm text-gray-500">No populations loaded</div>
-                  )}
+                    } else {
+                        return <div className="px-2 py-2 text-sm text-gray-500">No populations loaded</div>;
+                    }
+                  })()}
                 </div>
               </div>
             </div>

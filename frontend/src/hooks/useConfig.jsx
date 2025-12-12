@@ -15,6 +15,39 @@ function useConfig({backend, setStatusMessage, timeRef}) {
   const pathArray = useRef([]);
   const [filename, setFilename] = useState("");
   const [sampleNames, setSampleNames] = useState(null);
+  const [sampleDetails, setSampleDetails] = useState(null);
+  const [metadataColors, setMetadataColors] = useState(null);
+
+  // Utility to generate a unique color for each key (using HSL and cycling through hue)
+  const getColor = (i, total) => {
+    const hue = Math.floor((360 * i) / total);
+    // Convert HSL to RGB (simple approach)
+    const h = hue / 360, s = 0.65, l = 0.55;
+    let r, g, b;
+    if (s === 0){
+      r = g = b = l;
+    } else {
+      const hue2rgb = (p, q, t) => {
+        if(t < 0) t += 1;
+        if(t > 1) t -= 1;
+        if(t < 1/6) return p + (q - p) * 6 * t;
+        if(t < 1/2) return q;
+        if(t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+        return p;
+      };
+      const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+      const p = 2 * l - q;
+      r = hue2rgb(p, q, h + 1/3);
+      g = hue2rgb(p, q, h);
+      b = hue2rgb(p, q, h - 1/3);
+    }
+    return [
+      Math.round(r * 255),
+      Math.round(g * 255),
+      Math.round(b * 255),
+      255
+    ];
+  };
 
   const handleConfigUpdate = useCallback((data, value=null, project=null, sid=null) => {
 
@@ -38,37 +71,6 @@ function useConfig({backend, setStatusMessage, timeRef}) {
       // For each key in populations, assign a unique color (generate if needed, do not repeat)
       const assignUniqueColors = (dict) => {
         const keys = Object.keys(dict || {});
-        // Utility to generate a unique color for each key (using HSL and cycling through hue)
-        const getColor = (i, total) => {
-          const hue = Math.floor((360 * i) / total);
-          // Convert HSL to RGB (simple approach)
-          const h = hue / 360, s = 0.65, l = 0.55;
-          let r, g, b;
-          if (s === 0){
-            r = g = b = l;
-          } else {
-            const hue2rgb = (p, q, t) => {
-              if(t < 0) t += 1;
-              if(t > 1) t -= 1;
-              if(t < 1/6) return p + (q - p) * 6 * t;
-              if(t < 1/2) return q;
-              if(t < 2/3) return p + (q - p) * (2/3 - t) * 6;
-              return p;
-            };
-            const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-            const p = 2 * l - q;
-            r = hue2rgb(p, q, h + 1/3);
-            g = hue2rgb(p, q, h);
-            b = hue2rgb(p, q, h - 1/3);
-          }
-          return [
-            Math.round(r * 255),
-            Math.round(g * 255),
-            Math.round(b * 255),
-            255
-          ];
-        };
-
         for (const key in dict) {
             dict[key] = {
               ...dict[key],
@@ -80,10 +82,37 @@ function useConfig({backend, setStatusMessage, timeRef}) {
       setPopulations({'populations': assignUniqueColors(data.populations), 'nodes_population': data.nodes_population});
       setSampleNames({'sample_names': assignUniqueColors(data.sample_names)});
 
+      // Process sample details and generate metadata colors
+      const sDetails = data.sample_details || {};
+      const mColors = {};
+      const mValues = {};
+      
+      // 1. Collect all possible metadata keys and their unique values
+      Object.values(sDetails).forEach(detail => {
+        Object.entries(detail).forEach(([key, value]) => {
+           if (typeof value === 'object' && value !== null) return; 
+           
+           if (!mValues[key]) mValues[key] = new Set();
+           mValues[key].add(String(value));
+        });
+      });
+
+      // 2. Assign colors to each value for each key
+      Object.keys(mValues).forEach(key => {
+        const values = Array.from(mValues[key]);
+        const valueColorMap = {};
+        values.forEach((val, index) => {
+            valueColorMap[val] = getColor(index, values.length);
+        });
+        mColors[key] = valueColorMap;
+      });
+
+      setSampleDetails(sDetails);
+      setMetadataColors(mColors);
+
       let number_of_intervals = data.intervals.length
       setGlobalBpPerUnit(data.genome_length/(number_of_intervals));
       pathArray.current = Array(number_of_intervals).fill(null);
-
       genomeLength.current = data.genome_length;
 
       queryConfig(data);
@@ -123,8 +152,10 @@ function useConfig({backend, setStatusMessage, timeRef}) {
     pathArray,
     filename,
     sampleNames,
+    sampleDetails,
+    metadataColors,
     handleConfigUpdate
-  }), [tsconfig, sampleNames, setConfig, globalBpPerUnit, populations, populationFilter, setPopulationFilter, genomeLength, pathArray, filename, handleConfigUpdate]);
+  }), [tsconfig, sampleNames, setConfig, globalBpPerUnit, populations, populationFilter, setPopulationFilter, genomeLength, pathArray, filename, sampleDetails, metadataColors, handleConfigUpdate]);
 };
 
 export default useConfig;

@@ -249,17 +249,14 @@ async def upload(request: Request, response: Response, file: UploadFile = File(.
     Upload a file to the server. 
 
     ## TODO for local uploads, we need to upload the file to the local directory and not upload it to GCS. 
-    
     """
     sid, session = await get_or_create_session(request, response)
 
     user_dir = UPLOAD_DIR /"Uploads"/sid if IS_VM else UPLOAD_DIR /"Uploads"
     user_dir.mkdir(parents=True, exist_ok=True)
 
-    # file_path = user_dir / file.filename if IS_VM else user_dir / file.filename
     file_path = user_dir / file.filename
 
-    print("file_path", file_path)
     try:
         async with aiofiles.open(file_path, "wb") as f:
             while chunk := await file.read(1024 * 1024):
@@ -267,10 +264,8 @@ async def upload(request: Request, response: Response, file: UploadFile = File(.
 
         # Upload to GCS asynchronously
         if IS_VM:
-            print("uploading to gcs")
             gcs_url = await upload_to_gcs(BUCKET_NAME, file_path, sid)
         
-        # viz_config, _ = await handle_upload(str(file_path))
         return JSONResponse(
             status_code=200,
             content={"message": "File uploaded", "sid": sid, "owner_sid": sid, "filename": file.filename}

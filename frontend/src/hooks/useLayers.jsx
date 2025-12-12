@@ -12,11 +12,13 @@ const useLayers = ({
   hoveredTreeIndex,
   backend,
   regions,
-globalBpPerUnit,
-populations,
-sampleNames,
-populationFilter,
-hoveredGenomeInfo,
+  globalBpPerUnit,
+  populations,
+  sampleNames,
+  populationFilter,
+  hoveredGenomeInfo,
+  sampleDetails,
+  metadataColors,
 }) => {
 
   const { bins = new Map(), localCoordinates = [], times = [] } = regions;
@@ -103,6 +105,8 @@ hoveredGenomeInfo,
           populations,
           populationFilter,
           sampleNames,
+          sampleDetails,
+          metadataColors,
           yzoom,
           xzoom,
           globalBpPerUnit
@@ -112,7 +116,7 @@ hoveredGenomeInfo,
       }
     
       return newLayers;
-    }, [bins, globalBpPerUnit, hoveredTreeIndex, populations, populationFilter]);
+    }, [bins, globalBpPerUnit, hoveredTreeIndex, populations, populationFilter, sampleNames, sampleDetails, metadataColors]);
 
     const layers = useMemo(() => {
       const all = [...treeLayers];

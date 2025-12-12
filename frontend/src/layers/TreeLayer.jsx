@@ -18,13 +18,15 @@ export default class TreeLayer extends CompositeLayer {
     yzoom: null,
     xzoom: null,
     sampleNames: null,
+    sampleDetails: null,
+    metadataColors: null,
   };
 
   renderLayers() {
     const id_populations = this.props.populations.populations;
     const nodes_population = this.props.populations.nodes_population;
     const sampleNames = this.props.sampleNames;
-    const { bin, viewId, hoveredTreeIndex, populationFilter, xzoom } = this.props;
+    const { bin, viewId, hoveredTreeIndex, populationFilter, xzoom, sampleDetails, metadataColors } = this.props;
     if (!bin || !bin.path || !bin.modelMatrix || !bin.visible) return null
 
     const nodes =  bin.path.filter(d => 
@@ -100,6 +102,17 @@ export default class TreeLayer extends CompositeLayer {
           let sample_population = nodes_population[(d.name)];
           const colorBy = populationFilter.colorBy;
           let color = [150, 150, 150, 100];
+
+          // Check if colorBy is a metadata key
+          if (metadataColors && metadataColors[colorBy]) {
+             const val = sampleDetails?.[d.name]?.[colorBy];
+             // If value exists and is enabled, return its color
+             if (val && populationFilter.enabledValues.includes(String(val))) {
+                 const c = metadataColors[colorBy][val];
+                 if (c) return [...c.slice(0,3), 200];
+             }
+             return color;
+          }
 
           if (colorBy === 'sample_name') {
             // do something
