@@ -381,10 +381,23 @@ def get_tree_details(ts, tree_index):
     """
     """
     tree = ts.at_index(tree_index)
+    
+    mutations = []
+    for mut in tree.mutations():
+        site = tree.site(mut.site)
+        mutations.append({
+            "id": mut.id,
+            "site_id": mut.site,
+            "position": site.position,
+            "derived_state": mut.derived_state,
+            "inherited_state": mut.parent != -1 and ts.mutation(mut.parent).derived_state or site.ancestral_state
+        })
+
     data = {
         "interval": tree.interval,
         "num_roots": tree.num_roots,
-        "num_nodes": tree.num_nodes
+        "num_nodes": tree.num_nodes,
+        "mutations": mutations
         }
     return data
 
