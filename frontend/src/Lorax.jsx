@@ -5,13 +5,12 @@ import useView from "./hooks/useView";
 import { useState, useRef, useEffect } from "react";
 import PositionSlider from './components/PositionSlider'
 
-function Lorax({backend, config, settings, setSettings, project, ucgbMode, statusMessage, setStatusMessage, setVisibleTrees, lineagePaths}) {
+function Lorax({backend, config, settings, setSettings, project, ucgbMode, statusMessage, setStatusMessage, setVisibleTrees, lineagePaths, deckRef}) {
 
   const {tsconfig} = config;
 
   const [mouseDownIsMinimap, setMouseDownIsMinimap] = useState(false);
   const [hoveredTreeIndex, setHoveredTreeIndex] = useState({path: null, node: null, treeIndex: null}); // this is for knowing which tree is hovered. 
-  const deckRef = useRef(); // reference to the deck component. 
   const valueRef = useRef(null);
   const [generation, setGeneration] = useState(null);
   const [clickedGenomeInfo, setClickedGenomeInfo] = useState(null);

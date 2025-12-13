@@ -370,6 +370,7 @@ useEffect(() => {
     <>
     <div className="w-full h-full flex justify-center items-center relative" >
     <DeckGL
+      glOptions={{ preserveDrawingBuffer: true }}
       ref={deckRef}
       onHover={onClickOrMouseMove}
       // onClick={onClickOrMouseMove}
