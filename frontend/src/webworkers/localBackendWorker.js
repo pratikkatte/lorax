@@ -24,7 +24,11 @@ const findLineage = (tree, term) => {
         }
     }
     
-    if (tree.root) traverse(tree.root);
+    if (tree.roots) {
+      tree.roots.forEach(root => traverse(root));
+    } else if (tree.root) {
+      traverse(tree.root);
+    }
 
     // For each match, add ancestors (path to root)
     matchingNodes.forEach(match => {
@@ -583,14 +587,28 @@ function processNewick(nwk_str, mutations, globalMinTime, globalMaxTime, times) 
     }
   }
 
-  assignNumTips(tree.root);
-  assignMutations(tree.root);
+  const roots = tree.node.filter(n => !n.parent);
+
+  roots.forEach(root => {
+    assignNumTips(root);
+    assignMutations(root);
+  });
+
+  // assignNumTips(tree.root);
+  // assignMutations(tree.root);
 
   const total_tips = tree.root.num_tips;
 
   if (ladderize) {
-    sortWithNumTips(tree.root);
-    tree.node = kn_expand_node(tree.root);
+    // sortWithNumTips(tree.root);
+    roots.forEach(r => sortWithNumTips(r));
+    let newNodes = [];
+      roots.forEach(r => {
+         newNodes = newNodes.concat(kn_expand_node(r));
+      });
+      tree.node = newNodes;
+
+    // tree.node = kn_expand_node(tree.root);
   }
 
   // kn_calxy(tree, true);
@@ -598,6 +616,7 @@ function processNewick(nwk_str, mutations, globalMinTime, globalMaxTime, times) 
   // sort on y:
   tree.node.sort((a, b) => a.y - b.y);
   cleanup(tree);
+  tree.roots = roots;
   return tree;
 }
 
@@ -669,7 +688,14 @@ function deleteRangeByValue(min, max) {
 export function getTreeData(global_index, precision) {
   if (pathsData.has(global_index)){
     const processedTree = pathsData.get(global_index);
-    const segments = extractSquarePaths(processedTree.root, false);
+    const segments = [];
+    if (processedTree.roots) {
+      processedTree.roots.forEach(root => {
+        extractSquarePaths(root, false, segments);
+      });
+    } else if (processedTree.root) {
+      extractSquarePaths(processedTree.root, false, segments);
+    }
     const dedupedSegments = dedupeSegments(segments, precision);
     return dedupedSegments;
   }
@@ -750,7 +776,14 @@ onmessage = async (event) => {
           }
 
           if (allLineageNodes.size > 0) {
-              const segments = extractLineagePaths(tree.root, allLineageNodes, false);
+              const segments = [];
+              if (tree.roots) {
+                  tree.roots.forEach(root => {
+                      extractLineagePaths(root, allLineageNodes, false, segments);
+                  });
+              } else if (tree.root) {
+                  extractLineagePaths(tree.root, allLineageNodes, false, segments);
+              }
               const deduped = dedupeSegments(segments);
               if (deduped.length > 0) {
                   lineageResults[global_index] = deduped;

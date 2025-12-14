@@ -77,10 +77,41 @@ function kn_new_node() {
   };
 }
 
+function kn_parse_many(str) {
+  const tree = {
+    error: 0,
+    n_tips: 0,
+    node: []
+  };
+  
+  // Remove newlines and trim
+  str = str.replace(/[\r\n]+/g, "").trim();
+  
+  // Split by semicolon, but filter out empty strings
+  const parts = str.split(';').filter(p => p.trim().length > 0);
+  
+  for (let part of parts) {
+      const subTree = kn_parse(part);
+      if (subTree.error) tree.error |= subTree.error;
+      tree.n_tips += subTree.n_tips;
+      
+      // Concatenate nodes
+      tree.node = tree.node.concat(subTree.node);
+  }
+  
+  // Set root to the last node (convention)
+  if (tree.node.length > 0) {
+    tree.root = tree.node[tree.node.length - 1];
+  }
+  
+  return tree;
+}
+
 function kn_parse_auto(str) {
   const cleaned = str.trim();
   if (cleaned.includes("(") || cleaned.includes(")")) {
-    return kn_parse(cleaned); // assume it's proper Newick
+    // return kn_parse(cleaned); // assume it's proper Newick
+    return kn_parse_many(cleaned);
   } else {
     return kn_parse_flat_list(cleaned); // semicolon-separated list
   }
@@ -572,7 +603,11 @@ function kn_reorder_num_tips(root) {
 
     for (i = tree.node.length - 2; i >= 0; --i) {
       const p = tree.node[i];
-      p.x = p.parent.x + (p.d >= 0.0 ? p.d : 0.0);
+      if (p.parent) {
+        p.x = p.parent.x + (p.d >= 0.0 ? p.d : 0.0);
+      } else {
+        p.x = (p.d >= 0.0 ? p.d : 0.0);
+      }
       if (p.x > scale) scale = p.x;
     }
 
@@ -587,7 +622,11 @@ function kn_reorder_num_tips(root) {
 
     for (i = tree.node.length - 2; i >= 0; --i) {
       const p = tree.node[i];
-      p.x = p.parent.x + 1.0;
+      if (p.parent) {
+        p.x = p.parent.x + 1.0;
+      } else {
+        p.x = 1.0;
+      }
       if (p.x > scale) scale = p.x;
     }
 
@@ -641,7 +680,11 @@ function kn_calxy(tree, is_real) {
     scale = root.x = root.d >= 0.0 ? root.d : 0.0;
     for (let i = tree.node.length - 2; i >= 0; --i) {
       var p = tree.node[i];
-      p.x = p.parent.x + (p.d >= 0.0 ? p.d : 0.0);
+      if (p.parent) {
+        p.x = p.parent.x + (p.d >= 0.0 ? p.d : 0.0);
+      } else {
+        p.x = (p.d >= 0.0 ? p.d : 0.0);
+      }
       if (p.x > scale) scale = p.x;
     }
     if (scale == 0.0) is_real = false;
@@ -651,7 +694,11 @@ function kn_calxy(tree, is_real) {
     scale = tree.node[tree.node.length - 1].x = 1.0;
     for (let i = tree.node.length - 2; i >= 0; --i) {
       var p = tree.node[i];
-      p.x = p.parent.x + 1.0;
+      if (p.parent) {
+        p.x = p.parent.x + 1.0;
+      } else {
+        p.x = 1.0;
+      }
       if (p.x > scale) scale = p.x;
     }
     for (let i = 0; i < tree.node.length - 1; ++i)
