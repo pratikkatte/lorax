@@ -102,7 +102,7 @@ const ViewportOverlay = React.memo(({is_time, times_type}) => (
           color: '#333',
           fontWeight: 500,
           letterSpacing: '2px',
-          padding: '0 10px',
+          // padding: '0 10px',
         }}
       >
       {is_time ? times_type : "No Time Data"}
