@@ -3,7 +3,7 @@ import { io } from "socket.io-client";
 import websocketEvents from "../webworkers/websocketEvents";
 import useLoraxConfig from "../globalconfig.js";
 import workerSpec from "../webworkers/localBackendWorker.js?worker&inline";
-import axios from "axios";
+import { initSession } from "../services/api.js";
 
 // Keep old handlers for worker communication
 let onQueryReceipt = (receivedData) => {};
@@ -28,23 +28,14 @@ function useConnect({ setGettingDetails, settings }) {
   const searchRequests = useRef(new Map());
 
   /** 🔑 Initialize session */
-  const initSession = useCallback(() => {
+  const initializeSession = useCallback(() => {
     if (initSessionPromiseRef.current) {
       return initSessionPromiseRef.current;
     }
 
     initSessionPromiseRef.current = (async () => {
       try {
-        const response = await axios.post(
-          `${API_BASE}/init-session`,
-          {},
-          {
-            withCredentials: true,
-            headers: { "Content-Type": "application/json" },
-          }
-        );
-
-        const sid = response?.data?.sid;
+        const sid = await initSession(API_BASE);
         if (sid) {
           sidRef.current = sid;
           console.log("Session initialized:", sid);
@@ -177,7 +168,7 @@ function useConnect({ setGettingDetails, settings }) {
 
   /** 🔑 Initialize once and cleanup properly */
   useEffect(() => {
-    initSession();
+    initializeSession();
 
     return () => {
       if (socketRef.current) {
@@ -186,7 +177,7 @@ function useConnect({ setGettingDetails, settings }) {
       }
       setIsConnected(false);
     };
-  }, [initSession]);
+  }, [initializeSession]);
 
   /** Keep-alive ping (optional) */
   useEffect(() => {
@@ -303,7 +294,7 @@ function useConnect({ setGettingDetails, settings }) {
         };
 
         if (!socketRef.current) {
-          initSession().then(() => {
+          initializeSession().then(() => {
             console.log("session initialized");
             execute();
           }).catch((err) => {
@@ -313,7 +304,7 @@ function useConnect({ setGettingDetails, settings }) {
           execute();
         }
       });
-    }, [initSession]);
+    }, [initializeSession]);
 
   const queryDetails = useCallback(
     (clickedObject) => {

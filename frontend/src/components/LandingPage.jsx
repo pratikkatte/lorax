@@ -1,83 +1,14 @@
-import { useState , useMemo, useEffect} from "react";
+import React, { useState } from "react";
 import { BsCloudUpload, BsGithub } from "react-icons/bs";
-import { LuFileText } from "react-icons/lu";
 import { LuTreePine } from "react-icons/lu";
-
 import { BsChevronDown } from "react-icons/bs";
 import useLoraxConfig from "../globalconfig.js";
 import ErrorAlert from "./ErrorAlert.jsx";
 import LoraxMessage from "./loraxMessage.jsx";
-function DatasetFiles({ project, files = [],loadFile, loadingFile, setLoadingFile, isConnected}) {
-  const [q, setQ] = useState("");
-  
-  const visible = useMemo(() => {
-    const sorted = [...files]
-      .map(f => (typeof f === "string" ? f : f?.name ?? "unnamed"))
-      .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-    return q ? sorted.filter(n => n.toLowerCase().includes(q.toLowerCase())) : sorted;
-  }, [files, q]);
+import DatasetFiles from "./landing/DatasetFiles.jsx";
+import FeatureCard from "./landing/FeatureCard.jsx";
+import ARGIllustration from "./landing/ARGIllustration.jsx";
 
-  return (
-    <>
-      <div className="mb-3">
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Filter files…"
-          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none ring-0 focus:border-emerald-400"
-        />
-      </div>
-
-      {visible.length ? (
-        <ul className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
-          {visible.map((name) => (
-            <li key={name}>
-              <FilePill
-                name={name}
-                loading={loadingFile === name}
-                onClick={e => {
-                  e.currentTarget.disabled = loadingFile?true:false;
-                  setLoadingFile(name);
-                  loadFile?.({ project, file: name});
-                }}
-              />
-              
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="text-sm text-slate-500">No matching files.</p>
-      )}
-    </>
-  );
-}
-
-function FilePill({ name, onClick, loading = false }) {
-  return (
-    <button
-      onClick={onClick}
-      className="w-full group flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-left text-sm hover:border-emerald-300 hover:bg-emerald-50/40"
-    >
-      <span className="flex items-center gap-2 min-w-0">
-        <span className="grid place-items-center rounded-lg bg-slate-50 border border-slate-200 p-1">
-          <LuFileText className="h-4 w-4 text-slate-500" />
-        </span>
-        <span className="truncate">{name}</span>
-      </span>
-      <span className={`text-emerald-700 text-xs ${!loading ? "opacity-0 group-hover:opacity-100" : ""}`}>
-        {loading ? (
-          <>
-            <svg className="animate-spin h-4 w-4 text-emerald-700 inline-block mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
-            </svg>
-            Loading…
-          </>
-        ) : "Load"}
-      </span>
-    </button>
-  );
-}
 export default function LandingPage({
   upload,
   version = "pre‑release",
@@ -274,78 +205,8 @@ export default function LandingPage({
   );
 }
 
-function FeatureCard({ icon, title, desc }) {
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm hover:shadow-md transition-shadow">
-      <div className="flex items-center gap-3">
-        <div className="size-9 rounded-xl grid place-items-center bg-emerald-50 text-emerald-700">
-          <span className="text-xl">{icon}</span>
-        </div>
-        <h3 className="font-semibold">{title}</h3>
-      </div>
-      <p className="mt-3 text-sm text-slate-600">{desc}</p>
-    </div>
-  );
-}
-
 function Badge({ children, pill }) {
   return (
     <span className={["inline-flex items-center border border-slate-200 bg-white text-slate-600 text-xs", pill ? "rounded-full px-3 py-1" : "rounded-md px-2 py-1"].join(" ")}>{children}</span>
   );
 }
-
-// Simple SVG placeholder illustrating ARG edges + genome band
-function ARGIillustrationInner() {
-  return (
-    <svg viewBox="0 0 640 360" xmlns="http://www.w3.org/2000/svg" className="w-full h-[300px]">
-      <defs>
-        <linearGradient id="g" x1="0" x2="1">
-          <stop offset="0%" stopOpacity="0.08" />
-          <stop offset="100%" stopOpacity="0.18" />
-        </linearGradient>
-      </defs>
-      <rect x="0" y="0" width="640" height="360" fill="url(#g)" />
-      {/* genome band */}
-      <rect x="40" y="300" width="560" height="10" rx="5" fill="#10b981" opacity="0.3" />
-      {/* local trees (stylized) */}
-      {[
-        { x: 70 },
-        { x: 200 },
-        { x: 330 },
-        { x: 460 },
-      ].map((t, i) => (
-        <g key={i} transform={`translate(${t.x},0)`}>
-          <path d="M40 280 L80 220 L120 280" stroke="#0ea5e9" strokeWidth="2" fill="none" />
-          <path d="M80 220 L60 160" stroke="#0ea5e9" strokeWidth="2" fill="none" />
-          <path d="M80 220 L100 170" stroke="#0ea5e9" strokeWidth="2" fill="none" />
-          {/* recombination arcs */}
-          <path d="M60 160 C 100 120, 120 120, 100 170" stroke="#ef4444" strokeWidth="2" fill="none" opacity="0.7" />
-        </g>
-      ))}
-    </svg>
-  );
-}
-
-function ARGIillustrationSkeleton() {
-  return (
-    <div className="animate-pulse rounded-2xl bg-slate-100 h-[300px] w-full" />
-  );
-}
-
-function ARGIillustrationWrapper() {
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-    return () => {
-      setMounted(false);
-    };
-  }, []); // run only once after mount
-
-  if (!mounted) return <ARGIillustrationSkeleton />;
-  return <ARGIillustrationInner />;
-}
-
-
-// alias used above
-function ARGIllustration() { return <ARGIillustrationWrapper />; }

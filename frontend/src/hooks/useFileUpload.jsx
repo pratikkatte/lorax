@@ -1,7 +1,6 @@
 import { useCallback, useMemo, useRef, useState, useEffect } from "react";
-import axios from "axios";
 import useLoraxConfig from "../globalconfig.js";
-import LoraxMessage from "../components/loraxMessage.jsx";
+import { getProjects, uploadFileToBackend } from "../services/api.js";
 
 export default function useFileUpload({
   config,
@@ -120,12 +119,6 @@ export default function useFileUpload({
 
         const res = await queryFile(payload);
 
-        // const res = await axios.post(url, payload, {
-        //   withCredentials: true,
-        //   headers: {
-        //     "Content-Type": "application/json",
-        //   },
-        // });
         const end = performance.now();
         console.log(`loadFile response time: ${((end - start) / 1000).toFixed(2)}s`);
         
@@ -148,21 +141,18 @@ export default function useFileUpload({
       setIsUploading(true);
       setUploadProgress(0);
 
-      const formData = new FormData();
-      formData.append("file", file);
-
       try {
-
         setUploadStatus("uploading file...");
-        const response = await axios.post(`${API_BASE}/upload`, formData, {
-          withCredentials: true,
-          maxRedirects: 0,
-          onUploadProgress: (evt) => {
+        
+        const response = await uploadFileToBackend(
+          API_BASE,
+          file,
+          (evt) => {
             const total = evt.total ?? 0;
             const percent = total ? Math.round((evt.loaded * 100) / total) : 0;
             setUploadProgress(percent);
-          },
-        });
+          }
+        );
 
         if (response.status === 200) {
 
@@ -184,7 +174,7 @@ export default function useFileUpload({
         setIsUploading(false);
       }
     },
-    [API_BASE, _finishError, _finishSuccess]
+    [API_BASE, _finishError, _finishSuccess, loadFile]
   );
 
   const onInputChange = useCallback(
@@ -230,17 +220,6 @@ export default function useFileUpload({
   const onDragEnter = useCallback((e) => { e.preventDefault(); setDragOver(true); }, []);
   const onDragOver = useCallback((e) => { e.preventDefault(); }, []);
   const onDragLeave = useCallback((e) => { e.preventDefault(); setDragOver(false); }, []);
-
-  const getProjects = useCallback((API_BASE) => {
-    return axios.get(`${API_BASE}/projects`, { withCredentials: true })
-      .then(response => {
-        return response.data.projects;
-      })
-      .catch(error => {
-        console.error('Error fetching projects:', error);
-        return [];
-      });
-  }, []);
 
   // Props helpers (optional convenience)
   const getInputProps = useCallback(() => ({
@@ -293,7 +272,7 @@ export default function useFileUpload({
     getDropzoneProps,
     projects,
     setProjects,
-    getProjects,
+    getProjects: () => getProjects(API_BASE),
     uploadStatus,
     statusMessage,
     setStatusMessage

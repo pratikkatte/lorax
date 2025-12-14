@@ -7,8 +7,8 @@ import Lorax from './Lorax.jsx'
 import Info from './components/Info.jsx'
 import Settings from './components/Settings.jsx'
 import useLoraxConfig from './globalconfig.js'
-import axios from 'axios';
 import LoraxMessage from "./components/loraxMessage";
+import { fetchUCGBConfig } from "./services/api.js";
 
 export default function LoraxViewer({ backend, config, settings, setSettings, project, setProject, ucgbMode, statusMessage, setStatusMessage, loadFile}) {
 
@@ -67,7 +67,7 @@ export default function LoraxViewer({ backend, config, settings, setSettings, pr
     
     if (file && file === 'ucgb') {
       ucgbMode.current = true;
-      handleUCGBMode();
+      handleUCGBMode(qp);
     }else{
       ucgbMode.current = false;
       handleNormalMode(qp);
@@ -93,21 +93,21 @@ export default function LoraxViewer({ backend, config, settings, setSettings, pr
     setShowSettings(true);
   };
 
-  const handleUCGBMode = useCallback(() => {
+  const handleUCGBMode = useCallback((qp) => {
     if (ucgbMode.current) {
-      axios.get(`${API_BASE}/ucgb?chrom=${qp.chrom}&genomiccoordstart=${qp.genomiccoordstart}&genomiccoordend=${qp.genomiccoordend}`).then(response => {
+      fetchUCGBConfig(API_BASE, qp.chrom, qp.genomiccoordstart, qp.genomiccoordend).then(data => {
         // console.log("response", response)
 
-        handleConfigUpdate(response.data.config);
+        handleConfigUpdate(data.config);
         
-        if (response.data.error) {
-          console.log("error", response.data.error)
+        if (data.error) {
+          console.log("error", data.error)
         } else {
           setConfig({...tsconfig, chrom: qp.chrom, value: [qp.genomiccoordstart, qp.genomiccoordend]});
         }
       })
     }
-  }, [ucgbMode]);
+  }, [ucgbMode, API_BASE, handleConfigUpdate, setConfig, tsconfig]);
 
   const handleNormalMode = useCallback((qp) => {
     console.log("qp", qp);
@@ -123,7 +123,7 @@ export default function LoraxViewer({ backend, config, settings, setSettings, pr
       });
       setProject(qp.project);
     }
-  }, [ucgbMode]);
+  }, [ucgbMode, tsconfig, loadFile, setProject]);
 
   return (
     <>

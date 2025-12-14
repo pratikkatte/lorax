@@ -79,7 +79,7 @@ function fetch_or_extract(file_obj, sendStatusMessage, whatIsBeingDownloaded) {
   }
 }
 
-function parseNewickKeyValue(newickKVString, obj_to_set) {
+export function parseNewickKeyValue(newickKVString, obj_to_set) {
   // Regular expression that matches key=value pairs, accounting for commas within {}
   const regex = /(&?\w+)=({[^}]*}|[^,]*)/g;
 

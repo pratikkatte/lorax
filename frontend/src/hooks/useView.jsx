@@ -1,78 +1,11 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { debounce } from "lodash";
-import {
-  OrthographicView,
-  OrthographicController,
-} from "@deck.gl/core";
+import { OrthographicView } from "@deck.gl/core";
+import { MyOrthographicController, setGlobalControllers } from "./modules/viewController";
+import { INITIAL_VIEW_STATE, getPanStep, panLimit } from "./modules/viewStateUtils";
 
-let globalSetZoomAxis = () => {};
-let globalPanDirection = () => {};
 
-class MyOrthographicController extends OrthographicController {
-  
-  handleEvent(event) {
-
-    if (event.pointerType === "touch") {
-      if (event.type === "pinchmove") {
-        if (
-          this.scrollZoom &&
-          this.scrollZoom.zoomAxis &&
-          this.scrollZoom.zoomAxis === "X"
-        ) {
-          return false;
-        }
-      }
-    }
-    if (event.type === 'panmove') {
-      globalSetZoomAxis('all')
-      
-    }
-    if (event.type === "wheel") {
-      const controlKey = event.srcEvent.ctrlKey 
-      if (controlKey){
-        globalSetZoomAxis('X')
-        globalPanDirection(null)
-      }else{
-        if(Math.abs(event.srcEvent.deltaY) === 0) {
-          if(event.srcEvent.deltaX > 0) {
-            globalPanDirection("R")
-          } else {
-            globalPanDirection("L")
-          }
-        } else {
-          globalSetZoomAxis('Y')
-          globalPanDirection(null)
-        }
-      }
-    }
-    super.handleEvent(event);
-  }
-}
-
-const INITIAL_VIEW_STATE = {
-  'genome-positions':{
-    target: [0,1],
-    zoom: [5,8],
-    // minZoom: 1,
-  },
-  'genome-info':{
-    target: [0,1],
-    zoom: [5,8],
-    // minZoom: 1,
-  },
-  'tree-time':{
-    target: [0.5 ,0],
-    zoom: [0,8],
-    // minZoom: 1,
-  },
-  'ortho': {
-    target: [0,0],
-    zoom: [5,8],
-    // minZoom: 1,
-  }
-}
-
-  const useView = ({ config, valueRef, clickedGenomeInfo}) => {
+const useView = ({ config, valueRef, clickedGenomeInfo}) => {
 
   const {globalBpPerUnit, tsconfig, genomeLength} = config;
 
@@ -114,8 +47,8 @@ const initialState = useMemo(() => {
 // Initialize viewState once from computed initialState
 const [viewState, setViewState] = useState(null);
 
-  globalSetZoomAxis = setZoomAxis;
-  globalPanDirection = setPanDirection;
+  // Set global controllers for MyOrthographicController
+  setGlobalControllers(setZoomAxis, setPanDirection);
 
   const [decksize, setDecksize] = useState(null);
 
@@ -287,27 +220,6 @@ const [viewState, setViewState] = useState(null);
   setIsRendered(true); 
   }, [decksize])
 
-  function getPanStep({zoomX, baseStep = 8, sensitivity = 0.5}) {
-
-    if (zoomX < 0) {
-      // 2. Increase baseStep by the magnitude of the negative zoomX
-      // e.g., if zoomX is -4, the multiplier is 4+1 = 5
-      baseStep = baseStep * (Math.abs(zoomX)/2 + 1);
-    }
-
-    return baseStep / Math.pow(2, zoomX * sensitivity);
-  }
-  
-  const panLimit = useCallback((target, oldTarget) => {
-    if (target[0] < 0){
-      return oldTarget;
-    }
-    if (target[0] > genomeLength.current/globalBpPerUnit){
-      return oldTarget;
-    }
-    return target;
-  }, [genomeLength, globalBpPerUnit]);
-
   const handleViewStateChange = useCallback(({viewState:newViewState, viewId, oldViewState}) => {
     if (!viewId || !newViewState ) return;
 
@@ -360,7 +272,7 @@ const [viewState, setViewState] = useState(null);
       }
 
       if (target.length > 0 && oldViewState.target.length > 0) {
-        target = panLimit(target,[...oldViewState.target]);
+        target = panLimit(target,[...oldViewState.target], genomeLength.current, globalBpPerUnit);
       }
       const W_w = newViewState.width/ (Math.pow(2, zoom[0]));
 
@@ -462,7 +374,7 @@ const startPan = useCallback((direction) => {
       const delta = panStep * stepDir;
       let new_target = [...prev['ortho'].target];
       new_target[0] += delta;
-      new_target = panLimit(new_target, prev['ortho'].target);
+      new_target = panLimit(new_target, prev['ortho'].target, genomeLength.current, globalBpPerUnit);
       
       return {
         ...prev,

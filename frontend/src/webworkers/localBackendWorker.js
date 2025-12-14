@@ -1,163 +1,21 @@
-
-import { cleanup } from "../utils/processNewick.js";
-import { kn_parse,kn_parse_auto, kn_calxy, kn_expand_node, kn_global_calxy} from "../utils/jstree";
 import { Matrix4 } from "@math.gl/core";
+import { findLineage, extractLineagePaths } from "./modules/lineageUtils.js";
+import { 
+  extractSquarePaths, 
+  processNewick, 
+  globalCleanup, 
+  dedupeSegments 
+} from "./modules/treeProcessing.js";
+import { 
+  nearestIndex, 
+  upperBound, 
+  findClosestBinIndices, 
+  new_complete_experiment_map 
+} from "./modules/binningUtils.js";
 
 console.log("[Worker] Initialized");
 
 postMessage({ data: "Worker starting" });
-
-
-const findLineage = (tree, term) => {
-    const lineageNodes = new Set();
-    if (!term || !tree || term.trim() === '') return lineageNodes;
-    const lowerTerm = term.toLowerCase();
-    const matchingNodes = new Set();
-
-    // Helper to traverse and find matches
-    function traverse(node) {
-        if (node.name && node.name.toLowerCase() === lowerTerm) {
-             matchingNodes.add(node);
-        }
-        if (node.child) {
-            node.child.forEach(traverse);
-        }
-    }
-    
-    if (tree.roots) {
-      tree.roots.forEach(root => traverse(root));
-    } else if (tree.root) {
-      traverse(tree.root);
-    }
-
-    // For each match, add ancestors (path to root)
-    matchingNodes.forEach(match => {
-        // Add the match itself
-        lineageNodes.add(match);
-        
-        // Add ancestors
-        let curr = match.parent;
-        while(curr) {
-            lineageNodes.add(curr);
-            curr = curr.parent;
-        }
-    });
-    return lineageNodes;
-};
-
-function extractLineagePaths(node, lineageNodes, vertical_mode, segments = []) {
-  if (!lineageNodes.has(node)) return segments;
-
-  const isVertical = vertical_mode;
-  const nodeX = node.x;
-  const nodeY = node.y;
-
-  const children = node.child;
-  const nChildren = children?.length || 0;
-
-  if (nChildren > 0) {
-    for (let i = 0; i < nChildren; i++) {
-      const child = children[i];
-      
-      // Only draw path if child is also in lineage
-      if (lineageNodes.has(child)) {
-          const cX = child.x;
-          const cY = child.y;
-
-          segments.push({
-            path: isVertical
-              ? [[nodeX, nodeY], [nodeX, cY], [nodeX, cY], [cX, cY]]
-              : [[nodeY, nodeX], [cY, nodeX], [cY, nodeX], [cY, cX]],
-          });
-          
-          extractLineagePaths(child, lineageNodes, vertical_mode, segments);
-      }
-    }
-  } 
-  
-  return segments;
-}
-
-// Extract the sorted x-array once
-function getXArray(globalBins) {
-  return globalBins.map(b => b.acc);
-}
-
-function distribute(total, spans, alpha = 0.5) {
-  const n = spans.length;
-  const spacing = 0.0;
-  const S = spans.reduce((a, b) => a + b, 0);
-  return spans.map(s => total * (alpha * (1 / n) + (1 - alpha) * (s / S)) - spacing);
-}
-
-function nearestIndex(arr, x) {
-  if (arr.length === 0) return -1;
-  if (x <= arr[0]) return 0;
-  if (x >= arr[arr.length - 1]) return arr.length - 1;
-
-  const i = lowerBound(arr, x);
-  const prev = i - 1;
-  return prev;
-}
-
-// Main helper: returns the two indices (i0 for x0, i1 for x1)
-function findClosestBinIndices(globalBins, x0, x1) {
-  const xs = getXArray(globalBins);
-  const i0 = nearestIndex(xs, x0);
-  const i1 = nearestIndex(xs, x1);
-  return { i0, i1 };
-}
-
-let basepairPerUnit = 1000;
-
-let ts_intervals = [];
-
-
-function extractSquarePaths(node, vertical_mode, segments = []) {
-  const isVertical = vertical_mode; // cache to avoid repeated lookups
-
-  const nodeX = node.x;
-  const nodeY = node.y;
-
-  const children = node.child;
-  const nChildren = children?.length || 0;
-
-  if (nChildren > 0) {
-    for (let i = 0; i < nChildren; i++) {
-      const child = children[i];
-
-      const cX = child.x;
-      const cY = child.y;
-
-      // Preallocate small arrays directly; no nested spread copies
-      segments.push({
-        path: isVertical
-          ? [[nodeX, nodeY], [nodeX, cY], [nodeX, cY], [cX, cY]]
-          : [[nodeY, nodeX], [cY, nodeX], [cY, nodeX], [cY, cX]],
-      });
-
-      extractSquarePaths(child, isVertical, segments);
-    }
-  } else {
-    // Leaf node marker
-    segments.push({
-      name: node.name,
-      position: isVertical ? [node.x, node.y] : [node.y, node.x],
-    });
-  }
-
-  // Mutations marker
-  if (node.mutations) {
-    segments.push({
-      mutations: node.mutations,
-      name: node.name,
-      position: isVertical ? [node.x, node.y] : [node.y, node.x],
-    });
-  }
-
-  return segments;
-}
-
 
 const sendStatusMessage = (status_obj) => {
   postMessage({
@@ -166,41 +24,32 @@ const sendStatusMessage = (status_obj) => {
   });
 };
 
+// Global State
 let globalBins = [];
-
 let tsconfig = null;
-
-
 let lastStart = null;
 let lastEnd = null;
-
-function lowerBound(arr, x) {
-  let lo = 0, hi = arr.length - 1, ans = arr.length;
-  while (lo <= hi) {
-    const mid = (lo + hi) >> 1;
-    if (arr[mid] >= x) { ans = mid; hi = mid - 1; } else { lo = mid + 1; }
-  }
-  return ans;
-}
-
-function upperBound(arr, x) {
-  let lo = 0, hi = arr.length;
-  while (lo < hi) {
-    const mid = (lo + hi) >> 1;
-    if (arr[mid] <= x) lo = mid + 1;
-    else hi = mid;
-  }
-  return lo;
-}
-
 // let intervalKeys = [];
 let globalLocalBins = new Map();
+const pathsData = new Map();
+
+// Helper to delete from pathsData
+function deleteRangeByValue(min, max) {
+  for (const [key, value] of pathsData.entries()) {
+    if (key < min || key > max) {
+      pathsData.delete(key);
+    }
+  }
+}
 
 async function getLocalData(start, end, globalBpPerUnit, nTrees, new_globalBp, regionWidth=null) {
   // if (!(localBins instanceof Map)) localBins = new Map();
 
-  let scaleFactor = new_globalBp / globalBpPerUnit
+      let scaleFactor = new_globalBp / globalBpPerUnit
+  
+  const computedPrecision = Math.max(2, Math.min(9, Math.floor(8 - Math.log10(scaleFactor || 1))));
 
+  
   // Calculate buffer so that it increases with region size, decreases as region shrinks
   let local_regionWidth = regionWidth ?? Math.max(1, end - start); // avoid 0/neg
   
@@ -238,7 +87,7 @@ async function getLocalData(start, end, globalBpPerUnit, nTrees, new_globalBp, r
         e: next_bin_start,
         path: null,
         global_index: i,
-        precision: 2
+        precision: computedPrecision
       });
     }
   };
@@ -269,7 +118,7 @@ async function getLocalData(start, end, globalBpPerUnit, nTrees, new_globalBp, r
             // e: temp_bin[1],
             path: null,
             global_index: i,
-            precision: 2
+            precision: computedPrecision
           });
         }
       } else {
@@ -309,184 +158,6 @@ export const queryValueChanged = async (value) => {
   return { i0, i1 };
 }
 
-
-
-// preallocate a reusable Matrix4 to avoid GC churn
-const tempMatrix = new Matrix4();
-
-export function new_complete_experiment_map(localBins, globalBpPerUnit, new_globalBp) {
-
-  const spacing = 1.05;
-  const bins = new Map();            // replaces plain object
-
-  const displayArray = [];
-
-  const scaleFactor = new_globalBp / globalBpPerUnit;
-  const localBpPerBin = new_globalBp;
-  const approxEqual = Math.abs(scaleFactor - 1) < 1e-6;
-
-  let prevBinEnd = -1;
-
-  // ────────────────────────────────
-  // PASS 1: group local bins
-  // ────────────────────────────────
-  for (const [key, bin] of localBins.entries()) {
-    const { s, e } = bin;
-    let binIdxEnd = Math.floor(s / localBpPerBin);
-    const span = e - s;
-
-    if (span < localBpPerBin && prevBinEnd !== -1) {
-      const endBinIdx = Math.floor(e / localBpPerBin);
-      if (endBinIdx === binIdxEnd) prevBinEnd = binIdxEnd;
-    }
-
-    const group = bins.get(binIdxEnd) || { indexes: [], spans: [] };
-    group.indexes.push(Number(key));
-    group.spans.push(span);
-    bins.set(binIdxEnd, group);
-  }
-
-  // ────────────────────────────────
-  // PASS 2: compute transforms
-  // ────────────────────────────────
-
-  for (const [binKey, { indexes, spans }] of bins.entries()) {
-    const n = indexes.length;
-
-    // ── Single-bin group (fast path)
-    if (n === 1) {
-      const idx = indexes[0];
-      const bin = localBins.get(idx);
-      if (!bin) continue;
-
-      const { s, e, path } = bin;
-      const span = e - s;
-      const dividePos = s / globalBpPerUnit;
-      const scaleX = span / (globalBpPerUnit * spacing);
-
-      // if (!path) rangeArray.push({ global_index: idx });
-
-      const modelMatrix = tempMatrix.clone()
-        .translate([dividePos, 0, 0])
-        .scale([scaleX, 1, 1]);
-
-      localBins.set(idx, {
-        ...bin,
-        modelMatrix,
-        visible: true,
-        position: s,
-        span,
-        precision: 6
-      });
-
-      displayArray.push(idx);
-
-      continue;
-    }
-
-    // ── Approx-equal case (scaleFactor ~ 1)
-    if (approxEqual) {
-      let totalSpan = 0;
-      for (let i = 0; i < n; i++) totalSpan += spans[i];
-      const binStart = localBins.get(indexes[0]).s;
-
-      // distribute proportional scales
-      const dist_scales = distribute(totalSpan, spans, 1);
-      let pos = binStart;
-
-      for (let i = 0; i < n; i++) {
-        const idx = indexes[i];
-        const bin = localBins.get(idx);
-        if (!bin) continue;
-
-        const dividePos = pos / globalBpPerUnit;
-        const scaleX = dist_scales[i] / (globalBpPerUnit * spacing);
-
-        const modelMatrix = tempMatrix.clone()
-          .translate([dividePos, 0, 0])
-          .scale([scaleX, 1, 1]);
-
-        localBins.set(idx, {
-          ...bin,
-          modelMatrix,
-          visible: true,
-          position: pos,
-          span: totalSpan,
-          precision: 6
-        });
-
-        displayArray.push(idx);
-
-        pos += dist_scales[i];
-      }
-      continue;
-    }
-
-    // ── Coarser scaling case (scaleFactor ≠ 1)
-    let maxSpan = spans[0];
-    let maxIdx = indexes[0];
-    let totalSpan = spans[0];
-    for (let i = 1; i < n; i++) {
-      totalSpan += spans[i];
-      if (spans[i] > maxSpan) {
-        maxSpan = spans[i];
-        maxIdx = indexes[i];
-      }
-    }
-
-    const binStart = localBins.get(indexes[0]).s;
-    const translateX = binStart / globalBpPerUnit;
-    const scaleX = totalSpan / (globalBpPerUnit * (spacing));
-
-    let precision = 2;
-
-    function computePrecision(totalSpan, maxSpan) {
-      const diff = Math.max(1, totalSpan - maxSpan); // avoid log10(0)
-      const logVal = Math.log10(diff);
-    
-      // map logVal range [0 → 4+] into precision [6 → 2]
-      let precision = 5 - Math.min(3, Math.max(0, logVal));
-      return Math.round(precision);
-    }
-    precision = computePrecision(totalSpan, maxSpan);
-
-    for (let i = 0; i < n; i++) {
-      const idx = indexes[i];
-      const bin = localBins.get(idx);
-      if (!bin) continue;
-
-      if (idx === maxIdx) {
-
-        const modelMatrix = tempMatrix.clone()
-          .translate([translateX, 0, 0])
-          .scale([scaleX, 1, 1]);
-
-        localBins.set(idx, {
-          ...bin,
-          modelMatrix,
-          visible: true,
-          position: binStart,
-          span: totalSpan,
-          precision: precision
-        });
-        displayArray.push(idx);
-      } else {
-        localBins.set(idx, {
-          ...bin,
-          modelMatrix: null,
-          visible: false,
-          position: null,
-          span: null,
-          path: null,
-          precision: null,
-        });
-      }
-    }
-  }
-
-  return { return_local_bins:localBins, displayArray };
-}
-
 export const queryNodes = async (localTrees, vertical_mode) => {
   try {
     // const received_data = JSON.parse(data);
@@ -508,183 +179,6 @@ export const queryNodes = async (localTrees, vertical_mode) => {
   }
 };
 
-function dedupeSegments(segments, precision = 9) {
-
-  const normalizeValue = (value) => Number.parseFloat(value).toFixed(precision);
-  const buildPathKey = (path) => path
-    .map(([x, y]) => `${normalizeValue(x)},${normalizeValue(y)}`)
-    .join("|");
-
-  const seen = new Set();
-  const result = [];
-
-  for (const segment of segments) {
-    if (segment.path) {
-      const key = buildPathKey(segment.path);
-      if (seen.has(key)) continue;
-      seen.add(key);
-    } else if (segment.position) {
-      const key = buildPathKey([segment.position]);
-      if (seen.has(key)) continue;
-      seen.add(key);
-    }
-
-    result.push(segment);
-  }
-
-  return result;
-}
-
-const pathsData = new Map();
-
-function quantile(arr, q) {
-  const sorted = [...arr].sort((a, b) => a - b);
-  const pos = (sorted.length - 1) * q;
-  const base = Math.floor(pos);
-  const rest = pos - base;
-  if (sorted[base + 1] !== undefined) {
-    return sorted[base] + rest * (sorted[base + 1] - sorted[base]);
-  } else {
-    return sorted[base];
-  }
-}
-
-function processNewick(nwk_str, mutations, globalMinTime, globalMaxTime, times) {
-  let ladderize = true;
-  let start_time = times['end']  
-  // const tree = kn_parse(nwk_str)
-  const tree = kn_parse_auto(nwk_str)
-
-  function assignNumTips(node) {
-    if (node.child.length === 0) {
-      node.num_tips = 1;
-    } else {
-      node.num_tips = 0;
-      node.child.forEach((child) => {
-        node.num_tips += assignNumTips(child);
-      });
-    }
-    return node.num_tips;
-  }
-
-  function sortWithNumTips(node) {
-    node.child.sort((a, b) => {
-      return a.num_tips - b.num_tips;
-    });
-    node.child.forEach((child) => {
-      sortWithNumTips(child);
-    });
-  }
-
-  function assignMutations(node){
-    if (mutations && mutations.hasOwnProperty(node.name)) {
-      node.mutations = mutations[node.name]
-    }
-    if(node.child.length > 0){ 
-      node.child.forEach((child) => {
-        assignMutations(child);
-      })
-    }
-  }
-
-  const roots = tree.node.filter(n => !n.parent);
-
-  roots.forEach(root => {
-    assignNumTips(root);
-    assignMutations(root);
-  });
-
-  // assignNumTips(tree.root);
-  // assignMutations(tree.root);
-
-  const total_tips = tree.root.num_tips;
-
-  if (ladderize) {
-    // sortWithNumTips(tree.root);
-    roots.forEach(r => sortWithNumTips(r));
-    let newNodes = [];
-      roots.forEach(r => {
-         newNodes = newNodes.concat(kn_expand_node(r));
-      });
-      tree.node = newNodes;
-
-    // tree.node = kn_expand_node(tree.root);
-  }
-
-  // kn_calxy(tree, true);
-  kn_global_calxy(tree, globalMinTime, globalMaxTime, start_time)
-  // sort on y:
-  tree.node.sort((a, b) => a.y - b.y);
-  cleanup(tree);
-  tree.roots = roots;
-  return tree;
-}
-
-
-export async function globalCleanup(allTrees) {
-  const emptyList = []; // Define your default mutation list or placeholder
-
-  // Step 1: Assign node_id and collect all x/y values
-  let all_x = [];
-  let all_y = [];
-
-  for (const tree of allTrees) {
-    tree.node.forEach((node, i) => {
-      node.node_id = i;
-      all_x.push(node.x);
-      all_y.push(node.y);
-    });
-  }
-
-  // Step 2: Compute global scale factors
-  all_x.sort((a, b) => a - b);
-
-  const ref_x = all_x.length > 0 ? all_x[Math.floor(all_x.length * 0.99)] : 1;
-  const scale_x = 450 / ref_x;
-
-  const min_y = all_y.reduce((min, y) => Math.min(min, y), Infinity);
-  const max_y = all_y.reduce((max, y) => Math.max(max, y), -Infinity);
-  const scale_y =  1;
-
-  // Step 3: Normalize and flatten each tree safely
-  for (let t = 0; t < allTrees.length; t++) {
-    const tree = allTrees[t];
-    const x_offset = t * 500; // Optional horizontal spacing between trees
-
-    const originalNodes = tree.node; // Preserve reference to full objects
-
-    tree.node = originalNodes.map((node) => {
-      const node_name = node.name?.replace(/'/g, "") || "";
-
-      const to_return = {
-        name: node_name,
-        parent_id: node.parent ? node.parent.node_id : node.node_id,
-        x_dist: node.x * scale_x + x_offset,
-        y: (node.y - min_y) * scale_y,
-        mutations: emptyList,
-        num_tips: node.num_tips,
-        is_tip: node.child.length === 0,
-        node_id: node.node_id,
-      };
-
-      if (node.meta) {
-        parseNewickKeyValue(node.meta, to_return);
-      }
-
-      return to_return;
-    });
-  }
-}
-
-
-function deleteRangeByValue(min, max) {
-  for (const [key, value] of pathsData.entries()) {
-    if (key < min || key > max) {
-      pathsData.delete(key);
-    }
-  }
-}
-
 export function getTreeData(global_index, precision) {
   if (pathsData.has(global_index)){
     const processedTree = pathsData.get(global_index);
@@ -701,8 +195,6 @@ export function getTreeData(global_index, precision) {
   }
   return null;
 }
-
-let MAX_SCALE = 0;
 
 function processData(localTrees, sendStatusMessage, vertical_mode) {
   const paths = {};
