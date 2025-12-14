@@ -1,8 +1,7 @@
 import { cleanup, parseNewickKeyValue } from "../../utils/processNewick.js";
 import { kn_parse,kn_parse_auto, kn_calxy, kn_expand_node, kn_global_calxy} from "../../utils/jstree";
 
-export function extractSquarePaths(node, vertical_mode, segments = []) {
-  const isVertical = vertical_mode; // cache to avoid repeated lookups
+export function extractSquarePaths(node, segments = []) {
 
   const nodeX = node.x;
   const nodeY = node.y;
@@ -19,18 +18,16 @@ export function extractSquarePaths(node, vertical_mode, segments = []) {
 
       // Preallocate small arrays directly; no nested spread copies
       segments.push({
-        path: isVertical
-          ? [[nodeX, nodeY], [nodeX, cY], [nodeX, cY], [cX, cY]]
-          : [[nodeY, nodeX], [cY, nodeX], [cY, nodeX], [cY, cX]],
+        path: [[nodeY, nodeX], [cY, nodeX], [cY, nodeX], [cY, cX]],
       });
 
-      extractSquarePaths(child, isVertical, segments);
+      extractSquarePaths(child, segments);
     }
   } else {
     // Leaf node marker
     segments.push({
       name: node.name,
-      position: isVertical ? [node.x, node.y] : [node.y, node.x],
+      position: [node.y, node.x],
     });
   }
 
@@ -39,7 +36,7 @@ export function extractSquarePaths(node, vertical_mode, segments = []) {
     segments.push({
       mutations: node.mutations,
       name: node.name,
-      position: isVertical ? [node.x, node.y] : [node.y, node.x],
+      position: [node.y, node.x],
     });
   }
 

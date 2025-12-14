@@ -21,18 +21,6 @@ export default function Settings({
           </button>
         </div>
         <h2 className="text-2xl font-semibold text-gray-800 mb-4">Settings</h2>
-        <div className="flex justify-start mb-4">
-            <div className="flex items-center">
-                <input 
-                    type="checkbox" 
-                    id="vertical_mode" 
-                    name="vertical_mode" 
-                    checked={settings.vertical_mode} 
-                    onChange={() => setSettings(prevState => ({...prevState, vertical_mode: !prevState.vertical_mode}))}
-                />
-                <label htmlFor="verticalMode" className="ml-2">Vertical Mode</label>
-            </div>
-        </div>
      </div>
     </div>
     );

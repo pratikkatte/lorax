@@ -111,7 +111,6 @@ function useConnect({ setGettingDetails, settings }) {
       workerRef.current?.postMessage({
         type: "query",
         data: message.data,
-        vertical_mode: settings.vertical_mode,
       });
     });
 

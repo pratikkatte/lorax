@@ -3,7 +3,6 @@ import { useState, useMemo } from "react";
 
 function useSettings() {
   const [settings, setSettings] = useState({
-    vertical_mode: false,
     number_of_trees: 10,
   });
 

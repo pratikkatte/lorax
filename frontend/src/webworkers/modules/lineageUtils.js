@@ -35,10 +35,9 @@ export const findLineage = (tree, term) => {
     return lineageNodes;
 };
 
-export function extractLineagePaths(node, lineageNodes, vertical_mode, segments = []) {
+export function extractLineagePaths(node, lineageNodes, segments = []) {
   if (!lineageNodes.has(node)) return segments;
 
-  const isVertical = vertical_mode;
   const nodeX = node.x;
   const nodeY = node.y;
 
@@ -55,12 +54,10 @@ export function extractLineagePaths(node, lineageNodes, vertical_mode, segments 
           const cY = child.y;
 
           segments.push({
-            path: isVertical
-              ? [[nodeX, nodeY], [nodeX, cY], [nodeX, cY], [cX, cY]]
-              : [[nodeY, nodeX], [cY, nodeX], [cY, nodeX], [cY, cX]],
+            path: [[nodeY, nodeX], [cY, nodeX], [cY, nodeX], [cY, cX]],
           });
           
-          extractLineagePaths(child, lineageNodes, vertical_mode, segments);
+          extractLineagePaths(child, lineageNodes, segments);
       }
     }
   } 

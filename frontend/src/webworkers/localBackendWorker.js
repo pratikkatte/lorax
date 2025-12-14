@@ -158,12 +158,12 @@ export const queryValueChanged = async (value) => {
   return { i0, i1 };
 }
 
-export const queryNodes = async (localTrees, vertical_mode) => {
+export const queryNodes = async (localTrees) => {
   try {
     // const received_data = JSON.parse(data);
 
     // const localTrees = received_data.tree_dict;
-    const processed_data = await processData(localTrees, sendStatusMessage, vertical_mode)
+    const processed_data = await processData(localTrees, sendStatusMessage)
     const result = {
       paths: processed_data,
       // genome_positions: received_data.genome_positions,
@@ -185,10 +185,10 @@ export function getTreeData(global_index, precision) {
     const segments = [];
     if (processedTree.roots) {
       processedTree.roots.forEach(root => {
-        extractSquarePaths(root, false, segments);
+        extractSquarePaths(root, segments);
       });
     } else if (processedTree.root) {
-      extractSquarePaths(processedTree.root, false, segments);
+      extractSquarePaths(processedTree.root, segments);
     }
     const dedupedSegments = dedupeSegments(segments, precision);
     return dedupedSegments;
@@ -196,7 +196,7 @@ export function getTreeData(global_index, precision) {
   return null;
 }
 
-function processData(localTrees, sendStatusMessage, vertical_mode) {
+function processData(localTrees, sendStatusMessage) {
   const paths = {};
 
   let prev_tree = null;
@@ -241,7 +241,7 @@ onmessage = async (event) => {
       postMessage({ type: "gettree", data: result });
     }
     if (data.type === "query") {
-      const result = await queryNodes(data.data.tree_dict, data.vertical_mode);
+      const result = await queryNodes(data.data.tree_dict);
       postMessage({ type: "query", data: result });
     }
     if (data.type === "search") {
