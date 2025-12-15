@@ -271,10 +271,10 @@ onmessage = async (event) => {
               const segments = [];
               if (tree.roots) {
                   tree.roots.forEach(root => {
-                      extractLineagePaths(root, allLineageNodes, false, segments);
+                      extractLineagePaths(root, allLineageNodes, segments);
                   });
               } else if (tree.root) {
-                  extractLineagePaths(tree.root, allLineageNodes, false, segments);
+                  extractLineagePaths(tree.root, allLineageNodes, segments);
               }
               const deduped = dedupeSegments(segments);
               if (deduped.length > 0) {

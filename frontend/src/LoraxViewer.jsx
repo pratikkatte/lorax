@@ -44,8 +44,9 @@ export default function LoraxViewer({ backend, config, settings, setSettings, pr
     if (backend && backend.isConnected) {
         const hasSearchTerm = config.searchTerm && config.searchTerm.trim() !== "";
         const hasSearchTags = config.searchTags && config.searchTags.length > 0;
+        const showLineages = settings && settings.display_lineage_paths;
         
-        if (hasSearchTerm || hasSearchTags) {
+        if ((hasSearchTerm || hasSearchTags) && showLineages) {
             backend.searchLineage(config.searchTerm, config.searchTags || []).then(data => {
                 setLineagePaths(data);
             });
@@ -53,7 +54,7 @@ export default function LoraxViewer({ backend, config, settings, setSettings, pr
             setLineagePaths({});
         }
     }
-  }, [config.searchTerm, config.searchTags, backend.isConnected, backend, visibleTrees]);
+  }, [config.searchTerm, config.searchTags, backend.isConnected, backend, visibleTrees, settings]);
 
   useEffect(() => {
     const qp = {
