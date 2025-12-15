@@ -23,8 +23,6 @@ const useLayers = ({
   lineagePaths
 }) => {
 
-  console.log("sampleDetails", sampleDetails['1328']);
-
   const { bins = new Map(), localCoordinates = [], times = [] } = regions;
 
   /** Filter visible layers by viewId (deck.gl native optimization) */

@@ -271,7 +271,6 @@ function useConnect({ setGettingDetails, settings }) {
     },[]);
 
     const queryFile = useCallback((payload) => {
-      console.log("queryFile", payload);
       return new Promise((resolve, reject) => {
         const execute = () => {
           if (!socketRef.current) {

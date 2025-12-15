@@ -47,14 +47,49 @@ export default function LoraxViewer({ backend, config, settings, setSettings, pr
         const showLineages = settings && settings.display_lineage_paths;
         
         if ((hasSearchTerm || hasSearchTags) && showLineages) {
-            backend.searchLineage(config.searchTerm, config.searchTags || []).then(data => {
+            // Convert search terms to actual sample names based on colorBy
+            const colorBy = config.populationFilter?.colorBy;
+            const sampleDetails = config.sampleDetails;
+            
+            // Helper function to get sample names that match a search term
+            const getSampleNamesForTerm = (term) => {
+                if (!term || !colorBy || !sampleDetails) return [term];
+                
+                const lowerTerm = term.trim().toLowerCase();
+                const matchingSamples = [];
+                for (const [sampleName, details] of Object.entries(sampleDetails)) {
+                    const val = details?.[colorBy];
+                    if (val !== undefined && val !== null && String(val).toLowerCase() === lowerTerm) {
+                        matchingSamples.push(sampleName);
+                    }
+                }
+                
+                // If we found matching samples, return them; otherwise return original term
+                return matchingSamples.length > 0 ? matchingSamples : [term];
+            };
+            
+            // Convert all search terms to sample names
+            const sampleNames = [];
+            
+            if (hasSearchTerm) {
+                sampleNames.push(...getSampleNamesForTerm(config.searchTerm));
+            }
+            
+            if (hasSearchTags) {
+                for (const tag of config.searchTags) {
+                    sampleNames.push(...getSampleNamesForTerm(tag));
+                }
+            }
+            
+            // Search lineages using the resolved sample names
+            backend.searchLineage(null, sampleNames).then(data => {
                 setLineagePaths(data);
             });
         } else {
             setLineagePaths({});
         }
     }
-  }, [config.searchTerm, config.searchTags, backend.isConnected, backend, visibleTrees, settings]);
+  }, [config.searchTerm, config.searchTags, config.populationFilter?.colorBy, config.sampleDetails, backend.isConnected, backend, visibleTrees, settings]);
 
   useEffect(() => {
     const qp = {
