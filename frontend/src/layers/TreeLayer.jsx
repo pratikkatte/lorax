@@ -131,7 +131,12 @@ export default class TreeLayer extends CompositeLayer {
              }
           }
 
-          // Apply search highlighting
+          return computedColor;
+        },
+        stroked: true,
+        lineWidthUnits: 'pixels',
+        getLineColor: d => {
+          // Check if this node matches any search term
           const activeTerms = [
               ...(searchTerm && searchTerm.trim() !== "" ? [searchTerm.trim().toLowerCase()] : []),
               ...(searchTags || []).map(t => t.toLowerCase())
@@ -139,10 +144,8 @@ export default class TreeLayer extends CompositeLayer {
 
           if (activeTerms.length > 0) {
               const dName = d.name ? d.name.toLowerCase() : "";
-
-              // Check if any term matches exactly
               const isMatch = activeTerms.some(term => {
-                   if (dName === term) return true;
+                  //  if (dName === term) return true;
                    if (sampleDetails && sampleDetails[d.name]) {
                        return Object.values(sampleDetails[d.name]).some(v => 
                            v !== null && v !== undefined && String(v).toLowerCase() === term
@@ -150,26 +153,40 @@ export default class TreeLayer extends CompositeLayer {
                    }
                    return false;
               });
-
               if (isMatch) {
-                  // Highlight found nodes: keep color but max opacity
-                  // If computedColor is gray [150,150,150,100], it means it was filtered out by other filters.
-                  // Use red for matches that were otherwise hidden/gray
-                  if (computedColor[0] === 150 && computedColor[1] === 150 && computedColor[2] === 150) {
-                      return [255, 0, 0, 255];
-                  }
-                  return [computedColor[0], computedColor[1], computedColor[2], 255];
-              } else {
-                  // Dim non-matches
-                  return [200, 200, 200, 30];
+                  // Dark stroke for highlighted nodes
+                  return [30, 30, 30, 255];
               }
           }
-
-          return computedColor;
+          // Default light stroke
+          return [120, 120, 120, 120];
         },
-        // getLineColor: [80, 80, 180, 255],
-        getLineColor: [120, 120, 120, 120],
-        getLineWidth: 0.5,
+        getLineWidth: d => {
+          // Check if this node matches any search term
+          const activeTerms = [
+              ...(searchTerm && searchTerm.trim() !== "" ? [searchTerm.trim().toLowerCase()] : []),
+              ...(searchTags || []).map(t => t.toLowerCase())
+          ];
+
+          if (activeTerms.length > 0) {
+              const dName = d.name ? d.name.toLowerCase() : "";
+              const isMatch = activeTerms.some(term => {
+                  //  if (dName === term) return true;
+                   if (sampleDetails && sampleDetails[d.name]) {
+                       return Object.values(sampleDetails[d.name]).some(v => 
+                           v !== null && v !== undefined && String(v).toLowerCase() === term
+                       );
+                   }
+                   return false;
+              });
+              if (isMatch) {
+                  // Thicker stroke for highlighted nodes
+                  return 2;
+              }
+          }
+          // Default thin stroke
+          return 0.5;
+        },
         getRadius: d => {
             const activeTerms = [
                 ...(searchTerm && searchTerm.trim() !== "" ? [searchTerm.trim().toLowerCase()] : []),
@@ -179,7 +196,7 @@ export default class TreeLayer extends CompositeLayer {
             if (activeTerms.length > 0) {
                 const dName = d.name ? d.name.toLowerCase() : "";
                 const isMatch = activeTerms.some(term => {
-                     if (dName === term) return true;
+                    //  if (dName === term) return true;
                      if (sampleDetails && sampleDetails[d.name]) {
                          return Object.values(sampleDetails[d.name]).some(v => 
                              v !== null && v !== undefined && String(v).toLowerCase() === term
@@ -198,7 +215,9 @@ export default class TreeLayer extends CompositeLayer {
         modelMatrix:null,
         viewId,
         updateTriggers: {
-          getFillColor: [populationFilter.colorBy, populationFilter.enabledValues, searchTerm, searchTags],
+          getFillColor: [populationFilter.colorBy, populationFilter.enabledValues],
+          getLineColor: [searchTerm, searchTags],
+          getLineWidth: [searchTerm, searchTags],
           getRadius: [searchTerm, searchTags],
           data: [bin.modelMatrix, bin.path],
           
