@@ -140,12 +140,12 @@ export default class TreeLayer extends CompositeLayer {
           if (activeTerms.length > 0) {
               const dName = d.name ? d.name.toLowerCase() : "";
 
-              // Check if any term matches
+              // Check if any term matches exactly
               const isMatch = activeTerms.some(term => {
-                   if (dName.includes(term)) return true;
+                   if (dName === term) return true;
                    if (sampleDetails && sampleDetails[d.name]) {
                        return Object.values(sampleDetails[d.name]).some(v => 
-                           v !== null && v !== undefined && String(v).toLowerCase().includes(term)
+                           v !== null && v !== undefined && String(v).toLowerCase() === term
                        );
                    }
                    return false;
@@ -179,10 +179,10 @@ export default class TreeLayer extends CompositeLayer {
             if (activeTerms.length > 0) {
                 const dName = d.name ? d.name.toLowerCase() : "";
                 const isMatch = activeTerms.some(term => {
-                     if (dName.includes(term)) return true;
+                     if (dName === term) return true;
                      if (sampleDetails && sampleDetails[d.name]) {
                          return Object.values(sampleDetails[d.name]).some(v => 
-                             v !== null && v !== undefined && String(v).toLowerCase().includes(term)
+                             v !== null && v !== undefined && String(v).toLowerCase() === term
                          );
                      }
                      return false;
