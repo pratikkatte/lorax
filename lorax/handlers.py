@@ -1,22 +1,31 @@
 # handlers.py
 import os
 import json
-# from lorax.chat.langgraph_tskit import api_interface
-from lorax.viz.trees_to_taxonium import old_new_tree_samples, process_csv
+import asyncio
+import re
+from collections import OrderedDict, defaultdict
+
+import numpy as np
+import pandas as pd
+import psutil
 import tskit
 import tszip
-import numpy as np
-import os
-import asyncio
-import psutil
-import pandas as pd
-import re
+
+from lorax.viz.trees_to_taxonium import old_new_tree_samples, process_csv
 from lorax.utils.gcs_utils import get_public_gcs_dict
 
 _cache_lock = asyncio.Lock()
 
 
-from collections import OrderedDict
+def make_json_safe(obj):
+    if isinstance(obj, dict):
+        return {k: make_json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, set):
+        return sorted(obj)   # or list(obj)
+    if isinstance(obj, list):
+        return [make_json_safe(v) for v in obj]
+    return obj
+
 
 # Global cache for loaded tree sequences
 
@@ -91,25 +100,21 @@ def get_or_load_config(ts, file_path, root_dir):
     return config
 
 async def cache_status():
+    """Return current memory usage and cache statistics."""
     process = psutil.Process(os.getpid())
     mem_info = process.memory_info()
-    rss_mb = mem_info.rss / (1024 * 1024)   # Resident set size (MB)
-    vms_mb = mem_info.vms / (1024 * 1024)   # Virtual memory (MB)
+    rss_mb = mem_info.rss / (1024 * 1024)
+    vms_mb = mem_info.vms / (1024 * 1024)
     return {
         "rss_MB": round(rss_mb, 2),
         "vms_MB": round(vms_mb, 2),
-        # "num_sessions": len(sessions) if not USE_REDIS else "Redis mode",
         "ts_cache_size": len(_ts_cache.cache) if "_ts_cache" in globals() else "n/a",
         "config_cache_size": len(_config_cache.cache) if "_config_cache" in globals() else "n/a",
         "pid": os.getpid(),
     }
 
 async def handle_query(file_path, localTrees):
-    """
-
-    """
-    # get object from file_path using get_or_load_ts
-    
+    """Process a query for tree data at specified genomic intervals."""
     ts = await get_or_load_ts(file_path)
     if ts is None:
         return json.dumps({"error": "Tree sequence (ts) is not set. Please upload a file first. Or file_path is not valid or not found."})
@@ -118,11 +123,7 @@ async def handle_query(file_path, localTrees):
             tree_dict = await asyncio.to_thread(old_new_tree_samples, localTrees, ts)
         else:
             tree_dict = await asyncio.to_thread(process_csv, ts, localTrees, outgroup="Etal")
-        # tree_dict = await asyncio.to_thread(old_new_tree_samples, localTrees, ts)
-        data = json.dumps({
-            "tree_dict": tree_dict
-            })
-        return data
+        return json.dumps({"tree_dict": tree_dict})
     except Exception as e:
         print("Error in handle_query", e)
         return json.dumps({"error": f"Error processing query: {str(e)}"})
@@ -147,16 +148,13 @@ def max_branch_length_from_newick(nwk):
     return max(map(float, values))
 
 def get_config_csv(df, file_path, root_dir, window_size=50000):
-    # Ensure all numeric types are converted to native Python ints for JSON serializability
+    """Extract configuration from a CSV file with newick trees."""
     genome_length = int(df['genomic_positions'].max())
-    times = None ## Hard Coded here
-
     intervals = []
     max_branch_length_all = 0
-
     samples_set = set()
+
     for _, row in df.iterrows():
-        # Get the next row's genomic position if available, otherwise use current + window_size
         current_pos = int(row['genomic_positions'])
         max_br = max_branch_length_from_newick(row['newick'])
         sample_names = extract_sample_names(row['newick'])
@@ -189,6 +187,77 @@ def get_config_csv(df, file_path, root_dir, window_size=50000):
     }
     return config
 
+def flatten_all_metadata_by_sample(
+    ts,
+    sources=("individual",),
+    sample_name_key="name"
+):
+    """
+    Dynamically flatten *all* metadata keys and values
+    and associate them with samples.
+
+    Parameters
+    ----------
+    ts : tskit.TreeSequence
+    sources : tuple
+        Any of ("individual", "node", "population")
+    sample_name_key : str
+        Key in node metadata used as sample name
+
+    Returns
+    -------
+    dict
+        {metadata_key: {metadata_value: set(sample_names)}}
+    """
+    result = defaultdict(lambda: defaultdict(set))
+
+    for node_id in ts.samples():
+        node = ts.node(node_id)
+
+        # --- resolve sample name ---
+        node_meta = node.metadata or {}
+
+        node_meta = ensure_json_dict(node_meta)
+        sample_name = node_meta.get(sample_name_key, f"{node_id}")
+
+        # --- iterate over metadata sources ---
+        for source in sources:
+            if source == "individual":
+                if node.individual == tskit.NULL:
+                    continue
+                meta = ts.individual(node.individual).metadata
+                meta = ensure_json_dict(meta)
+
+            elif source == "node":
+                meta = node_meta
+
+            elif source == "population":
+                if node.population == tskit.NULL:
+                    continue
+                meta = ts.population(node.population).metadata
+                meta = ensure_json_dict(meta)
+
+            else:
+                raise ValueError(f"Unknown source: {source}")
+
+            if not meta:
+                continue
+
+            # --- dynamically extract all key/value pairs ---
+            for key, value in meta.items():
+                # ensure value is hashable
+                if isinstance(value, (list, dict)):
+                    value = repr(value)
+
+                result[key][value].add(sample_name)
+
+    # convert defaultdicts to dicts
+    return {
+        k: dict(v)
+        for k, v in result.items()
+    }
+
+
 def ensure_json_dict(data):
     # If already a dict, return as-is
     if isinstance(data, dict):
@@ -204,6 +273,7 @@ def ensure_json_dict(data):
     raise TypeError(f"Unsupported data type: {type(data)}")
 
 def get_config(ts, file_path, root_dir):
+    """Extract configuration and metadata from a tree sequence file."""
     try:
         intervals = [tree.interval[0] for tree in ts.trees()]
         times = [ts.min_time, ts.max_time]
@@ -216,75 +286,29 @@ def get_config(ts, file_path, root_dir):
                 "population": meta.get("name"),
                 "description": meta.get("description"),
                 "super_population": meta.get("super_population")
-                }
+            }
 
-        # nodes_population = [ts.node(n).population for n in ts.samples()]
         sample_names = {}
-        # for i, s in enumerate(ts.samples()):
-        #     sample_names[str(s)] = {"sample_name": str(s)}
+        sample_details = flatten_all_metadata_by_sample(ts, sources=("individual", "node", "population"))
 
-        # Extract detailed metadata for each sample
-        sample_details = {}
-        for u in ts.samples():
-            node = ts.node(u)
-            details = {}
-            
-            # 1. Node metadata
-            if node.metadata:
-                try:
-                    meta = ensure_json_dict(node.metadata)
-                    if isinstance(meta, dict):
-                        details.update(meta)
-                except:
-                    pass
-
-            # 2. Individual metadata
-            if node.individual != -1:
-                try:
-                    ind = ts.individual(node.individual)
-                    if ind.metadata:
-                        meta = ensure_json_dict(ind.metadata)
-                        if isinstance(meta, dict):
-                            details.update(meta)
-                except:
-                    pass
-
-            # 3. Add explicit IDs
-            details["population_id"] = int(node.population)
-            details["individual_id"] = int(node.individual)
-
-            sample_details[str(u)] = make_json_serializable(details)
-
-        filename = os.path.relpath(file_path, root_dir)
-        filename = os.path.basename(filename)
-        config = {'genome_length': ts.sequence_length,
-        'times': {'type': 'coalescent time', 'values': times},
-        'intervals':intervals,
-        'filename': str(filename), 
-        'populations':populations,
-        'nodes_population':nodes_population,
-        'sample_names':sample_names,
-        'sample_details': sample_details
+        filename = os.path.basename(file_path)
+        config = {
+            'genome_length': ts.sequence_length,
+            'times': {'type': 'coalescent time', 'values': times},
+            'intervals': intervals,
+            'filename': str(filename),
+            'populations': populations,
+            'nodes_population': nodes_population,
+            'sample_names': sample_names,
+            'sample_details': make_json_safe(sample_details)
         }
         return config
     except Exception as e:
         print("Error in get_config", e)
         return None
     
-def get_local_uploads(upload_dir, sid):
-    """
-    TODO: IMPLEMENT THIS LATER
-    """
-
 async def handle_upload(file_path, root_dir):
-    """
-    """
-    # basefilename = os.path.basename(file_path)
-    # if basefilename.endswith('.tsz'):
-    #     ts = tszip.load(file_path)
-    # else:
-    #     ts = tskit.load(file_path)
-
+    """Load a tree sequence file and return its configuration."""
     ts = await get_or_load_ts(file_path)
     print("File loading complete")
     config = await asyncio.to_thread(get_or_load_config, ts, file_path, root_dir)
@@ -320,11 +344,7 @@ def list_project_files(directory, projects, root):
         return projects
 
 async def get_projects(upload_dir, BUCKET_NAME):
-    f"""
-    # Read the local uploads folder (or a root "uploads" or upload_dir directory in upload_dir).
-    # List all subfolders (each represents a project), and enumerate files in each.
-    """    
-
+    """List all projects and their files from local uploads and GCS bucket."""
     projects = {}
     upload_dir = str(upload_dir)
     projects[upload_dir] = {
@@ -338,7 +358,6 @@ async def get_projects(upload_dir, BUCKET_NAME):
 
 def make_json_serializable(obj):
     """Convert to JSON-safe Python structures and decode nested JSON strings."""
-    import json
     if isinstance(obj, bytes):
         try:
             text = obj.decode('utf-8')
@@ -364,22 +383,19 @@ def make_json_serializable(obj):
         return obj
 
 def get_node_details(ts, node_name):
-    """
-    """
+    """Get details for a specific node in the tree sequence."""
     node = ts.node(node_name)
-    data = {
+    return {
         "id": node.id,
         "time": node.time,
         "population": node.population,
         "individual": node.individual,
         "metadata": make_json_serializable(node.metadata)
     }
-    return data
+
 
 def get_tree_details(ts, tree_index):
-
-    """
-    """
+    """Get details for a specific tree at the given index."""
     tree = ts.at_index(tree_index)
     
     mutations = []
@@ -390,48 +406,46 @@ def get_tree_details(ts, tree_index):
             "site_id": mut.site,
             "position": site.position,
             "derived_state": mut.derived_state,
-            "inherited_state": mut.parent != -1 and ts.mutation(mut.parent).derived_state or site.ancestral_state
+            "inherited_state": ts.mutation(mut.parent).derived_state if mut.parent != -1 else site.ancestral_state
         })
 
-    data = {
+    return {
         "interval": tree.interval,
         "num_roots": tree.num_roots,
         "num_nodes": tree.num_nodes,
         "mutations": mutations
-        }
-    return data
+    }
+
 
 def get_individual_details(ts, individual_id):
-    """
-    """
+    """Get details for a specific individual in the tree sequence."""
     individual = ts.individual(individual_id)
-    data = { 
+    return {
         "id": individual.id,
         "nodes": make_json_serializable(individual.nodes),
         "metadata": make_json_serializable(individual.metadata)
     }
-    return data
+
 
 async def handle_details(file_path, data):
-    """
-    """
+    """Handle requests for tree, node, and individual details."""
     try:
         ts = await get_or_load_ts(file_path)
         if ts is None:
-            return json.dumps({"error": "Tree sequence (ts) is not set. Please upload a file first. Or file_path is not valid or not found."})
+            return json.dumps({"error": "Tree sequence (ts) is not set. Please upload a file first."})
+        
         return_data = {}
+        
         tree_index = data.get("treeIndex")
         if tree_index:
-            tree_details = get_tree_details(ts, tree_index)
-            return_data["tree"] = tree_details
+            return_data["tree"] = get_tree_details(ts, tree_index)
 
         node_name = data.get("node")
         if node_name:
             node_details = get_node_details(ts, int(node_name))
             return_data["node"] = node_details
             if node_details.get("individual") != -1:
-                individual_details = get_individual_details(ts, node_details.get("individual"))
-                return_data["individual"] = individual_details
+                return_data["individual"] = get_individual_details(ts, node_details.get("individual"))
 
         return json.dumps(return_data)
     except Exception as e:

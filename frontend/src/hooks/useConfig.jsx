@@ -15,17 +15,26 @@ function useConfig({backend, setStatusMessage, timeRef}) {
   const pathArray = useRef([]);
   const [filename, setFilename] = useState("");
   const [sampleNames, setSampleNames] = useState(null);
-  const [sampleDetails, setSampleDetails] = useState(null);
-  const [metadataColors, setMetadataColors] = useState(null);
+  const [sampleDetails, setSampleDetails] = useState(null);  // {sample_name: {key: value}}
+  const [metadataColors, setMetadataColors] = useState(null); // {metadata_key: {metadata_value: [r,g,b,a]}}
+  const [metadataKeys, setMetadataKeys] = useState([]);  // List of available metadata keys for coloring
   const [treeColors, setTreeColors] = useState({});
   const [searchTerm, setSearchTerm] = useState("");
   const [searchTags, setSearchTags] = useState([]);
 
-  // Utility to generate a unique color for each key (using HSL and cycling through hue)
+  // Utility to generate a unique color for each key (using Golden Angle)
   const getColor = (i, total) => {
-    const hue = Math.floor((360 * i) / total);
-    // Convert HSL to RGB (simple approach)
-    const h = hue / 360, s = 0.65, l = 0.55;
+    // Use Golden Angle (approx 137.5 degrees) to distribute hues
+    // This ensures that adjacent indices have very different hues
+    const hue = (i * 137.508) % 360;
+    
+    // Vary saturation and lightness to add more diversity
+    // We use primes for the cycle to avoid syncing with the hue cycle
+    const s = 0.5 + ((i * 7) % 5) * 0.1; // 0.5 to 0.9
+    const l = 0.4 + ((i * 3) % 3) * 0.1; // 0.4 to 0.6
+    
+    const h = hue / 360;
+
     let r, g, b;
     if (s === 0){
       r = g = b = l;
@@ -62,6 +71,7 @@ function useConfig({backend, setStatusMessage, timeRef}) {
         timeRef.current = {start: null};
       }
       
+      console.log("data", data);
 
       setConfig((prevConfig) => {
         const newConfig = {...prevConfig, ...data, value: value ? [parseInt(value[0], 10), parseInt(value[1], 10)] : null, project, sid};
@@ -85,33 +95,39 @@ function useConfig({backend, setStatusMessage, timeRef}) {
       setPopulations({'populations': assignUniqueColors(data.populations), 'nodes_population': data.nodes_population});
       setSampleNames({'sample_names': assignUniqueColors(data.sample_names)});
 
-      // Process sample details and generate metadata colors
-      const sDetails = data.sample_details || {};
+      // Process sample_details from backend
+      // Backend format: {metadata_key: {metadata_value: [sample_names]}}
+      // We need to transform to: {sample_name: {key: value}} for per-sample lookup
+      const backendSampleDetails = data.sample_details || {};
       const mColors = {};
-      const mValues = {};
+      const mKeys = [];
+      const perSampleDetails = {};
       
-      // 1. Collect all possible metadata keys and their unique values
-      Object.values(sDetails).forEach(detail => {
-        Object.entries(detail).forEach(([key, value]) => {
-           if (typeof value === 'object' && value !== null) return; 
-           
-           if (!mValues[key]) mValues[key] = new Set();
-           mValues[key].add(String(value));
-        });
-      });
-
-      // 2. Assign colors to each value for each key
-      Object.keys(mValues).forEach(key => {
-        const values = Array.from(mValues[key]);
+      // 1. Build metadataColors and transform to per-sample structure
+      Object.entries(backendSampleDetails).forEach(([metadataKey, valueToSamples]) => {
+        mKeys.push(metadataKey);
+        const values = Object.keys(valueToSamples).sort();
         const valueColorMap = {};
+        
         values.forEach((val, index) => {
-            valueColorMap[val] = getColor(index, values.length);
+          valueColorMap[val] = getColor(index, values.length);
+          
+          // Transform: for each sample in this value's list, add the key-value pair
+          const samples = valueToSamples[val] || [];
+          samples.forEach(sampleName => {
+            if (!perSampleDetails[sampleName]) {
+              perSampleDetails[sampleName] = {};
+            }
+            perSampleDetails[sampleName][metadataKey] = val;
+          });
         });
-        mColors[key] = valueColorMap;
+        
+        mColors[metadataKey] = valueColorMap;
       });
 
-      setSampleDetails(sDetails);
+      setSampleDetails(perSampleDetails);
       setMetadataColors(mColors);
+      setMetadataKeys(mKeys);
 
       let number_of_intervals = data.intervals.length
       setGlobalBpPerUnit(data.genome_length/(number_of_intervals));
@@ -157,6 +173,7 @@ function useConfig({backend, setStatusMessage, timeRef}) {
     sampleNames,
     sampleDetails,
     metadataColors,
+    metadataKeys,
     treeColors,
     setTreeColors,
     searchTerm,
@@ -164,7 +181,7 @@ function useConfig({backend, setStatusMessage, timeRef}) {
     searchTags,
     setSearchTags,
     handleConfigUpdate
-  }), [tsconfig, sampleNames, setConfig, globalBpPerUnit, populations, populationFilter, setPopulationFilter, genomeLength, pathArray, filename, sampleDetails, metadataColors, treeColors, setTreeColors, searchTerm, setSearchTerm, searchTags, setSearchTags, handleConfigUpdate]);
+  }), [tsconfig, sampleNames, setConfig, globalBpPerUnit, populations, populationFilter, setPopulationFilter, genomeLength, pathArray, filename, sampleDetails, metadataColors, metadataKeys, treeColors, setTreeColors, searchTerm, setSearchTerm, searchTags, setSearchTags, handleConfigUpdate]);
 };
 
 export default useConfig;

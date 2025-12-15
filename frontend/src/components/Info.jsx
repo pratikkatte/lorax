@@ -8,44 +8,46 @@ const Info = ({backend, gettingDetails, setGettingDetails, setShowInfo, config, 
 
 const {socketRef, isConnected} = backend;
 
-const {tsconfig, populations: {populations}, populationFilter, sampleNames, setPopulationFilter, sampleDetails, metadataColors, treeColors, setTreeColors, searchTerm, setSearchTerm, searchTags, setSearchTags} = config;
+const {tsconfig, populations: {populations}, populationFilter, sampleNames, setPopulationFilter, sampleDetails, metadataColors, metadataKeys, treeColors, setTreeColors, searchTerm, setSearchTerm, searchTags, setSearchTags} = config;
 
 const [nodeDetails, setNodeDetails] = useState(null);
 const [individualDetails, setIndividualDetails] = useState(null);
 const [treeDetails, setTreeDetails] = useState(null);
 const [activeTab, setActiveTab] = useState('metadata');
-const [coloryby, setColoryby] = useState({'population': 'Population', 'super_population': "Super Population", 'sample_name': "Sample Name"});
-const [selectedColorBy, setSelectedColorBy] = useState('population');
+const [coloryby, setColoryby] = useState({});
+const [selectedColorBy, setSelectedColorBy] = useState(null);
 const [enabledValues, setEnabledValues] = useState(new Set());
 const [populationDetails, setPopulationDetails] = useState(null);
 
+// Build coloryby options dynamically from metadataKeys
 useEffect(() => {
-    const baseOptions = {'population': 'Population', 'super_population': "Super Population", 'sample_name': "Sample Name"};
-    if (metadataColors) {
-        Object.keys(metadataColors).forEach(key => {
-            baseOptions[key] = key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ' ');
-        });
+    if (!metadataKeys || metadataKeys.length === 0) return;
+    
+    const options = {};
+    metadataKeys.forEach(key => {
+        // Convert key to display label (e.g., 'super_population' -> 'Super Population')
+        const label = key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ' ');
+        options[key] = label;
+    });
+    
+    setColoryby(options);
+    
+    // Set default selectedColorBy to first available key if not already set
+    if (!selectedColorBy || !options[selectedColorBy]) {
+        setSelectedColorBy(metadataKeys[0]);
     }
-    setColoryby(baseOptions);
-}, [metadataColors]);
+}, [metadataKeys]);
 
 // Initialize enabled values to all options for the selectedColorBy
 useEffect(() => {
-  if (selectedColorBy === 'population' || selectedColorBy === 'super_population') {
-      if (!populations) return;
-      // Enable all population keys by default for the current grouping
-      const allKeys = new Set(Object.keys(populations || {}).map(k => k));
-      setEnabledValues(allKeys);
-  } else if (selectedColorBy === 'sample_name') {
-      if (!sampleNames || !sampleNames.sample_names) return;
-      const allKeys = new Set(Object.keys(sampleNames.sample_names || {}).map(k => k));
-      setEnabledValues(allKeys);
-  } else if (metadataColors && metadataColors[selectedColorBy]) {
-      // For metadata, enable all unique values
+  if (!selectedColorBy || !metadataColors) return;
+  
+  // Enable all unique values for the selected metadata key
+  if (metadataColors[selectedColorBy]) {
       const allValues = new Set(Object.keys(metadataColors[selectedColorBy]));
       setEnabledValues(allValues);
   }
-}, [selectedColorBy, populations, sampleNames, metadataColors]);
+}, [selectedColorBy, metadataColors]);
 
 useEffect(() => {
   setPopulationFilter(prev => ({
@@ -154,8 +156,6 @@ const handleDetails = useCallback((incoming_data) => {
             setSelectedColorBy={setSelectedColorBy}
             coloryby={coloryby}
             metadataColors={metadataColors}
-            populations={populations}
-            sampleNames={sampleNames}
             enabledValues={enabledValues}
             setEnabledValues={setEnabledValues}
             visibleTrees={visibleTrees}

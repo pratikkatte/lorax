@@ -1,6 +1,11 @@
 import React from "react";
 import { DetailCard, DetailRow } from "./DetailCard";
 
+// Helper to format metadata key to display label
+const formatLabel = (key) => {
+  return key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ' ');
+};
+
 export default function InfoMetadata({ 
   treeDetails, 
   nodeDetails, 
@@ -10,6 +15,10 @@ export default function InfoMetadata({
   populationDetails,
   tsconfig
 }) {
+  // Get sample name from node metadata if available
+  const sampleName = nodeDetails?.metadata?.name || nodeDetails?.id;
+  const sampleMetadata = sampleDetails && sampleName ? sampleDetails[sampleName] : null;
+
   return (
     <>
       {treeDetails && (
@@ -24,44 +33,50 @@ export default function InfoMetadata({
         <DetailCard title="Node Details">
           <DetailRow label="ID" value={nodeDetails.id} />
           <DetailRow label="Time" value={nodeDetails.time} />
-          <DetailRow label="Individual" value={nodeDetails.individual} />
-          <DetailRow label="Population" value={nodeDetails.population ? populations[nodeDetails?.population]?.population : populationDetails?.population} />
-          <DetailRow 
-            label="Metadata" 
-            value={typeof nodeDetails.metadata === 'object' 
-              ? JSON.stringify(nodeDetails.metadata, null, 2) 
-              : nodeDetails.metadata} 
-          />
+          {nodeDetails.individual !== -1 && (
+            <DetailRow label="Individual" value={nodeDetails.individual} />
+          )}
+          {nodeDetails.metadata?.name && (
+            <DetailRow label="Name" value={nodeDetails.metadata.name} />
+          )}
         </DetailCard>
       )}
       
-      {/* Extended Sample Metadata if available */}
-      {nodeDetails && sampleDetails && sampleDetails[nodeDetails.id] && (
-         <DetailCard title="Extended Sample Metadata">
-             {Object.entries(sampleDetails[nodeDetails.id]).map(([k, v]) => (
-                 <DetailRow key={k} label={k} value={typeof v === 'object' ? JSON.stringify(v) : v} />
+      {/* Sample Metadata from sample_details - dynamic display */}
+      {sampleMetadata && Object.keys(sampleMetadata).length > 0 && (
+         <DetailCard title="Sample Metadata">
+             {Object.entries(sampleMetadata).map(([key, value]) => (
+                 <DetailRow 
+                   key={key} 
+                   label={formatLabel(key)} 
+                   value={typeof value === 'object' ? JSON.stringify(value) : String(value)} 
+                 />
              ))}
          </DetailCard>
       )}
       
-      {individualDetails && (
+      {/* Individual Details - dynamic display from metadata */}
+      {individualDetails && individualDetails.metadata && (
         <DetailCard title="Individual Details">
-          <DetailRow label="ID" value={individualDetails?.id} />
-          <DetailRow label="Family ID" value={individualDetails?.metadata?.family_id} />
-          <DetailRow label="Father ID" value={individualDetails?.metadata?.father_id} />
-          <DetailRow label="Mother ID" value={individualDetails?.metadata?.mother_id} />
-          <DetailRow label="Participant Type" value={individualDetails?.metadata?.participant_type} />
-          <DetailRow label="Population" value={individualDetails?.metadata?.population ?? populationDetails?.population} />
-          <DetailRow label="Sample Data Time" value={individualDetails?.metadata?.sample_data_time} />
-          <DetailRow label="Sample ID" value={individualDetails?.metadata?.sample_id} />
-          <DetailRow label="Sex" value={individualDetails?.metadata?.sex} />
-          <DetailRow label="Superpopulation" value={individualDetails?.metadata?.superpopulation ?? populationDetails?.super_population} />
-          <DetailRow 
-            label="Nodes" 
-            value={Array.isArray(individualDetails?.nodes) 
-              ? individualDetails.nodes.join(', ') 
-              : individualDetails?.nodes} 
-          />
+          <DetailRow label="ID" value={individualDetails.id} />
+          {Object.entries(individualDetails.metadata).map(([key, value]) => {
+            if (value === null || value === undefined || value === '') return null;
+            return (
+              <DetailRow 
+                key={key} 
+                label={formatLabel(key)} 
+                value={typeof value === 'object' ? JSON.stringify(value) : String(value)} 
+              />
+            );
+          })}
+          {individualDetails.nodes && (
+            <DetailRow 
+              label="Nodes" 
+              value={Array.isArray(individualDetails.nodes) 
+                ? individualDetails.nodes.join(', ') 
+                : individualDetails.nodes} 
+            />
+          )}
         </DetailCard>
       )}
       

@@ -12,12 +12,9 @@ export default class TreeLayer extends CompositeLayer {
     hoveredTreeIndex: null,
     treeSpacing: 1.03,
     viewId: 'ortho',
-    hoveredTreeIndex: null,
-    populations: null,
     populationFilter: null,
     yzoom: null,
     xzoom: null,
-    sampleNames: null,
     sampleDetails: null,
     metadataColors: null,
     treeColors: null,
@@ -27,9 +24,6 @@ export default class TreeLayer extends CompositeLayer {
   };
 
   renderLayers() {
-    const id_populations = this.props.populations.populations;
-    const nodes_population = this.props.populations.nodes_population;
-    const sampleNames = this.props.sampleNames;
     const { bin, viewId, hoveredTreeIndex, populationFilter, xzoom, sampleDetails, metadataColors, treeColors, searchTerm, searchTags, lineagePaths } = this.props;
   
 
@@ -123,29 +117,18 @@ export default class TreeLayer extends CompositeLayer {
           return position;
         },
         getFillColor: d => {
-          let sample_population = nodes_population[(d.name)];
-          const colorBy = populationFilter.colorBy;
+          const colorBy = populationFilter?.colorBy;
           let color = [150, 150, 150, 100];
           let computedColor = color;
 
-          // Check if colorBy is a metadata key
-          if (metadataColors && metadataColors[colorBy]) {
-             const val = sampleDetails?.[d.name]?.[colorBy];
+          // Color by metadata key from sampleDetails
+          if (colorBy && metadataColors && metadataColors[colorBy] && sampleDetails) {
+             const val = sampleDetails[d.name]?.[colorBy];
              // If value exists and is enabled, return its color
-             if (val && populationFilter.enabledValues.includes(String(val))) {
-                 const c = metadataColors[colorBy][val];
-                 if (c) computedColor = [...c.slice(0,3), 200];
+             if (val !== undefined && val !== null && populationFilter.enabledValues?.includes(String(val))) {
+                 const c = metadataColors[colorBy][String(val)];
+                 if (c) computedColor = [...c.slice(0, 3), 200];
              }
-          } else if (colorBy === 'sample_name') {
-            // do something
-            
-            let key = sampleNames.sample_names[d.name];
-            sample_population = key.sample_name;
-            if (populationFilter.enabledValues.includes(sample_population)) { 
-              computedColor = [...key.color, 200];
-            }
-          } else if (populationFilter.enabledValues.includes(String(sample_population))) {
-            computedColor = [...id_populations[sample_population].color.slice(0, 3), 200]
           }
 
           // Apply search highlighting
@@ -156,8 +139,6 @@ export default class TreeLayer extends CompositeLayer {
 
           if (activeTerms.length > 0) {
               const dName = d.name ? d.name.toLowerCase() : "";
-              let matchesMeta = false;
-              let matchesName = false;
 
               // Check if any term matches
               const isMatch = activeTerms.some(term => {
@@ -172,15 +153,10 @@ export default class TreeLayer extends CompositeLayer {
 
               if (isMatch) {
                   // Highlight found nodes: keep color but max opacity
-                  // If original was gray, maybe make it red? 
-                  // Let's stick to making it distinct. 
                   // If computedColor is gray [150,150,150,100], it means it was filtered out by other filters.
-                  // If we find it by search, should we show it even if filtered out?
-                  // Usually search overrides filter.
-                  // But to be safe, let's just use the computedColor (or red if it was gray) and max alpha.
-                  
+                  // Use red for matches that were otherwise hidden/gray
                   if (computedColor[0] === 150 && computedColor[1] === 150 && computedColor[2] === 150) {
-                      return [255, 0, 0, 255]; // Red for matches that were otherwise hidden/gray
+                      return [255, 0, 0, 255];
                   }
                   return [computedColor[0], computedColor[1], computedColor[2], 255];
               } else {

@@ -13,8 +13,6 @@ const useLayers = ({
   backend,
   regions,
   globalBpPerUnit,
-  populations,
-  sampleNames,
   populationFilter,
   hoveredGenomeInfo,
   sampleDetails,
@@ -110,15 +108,12 @@ const useLayers = ({
           treeSpacing: 1.03,
           viewId: "ortho",
           hoveredTreeIndex,
-          populations,
           populationFilter,
-          sampleNames,
           sampleDetails,
           metadataColors,
           treeColors,
           yzoom,
           xzoom,
-          globalBpPerUnit,
           searchTerm,
           searchTags,
           lineagePaths
@@ -128,7 +123,7 @@ const useLayers = ({
       }
     
       return newLayers;
-    }, [bins, globalBpPerUnit, hoveredTreeIndex, populations, populationFilter, sampleNames, sampleDetails, metadataColors, treeColors, searchTerm, searchTags, lineagePaths]);
+    }, [bins, globalBpPerUnit, hoveredTreeIndex, populationFilter, sampleDetails, metadataColors, treeColors, searchTerm, searchTags, lineagePaths]);
 
     const layers = useMemo(() => {
       const all = [...treeLayers];

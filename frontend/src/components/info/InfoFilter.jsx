@@ -9,8 +9,6 @@ export default function InfoFilter({
   setSelectedColorBy, 
   coloryby, 
   metadataColors, 
-  populations, 
-  sampleNames, 
   enabledValues, 
   setEnabledValues,
   visibleTrees,
@@ -61,7 +59,7 @@ export default function InfoFilter({
           <label className="text-sm font-medium text-gray-700 mr-3">Color by</label>
           <select
             className="border border-gray-300 rounded-md px-2 py-1 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            value={selectedColorBy}
+            value={selectedColorBy || ""}
             onChange={(e) => setSelectedColorBy(e.target.value)}
           >
             {Object.entries(coloryby).map(([key, label]) => (
@@ -73,86 +71,58 @@ export default function InfoFilter({
           <div className="text-sm font-medium text-gray-700 mb-1">Values</div>
           <div className="max-h-64 overflow-auto border border-gray-100 rounded-md divide-y divide-gray-100">
             {(() => {
-              // Check if we are in metadata mode
-              if (metadataColors && metadataColors[selectedColorBy]) {
+              const MAX_ITEMS = 100;
+
+              // Display values from metadataColors based on selectedColorBy
+              if (metadataColors && selectedColorBy && metadataColors[selectedColorBy]) {
                    const valueToColor = metadataColors[selectedColorBy];
-                   const items = Object.entries(valueToColor);
+                   let items = Object.entries(valueToColor);
+
+                   if (searchTerm) {
+                       const term = searchTerm.toLowerCase();
+                       items = items.filter(([val]) => val.toLowerCase().includes(term));
+                   }
                    
-                   return items.length > 0 ? items.map(([val, color]) => {
-                       const isEnabled = enabledValues.has(val);
-                       return (
-                          <button
-                            key={val}
-                            type="button"
-                            className={`w-full flex items-center px-2 py-1 text-left transition ${isEnabled ? '' : 'opacity-40'}`}
-                            onClick={() => {
-                                setEnabledValues(prev => {
-                                    const next = new Set(prev);
-                                    if (next.has(val)) next.delete(val);
-                                    else next.add(val);
-                                    return next;
-                                });
-                            }}
-                          >
-                            <span
-                              className="inline-block w-3 h-3 rounded-full mr-2 border border-gray-200"
-                              style={{ backgroundColor: Array.isArray(color) ? `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${color[3] / 255})` : undefined }}
-                            />
-                            <span className="text-sm text-gray-800">{val}</span>
-                          </button>
-                       );
-                    }) : <div className="px-2 py-2 text-sm text-gray-500">No values</div>;
+                   const totalCount = items.length;
+                   const displayItems = items.slice(0, MAX_ITEMS);
+                   const hasMore = items.length > MAX_ITEMS;
+                   
+                   return items.length > 0 ? (
+                       <>
+                       {displayItems.map(([val, color]) => {
+                           const isEnabled = enabledValues.has(val);
+                           return (
+                              <button
+                                key={val}
+                                type="button"
+                                className={`w-full flex items-center px-2 py-1 text-left transition ${isEnabled ? '' : 'opacity-40'}`}
+                                onClick={() => {
+                                    setEnabledValues(prev => {
+                                        const next = new Set(prev);
+                                        if (next.has(val)) next.delete(val);
+                                        else next.add(val);
+                                        return next;
+                                    });
+                                }}
+                              >
+                                <span
+                                  className="inline-block w-3 h-3 rounded-full mr-2 border border-gray-200"
+                                  style={{ backgroundColor: Array.isArray(color) ? `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${color[3] / 255})` : undefined }}
+                                />
+                                <span className="text-sm text-gray-800">{val}</span>
+                              </button>
+                           );
+                        })}
+                        {hasMore && (
+                            <div className="px-2 py-2 text-xs text-gray-500 italic text-center">
+                                Showing {MAX_ITEMS} of {totalCount} values...
+                            </div>
+                        )}
+                       </>
+                   ) : <div className="px-2 py-2 text-sm text-gray-500">No values found</div>;
               }
 
-              // Fallback to original logic for populations/sample_names
-              if (populations || sampleNames) {
-                const valueToKeys = new Map();
-                let data = selectedColorBy === 'sample_name' ? sampleNames.sample_names : populations;
-                
-                // Safety check if data is null/undefined
-                if (!data) return <div className="px-2 py-2 text-sm text-gray-500">No data available</div>;
-
-                Object.entries(data).forEach(([key, p]) => {
-                  const val = p?.[selectedColorBy] || 'N/A';
-                  if (!valueToKeys.has(val)) valueToKeys.set(val, { keys: [], color: p?.color });
-                  valueToKeys.get(val).keys.push(key);
-                });
-                const items = Array.from(valueToKeys.entries());
-                return items.length > 0 ? items.map(([val, info]) => {
-                  const { keys, color } = info;
-       
-                  const allEnabled = keys.every(k => enabledValues.has(k));
-                  return (
-                    <button
-                      key={val}
-                      type="button"
-                      className={`w-full flex items-center px-2 py-1 text-left transition ${allEnabled ? '' : 'opacity-40'}`}
-                      onClick={() => {
-                        setEnabledValues(prev => {
-                          const next = new Set(prev);
-                          const currentlyAll = keys.every(k => next.has(k));
-                          if (currentlyAll) {
-                            keys.forEach(k => next.delete(k));
-                          } else {
-                            keys.forEach(k => next.add(k));
-                          }
-                          return next;
-                        });
-                      }}
-                    >
-                      <span
-                        className="inline-block w-3 h-3 rounded-full mr-2 border border-gray-200"
-                        style={{ backgroundColor: Array.isArray(color) ? `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${color[3] / 255})` : undefined }}
-                      />
-                      <span className="text-sm text-gray-800">{val}</span>
-                    </button>
-                  );
-                }) : (
-                  <div className="px-2 py-2 text-sm text-gray-500">No values</div>
-                );
-              } else {
-                  return <div className="px-2 py-2 text-sm text-gray-500">No populations loaded</div>;
-              }
+              return <div className="px-2 py-2 text-sm text-gray-500">No metadata available</div>;
             })()}
           </div>
         </div>
