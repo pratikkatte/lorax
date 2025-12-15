@@ -1,4 +1,6 @@
-import React from "react";
+import React, { useState, useEffect, useCallback } from "react";
+
+const ITEMS_PER_PAGE = 100;
 
 export default function InfoFilter({ 
   searchTerm, 
@@ -15,31 +17,85 @@ export default function InfoFilter({
   treeColors,
   setTreeColors
 }) {
+  const [visibleCount, setVisibleCount] = useState(ITEMS_PER_PAGE);
+
+  // Reset visible count when search or colorBy changes
+  useEffect(() => {
+    setVisibleCount(ITEMS_PER_PAGE);
+  }, [searchTerm, selectedColorBy]);
+
+  // Get filtered items
+  const getFilteredItems = useCallback(() => {
+    if (!metadataColors || !selectedColorBy || !metadataColors[selectedColorBy]) {
+      return [];
+    }
+    const valueToColor = metadataColors[selectedColorBy];
+    let items = Object.entries(valueToColor);
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase();
+      items = items.filter(([val]) => val.toLowerCase().includes(term));
+    }
+    return items;
+  }, [metadataColors, selectedColorBy, searchTerm]);
+
+  const allItems = getFilteredItems();
+  const displayItems = allItems.slice(0, visibleCount);
+  const hasMore = visibleCount < allItems.length;
+
   return (
     <div className="bg-white rounded-lg shadow-md border border-gray-200 p-4 mb-3">
-      <h2 className="text-lg font-semibold text-gray-800 mb-2 pb-1 border-b border-gray-200">Filter</h2>
+      <div className="flex items-center gap-2 text-gray-600 mb-3">
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+        </svg>
+        <span className="text-sm font-medium">Search</span>
+      </div>
       <div className="space-y-3">
-        <div>
-          <label className="text-sm font-medium text-gray-700 block mb-1">Search</label>
-          <input
-              type="text"
-              placeholder="Search sample or metadata..."
-              className="w-full border border-gray-300 rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              value={searchTerm || ""}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                      e.preventDefault();
-                      const term = searchTerm.trim();
-                      if (term && !searchTags.includes(term)) {
-                          setSearchTags(prev => [...prev, term]);
-                          setSearchTerm("");
-                      }
-                  }
+        <div className="flex items-stretch border border-gray-300 rounded-md overflow-hidden">
+          <div className="flex items-center justify-center px-3 border-r border-gray-300 bg-gray-50">
+            <input
+              type="checkbox"
+              className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+              checked={enabledValues && enabledValues.size > 0}
+              onChange={(e) => {
+                if (e.target.checked && metadataColors && selectedColorBy && metadataColors[selectedColorBy]) {
+                  setEnabledValues(new Set(Object.keys(metadataColors[selectedColorBy])));
+                } else {
+                  setEnabledValues(new Set());
+                }
               }}
+            />
+          </div>
+          <select
+            className="px-3 py-2 text-sm text-gray-700 bg-white border-r border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[140px]"
+            value={selectedColorBy || ""}
+            onChange={(e) => setSelectedColorBy(e.target.value)}
+          >
+            {Object.entries(coloryby).map(([key, label]) => (
+              <option key={key} value={key}>{label}</option>
+            ))}
+          </select>
+          <input
+            type="text"
+            placeholder="Search..."
+            className="flex-1 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            value={searchTerm || ""}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                const term = searchTerm.trim();
+                if (term && !searchTags.includes(term)) {
+                  setSearchTags(prev => [...prev, term]);
+                  setSearchTerm("");
+                }
+              }
+            }}
           />
-          <div className="flex flex-wrap gap-2 mt-2">
-              {searchTags && searchTags.map((tag, index) => (
+        </div>
+        {searchTags && searchTags.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+              {searchTags.map((tag, index) => (
                   <div key={index} className="flex items-center bg-blue-100 text-blue-800 text-xs font-medium px-2 py-0.5 rounded">
                       <span>{tag}</span>
                       <button
@@ -54,78 +110,55 @@ export default function InfoFilter({
                   </div>
               ))}
           </div>
-        </div>
-        <div className="flex items-center">
-          <label className="text-sm font-medium text-gray-700 mr-3">Color by</label>
-          <select
-            className="border border-gray-300 rounded-md px-2 py-1 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            value={selectedColorBy || ""}
-            onChange={(e) => setSelectedColorBy(e.target.value)}
-          >
-            {Object.entries(coloryby).map(([key, label]) => (
-              <option key={key} value={key}>{label}</option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <div className="text-sm font-medium text-gray-700 mb-1">Values</div>
-          <div className="max-h-64 overflow-auto border border-gray-100 rounded-md divide-y divide-gray-100">
-            {(() => {
-              const MAX_ITEMS = 100;
-
-              // Display values from metadataColors based on selectedColorBy
-              if (metadataColors && selectedColorBy && metadataColors[selectedColorBy]) {
-                   const valueToColor = metadataColors[selectedColorBy];
-                   let items = Object.entries(valueToColor);
-
-                   if (searchTerm) {
-                       const term = searchTerm.toLowerCase();
-                       items = items.filter(([val]) => val.toLowerCase().includes(term));
-                   }
-                   
-                   const totalCount = items.length;
-                   const displayItems = items.slice(0, MAX_ITEMS);
-                   const hasMore = items.length > MAX_ITEMS;
-                   
-                   return items.length > 0 ? (
-                       <>
-                       {displayItems.map(([val, color]) => {
-                           const isEnabled = enabledValues.has(val);
-                           return (
-                              <button
-                                key={val}
-                                type="button"
-                                className={`w-full flex items-center px-2 py-1 text-left transition ${isEnabled ? '' : 'opacity-40'}`}
-                                onClick={() => {
-                                    setEnabledValues(prev => {
-                                        const next = new Set(prev);
-                                        if (next.has(val)) next.delete(val);
-                                        else next.add(val);
-                                        return next;
-                                    });
-                                }}
-                              >
-                                <span
-                                  className="inline-block w-3 h-3 rounded-full mr-2 border border-gray-200"
-                                  style={{ backgroundColor: Array.isArray(color) ? `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${color[3] / 255})` : undefined }}
-                                />
-                                <span className="text-sm text-gray-800">{val}</span>
-                              </button>
-                           );
-                        })}
-                        {hasMore && (
-                            <div className="px-2 py-2 text-xs text-gray-500 italic text-center">
-                                Showing {MAX_ITEMS} of {totalCount} values...
-                            </div>
-                        )}
-                       </>
-                   ) : <div className="px-2 py-2 text-sm text-gray-500">No values found</div>;
-              }
-
-              return <div className="px-2 py-2 text-sm text-gray-500">No metadata available</div>;
-            })()}
+        )}
+        <div className="max-h-64 overflow-auto border border-gray-200 rounded-md divide-y divide-gray-100">
+            {allItems.length > 0 ? (
+              <>
+                {displayItems.map(([val, color]) => {
+                  const isEnabled = enabledValues.has(val);
+                  return (
+                    <button
+                      key={val}
+                      type="button"
+                      className={`w-full flex items-center px-2 py-1 text-left transition ${isEnabled ? '' : 'opacity-40'}`}
+                      onClick={() => {
+                        setEnabledValues(prev => {
+                          const next = new Set(prev);
+                          if (next.has(val)) next.delete(val);
+                          else next.add(val);
+                          return next;
+                        });
+                      }}
+                    >
+                      <span
+                        className="inline-block w-3 h-3 rounded-full mr-2 border border-gray-200"
+                        style={{ backgroundColor: Array.isArray(color) ? `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${color[3] / 255})` : undefined }}
+                      />
+                      <span className="text-sm text-gray-800">{val}</span>
+                    </button>
+                  );
+                })}
+                {hasMore && (
+                  <div className="px-2 py-2 flex items-center justify-between bg-gray-50 border-t border-gray-200">
+                    <span className="text-xs text-gray-500">
+                      Showing {displayItems.length} of {allItems.length}
+                    </span>
+                    <button
+                      type="button"
+                      className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+                      onClick={() => setVisibleCount(prev => prev + ITEMS_PER_PAGE)}
+                    >
+                      Load more
+                    </button>
+                  </div>
+                )}
+              </>
+            ) : metadataColors && selectedColorBy ? (
+              <div className="px-2 py-2 text-sm text-gray-500">No values found</div>
+            ) : (
+              <div className="px-2 py-2 text-sm text-gray-500">No metadata available</div>
+            )}
           </div>
-        </div>
         <div className="mt-4 border-t pt-4">
             <h3 className="text-sm font-medium text-gray-700 mb-2">Trees</h3>
             <div className="max-h-64 overflow-auto border border-gray-100 rounded-md divide-y divide-gray-100">
