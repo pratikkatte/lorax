@@ -95,20 +95,43 @@ export default function InfoFilter({
         </div>
         {searchTags && searchTags.length > 0 && (
           <div className="flex flex-wrap gap-2">
-              {searchTags.map((tag, index) => (
-                  <div key={index} className="flex items-center bg-blue-100 text-blue-800 text-xs font-medium px-2 py-0.5 rounded">
-                      <span>{tag}</span>
-                      <button
-                          type="button"
-                          className="ml-1 text-blue-600 hover:text-blue-800 focus:outline-none"
-                          onClick={() => {
-                              setSearchTags(prev => prev.filter((_, i) => i !== index));
-                          }}
+              {searchTags.map((tag, index) => {
+                  // Get the assigned color for this tag from metadataColors
+                  const tagColor = metadataColors && selectedColorBy && metadataColors[selectedColorBy] 
+                      ? metadataColors[selectedColorBy][tag] 
+                      : null;
+                  
+                  // Create background and text colors based on assigned color
+                  const bgStyle = tagColor 
+                      ? { backgroundColor: `rgba(${tagColor[0]}, ${tagColor[1]}, ${tagColor[2]}, 0.25)` }
+                      : {};
+                  const textStyle = tagColor 
+                      ? { color: `rgb(${Math.max(0, tagColor[0] - 40)}, ${Math.max(0, tagColor[1] - 40)}, ${Math.max(0, tagColor[2] - 40)})` }
+                      : {};
+                  const btnStyle = tagColor 
+                      ? { color: `rgb(${Math.max(0, tagColor[0] - 20)}, ${Math.max(0, tagColor[1] - 20)}, ${Math.max(0, tagColor[2] - 20)})` }
+                      : {};
+
+                  return (
+                      <div 
+                          key={index} 
+                          className={`flex items-center text-xs font-medium px-2 py-0.5 rounded ${!tagColor ? 'bg-blue-100 text-blue-800' : ''}`}
+                          style={tagColor ? { ...bgStyle, ...textStyle } : {}}
                       >
-                          ×
-                      </button>
-                  </div>
-              ))}
+                          <span>{tag}</span>
+                          <button
+                              type="button"
+                              className={`ml-1 focus:outline-none ${!tagColor ? 'text-blue-600 hover:text-blue-800' : 'hover:opacity-70'}`}
+                              style={tagColor ? btnStyle : {}}
+                              onClick={() => {
+                                  setSearchTags(prev => prev.filter((_, i) => i !== index));
+                              }}
+                          >
+                              ×
+                          </button>
+                      </div>
+                  );
+              })}
           </div>
         )}
         <div className="max-h-64 overflow-auto border border-gray-200 rounded-md divide-y divide-gray-100">

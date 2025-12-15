@@ -143,18 +143,37 @@ export default class TreeLayer extends CompositeLayer {
           ];
 
           if (activeTerms.length > 0) {
-              const dName = d.name ? d.name.toLowerCase() : "";
               const isMatch = activeTerms.some(term => {
-                  //  if (dName === term) return true;
                    if (sampleDetails && sampleDetails[d.name]) {
-                       return Object.values(sampleDetails[d.name]).some(v => 
-                           v !== null && v !== undefined && String(v).toLowerCase() === term
+                       const colorBy = populationFilter?.colorBy;
+                       let val = colorBy ? sampleDetails[d.name]?.[colorBy] : undefined;
+                       return (
+                           val !== null &&
+                           val !== undefined &&
+                           String(val).toLowerCase() === term
                        );
                    }
                    return false;
               });
               if (isMatch) {
-                  // Dark stroke for highlighted nodes
+                  // Use the same assigned color as the fill, but darker for the stroke
+                  const colorBy = populationFilter?.colorBy;
+                  if (colorBy && metadataColors && metadataColors[colorBy] && sampleDetails) {
+                      const val = sampleDetails[d.name]?.[colorBy];
+                      if (val !== undefined && val !== null) {
+                          const c = metadataColors[colorBy][String(val)];
+                          if (c) {
+                              // Darken the color by reducing RGB values by 30%
+                              return [
+                                  Math.max(0, Math.floor(c[0] * 0.7)),
+                                  Math.max(0, Math.floor(c[1] * 0.7)),
+                                  Math.max(0, Math.floor(c[2] * 0.7)),
+                                  255
+                              ];
+                          }
+                      }
+                  }
+                  // Fallback dark stroke if no color assigned
                   return [30, 30, 30, 255];
               }
           }
@@ -169,14 +188,17 @@ export default class TreeLayer extends CompositeLayer {
           ];
 
           if (activeTerms.length > 0) {
-              const dName = d.name ? d.name.toLowerCase() : "";
+              // const dName = d.name ? d.name.toLowerCase() : "";
               const isMatch = activeTerms.some(term => {
-                  //  if (dName === term) return true;
-                   if (sampleDetails && sampleDetails[d.name]) {
-                       return Object.values(sampleDetails[d.name]).some(v => 
-                           v !== null && v !== undefined && String(v).toLowerCase() === term
-                       );
-                   }
+                if (sampleDetails && sampleDetails[d.name]) {
+                    const colorBy = populationFilter?.colorBy;
+                    let val = colorBy ? sampleDetails[d.name]?.[colorBy] : undefined;
+                    return (
+                        val !== null &&
+                        val !== undefined &&
+                        String(val).toLowerCase() === term
+                    );
+                }
                    return false;
               });
               if (isMatch) {
@@ -194,14 +216,18 @@ export default class TreeLayer extends CompositeLayer {
             ];
 
             if (activeTerms.length > 0) {
-                const dName = d.name ? d.name.toLowerCase() : "";
+                // const dName = d.name ? d.name.toLowerCase() : "";
                 const isMatch = activeTerms.some(term => {
                     //  if (dName === term) return true;
-                     if (sampleDetails && sampleDetails[d.name]) {
-                         return Object.values(sampleDetails[d.name]).some(v => 
-                             v !== null && v !== undefined && String(v).toLowerCase() === term
-                         );
-                     }
+                    if (sampleDetails && sampleDetails[d.name]) {
+                      const colorBy = populationFilter?.colorBy;
+                      let val = colorBy ? sampleDetails[d.name]?.[colorBy] : undefined;
+                      return (
+                          val !== null &&
+                          val !== undefined &&
+                          String(val).toLowerCase() === term
+                      );
+                  }
                      return false;
                 });
                 if (isMatch) return 4;

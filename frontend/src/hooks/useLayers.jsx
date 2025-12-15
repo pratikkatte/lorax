@@ -22,10 +22,8 @@ const useLayers = ({
   searchTags,
   lineagePaths
 }) => {
-  // Debug log
-  useEffect(() => {
-      console.log("useLayers received treeColors:", treeColors);
-  }, [treeColors]);
+
+  console.log("sampleDetails", sampleDetails['1328']);
 
   const { bins = new Map(), localCoordinates = [], times = [] } = regions;
 
