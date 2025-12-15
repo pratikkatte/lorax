@@ -4,7 +4,7 @@ import InfoMetadata from "./info/InfoMetadata";
 import InfoMutations from "./info/InfoMutations";
 import InfoFilter from "./info/InfoFilter";
 
-const Info = ({backend, gettingDetails, setGettingDetails, setShowInfo, config, setConfig,  selectedFileName, setSelectedFileName, visibleTrees}) => {
+const Info = ({backend, gettingDetails, setGettingDetails, setShowInfo, config, setConfig,  selectedFileName, setSelectedFileName, visibleTrees, settings, setSettings}) => {
 
 const {socketRef, isConnected} = backend;
 
@@ -161,6 +161,8 @@ const handleDetails = useCallback((incoming_data) => {
             visibleTrees={visibleTrees}
             treeColors={treeColors}
             setTreeColors={setTreeColors}
+            settings={settings}
+            setSettings={setSettings}
           />
         )}
       </div>

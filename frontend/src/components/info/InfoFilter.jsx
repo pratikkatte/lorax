@@ -15,7 +15,9 @@ export default function InfoFilter({
   setEnabledValues,
   visibleTrees,
   treeColors,
-  setTreeColors
+  setTreeColors,
+  settings,
+  setSettings
 }) {
   const [visibleCount, setVisibleCount] = useState(ITEMS_PER_PAGE);
 
@@ -44,11 +46,31 @@ export default function InfoFilter({
 
   return (
     <div className="bg-white rounded-lg shadow-md border border-gray-200 p-4 mb-3">
-      <div className="flex items-center gap-2 text-gray-600 mb-3">
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-        </svg>
-        <span className="text-sm font-medium">Search</span>
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2 text-gray-600">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          <span className="text-sm font-medium">Search</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-500">Display Lineages</span>
+          <button
+            type="button"
+            className={`w-4 h-4 rounded-full border-2 transition-colors ${
+              settings?.display_lineage_paths 
+                ? 'bg-gray-700 border-gray-700' 
+                : 'bg-white border-gray-400'
+            }`}
+            onClick={() => {
+              setSettings(prev => ({
+                ...prev,
+                display_lineage_paths: !prev?.display_lineage_paths
+              }));
+            }}
+            title="Display Lineage Paths"
+          />
+        </div>
       </div>
       <div className="space-y-3">
         <div className="flex items-stretch border border-gray-300 rounded-md overflow-hidden">
