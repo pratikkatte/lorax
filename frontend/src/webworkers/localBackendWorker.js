@@ -258,7 +258,6 @@ onmessage = async (event) => {
       // Deduplicate and filter empty
       const uniqueTerms = [...new Set(activeTerms.map(t => t.trim().toLowerCase()).filter(t => t !== ""))];
 
-
       for (const [global_index, tree] of pathsData.entries()) {
           const allLineageNodes = new Set();
           

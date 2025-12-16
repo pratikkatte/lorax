@@ -271,7 +271,7 @@ export default class TreeLayer extends CompositeLayer {
                jointRounded: true,
                capRounded: true,
                getColor: [255, 0, 0, 255],
-               getWidth: 3,
+               getWidth: 1.5,
                widthUnits: 'pixels',
                viewId,
                modelMatrix: null,
