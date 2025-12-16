@@ -1,41 +1,36 @@
-// Iterative lineage reconstruction using parent_id
-export function computeLineageSegments(tree, seedNodes) {
+
+export function computeLineageSegments(tree, seedNodes, seedColors = null) {
   const segments = [];
   if (!seedNodes || seedNodes.size === 0) return segments;
 
-  const fullLineageIds = new Set();
-
-  // Add seeds and walk up via parent_id
   seedNodes.forEach(node => {
     let curr = node;
+    const color = seedColors ? seedColors.get(node.node_id) : null;
+    // Walk up via parent_id
     while (curr) {
-      fullLineageIds.add(curr.node_id);
       if (curr.parent_id !== undefined && curr.parent_id !== null && curr.parent_id !== curr.node_id) {
-        curr = tree.node[curr.parent_id];
+        const parent = tree.node[curr.parent_id];
+        const nodeX = curr.x ?? curr.x_dist;
+        const nodeY = curr.y;
+        const parentX = parent.x ?? parent.x_dist;
+        const parentY = parent.y;
+
+        const segment = {
+          path: [[parentY, parentX], [nodeY, parentX], [nodeY, parentX], [nodeY, nodeX]],
+        };
+
+        if (color) {
+          segment.color = [...color.slice(0, 3), 255];
+        }
+
+        segments.push(segment);
+        curr = parent;
       } else {
         curr = null;
       }
     }
   });
 
-  // Generate segments based on the full ancestry set
-  fullLineageIds.forEach(nodeId => {
-    const node = tree.node[nodeId];
-    // If node has a parent in the lineage (which it always should unless it's root)
-    // construct segment from parent to node.
-    if (node.parent_id !== undefined && node.parent_id !== null && node.parent_id !== node.node_id) {
-      const parent = tree.node[node.parent_id];
-      const nodeX = node.x ?? node.x_dist;
-      const nodeY = node.y;
-      const parentX = parent.x ?? parent.x_dist;
-      const parentY = parent.y;
-
-      // Segment logic: [ParentY, ParentX] -> [NodeY, NodeX]
-      segments.push({
-        path: [[parentY, parentX], [nodeY, parentX], [nodeY, parentX], [nodeY, nodeX]],
-      });
-    }
-  });
-
   return segments;
 }
+

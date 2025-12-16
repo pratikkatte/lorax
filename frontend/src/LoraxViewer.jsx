@@ -85,9 +85,25 @@ export default function LoraxViewer({ backend, config, settings, setSettings, pr
         }
       }
 
+
       // Combined search
       if (sampleNames.length > 0) { // Check sampleNames instead of hasSearchTerm to capture mapped tags
-        backend.search(config.searchTerm, sampleNames, { showLineages }).then((results) => {
+
+        const sampleColors = {};
+        if (config.populationFilter?.colorBy && config.sampleDetails && config.metadataColors && config.metadataColors[config.populationFilter.colorBy]) {
+          const colorBy = config.populationFilter.colorBy;
+          for (const sample of sampleNames) {
+            const val = config.sampleDetails[sample]?.[colorBy];
+            if (val !== undefined && val !== null) {
+              const c = config.metadataColors[colorBy][String(val)];
+              if (c) {
+                sampleColors[sample.toLowerCase()] = c;
+              }
+            }
+          }
+        }
+
+        backend.search(config.searchTerm, sampleNames, { showLineages, sampleColors }).then((results) => {
           if (results) {
             setLineagePaths(showLineages ? (results.lineage || {}) : {});
             setHighlightedNodes(results.highlights || {});

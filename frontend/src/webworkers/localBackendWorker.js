@@ -226,9 +226,10 @@ function processData(localTrees, sendStatusMessage) {
 }
 
 // Helper: Find highlights and lineage seeds in a single pass
-function findHighlights(tree, uniqueTerms, collectSeeds = true) {
+function findHighlights(tree, uniqueTerms, collectSeeds = true, sampleColors = {}) {
   const highlights = [];
   const seeds = new Set();
+  const seedColors = new Map();
 
   if (tree.node && Array.isArray(tree.node)) {
     for (let i = 0; i < tree.node.length; i++) {
@@ -243,12 +244,17 @@ function findHighlights(tree, uniqueTerms, collectSeeds = true) {
         // Add to seeds (if needed)
         if (collectSeeds) {
           seeds.add(node);
+          const color = sampleColors[node.name.toLowerCase()];
+          if (color) {
+            seedColors.set(node.node_id, color);
+          }
         }
       }
     }
   }
-  return { highlights, seeds };
+  return { highlights, seeds, seedColors };
 }
+
 
 
 onmessage = async (event) => {
@@ -271,7 +277,7 @@ onmessage = async (event) => {
     }
     if (data.type === "search") {
       const { term, terms, id, options } = data;
-      const { showLineages = true } = options || {};
+      const { showLineages = true, sampleColors = {} } = options || {};
       const lineageResults = {}; // global_index -> segments
       const highlightResults = {}; // global_index -> points
 
@@ -288,7 +294,7 @@ onmessage = async (event) => {
       if (uniqueTerms.size > 0) {
         for (const [global_index, tree] of pathsData.entries()) {
           // 1. Find matches
-          const { highlights, seeds } = findHighlights(tree, uniqueTerms, showLineages);
+          const { highlights, seeds, seedColors } = findHighlights(tree, uniqueTerms, showLineages, sampleColors);
 
           if (highlights.length > 0) {
             highlightResults[global_index] = highlights;
@@ -296,11 +302,12 @@ onmessage = async (event) => {
 
           // 2. Compute Lineages
           if (seeds.size > 0 && showLineages) {
-            const segments = computeLineageSegments(tree, seeds);
-            const deduped = dedupeSegments(segments);
-            if (deduped.length > 0) {
-              lineageResults[global_index] = deduped;
-            }
+            const segments = computeLineageSegments(tree, seeds, seedColors);
+            lineageResults[global_index] = segments
+            // const deduped = dedupeSegments(segments);
+            // if (deduped.length > 0) {
+            //   lineageResults[global_index] = deduped;
+            // }
           }
         }
       }

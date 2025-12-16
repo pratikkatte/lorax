@@ -400,7 +400,7 @@ def get_tree_details(ts, tree_index):
     
     mutations = []
     for mut in tree.mutations():
-        site = tree.site(mut.site)
+        site = ts.site(mut.site)
         mutations.append({
             "id": mut.id,
             "site_id": mut.site,
@@ -435,11 +435,11 @@ async def handle_details(file_path, data):
             return json.dumps({"error": "Tree sequence (ts) is not set. Please upload a file first."})
         
         return_data = {}
-        
+        print("handle_details data", data)
         tree_index = data.get("treeIndex")
         if tree_index:
             return_data["tree"] = get_tree_details(ts, tree_index)
-
+    
         node_name = data.get("node")
         if node_name:
             node_details = get_node_details(ts, int(node_name))
