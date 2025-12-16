@@ -72,6 +72,7 @@ const Info = ({ backend, gettingDetails, setGettingDetails, setShowInfo, config,
 
       setPopulationDetails(populations[data?.node?.population]);
       setIndividualDetails(data?.individual ? data.individual : null);
+      setActiveTab('metadata');
     }
   }, [populations]);
 

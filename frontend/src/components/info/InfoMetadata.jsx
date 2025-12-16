@@ -17,10 +17,6 @@ export default function InfoMetadata({
   const sampleName = nodeDetails?.metadata?.name || nodeDetails?.id;
   const sampleMetadata = sampleDetails && sampleName ? sampleDetails[sampleName] : null;
 
-  console.log("nodeDetails", nodeDetails);
-  console.log("individualDetails", individualDetails);
-  console.log("treeDetails", treeDetails);
-
   return (
     <>
       {treeDetails && (

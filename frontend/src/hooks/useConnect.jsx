@@ -107,7 +107,7 @@ function useConnect({ setGettingDetails, settings }) {
 
     socket.on("query-result", (message) => {
 
-      console.log("query-result", message);
+      // console.log("query-result", message);
       workerRef.current?.postMessage({
         type: "query",
         data: message.data,
@@ -115,13 +115,12 @@ function useConnect({ setGettingDetails, settings }) {
     });
 
     socket.on("details-result", (message) => {
-      console.log("details-result", message);
       websocketEvents.emit("viz", { role: "details-result", data: message.data });
       setGettingDetails(false);
     });
 
     socket.on("pong", (msg) => {
-      console.log("pong", msg);
+      // console.log("pong", msg);
     });
 
     return () => {
@@ -289,7 +288,7 @@ function useConnect({ setGettingDetails, settings }) {
 
         // console.log("payload", payload, sidRef.current);
 
-        console.log("payload", payload, sidRef.current);
+        // console.log("payload", payload, sidRef.current);
         socketRef.current.emit("load_file", { ...payload, lorax_sid: sidRef.current, share_sid: payload.share_sid });
       };
 

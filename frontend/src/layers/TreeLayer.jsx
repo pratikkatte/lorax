@@ -48,6 +48,8 @@ export default class TreeLayer extends CompositeLayer {
     let display_labels = false;
 
 
+    const mutations = bin.path.filter(d => d?.mutations !== undefined && d?.mutations !== null)
+
 
 
     const proportionOfNodesOnTree = len_nodes / (2 ** xzoom * scale_position);
@@ -279,22 +281,23 @@ export default class TreeLayer extends CompositeLayer {
     }
 
     layers.push(new IconLayer({
-      id: `${this.props.id}-icons-${bin.global_index}`,
+      id: `${this.props.id}-mutations-${bin.global_index}`,
       data: bin.path.filter(d => d?.mutations !== undefined && d?.mutations !== null),
       getPosition: d => {
         const position = [d.position[0] * scale_position + translate_position, d.position[1]];
         return position;
       },
       getIcon: () => 'marker',
-      modelMatrix: bin.modelMatrix,
-      getColor: [255, 0, 0],
+      modelMatrix: null, // bin.modelMatrix was used in commented out code, but Scatterplot used null with manual transform. Using manual transform to match Scatterplot.
+      getColor: [255, 0, 0, 255],
       viewId,
-      getSize: 0.01,
-      sizeUnits: 'common',
+      getSize: 12, // Starting with a reasonable pixel size
+      sizeUnits: 'pixels',
       iconAtlas: '/X.png',
       iconMapping: {
         marker: { x: 0, y: 0, width: 128, height: 128, mask: true }
       },
+      pickable: true,
       updateTriggers: {
         data: [bin.path, bin.modelMatrix],
       },
