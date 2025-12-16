@@ -142,12 +142,12 @@ const GenomeVisualization = React.memo(({ pointsArray, pointsGenomePositionsInfo
             onMouseEnter={event => {
               event.target.setAttribute('fill', 'rgba(145, 194, 244, 0.4)');
               setHoveredPolygonIndex(treeIndex);
-              setHoveredTreeIndex(treeIndex);
+              // setHoveredTreeIndex(treeIndex);
             }}
             onMouseLeave={event => {
               event.target.setAttribute('fill', 'rgba(145, 194, 244, 0.18)');
               setHoveredPolygonIndex(null);
-              setHoveredTreeIndex(null);
+              // setHoveredTreeIndex(null);
             }}
           />
         </React.Fragment>
@@ -199,8 +199,8 @@ function Deck({
 
       if (info && isClick) {
         if (info?.layer?.id?.includes("main")) {
-          console.log("clicked on the tree", info)
           const data = { treeIndex: info.layer?.props?.bin?.global_index, node: info.object?.name }
+          console.log("clicked on the tree", data)
           queryDetails(data)
           return;
         }

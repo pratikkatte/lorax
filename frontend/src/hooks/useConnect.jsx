@@ -115,6 +115,7 @@ function useConnect({ setGettingDetails, settings }) {
     });
 
     socket.on("details-result", (message) => {
+      console.log("details-result", message);
       websocketEvents.emit("viz", { role: "details-result", data: message.data });
       setGettingDetails(false);
     });

@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import websocketEvents from '../webworkers/websocketEvents';
 import InfoMetadata from "./info/InfoMetadata";
-import InfoMutations from "./info/InfoMutations";
 import InfoFilter from "./info/InfoFilter";
 
 const Info = ({ backend, gettingDetails, setGettingDetails, setShowInfo, config, setConfig, selectedFileName, setSelectedFileName, visibleTrees, settings, setSettings, hoveredTreeIndex, setHoveredTreeIndex }) => {
@@ -110,16 +109,6 @@ const Info = ({ backend, gettingDetails, setGettingDetails, setShowInfo, config,
             </button>
             <button
               className={`flex-1 px-4 py-2 text-sm font-medium focus:outline-none transition-colors duration-150
-                ${activeTab === 'mutations'
-                  ? "bg-gray-100 text-gray-800 border-b-4 border-blue-500"
-                  : "bg-white text-gray-600 border-b-4 border-transparent"}
-              `}
-              onClick={() => setActiveTab('mutations')}
-            >
-              Mutations
-            </button>
-            <button
-              className={`flex-1 px-4 py-2 rounded-r-md text-sm font-medium focus:outline-none transition-colors duration-150
                 ${activeTab === 'filter'
                   ? "bg-gray-100 text-gray-800 border-b-4 border-blue-500"
                   : "bg-white text-gray-600 border-b-4 border-transparent"}
@@ -140,11 +129,6 @@ const Info = ({ backend, gettingDetails, setGettingDetails, setShowInfo, config,
             populations={populations}
             populationDetails={populationDetails}
             tsconfig={tsconfig}
-          />
-        ) : activeTab === 'mutations' ? (
-          <InfoMutations
-            treeDetails={treeDetails}
-            setConfig={setConfig}
           />
         ) : (
           <InfoFilter
