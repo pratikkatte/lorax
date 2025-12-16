@@ -17,7 +17,9 @@ export default function InfoFilter({
   treeColors,
   setTreeColors,
   settings,
-  setSettings
+  setSettings,
+  hoveredTreeIndex,
+  setHoveredTreeIndex
 }) {
   const [visibleCount, setVisibleCount] = useState(ITEMS_PER_PAGE);
 
@@ -90,7 +92,11 @@ export default function InfoFilter({
           <select
             className="px-3 py-2 text-sm text-gray-700 bg-white border-r border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-[140px]"
             value={selectedColorBy || ""}
-            onChange={(e) => setSelectedColorBy(e.target.value)}
+            onChange={(e) => {
+              setSelectedColorBy(e.target.value);
+              setSearchTerm("");
+              setSearchTags([]);
+            }}
           >
             {Object.entries(coloryby).map(([key, label]) => (
               <option key={key} value={key}>{label}</option>
@@ -169,12 +175,9 @@ export default function InfoFilter({
                       type="button"
                       className={`flex-1 flex items-center px-2 py-1 text-left ${isEnabled ? '' : 'opacity-40'}`}
                       onClick={() => {
-                        setEnabledValues(prev => {
-                          const next = new Set(prev);
-                          if (next.has(val)) next.delete(val);
-                          else next.add(val);
-                          return next;
-                        });
+                        if (!searchTags.includes(val)) {
+                          setSearchTags(prev => [...prev, val]);
+                        }
                       }}
                     >
                       <span
@@ -188,8 +191,9 @@ export default function InfoFilter({
                     <div className="hidden group-hover:flex items-center gap-1 absolute right-1 top-1/2 -translate-y-1/2 bg-white/90 shadow-sm border border-gray-200 rounded px-1 py-0.5">
                       <button
                         type="button"
-                        className="p-1 text-gray-500 hover:text-blue-600 rounded focus:outline-none"
-                        title="Search"
+                        className={`p-1 rounded focus:outline-none ${isEnabled ? 'text-gray-500 hover:text-blue-600' : 'text-gray-300 cursor-not-allowed'}`}
+                        title={isEnabled ? "Search" : "Enable item to search"}
+                        disabled={!isEnabled}
                         onClick={(e) => {
                           e.stopPropagation();
                           if (!searchTags.includes(val)) {
@@ -211,6 +215,10 @@ export default function InfoFilter({
                             const next = new Set(prev);
                             if (isEnabled) {
                               next.delete(val);
+                              // Also remove from search tags if present
+                              if (searchTags.includes(val)) {
+                                setSearchTags(prevTags => prevTags.filter(tag => tag !== val));
+                              }
                             } else {
                               next.add(val);
                             }
@@ -257,46 +265,56 @@ export default function InfoFilter({
           <h3 className="text-sm font-medium text-gray-700 mb-2">Trees</h3>
           <div className="max-h-64 overflow-auto border border-gray-100 rounded-md divide-y divide-gray-100">
             {visibleTrees && visibleTrees.length > 0 ? (
-              visibleTrees.map(treeIndex => (
-                <div key={treeIndex} className="flex items-center justify-between px-2 py-1">
-                  <span className="text-sm text-gray-800">Tree {treeIndex}</span>
-                  <div className="flex items-center">
-                    <input
-                      type="color"
-                      className="w-8 h-8 p-0 border-0 rounded cursor-pointer"
-                      value={treeColors[treeIndex] || "#000000"}
-                      onChange={(e) => {
-                        console.log("Color picker change", treeIndex, e.target.value);
-                        if (setTreeColors) {
-                          setTreeColors(prev => {
-                            const newState = { ...prev, [String(treeIndex)]: e.target.value };
-                            console.log("New treeColors state:", newState);
-                            return newState;
-                          });
-                        } else {
-                          console.error("setTreeColors is missing");
-                        }
-                      }}
-                    />
-                    {treeColors[treeIndex] && (
-                      <button
-                        className="ml-2 text-xs text-gray-500 hover:text-red-500"
-                        onClick={() => {
+              visibleTrees.map(treeIndex => {
+                const isHovered = (hoveredTreeIndex === treeIndex || hoveredTreeIndex?.tree_index === treeIndex);
+                return (
+                  <div
+                    key={treeIndex}
+                    className={`flex items-center justify-between px-2 py-1 transition-colors cursor-pointer ${isHovered ? 'bg-blue-100' : 'hover:bg-gray-50'}`}
+                    onMouseEnter={() => setHoveredTreeIndex(treeIndex)}
+                    onMouseLeave={() => setHoveredTreeIndex(null)}
+                  >
+                    <span className="text-sm text-gray-800">Tree {treeIndex}</span>
+                    <div className="flex items-center">
+                      <input
+                        type="color"
+                        className="w-8 h-8 p-0 border-0 rounded cursor-pointer"
+                        value={treeColors[treeIndex] || "#000000"}
+                        onClick={(e) => e.stopPropagation()} // Prevent click from interfering
+                        onChange={(e) => {
+                          console.log("Color picker change", treeIndex, e.target.value);
                           if (setTreeColors) {
                             setTreeColors(prev => {
-                              const next = { ...prev };
-                              delete next[treeIndex];
-                              return next;
+                              const newState = { ...prev, [String(treeIndex)]: e.target.value };
+                              console.log("New treeColors state:", newState);
+                              return newState;
                             });
+                          } else {
+                            console.error("setTreeColors is missing");
                           }
                         }}
-                      >
-                        Clear
-                      </button>
-                    )}
+                      />
+                      {treeColors[treeIndex] && (
+                        <button
+                          className="ml-2 text-xs text-gray-500 hover:text-red-500"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (setTreeColors) {
+                              setTreeColors(prev => {
+                                const next = { ...prev };
+                                delete next[treeIndex];
+                                return next;
+                              });
+                            }
+                          }}
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))
+                );
+              })
             ) : (
               <div className="px-2 py-2 text-sm text-gray-500">No visible trees</div>
             )}

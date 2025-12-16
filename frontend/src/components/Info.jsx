@@ -1,82 +1,82 @@
-import React, { useState, useEffect, useCallback} from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import websocketEvents from '../webworkers/websocketEvents';
 import InfoMetadata from "./info/InfoMetadata";
 import InfoMutations from "./info/InfoMutations";
 import InfoFilter from "./info/InfoFilter";
 
-const Info = ({backend, gettingDetails, setGettingDetails, setShowInfo, config, setConfig,  selectedFileName, setSelectedFileName, visibleTrees, settings, setSettings}) => {
+const Info = ({ backend, gettingDetails, setGettingDetails, setShowInfo, config, setConfig, selectedFileName, setSelectedFileName, visibleTrees, settings, setSettings, hoveredTreeIndex, setHoveredTreeIndex }) => {
 
-const {socketRef, isConnected} = backend;
+  const { socketRef, isConnected } = backend;
 
-const {tsconfig, populations: {populations}, populationFilter, sampleNames, setPopulationFilter, sampleDetails, metadataColors, metadataKeys, treeColors, setTreeColors, searchTerm, setSearchTerm, searchTags, setSearchTags} = config;
+  const { tsconfig, populations: { populations }, populationFilter, sampleNames, setPopulationFilter, sampleDetails, metadataColors, metadataKeys, treeColors, setTreeColors, searchTerm, setSearchTerm, searchTags, setSearchTags } = config;
 
-const [nodeDetails, setNodeDetails] = useState(null);
-const [individualDetails, setIndividualDetails] = useState(null);
-const [treeDetails, setTreeDetails] = useState(null);
-const [activeTab, setActiveTab] = useState('metadata');
-const [coloryby, setColoryby] = useState({});
-const [selectedColorBy, setSelectedColorBy] = useState(null);
-const [enabledValues, setEnabledValues] = useState(new Set());
-const [populationDetails, setPopulationDetails] = useState(null);
+  const [nodeDetails, setNodeDetails] = useState(null);
+  const [individualDetails, setIndividualDetails] = useState(null);
+  const [treeDetails, setTreeDetails] = useState(null);
+  const [activeTab, setActiveTab] = useState('metadata');
+  const [coloryby, setColoryby] = useState({});
+  const [selectedColorBy, setSelectedColorBy] = useState(null);
+  const [enabledValues, setEnabledValues] = useState(new Set());
+  const [populationDetails, setPopulationDetails] = useState(null);
 
-// Build coloryby options dynamically from metadataKeys
-useEffect(() => {
+  // Build coloryby options dynamically from metadataKeys
+  useEffect(() => {
     if (!metadataKeys || metadataKeys.length === 0) return;
-    
+
     const options = {};
     metadataKeys.forEach(key => {
-        // Convert key to display label (e.g., 'super_population' -> 'Super Population')
-        const label = key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ' ');
-        options[key] = label;
+      // Convert key to display label (e.g., 'super_population' -> 'Super Population')
+      const label = key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ' ');
+      options[key] = label;
     });
-    
+
     setColoryby(options);
-    
+
     // Set default selectedColorBy to first available key if not already set
     if (!selectedColorBy || !options[selectedColorBy]) {
-        setSelectedColorBy(metadataKeys[0]);
+      setSelectedColorBy(metadataKeys[0]);
     }
-}, [metadataKeys]);
+  }, [metadataKeys]);
 
-// Initialize enabled values to all options for the selectedColorBy
-useEffect(() => {
-  if (!selectedColorBy || !metadataColors) return;
-  
-  // Enable all unique values for the selected metadata key
-  if (metadataColors[selectedColorBy]) {
+  // Initialize enabled values to all options for the selectedColorBy
+  useEffect(() => {
+    if (!selectedColorBy || !metadataColors) return;
+
+    // Enable all unique values for the selected metadata key
+    if (metadataColors[selectedColorBy]) {
       const allValues = new Set(Object.keys(metadataColors[selectedColorBy]));
       setEnabledValues(allValues);
-  }
-}, [selectedColorBy, metadataColors]);
+    }
+  }, [selectedColorBy, metadataColors]);
 
-useEffect(() => {
-  setPopulationFilter(prev => ({
-    ...prev,
-    colorBy: selectedColorBy,
-    enabledValues: Array.from(enabledValues || []),
-  }));
-}, [selectedColorBy, enabledValues]);
+  useEffect(() => {
+    setPopulationFilter(prev => ({
+      ...prev,
+      colorBy: selectedColorBy,
+      enabledValues: Array.from(enabledValues || []),
+    }));
+  }, [selectedColorBy, enabledValues]);
 
-const safeParse = (v) => {
-  if (typeof v !== "string") return v;
-  try { return JSON.parse(v); } catch { return v; }
-};
+  const safeParse = (v) => {
+    if (typeof v !== "string") return v;
+    try { return JSON.parse(v); } catch { return v; }
+  };
 
-const handleDetails = useCallback((incoming_data) => {
+  const handleDetails = useCallback((incoming_data) => {
 
     if (incoming_data.role === "details-result") {
-      
+
       var data = safeParse(incoming_data.data)
       setShowInfo(true);
-      setTreeDetails(data?.tree? data.tree : null);
-      setNodeDetails(data?.node? data.node : null);
+      setTreeDetails(data?.tree ? data.tree : null);
+      setNodeDetails(data?.node ? data.node : null);
 
       setPopulationDetails(populations[data?.node?.population]);
-      setIndividualDetails(data?.individual? data.individual : null);
+      setIndividualDetails(data?.individual ? data.individual : null);
     }
   }, [populations]);
-  
-  useEffect(() => { 
+
+  useEffect(() => {
     if (!isConnected) return;
     websocketEvents.on("viz", handleDetails);
     return () => {
@@ -132,7 +132,7 @@ const handleDetails = useCallback((incoming_data) => {
         </div>
 
         {activeTab === 'metadata' ? (
-          <InfoMetadata 
+          <InfoMetadata
             treeDetails={treeDetails}
             nodeDetails={nodeDetails}
             individualDetails={individualDetails}
@@ -142,12 +142,12 @@ const handleDetails = useCallback((incoming_data) => {
             tsconfig={tsconfig}
           />
         ) : activeTab === 'mutations' ? (
-          <InfoMutations 
+          <InfoMutations
             treeDetails={treeDetails}
             setConfig={setConfig}
           />
         ) : (
-          <InfoFilter 
+          <InfoFilter
             searchTerm={searchTerm}
             setSearchTerm={setSearchTerm}
             searchTags={searchTags}
@@ -163,6 +163,8 @@ const handleDetails = useCallback((incoming_data) => {
             setTreeColors={setTreeColors}
             settings={settings}
             setSettings={setSettings}
+            hoveredTreeIndex={hoveredTreeIndex}
+            setHoveredTreeIndex={setHoveredTreeIndex}
           />
         )}
       </div>

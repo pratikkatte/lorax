@@ -111,7 +111,7 @@ const ViewportOverlay = React.memo(({ is_time, times_type }) => (
   </>
 ));
 
-const GenomeVisualization = React.memo(({ pointsArray, pointsGenomePositionsInfo, setHoveredPolygonIndex }) => (
+const GenomeVisualization = React.memo(({ pointsArray, pointsGenomePositionsInfo, setHoveredPolygonIndex, hoveredTreeIndex, setHoveredTreeIndex }) => (
   <svg
     style={{
       position: 'absolute',
@@ -122,30 +122,37 @@ const GenomeVisualization = React.memo(({ pointsArray, pointsGenomePositionsInfo
       pointerEvents: 'none',
     }}
   >
-    {pointsArray?.map((points, idx) => (
-      <React.Fragment key={idx}>
-        <polygon
-          points={points.map(([x, y]) => `${x},${y}`).join(' ')}
-          fill="rgba(145, 194, 244, 0.18)"
-          // stroke="rgba(0,0,0,0.3)"
-          style={{
-            cursor: 'pointer',
-            pointerEvents: 'auto',
-            zIndex: -1,
-            position: 'relative',
-          }}
+    {pointsArray?.map((points, idx) => {
+      const treeIndex = pointsGenomePositionsInfo?.[idx];
+      const isHovered = (hoveredTreeIndex && (hoveredTreeIndex === treeIndex || hoveredTreeIndex?.tree_index === treeIndex));
 
-          onMouseEnter={event => {
-            event.target.setAttribute('fill', 'rgba(145, 194, 244, 0.4)');
-            setHoveredPolygonIndex(pointsGenomePositionsInfo?.[idx]);
-          }}
-          onMouseLeave={event => {
-            event.target.setAttribute('fill', 'rgba(145, 194, 244, 0.18)');
-            setHoveredPolygonIndex(null);
-          }}
-        />
-      </React.Fragment>
-    ))}
+      return (
+        <React.Fragment key={idx}>
+          <polygon
+            points={points.map(([x, y]) => `${x},${y}`).join(' ')}
+            fill={isHovered ? 'rgba(145, 194, 244, 0.4)' : "rgba(145, 194, 244, 0.18)"}
+            // stroke="rgba(0,0,0,0.3)"
+            style={{
+              cursor: 'pointer',
+              pointerEvents: 'auto',
+              zIndex: -1,
+              position: 'relative',
+            }}
+
+            onMouseEnter={event => {
+              event.target.setAttribute('fill', 'rgba(145, 194, 244, 0.4)');
+              setHoveredPolygonIndex(treeIndex);
+              setHoveredTreeIndex(treeIndex);
+            }}
+            onMouseLeave={event => {
+              event.target.setAttribute('fill', 'rgba(145, 194, 244, 0.18)');
+              setHoveredPolygonIndex(null);
+              setHoveredTreeIndex(null);
+            }}
+          />
+        </React.Fragment>
+      )
+    })}
   </svg>
 ));
 
@@ -165,7 +172,6 @@ function Deck({
   lineagePaths,
   highlightedNodes
 }) {
-
   const { tsconfig, globalBpPerUnit, populations, populationFilter, sampleNames, sampleDetails, metadataColors, treeColors, searchTerm, searchTags } = config;
 
   // Debug log
@@ -275,11 +281,11 @@ function Deck({
     highlightedNodes
   });
   const [dummy, setDummy] = useState(null);
-
   const getLayerPixelPositions = useCallback(
     (deckRef) => {
       if (!deckRef?.current?.deck) return;
       const deck = deckRef.current.deck;
+      const { width } = deck;
       const pointsArray = [];
       const pointsGenomePositionsInfo = [];
       const currentVisibleTrees = [];
@@ -298,7 +304,7 @@ function Deck({
 
       for (const [key, b] of bins) {
         if (!b?.visible) continue;
-        currentVisibleTrees.push(b.global_index);
+
 
         const modelMatrix = b.modelMatrix;
         const coords_s = [b.s / globalBpPerUnit, 0];
@@ -307,6 +313,12 @@ function Deck({
         const pixel_s = genomeVP.project(coords_s);
         const pixel_e = genomeVP.project(coords_e);
 
+        // Check visibility within viewport width for LIST ONLY
+        if (pixel_e[0] >= 0 && pixel_s[0] <= width) {
+          currentVisibleTrees.push(b.global_index);
+        }
+
+        // Always add to pointsArray for background polygons (including buffered)
         // Modal matrix translation terms
         const [x0, y0] = orthoVP.project([modelMatrix[12], 0]);
         const [x1, y1] = orthoVP.project([
@@ -390,7 +402,7 @@ function Deck({
             <View id="ortho">
               {/* {no_data && <LoadingSpinner />} */}
               {dummy && dummy.pointsArray.length > 0 && (
-                <GenomeVisualization pointsArray={dummy.pointsArray} pointsGenomePositionsInfo={dummy.pointsGenomePositionsInfo} setHoveredPolygonIndex={setHoveredPolygonIndex} />
+                <GenomeVisualization pointsArray={dummy.pointsArray} pointsGenomePositionsInfo={dummy.pointsGenomePositionsInfo} setHoveredPolygonIndex={setHoveredPolygonIndex} hoveredTreeIndex={hoveredTreeIndex} />
               )}
               {statusMessage?.status === "loading" && <LoraxMessage status={statusMessage.status} message={statusMessage.message} />}
 
@@ -459,10 +471,10 @@ function Deck({
             </View>
           </DeckGL>
           <ViewportOverlay is_time={tsconfig?.times?.values?.length > 0 ? true : false} times_type={tsconfig?.times?.type} />
-        </div>
+        </div >
       </>
 
-    </div>
+    </div >
   );
 }
 
