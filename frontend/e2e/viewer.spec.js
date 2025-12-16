@@ -52,7 +52,7 @@ test.describe('Viewer Page - Canvas Interaction', () => {
     const box = await canvas.boundingBox();
 
     // Perform wheel zoom
-    await canvas.hover();
+    await canvas.hover({ force: true });
     await page.mouse.wheel(0, -100); // Zoom in
 
     // Verify interaction was handled (no errors)
@@ -87,7 +87,7 @@ test.describe('Viewer Page - Info Panel', () => {
     await canvas.waitFor({ state: 'visible', timeout: 30000 });
 
     // Click somewhere on the canvas
-    await canvas.click({ position: { x: 100, y: 100 } });
+    await canvas.click({ position: { x: 100, y: 100 }, force: true });
 
     // Info panel might appear
     const infoPanel = page.locator('[data-testid="info-panel"], .info-panel');
@@ -97,8 +97,9 @@ test.describe('Viewer Page - Info Panel', () => {
   test('should have tabs in info panel', async ({ page }) => {
     await page.goto('/1kg_chr22.trees.tsz?project=1000Genomes');
 
-    // Trigger info panel (implementation specific)
-    // ...
+    // Trigger info panel
+    const infoButton = page.getByTestId('info-button');
+    await infoButton.click();
 
     // Verify tabs exist
     await expect(page.getByRole('button', { name: /Metadata/i })).toBeVisible();

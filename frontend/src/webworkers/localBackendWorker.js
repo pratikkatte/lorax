@@ -1,16 +1,16 @@
 import { Matrix4 } from "@math.gl/core";
 import { findLineage, extractLineagePaths } from "./modules/lineageUtils.js";
-import { 
-  extractSquarePaths, 
-  processNewick, 
-  globalCleanup, 
-  dedupeSegments 
+import {
+  extractSquarePaths,
+  processNewick,
+  globalCleanup,
+  dedupeSegments
 } from "./modules/treeProcessing.js";
-import { 
-  nearestIndex, 
-  upperBound, 
-  findClosestBinIndices, 
-  new_complete_experiment_map 
+import {
+  nearestIndex,
+  upperBound,
+  findClosestBinIndices,
+  new_complete_experiment_map
 } from "./modules/binningUtils.js";
 
 console.log("[Worker] Initialized");
@@ -42,17 +42,17 @@ function deleteRangeByValue(min, max) {
   }
 }
 
-async function getLocalData(start, end, globalBpPerUnit, nTrees, new_globalBp, regionWidth=null) {
+async function getLocalData(start, end, globalBpPerUnit, nTrees, new_globalBp, regionWidth = null) {
   // if (!(localBins instanceof Map)) localBins = new Map();
 
-      let scaleFactor = new_globalBp / globalBpPerUnit
-  
+  let scaleFactor = new_globalBp / globalBpPerUnit
+
   const computedPrecision = Math.max(2, Math.min(9, Math.floor(8 - Math.log10(scaleFactor || 1))));
 
-  
+
   // Calculate buffer so that it increases with region size, decreases as region shrinks
   let local_regionWidth = regionWidth ?? Math.max(1, end - start); // avoid 0/neg
-  
+
   let buffer = 0.1;
   if (scaleFactor > 1) {
     buffer = buffer * local_regionWidth;
@@ -77,7 +77,7 @@ async function getLocalData(start, end, globalBpPerUnit, nTrees, new_globalBp, r
   // ────────────────────────────────
   const addBins = (lo, hi) => {
     for (let i = lo; i <= hi; i++) {
-      
+
       const temp_bin = tsconfig.intervals[i];
       const next_bin_start = tsconfig.intervals[i + 1] ? tsconfig.intervals[i + 1] : tsconfig.genome_length;
       // const temp_bin = tsconfig.new_intervals[intervalKeys[i]];
@@ -107,7 +107,7 @@ async function getLocalData(start, end, globalBpPerUnit, nTrees, new_globalBp, r
     // Overlapping → reuse bins where possible
     for (let i = lower_bound; i <= upper_bound; i++) {
       if (!globalLocalBins.has(i)) {
-        
+
         const temp_bin = tsconfig.intervals[i];
         const next_bin_start = tsconfig.intervals[i + 1] ? tsconfig.intervals[i + 1] : tsconfig.genome_length;
         // const temp_bin = tsconfig.new_intervals[intervalKeys[i]];
@@ -126,18 +126,18 @@ async function getLocalData(start, end, globalBpPerUnit, nTrees, new_globalBp, r
       }
     }
   }
-  const {return_local_bins, displayArray} = new_complete_experiment_map(local_bins,  globalBpPerUnit, new_globalBp);
+  const { return_local_bins, displayArray } = new_complete_experiment_map(local_bins, globalBpPerUnit, new_globalBp);
 
   lastStart = lower_bound;
   lastEnd = upper_bound;
   globalLocalBins = return_local_bins;
 
 
-  return { local_bins: return_local_bins, lower_bound, upper_bound, displayArray};
+  return { local_bins: return_local_bins, lower_bound, upper_bound, displayArray };
 }
 
 export const queryConfig = async (data) => {
-  try {    
+  try {
     tsconfig = data.data;
 
 
@@ -145,7 +145,7 @@ export const queryConfig = async (data) => {
 
     // intervalKeys = tsconfig.intervals.map(interval => interval[);
     // intervalKeys = tsconfig.intervals;
-    
+
     return;
   } catch (error) {
     console.log("error", error);
@@ -170,7 +170,7 @@ export const queryNodes = async (localTrees) => {
       // tree_index: tree_index,
       // times: times
     }
-    
+
 
     return result;
   } catch (error) {
@@ -180,7 +180,7 @@ export const queryNodes = async (localTrees) => {
 };
 
 export function getTreeData(global_index, precision) {
-  if (pathsData.has(global_index)){
+  if (pathsData.has(global_index)) {
     const processedTree = pathsData.get(global_index);
     const segments = [];
     if (processedTree.roots) {
@@ -206,14 +206,14 @@ function processData(localTrees, sendStatusMessage) {
       const processedTree = processNewick(
         tree.newick,
         tree.mutations,
-        -1*tsconfig.times.values[1],
+        -1 * tsconfig.times.values[1],
         tsconfig.times.values[0],
         // tree.max_time,
         // tree.min_time,
         // tsconfig.times[0],
         // -1*tsconfig.times[1],
         tree.time_range,
-        
+
         // tree.populations
       );
 
@@ -230,8 +230,7 @@ onmessage = async (event) => {
   const { data } = event;
   // console.log("Worker onmessage", data.type);
 
-  if (data.type === "upload")
-  {
+  if (data.type === "upload") {
     console.log("upload value: TO IMPLEMENT")
 
   } else {
@@ -247,41 +246,80 @@ onmessage = async (event) => {
     if (data.type === "search") {
       const { term, terms, id } = data;
       const lineageResults = {}; // global_index -> segments
-      
+
       const activeTerms = [];
       if (terms && Array.isArray(terms)) {
-          activeTerms.push(...terms);
+        activeTerms.push(...terms);
       }
       if (term) {
-          activeTerms.push(term);
+        activeTerms.push(term);
       }
       // Deduplicate and filter empty
       const uniqueTerms = [...new Set(activeTerms.map(t => t.trim().toLowerCase()).filter(t => t !== ""))];
 
       for (const [global_index, tree] of pathsData.entries()) {
-          const allLineageNodes = new Set();
-          
-          for (const currentTerm of uniqueTerms) {
-              const termNodes = findLineage(tree, currentTerm);
-              termNodes.forEach(node => allLineageNodes.add(node));
-          }
+        const allLineageNodes = new Set();
 
-          if (allLineageNodes.size > 0) {
-              const segments = [];
-              if (tree.roots) {
-                  tree.roots.forEach(root => {
-                      extractLineagePaths(root, allLineageNodes, segments);
-                  });
-              } else if (tree.root) {
-                  extractLineagePaths(tree.root, allLineageNodes, segments);
-              }
-              const deduped = dedupeSegments(segments);
-              if (deduped.length > 0) {
-                  lineageResults[global_index] = deduped;
-              }
+        for (const currentTerm of uniqueTerms) {
+          const termNodes = findLineage(tree, currentTerm);
+          termNodes.forEach(node => allLineageNodes.add(node));
+        }
+
+        if (allLineageNodes.size > 0) {
+          const segments = [];
+          if (tree.roots) {
+            tree.roots.forEach(root => {
+              extractLineagePaths(root, allLineageNodes, segments);
+            });
+          } else if (tree.root) {
+            extractLineagePaths(tree.root, allLineageNodes, segments);
           }
+          const deduped = dedupeSegments(segments);
+          if (deduped.length > 0) {
+            lineageResults[global_index] = deduped;
+          }
+        }
       }
       postMessage({ type: "search-result", data: lineageResults, id });
+    }
+
+    if (data.type === "search-nodes") {
+      const { term, terms, id } = data;
+      const searchResults = {}; // global_index -> points
+
+      const activeTerms = [];
+      if (terms && Array.isArray(terms)) {
+        activeTerms.push(...terms);
+      }
+      if (term) {
+        activeTerms.push(term);
+      }
+      // Deduplicate and filter empty
+      const uniqueTerms = new Set([...activeTerms.map(t => t.trim().toLowerCase()).filter(t => t !== "")]);
+
+      if (uniqueTerms.size > 0) {
+        for (const [global_index, tree] of pathsData.entries()) {
+          const matchedPoints = [];
+
+          // Search on the postorder-array (tree.node)
+          if (tree.node && Array.isArray(tree.node)) {
+            for (let i = 0; i < tree.node.length; i++) {
+              const node = tree.node[i];
+              if (node.name && uniqueTerms.has(node.name.toLowerCase())) {
+                matchedPoints.push({
+                  position: [node.y, node.x ?? node.x_dist],
+                  name: node.name
+                });
+              }
+            }
+          }
+
+          if (matchedPoints.length > 0) {
+            searchResults[global_index] = matchedPoints;
+          }
+        }
+      }
+      postMessage({ type: "search-nodes-result", data: searchResults, id });
     }
     if (data.type === "config") {
       const result = await queryConfig(data);
@@ -292,7 +330,7 @@ onmessage = async (event) => {
     if (data.type === "local-bins") {
       let result = await getLocalData(data.data.start, data.data.end, data.data.globalBpPerUnit, data.data.nTrees, data.data.new_globalBp, data.data.regionWidth);
       postMessage({ type: "local-bins", data: result });
-  }
+    }
 
     if (data.type === "value-changed") {
       const result = await queryValueChanged(data.data);

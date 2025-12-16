@@ -6,14 +6,14 @@ import workerSpec from "../webworkers/localBackendWorker.js?worker&inline";
 import { initSession } from "../services/api.js";
 
 // Keep old handlers for worker communication
-let onQueryReceipt = (receivedData) => {};
+let onQueryReceipt = (receivedData) => { };
 let onStatusReceipt = (receivedData) => console.log("STATUS:", receivedData.data);
-let onConfigReceipt = (receivedData) => {};
-let onLocalBinsReceipt = (receivedData) => {};
-let onGetTreeDataReceipt = (receivedData) => {};
-let onDetailsReceipt = (receivedData) => {};
-let onValueChangedReceipt = (receivedData) => {};
-let onSearchResultReceipt = (receivedData) => {};
+let onConfigReceipt = (receivedData) => { };
+let onLocalBinsReceipt = (receivedData) => { };
+let onGetTreeDataReceipt = (receivedData) => { };
+let onDetailsReceipt = (receivedData) => { };
+let onValueChangedReceipt = (receivedData) => { };
+let onSearchResultReceipt = (receivedData) => { };
 
 function useConnect({ setGettingDetails, settings }) {
   const workerRef = useRef(null);
@@ -63,10 +63,10 @@ function useConnect({ setGettingDetails, settings }) {
 
 
     const url = new URL(API_BASE);
-    
+
     const host = `${url.protocol}//${url.hostname}:${url.port}`;
-    
-    const path = `${url.pathname}/socket.io/`; 
+
+    const path = `${url.pathname}/socket.io/`;
 
     // console.log(`Connecting Socket.IO to host: ${host} with path: ${path}`);
     const socket = io(host, {
@@ -115,7 +115,7 @@ function useConnect({ setGettingDetails, settings }) {
     });
 
     socket.on("details-result", (message) => {
-      websocketEvents.emit("viz", {role: "details-result", data: message.data});
+      websocketEvents.emit("viz", { role: "details-result", data: message.data });
       setGettingDetails(false);
     });
 
@@ -145,16 +145,16 @@ function useConnect({ setGettingDetails, settings }) {
         if (event.data.type === "gettree") onGetTreeDataReceipt(event.data);
         if (event.data.type === "value-changed")
           onValueChangedReceipt(event.data);
-        if (event.data.type === "search-result") {
-           const { id, data } = event.data;
-           const resolve = searchRequests.current.get(id);
-           if (resolve) {
-             resolve(data);
-             searchRequests.current.delete(id);
-           } else if (!id) {
-               // Fallback for calls without ID (if any)
-               onSearchResultReceipt(event.data);
-           }
+        if (event.data.type === "search-result" || event.data.type === "search-nodes-result") {
+          const { id, data } = event.data;
+          const resolve = searchRequests.current.get(id);
+          if (resolve) {
+            resolve(data);
+            searchRequests.current.delete(id);
+          } else if (!id) {
+            // Fallback for calls without ID (if any)
+            onSearchResultReceipt(event.data);
+          }
         }
       };
     }
@@ -208,9 +208,23 @@ function useConnect({ setGettingDetails, settings }) {
     return new Promise((resolve) => {
       const id = Math.random().toString(36).substring(7);
       searchRequests.current.set(id, resolve);
-      
+
       workerRef.current?.postMessage({
         type: "search",
+        term,
+        terms,
+        id
+      });
+    });
+  }, []);
+
+  const searchNodes = useCallback((term, terms = []) => {
+    return new Promise((resolve) => {
+      const id = Math.random().toString(36).substring(7);
+      searchRequests.current.set(id, resolve);
+
+      workerRef.current?.postMessage({
+        type: "search-nodes",
         term,
         terms,
         id
@@ -240,7 +254,7 @@ function useConnect({ setGettingDetails, settings }) {
   }, []);
 
   const queryLocalBins = useCallback(
-    (start, end, globalBpPerUnit, nTrees, new_globalBp, regionWidth=null) => {
+    (start, end, globalBpPerUnit, nTrees, new_globalBp, regionWidth = null) => {
 
       return new Promise((resolve) => {
         workerRef.current?.postMessage({
@@ -268,47 +282,47 @@ function useConnect({ setGettingDetails, settings }) {
           resolve(receivedData);
         }
       });
-    },[]);
+    }, []);
 
-    const queryFile = useCallback((payload) => {
-      return new Promise((resolve, reject) => {
-        const execute = () => {
-          if (!socketRef.current) {
-            reject(new Error("Socket not available"));
-            return;
-          }
-          const handleResult = (message) => {
-            // console.log("📦 Received load-file-result:", message);
-            socketRef.current.off("load-file-result", handleResult); // cleanup listener
-            resolve(message);
-          };
-
-          socketRef.current.once("load-file-result", handleResult);
-
-          // console.log("payload", payload, sidRef.current);
-
-          console.log("payload", payload, sidRef.current);
-          socketRef.current.emit("load_file", { ...payload, lorax_sid: sidRef.current, share_sid: payload.share_sid });
+  const queryFile = useCallback((payload) => {
+    return new Promise((resolve, reject) => {
+      const execute = () => {
+        if (!socketRef.current) {
+          reject(new Error("Socket not available"));
+          return;
+        }
+        const handleResult = (message) => {
+          // console.log("📦 Received load-file-result:", message);
+          socketRef.current.off("load-file-result", handleResult); // cleanup listener
+          resolve(message);
         };
 
-        if (!socketRef.current) {
-          initializeSession().then(() => {
-            console.log("session initialized");
-            execute();
-          }).catch((err) => {
-            reject(new Error("Failed to initialize session: " + err.message));
-          });
-        } else {
+        socketRef.current.once("load-file-result", handleResult);
+
+        // console.log("payload", payload, sidRef.current);
+
+        console.log("payload", payload, sidRef.current);
+        socketRef.current.emit("load_file", { ...payload, lorax_sid: sidRef.current, share_sid: payload.share_sid });
+      };
+
+      if (!socketRef.current) {
+        initializeSession().then(() => {
+          console.log("session initialized");
           execute();
-        }
-      });
-    }, [initializeSession]);
+        }).catch((err) => {
+          reject(new Error("Failed to initialize session: " + err.message));
+        });
+      } else {
+        execute();
+      }
+    });
+  }, [initializeSession]);
 
   const queryDetails = useCallback(
     (clickedObject) => {
       setGettingDetails(true);
       // console.log("queryDetails", clickedObject, sidRef.current);
-      const payload = {lorax_sid: sidRef.current, ...clickedObject};
+      const payload = { lorax_sid: sidRef.current, ...clickedObject };
       socketRef.current?.emit("details", payload);
     },
     [setGettingDetails]
@@ -333,7 +347,8 @@ function useConnect({ setGettingDetails, settings }) {
       connect,
       queryFile,
       getTreeData,
-      searchLineage
+      searchLineage,
+      searchNodes
     }),
     [
       connect,
@@ -347,7 +362,8 @@ function useConnect({ setGettingDetails, settings }) {
       valueChanged,
       queryFile,
       getTreeData,
-      searchLineage
+      searchLineage,
+      searchNodes
     ]
   );
 }
