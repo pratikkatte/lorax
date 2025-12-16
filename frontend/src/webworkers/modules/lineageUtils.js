@@ -1,66 +1,41 @@
-export const findLineage = (tree, term) => {
-    const lineageNodes = new Set();
-    if (!term || !tree || term.trim() === '') return lineageNodes;
-    const lowerTerm = term.toLowerCase();
-    const matchingNodes = new Set();
+// Iterative lineage reconstruction using parent_id
+export function computeLineageSegments(tree, seedNodes) {
+  const segments = [];
+  if (!seedNodes || seedNodes.size === 0) return segments;
 
-    // Helper to traverse and find matches
-    function traverse(node) {
-        if (node.name && node.name.toLowerCase() === lowerTerm) {
-             matchingNodes.add(node);
-        }
-        if (node.child) {
-            node.child.forEach(traverse);
-        }
-    }
-    
-    if (tree.roots) {
-      tree.roots.forEach(root => traverse(root));
-    } else if (tree.root) {
-      traverse(tree.root);
-    }
+  const fullLineageIds = new Set();
 
-    // For each match, add ancestors (path to root)
-    matchingNodes.forEach(match => {
-        // Add the match itself
-        lineageNodes.add(match);
-        
-        // Add ancestors
-        let curr = match.parent;
-        while(curr) {
-            lineageNodes.add(curr);
-            curr = curr.parent;
-        }
-    });
-    return lineageNodes;
-};
-
-export function extractLineagePaths(node, lineageNodes, segments = []) {
-  if (!lineageNodes.has(node)) return segments;
-
-  const nodeX = node.x;
-  const nodeY = node.y;
-
-  const children = node.child;
-  const nChildren = children?.length || 0;
-
-  if (nChildren > 0) {
-    for (let i = 0; i < nChildren; i++) {
-      const child = children[i];
-      
-      // Only draw path if child is also in lineage
-      if (lineageNodes.has(child)) {
-          const cX = child.x;
-          const cY = child.y;
-
-          segments.push({
-            path: [[nodeY, nodeX], [cY, nodeX], [cY, nodeX], [cY, cX]],
-          });
-          
-          extractLineagePaths(child, lineageNodes, segments);
+  // Add seeds and walk up via parent_id
+  seedNodes.forEach(node => {
+    let curr = node;
+    while (curr) {
+      fullLineageIds.add(curr.node_id);
+      if (curr.parent_id !== undefined && curr.parent_id !== null && curr.parent_id !== curr.node_id) {
+        curr = tree.node[curr.parent_id];
+      } else {
+        curr = null;
       }
     }
-  } 
-  
+  });
+
+  // Generate segments based on the full ancestry set
+  fullLineageIds.forEach(nodeId => {
+    const node = tree.node[nodeId];
+    // If node has a parent in the lineage (which it always should unless it's root)
+    // construct segment from parent to node.
+    if (node.parent_id !== undefined && node.parent_id !== null && node.parent_id !== node.node_id) {
+      const parent = tree.node[node.parent_id];
+      const nodeX = node.x ?? node.x_dist;
+      const nodeY = node.y;
+      const parentX = parent.x ?? parent.x_dist;
+      const parentY = parent.y;
+
+      // Segment logic: [ParentY, ParentX] -> [NodeY, NodeX]
+      segments.push({
+        path: [[parentY, parentX], [nodeY, parentX], [nodeY, parentX], [nodeY, nodeX]],
+      });
+    }
+  });
+
   return segments;
 }

@@ -83,21 +83,19 @@ export default function LoraxViewer({ backend, config, settings, setSettings, pr
         }
       }
 
-      // 1. Search Lineages (Legacy / Paths)
-      if ((hasSearchTerm || hasSearchTags) && showLineages) {
-        backend.searchLineage(null, sampleNames).then(data => {
-          setLineagePaths(data);
+      // Combined search
+      if (sampleNames.length > 0) { // Check sampleNames instead of hasSearchTerm to capture mapped tags
+        backend.search(config.searchTerm, sampleNames, { showLineages }).then((results) => {
+          if (results) {
+            setLineagePaths(showLineages ? (results.lineage || {}) : {});
+            setHighlightedNodes(results.highlights || {});
+          } else {
+            setLineagePaths({});
+            setHighlightedNodes({});
+          }
         });
       } else {
         setLineagePaths({});
-      }
-
-      // 2. Search Nodes (Attributes / Highlights) - New Optimized Path
-      if (hasSearchTerm || hasSearchTags) {
-        backend.searchNodes(null, sampleNames).then(data => {
-          setHighlightedNodes(data);
-        });
-      } else {
         setHighlightedNodes({});
       }
     }

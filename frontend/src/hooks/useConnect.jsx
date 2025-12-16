@@ -204,33 +204,20 @@ function useConnect({ setGettingDetails, settings }) {
     });
   }, []);
 
-  const searchLineage = useCallback((term, terms = []) => {
+  const search = useCallback((term, terms = [], options = {}) => {
     return new Promise((resolve) => {
       const id = Math.random().toString(36).substring(7);
       searchRequests.current.set(id, resolve);
-
       workerRef.current?.postMessage({
         type: "search",
         term,
         terms,
-        id
+        id,
+        options
       });
     });
   }, []);
 
-  const searchNodes = useCallback((term, terms = []) => {
-    return new Promise((resolve) => {
-      const id = Math.random().toString(36).substring(7);
-      searchRequests.current.set(id, resolve);
-
-      workerRef.current?.postMessage({
-        type: "search-nodes",
-        term,
-        terms,
-        id
-      });
-    });
-  }, []);
   const queryConfig = useCallback((configData, globalBpPerUnit = null) => {
     return new Promise((resolve) => {
       workerRef.current?.postMessage({
@@ -347,8 +334,8 @@ function useConnect({ setGettingDetails, settings }) {
       connect,
       queryFile,
       getTreeData,
-      searchLineage,
-      searchNodes
+      getTreeData,
+      search
     }),
     [
       connect,
@@ -362,8 +349,7 @@ function useConnect({ setGettingDetails, settings }) {
       valueChanged,
       queryFile,
       getTreeData,
-      searchLineage,
-      searchNodes
+      search
     ]
   );
 }

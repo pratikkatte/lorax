@@ -1,5 +1,5 @@
 import { Matrix4 } from "@math.gl/core";
-import { findLineage, extractLineagePaths } from "./modules/lineageUtils.js";
+import { computeLineageSegments } from "./modules/lineageUtils.js";
 import {
   extractSquarePaths,
   processNewick,
@@ -225,6 +225,32 @@ function processData(localTrees, sendStatusMessage) {
   return null;
 }
 
+// Helper: Find highlights and lineage seeds in a single pass
+function findHighlights(tree, uniqueTerms, collectSeeds = true) {
+  const highlights = [];
+  const seeds = new Set();
+
+  if (tree.node && Array.isArray(tree.node)) {
+    for (let i = 0; i < tree.node.length; i++) {
+      const node = tree.node[i];
+      if (node.is_tip && node.name && uniqueTerms.has(node.name.toLowerCase())) {
+        // Add to highlights
+        highlights.push({
+          position: [node.y, node.x ?? node.x_dist],
+          name: node.name
+        });
+
+        // Add to seeds (if needed)
+        if (collectSeeds) {
+          seeds.add(node);
+        }
+      }
+    }
+  }
+  return { highlights, seeds };
+}
+
+
 onmessage = async (event) => {
   //Process uploaded data:
   const { data } = event;
@@ -244,48 +270,10 @@ onmessage = async (event) => {
       postMessage({ type: "query", data: result });
     }
     if (data.type === "search") {
-      const { term, terms, id } = data;
+      const { term, terms, id, options } = data;
+      const { showLineages = true } = options || {};
       const lineageResults = {}; // global_index -> segments
-
-      const activeTerms = [];
-      if (terms && Array.isArray(terms)) {
-        activeTerms.push(...terms);
-      }
-      if (term) {
-        activeTerms.push(term);
-      }
-      // Deduplicate and filter empty
-      const uniqueTerms = [...new Set(activeTerms.map(t => t.trim().toLowerCase()).filter(t => t !== ""))];
-
-      for (const [global_index, tree] of pathsData.entries()) {
-        const allLineageNodes = new Set();
-
-        for (const currentTerm of uniqueTerms) {
-          const termNodes = findLineage(tree, currentTerm);
-          termNodes.forEach(node => allLineageNodes.add(node));
-        }
-
-        if (allLineageNodes.size > 0) {
-          const segments = [];
-          if (tree.roots) {
-            tree.roots.forEach(root => {
-              extractLineagePaths(root, allLineageNodes, segments);
-            });
-          } else if (tree.root) {
-            extractLineagePaths(tree.root, allLineageNodes, segments);
-          }
-          const deduped = dedupeSegments(segments);
-          if (deduped.length > 0) {
-            lineageResults[global_index] = deduped;
-          }
-        }
-      }
-      postMessage({ type: "search-result", data: lineageResults, id });
-    }
-
-    if (data.type === "search-nodes") {
-      const { term, terms, id } = data;
-      const searchResults = {}; // global_index -> points
+      const highlightResults = {}; // global_index -> points
 
       const activeTerms = [];
       if (terms && Array.isArray(terms)) {
@@ -299,27 +287,24 @@ onmessage = async (event) => {
 
       if (uniqueTerms.size > 0) {
         for (const [global_index, tree] of pathsData.entries()) {
-          const matchedPoints = [];
+          // 1. Find matches
+          const { highlights, seeds } = findHighlights(tree, uniqueTerms, showLineages);
 
-          // Search on the postorder-array (tree.node)
-          if (tree.node && Array.isArray(tree.node)) {
-            for (let i = 0; i < tree.node.length; i++) {
-              const node = tree.node[i];
-              if (node.name && uniqueTerms.has(node.name.toLowerCase())) {
-                matchedPoints.push({
-                  position: [node.y, node.x ?? node.x_dist],
-                  name: node.name
-                });
-              }
-            }
+          if (highlights.length > 0) {
+            highlightResults[global_index] = highlights;
           }
 
-          if (matchedPoints.length > 0) {
-            searchResults[global_index] = matchedPoints;
+          // 2. Compute Lineages
+          if (seeds.size > 0 && showLineages) {
+            const segments = computeLineageSegments(tree, seeds);
+            const deduped = dedupeSegments(segments);
+            if (deduped.length > 0) {
+              lineageResults[global_index] = deduped;
+            }
           }
         }
       }
-      postMessage({ type: "search-nodes-result", data: searchResults, id });
+      postMessage({ type: "search-result", data: { lineage: lineageResults, highlights: highlightResults }, id });
     }
     if (data.type === "config") {
       const result = await queryConfig(data);
@@ -341,4 +326,4 @@ onmessage = async (event) => {
       console.log("data details value: TO IMPLEMENT")
     }
   }
-};
+}
