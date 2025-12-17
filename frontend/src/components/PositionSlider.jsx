@@ -5,12 +5,12 @@ import { faArrows } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 
 export default function PositionSlider({ config, project, ucgbMode, view, valueRef }) {
-  
+
   const { tsconfig, filename } = config;
   const { genome_length } = tsconfig;
-  
+
   const [searchParams, setSearchParams] = useSearchParams();
-  const { changeView , startPan, stopPan, viewReset, decksize, genomicValues} = view;
+  const { changeView, startPan, stopPan, viewReset, decksize, genomicValues } = view;
 
   // Initialize value if missing
   useEffect(() => {
@@ -26,7 +26,7 @@ export default function PositionSlider({ config, project, ucgbMode, view, valueR
     if (valueRef.current) {
       // Preserve existing search params and only update the ones we need to change
       const updatedParams = new URLSearchParams(searchParams);
-      
+
       if (ucgbMode.current) {
         updatedParams.set('chrom', tsconfig.chrom);
         updatedParams.set('genomiccoordstart', valueRef.current[0]);
@@ -36,7 +36,7 @@ export default function PositionSlider({ config, project, ucgbMode, view, valueR
         updatedParams.set('genomiccoordstart', valueRef.current[0]);
         updatedParams.set('genomiccoordend', valueRef.current[1]);
       }
-      
+
       setSearchParams(updatedParams);
     }
   }, [valueRef.current, tsconfig.chrom, project, ucgbMode, setSearchParams, searchParams]);
@@ -59,30 +59,38 @@ export default function PositionSlider({ config, project, ucgbMode, view, valueR
         style={{
           position: 'absolute',
           left: '1.5rem',
-          top: '0.5rem',
+          top: '0.4rem',
           zIndex: 20,
           display: 'flex',
           alignItems: 'center',
-          padding: '0.1rem 0.7rem 0.1rem 0.7rem',
-          background: 'rgba(255,255,255,0.90)',
-          borderRadius: '0.3rem',
-          boxShadow: '0 2px 8px rgba(41,58,88,0.07)',
+          gap: '0.6rem',
+          padding: '0.2rem 0.8rem 0.2rem 0.5rem',
+          background: 'rgba(255,255,255,0.95)',
+          borderRadius: '0.6rem',
+          boxShadow: '0 4px 12px rgba(15, 23, 42, 0.08)',
           textDecoration: 'none',
-          minWidth: '96px',
-          minHeight: '2.2rem',
-          transition: 'box-shadow 0.2s',
+          transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
           border: '1px solid #e2e8f0',
         }}
+        className="hover:shadow-lg hover:border-emerald-200 hover:-translate-y-0.5"
         title="Go to Lorax Home"
       >
+        <img
+          src="/logo.png"
+          alt="Lorax Logo"
+          style={{
+            height: '1.8rem',
+            width: 'auto',
+            display: 'block'
+          }}
+        />
         <span
           style={{
-            fontWeight: 700,
-            color: '#10b981',
-            fontSize: '1.25rem',
-            fontFamily: 'Inter, Arial, Helvetica, sans-serif',
-            letterSpacing: '0.025em',
-            transition: 'color 0.14s'
+            fontWeight: 800,
+            color: '#0f172a',
+            fontSize: '1.1rem',
+            fontFamily: 'Inter, system-ui, sans-serif',
+            letterSpacing: '-0.01em',
           }}
         >
           Lorax
@@ -107,7 +115,7 @@ export default function PositionSlider({ config, project, ucgbMode, view, valueR
           fontSize: '16px',
           color: 'black',
         }}
-        // aria-label="Pan left"
+      // aria-label="Pan left"
       >
         ←
       </button>
@@ -126,7 +134,7 @@ export default function PositionSlider({ config, project, ucgbMode, view, valueR
           fontSize: '16px',
           color: 'black',
         }}
-        // aria-label="Pan right"
+      // aria-label="Pan right"
       >
         →
       </button>

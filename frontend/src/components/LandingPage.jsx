@@ -39,8 +39,8 @@ export default function LandingPage({
       <header className="w-full border-b border-slate-200/60 bg-white/70 backdrop-blur-md sticky top-0 z-50 transition-all duration-300">
         <div className="mx-auto max-w-7xl px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="size-10 grid place-items-center rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-lg shadow-emerald-500/20 ring-1 ring-white/20">
-              <LuTreePine className="text-xl" />
+            <div className="w-10 h-10 grid place-items-center">
+              <img src="/logo.png" alt="Lorax Logo" className="w-full h-full object-contain" />
             </div>
             <div className="leading-tight">
               <h1 className="font-display font-bold text-xl tracking-tight text-slate-900">Lorax</h1>
@@ -160,14 +160,14 @@ export default function LandingPage({
               return (
                 <li
                   key={id}
-                  className={`group rounded-2xl border bg-white shadow-sm transition-all duration-200 ${isOpen ? 'border-emerald-500 ring-1 ring-emerald-500 shadow-md' : 'border-slate-200 hover:border-emerald-300'}`}
+                  className={`group/project rounded-2xl border bg-white shadow-sm transition-all duration-200 ${isOpen ? 'border-emerald-500 ring-1 ring-emerald-500 shadow-md' : 'border-slate-200 hover:border-emerald-300'}`}
                 >
                   <button
                     className="w-full flex items-center gap-5 p-5 text-left"
                     onClick={() => setExpandedId(isOpen ? null : id)}
                     aria-expanded={isOpen}
                   >
-                    <div className={`shrink-0 p-3 rounded-xl transition-colors ${isOpen ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500 group-hover:bg-emerald-50 group-hover:text-emerald-600'}`}>
+                    <div className={`shrink-0 p-3 rounded-xl transition-colors ${isOpen ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500 group-hover/project:bg-emerald-50 group-hover/project:text-emerald-600'}`}>
                       <LuFolder size={24} />
                     </div>
 
@@ -183,7 +183,7 @@ export default function LandingPage({
                       </p>
                     </div>
 
-                    <div className={`shrink-0 text-slate-400 transition-transform duration-300 ${isOpen ? 'rotate-180 text-emerald-600' : 'group-hover:text-emerald-500'}`}>
+                    <div className={`shrink-0 text-slate-400 transition-transform duration-300 ${isOpen ? 'rotate-180 text-emerald-600' : 'group-hover/project:text-emerald-500'}`}>
                       <BsChevronDown size={20} />
                     </div>
                   </button>
