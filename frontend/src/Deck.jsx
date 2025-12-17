@@ -21,95 +21,7 @@ const StatusMessage = React.memo(({ status, message }) => (
   </div>
 ));
 
-const ViewportOverlay = React.memo(({ is_time, times_type }) => (
-  <>
-    {/* Outer border */}
-    <div
-      style={{
-        position: 'absolute',
-        top: '1%',
-        left: '2%',
-        height: '85%',
-        width: '98%',
-        zIndex: 1,
-        pointerEvents: 'none',
-        border: '2px solid #b5b5b5',
-        borderRadius: '8px',
-        boxShadow: '0 0 0 2px #f8f8f8, 0 2px 6px rgba(0,0,0,0.1)',
-        backgroundColor: 'transparent',
-      }}
-    />
 
-    {/* genome positions */}
-    <div
-      style={{
-        position: 'absolute',
-        top: '1%',
-        left: '5%',
-        height: '3%',
-        width: '95%',
-        zIndex: 10,
-        pointerEvents: 'none',
-        // border: '1px solid #d0d0d0',
-        borderBottom: '1px solid #cccccc',
-        borderTopLeftRadius: '6px',
-        borderTopRightRadius: '6px',
-        boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
-      }}
-    />
-    {/* genome info */}
-    <div
-      style={{
-        position: 'absolute',
-        top: '4%',
-        left: '5%',
-        height: '2%',
-        width: '95%',
-        zIndex: 10,
-        pointerEvents: 'none',
-        // border: '1px solid #d0d0d0',
-        borderBottom: '1px solid #d0d0d0',
-        boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
-      }}
-    />
-    {/* tree time */}
-    <div
-      style={{
-        position: 'absolute',
-        top: '1%',
-        left: '2%',
-        height: '85%',
-        width: '3%',
-        zIndex: 10,
-        pointerEvents: 'none',
-        // border: '1px solid #d0d0d0',
-        borderRight: '1px solid rgba(232, 226, 226, 0.96)',
-        borderRadius: '6px',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
-        display: 'flex',
-        justifyContent: 'center',
-        alignItems: 'center',
-        justifyContent: 'flex-end',
-      }}
-    >
-      {/* vertical label */}
-      <div
-        style={{
-          display: 'flex',
-          transform: 'rotate(-90deg)',
-          whiteSpace: 'nowrap',
-          fontSize: '12px',
-          color: '#333',
-          fontWeight: 500,
-          letterSpacing: '2px',
-          // padding: '0 10px',
-        }}
-      >
-        {is_time ? times_type : "No Time Data"}
-      </div>
-    </div>
-  </>
-));
 
 const GenomeVisualization = React.memo(({ pointsArray, pointsGenomePositionsInfo, setHoveredPolygonIndex, hoveredTreeIndex, setHoveredTreeIndex }) => (
   <svg
@@ -470,7 +382,6 @@ function Deck({
             <View id="genome-positions">
             </View>
           </DeckGL>
-          <ViewportOverlay is_time={tsconfig?.times?.values?.length > 0 ? true : false} times_type={tsconfig?.times?.type} />
         </div >
       </>
 

@@ -85,42 +85,47 @@ const Info = ({ backend, gettingDetails, setGettingDetails, setShowInfo, config,
   }, [isConnected, handleDetails]);
 
   return (
-    <div className="w-full h-full bg-gray-50 p-3 overflow-y-auto">
-      <div className="max-w-4xl mx-auto">
-        {/* Close button */}
-        <div className="flex justify-start mb-4">
+
+    <div className="w-full h-full bg-slate-50 flex flex-col font-sans">
+      <div className="w-full p-4 border-b border-slate-200 bg-white">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="font-display font-bold text-xl text-slate-800">Inspection</h2>
           <button
             onClick={() => setShowInfo(false)}
-            className="bg-gray-200 hover:bg-gray-300 text-gray-700 px-3 py-1 rounded-md text-sm font-medium transition-colors duration-200"
+            className="text-slate-400 hover:text-slate-600 transition-colors"
           >
-            Close
+            {/* Simple X icon */}
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
           </button>
         </div>
-        <div className="w-full flex items-center mb-4">
-          <div className="flex grow rounded-md shadow-sm bg-white border border-gray-200 w-full">
-            <button
-              className={`flex-1 px-4 py-2 rounded-l-md text-sm font-medium focus:outline-none transition-colors duration-150
-                ${activeTab === 'metadata'
-                  ? "bg-gray-100 text-gray-800 border-b-4 border-blue-500"
-                  : "bg-white text-gray-600 border-b-4 border-transparent"}
-              `}
-              onClick={() => setActiveTab('metadata')}
-            >
-              Metadata
-            </button>
-            <button
-              className={`flex-1 px-4 py-2 text-sm font-medium focus:outline-none transition-colors duration-150
-                ${activeTab === 'filter'
-                  ? "bg-gray-100 text-gray-800 border-b-4 border-blue-500"
-                  : "bg-white text-gray-600 border-b-4 border-transparent"}
-              `}
-              onClick={() => setActiveTab('filter')}
-            >
-              Filter
-            </button>
-          </div>
-        </div>
 
+        <div className="w-full flex p-1 bg-slate-100 rounded-lg">
+          <button
+            className={`flex-1 px-4 py-2 rounded-md text-sm font-semibold transition-all duration-200
+              ${activeTab === 'metadata'
+                ? "bg-white text-emerald-700 shadow-sm ring-1 ring-slate-200"
+                : "text-slate-500 hover:text-slate-700"}
+            `}
+            onClick={() => setActiveTab('metadata')}
+          >
+            Metadata
+          </button>
+          <button
+            className={`flex-1 px-4 py-2 rounded-md text-sm font-semibold transition-all duration-200
+              ${activeTab === 'filter'
+                ? "bg-white text-emerald-700 shadow-sm ring-1 ring-slate-200"
+                : "text-slate-500 hover:text-slate-700"}
+            `}
+            onClick={() => setActiveTab('filter')}
+          >
+            Filter
+          </button>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
         {activeTab === 'metadata' ? (
           <InfoMetadata
             treeDetails={treeDetails}

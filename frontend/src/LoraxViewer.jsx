@@ -192,44 +192,64 @@ export default function LoraxViewer({ backend, config, settings, setSettings, pr
   return (
     <>
       <div
-        className="fixed top-0 right-0 h-full w-10 bg-gray-800 text-white z-[101] p-3 shadow-lg flex flex-col items-center space-y-6">
+        className="fixed top-0 right-0 h-full w-14 bg-slate-900 border-l border-slate-800 text-slate-400 z-[101] flex flex-col items-center py-4 space-y-4 shadow-2xl">
+
+        {/* Logo or top spacer could go here */}
+
         <div
-          className="text-2xl hover:text-gray-300 transition-colors cursor-pointer p-2 hover:bg-gray-700 rounded"
+          className={`group relative p-3 rounded-xl transition-all duration-200 cursor-pointer ${showInfo ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-500/20' : 'hover:bg-slate-800 hover:text-slate-200'}`}
           onClick={handleInfoClick}
           data-testid="info-button"
           onMouseDown={(e) => e.preventDefault()}
         >
-          <BsFillKanbanFill />
+          <BsFillKanbanFill size={20} />
+          <span className="absolute right-full mr-3 top-1/2 -translate-y-1/2 px-2 py-1 bg-slate-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none border border-slate-700">
+            Info & Filters
+          </span>
         </div>
+
         <div
-          className="text-2xl hover:text-gray-300 transition-colors cursor-pointer p-2 hover:bg-gray-700 rounded"
+          className={`group relative p-3 rounded-xl transition-all duration-200 cursor-pointer ${showSettings ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-500/20' : 'hover:bg-slate-800 hover:text-slate-200'}`}
           onClick={handleSettingsClick}
           onMouseDown={(e) => e.preventDefault()}
         >
-          <FaGear />
+          <FaGear size={20} />
+          <span className="absolute right-full mr-3 top-1/2 -translate-y-1/2 px-2 py-1 bg-slate-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none border border-slate-700">
+            Settings
+          </span>
         </div>
+
+        <div className="flex-1" /> {/* Spacer */}
+
         <div
-          className="text-2xl hover:text-gray-300 transition-colors cursor-pointer p-2 hover:bg-gray-700 rounded"
+          className="group relative p-3 rounded-xl transition-all duration-200 cursor-pointer hover:bg-slate-800 hover:text-slate-200"
           onClick={handleScreenshot}
           onMouseDown={(e) => e.preventDefault()}
-          title="Take Screenshot"
         >
-          <FaCamera />
+          <FaCamera size={20} />
+          <span className="absolute right-full mr-3 top-1/2 -translate-y-1/2 px-2 py-1 bg-slate-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none border border-slate-700">
+            Take Screenshot
+          </span>
         </div>
       </div >
 
-      <div className="flex flex-row h-screen w-full z-40">
-
-        <div className={`${(showInfo || showSettings) ? (showSidebar ? 'w-[73%]' : 'w-3/4') : (showSidebar ? 'w-[97%]' : 'w-full')} transition-all duration-200`}>
+      <div className="flex flex-row h-screen w-full z-40 bg-slate-50">
+        <div className={`${(showInfo || showSettings) ? (showSidebar ? 'w-[calc(100%-25%-3.5rem)]' : 'w-[calc(100%-3.5rem)]') : 'w-[calc(100%-3.5rem)]'} h-full transition-all duration-300 ease-in-out`}>
           {statusMessage?.status === "file-load" && <LoraxMessage status={statusMessage.status} message={statusMessage.message} />}
-          <Lorax backend={backend} config={config} settings={settings} setSettings={setSettings} project={project} ucgbMode={ucgbMode} statusMessage={statusMessage} setStatusMessage={setStatusMessage} setVisibleTrees={setVisibleTrees} lineagePaths={lineagePaths} highlightedNodes={highlightedNodes} deckRef={deckRef} hoveredTreeIndex={hoveredTreeIndex} setHoveredTreeIndex={setHoveredTreeIndex} />
+          <div className="w-full h-full relative rounded-r-2xl overflow-hidden shadow-2xl border-r border-slate-200 bg-white">
+
+            <Lorax backend={backend} config={config} settings={settings} setSettings={setSettings} project={project} ucgbMode={ucgbMode} statusMessage={statusMessage} setStatusMessage={setStatusMessage} setVisibleTrees={setVisibleTrees} lineagePaths={lineagePaths} highlightedNodes={highlightedNodes} deckRef={deckRef} hoveredTreeIndex={hoveredTreeIndex} setHoveredTreeIndex={setHoveredTreeIndex} />
+          </div>
         </div>
-        <div className={`transition-all relative ${showInfo ? '' : 'hidden'} shadow-2xl bg-gray-100 duration-200 ${showSidebar ? 'w-[25%]' : 'w-1/4'}`}>
+
+        <div className={`fixed top-0 right-14 h-full bg-white border-l border-slate-200 shadow-xl transition-transform duration-300 ease-in-out z-50 ${showInfo ? 'translate-x-0 w-[25%]' : 'translate-x-full w-[25%] hidden'}`}>
           <Info backend={backend} gettingDetails={gettingDetails} setGettingDetails={setGettingDetails} setShowInfo={setShowInfo} config={config} setConfig={setConfig} selectedFileName={selectedFileName} setSelectedFileName={setSelectedFileName} visibleTrees={visibleTrees} settings={settings} setSettings={setSettings} hoveredTreeIndex={hoveredTreeIndex} setHoveredTreeIndex={setHoveredTreeIndex} />
         </div>
-        <div className={`transition-all relative ${showSettings ? '' : 'hidden'} shadow-2xl bg-gray-100 duration-200 ${showSidebar ? 'w-[25%]' : 'w-1/4'}`}>
+
+        <div className={`fixed top-0 right-14 h-full bg-white border-l border-slate-200 shadow-xl transition-transform duration-300 ease-in-out z-50 ${showSettings ? 'translate-x-0 w-[25%]' : 'translate-x-full w-[25%] hidden'}`}>
           <Settings settings={settings} setSettings={setSettings} showSettings={showSettings} setShowSettings={setShowSettings} />
         </div>
+
       </div>
     </>
   );

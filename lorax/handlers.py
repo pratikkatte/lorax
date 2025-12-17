@@ -311,7 +311,8 @@ async def handle_upload(file_path, root_dir):
     """Load a tree sequence file and return its configuration."""
     ts = await get_or_load_ts(file_path)
     print("File loading complete")
-    config = await asyncio.to_thread(get_or_load_config, ts, file_path, root_dir)
+    # config = await asyncio.to_thread(get_or_load_config, ts, file_path, root_dir)
+    return ts
     return config, None
 
 def list_project_files(directory, projects, root):

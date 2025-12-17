@@ -15,12 +15,17 @@ let onDetailsReceipt = (receivedData) => { };
 let onValueChangedReceipt = (receivedData) => { };
 let onSearchResultReceipt = (receivedData) => { };
 
-function useConnect({ setGettingDetails, settings }) {
+function useConnect({ setGettingDetails, settings, statusMessage: providedStatusMessage, setStatusMessage: providedSetStatusMessage }) {
   const workerRef = useRef(null);
   const socketRef = useRef(null);
   const sidRef = useRef(null);
   const initSessionPromiseRef = useRef(null);
-  const [statusMessage, setStatusMessage] = useState({ message: null });
+
+  const [localStatusMessage, setLocalStatusMessage] = useState({ message: null });
+
+  const statusMessage = providedStatusMessage || localStatusMessage;
+  const setStatusMessage = providedSetStatusMessage || setLocalStatusMessage;
+
   const [isConnected, setIsConnected] = useState(false);
 
   const { API_BASE, IS_PROD } = useLoraxConfig();
@@ -104,6 +109,7 @@ function useConnect({ setGettingDetails, settings }) {
       setStatusMessage(msg);
       websocketEvents.emit("status", msg); // used websocketevents.js to emit events
     });
+
 
     socket.on("query-result", (message) => {
 

@@ -34,7 +34,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 
-from lorax.handlers import handle_upload, handle_query, get_projects, cache_status, handle_details
+from lorax.handlers import handle_upload, handle_query, get_projects, cache_status, handle_details, get_or_load_config
 
 # Setup
 
@@ -350,10 +350,14 @@ async def background_load_file(sid, data):
         await save_session(session)
     
         print("loading file", file_path, os.getpid())
-        viz_config, chat_config = await handle_upload(str(file_path), UPLOAD_DIR)
+        ts = await handle_upload(str(file_path), UPLOAD_DIR)
+        
+        await sio.emit("status", {"status": "processing-file", "message": "Processing file...", "filename": filename, "project": project}, to=sid)
 
+        config = await asyncio.to_thread(get_or_load_config, ts, str(file_path), UPLOAD_DIR)
+    
         owner_sid = share_sid if share_sid else lorax_sid
-        await sio.emit("load-file-result", {"message": "File loaded", "sid": sid, "filename": filename, "config": viz_config, "owner_sid": owner_sid}, to=sid)
+        await sio.emit("load-file-result", {"message": "File loaded", "sid": sid, "filename": filename, "config": config, "owner_sid": owner_sid}, to=sid)
 
     except Exception as e:
         print(f"Load file error: {e}")

@@ -2,14 +2,16 @@ import React from "react";
 
 export default function FeatureCard({ icon, title, desc }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm hover:shadow-md transition-shadow">
-      <div className="flex items-center gap-3">
-        <div className="size-9 rounded-xl grid place-items-center bg-emerald-50 text-emerald-700">
-          <span className="text-xl">{icon}</span>
+    <div className="group rounded-3xl border border-slate-200 bg-white p-6 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
+      <div className="flex items-start gap-4">
+        <div className="flex-shrink-0 size-12 rounded-2xl grid place-items-center bg-teal-50 text-emerald-600 group-hover:bg-emerald-600 group-hover:text-white transition-colors duration-300">
+          <span className="text-2xl">{icon}</span>
         </div>
-        <h3 className="font-semibold">{title}</h3>
+        <div>
+          <h3 className="font-display font-bold text-lg text-slate-900 mb-2">{title}</h3>
+          <p className="text-sm text-slate-600 leading-relaxed">{desc}</p>
+        </div>
       </div>
-      <p className="mt-3 text-sm text-slate-600">{desc}</p>
     </div>
   );
 }

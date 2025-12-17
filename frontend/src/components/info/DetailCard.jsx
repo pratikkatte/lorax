@@ -1,20 +1,20 @@
 import React from "react";
 
 export const DetailCard = ({ title, children }) => (
-  <div className="bg-white rounded-lg shadow-md border border-gray-200 p-4 mb-3">
-    <h2 className="text-lg font-semibold text-gray-800 mb-2 pb-1 border-b border-gray-200">
+  <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5 mb-4 hover:shadow-md transition-shadow duration-200">
+    <h2 className="text-sm font-bold uppercase tracking-wider text-slate-500 mb-3 pb-2 border-b border-slate-100">
       {title}
     </h2>
-    <div className="space-y-1">
+    <div className="space-y-2">
       {children}
     </div>
   </div>
 );
 
 export const DetailRow = ({ label, value }) => (
-  <div className="flex justify-between items-start py-1 border-b border-gray-100 last:border-b-0">
-    <span className="font-medium text-gray-700 min-w-0 flex-1 text-sm">{label}:</span>
-    <span className="text-gray-900 text-right ml-3 break-words max-w-xs text-sm">
+  <div className="flex justify-between items-start py-1.5 border-b border-slate-50 last:border-b-0">
+    <span className="font-semibold text-slate-700 text-sm">{label}</span>
+    <span className="text-slate-600 text-right ml-4 text-sm break-words font-medium">
       {value || 'N/A'}
     </span>
   </div>

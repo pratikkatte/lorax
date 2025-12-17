@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap');
+
 /* ./your-css-folder/styles.css */
 @tailwind base;
 @tailwind components;
@@ -14,7 +16,7 @@
   margin: 0px !important;
 }
 
-#view-browser-axis > div > span > div > div > div > div:nth-child(1) {
+#view-browser-axis>div>span>div>div>div>div:nth-child(1) {
   display: none !important;
 }
 
@@ -26,7 +28,7 @@ p[data-testid="refLabel-NC_045512v2"] {
   display: none !important;
 }
 
-[class*="PrivateSwitchBase-input-"] + svg {
+[class*="PrivateSwitchBase-input-"]+svg {
   color: "#2463eb" !important;
 }
 
@@ -62,10 +64,12 @@ input {
   font-size: 12pt !important;
   pointer-events: auto !important;
 }
+
 .infoTooltip :hover {
   visibility: visible !important;
   opacity: 1 !important;
 }
+
 .tooltipLink {
   color: #2563eb;
   text-decoration: underline;
@@ -75,6 +79,25 @@ button[data-testid="addTrackNextButton"] {
   background-color: #858585;
 }
 
-.MuiDialog-container > div > div > .MuiScopedCssBaseline-root {
+.MuiDialog-container>div>div>.MuiScopedCssBaseline-root {
   padding: 15px;
+}
+
+/* Custom Scrollbar */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
 }

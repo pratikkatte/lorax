@@ -16,7 +16,7 @@ echo " Starting Lorax Full Stack"
 
 export LORAX_ENV='prod'
 # export REDIS_URL='redis://127.0.0.1:6379/0'
-export ALLOWED_ORIGINS='http://localhost:5173,https://lorax.in'
+export ALLOWED_ORIGINS='http://localhost:5173,https://lorax.in,https://lorax.ucsc.edu'
 
 # redis-cli CONFIG SET client-output-buffer-limit "pubsub 512mb 256mb 60"
 

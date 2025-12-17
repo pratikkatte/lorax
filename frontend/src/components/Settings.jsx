@@ -1,29 +1,33 @@
 
 
 export default function Settings({
-    settings,
-    setSettings,
-    showSettings,
-    setShowSettings,
+  settings,
+  setSettings,
+  showSettings,
+  setShowSettings,
 }) {
 
-    // if (!showSettings) return null;
-
-    return (
-    <div className="w-full h-full bg-gray-50 p-3 overflow-y-auto">
-      <div className="max-w-4xl mx-auto">
-      <div className="flex justify-start mb-4">
+  return (
+    <div className="w-full h-full bg-slate-50 flex flex-col font-sans">
+      <div className="w-full p-4 border-b border-slate-200 bg-white">
+        <div className="flex items-center justify-between">
+          <h2 className="font-display font-bold text-xl text-slate-800">Settings</h2>
           <button
             onClick={() => setShowSettings(false)}
-            className="bg-gray-200 hover:bg-gray-300 text-gray-700 px-3 py-1 rounded-md text-sm font-medium transition-colors duration-200"
+            className="text-slate-400 hover:text-slate-600 transition-colors"
           >
-            Close
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
           </button>
         </div>
-        <h2 className="text-2xl font-semibold text-gray-800 mb-4">Settings</h2>
+      </div>
 
-        <p className="text-sm text-gray-500">No settings available</p>
-     </div>
+      <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+        <div className="flex flex-col items-center justify-center h-full text-slate-400">
+          <p className="text-sm font-medium">No settings available yet.</p>
+        </div>
+      </div>
     </div>
-    );
+  );
 }
