@@ -93,7 +93,7 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
     socket.on("connect", () => {
       console.log("Socket.IO connected");
       setIsConnected(true);
-      setStatusMessage({ message: "Connected" });
+      // setStatusMessage({ message: "Connected" });
     });
 
     // 🔌 On disconnect

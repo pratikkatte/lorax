@@ -144,7 +144,7 @@ export default function LandingPage({
             <div className="h-px flex-1 bg-slate-200 ml-6"></div>
           </div>
 
-          {upload.statusMessage && <div className="mb-6"><LoraxMessage status={upload.statusMessage.status} message={upload.statusMessage.message} /></div>}
+          {/* {upload.statusMessage && <div className="mb-6"><LoraxMessage status={upload.statusMessage.status} message={upload.statusMessage.message} /></div>} */}
 
           <ul className="flex flex-col gap-4 max-w-4xl mx-auto">
             {Object.keys(projects ?? {}).map((p) => {

@@ -318,6 +318,7 @@ function Deck({
               )}
               {statusMessage?.status === "loading" && <LoraxMessage status={statusMessage.status} message={statusMessage.message} />}
 
+
               {/* Tooltip on hoveredTreeIndex */}
               {hoveredTreeIndex && hoveredTreeIndex.tree_index && hoveredTreeIndex.center && typeof hoveredTreeIndex.center[0] === "number" && typeof hoveredTreeIndex.center[1] === "number" && (
                 <div

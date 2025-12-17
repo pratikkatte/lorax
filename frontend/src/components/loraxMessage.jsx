@@ -11,8 +11,8 @@ const LoraxMessage = ({ message, status = "info", className = "" }) => {
   if (!message) return null;
   return (
     <div className="w-full h-full flex justify-center items-center">
-    <div className="text-sm text-gray-500">{message}</div>
-  </div>
+      <div className="text-sm text-gray-500">{message}</div>
+    </div>
   );
 };
 
