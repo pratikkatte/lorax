@@ -1,6 +1,6 @@
-
 // import genomeCoordinates from "../layers/genomeCoordinates";
 import { useMemo, useCallback, useRef, useEffect } from "react";
+import { PolygonLayer } from '@deck.gl/layers';
 import { GenomeGridLayer } from "../layers/GenomeGridLayer";
 import TreeLayer from '../layers/TreeLayer';
 import { GenomeInfoLayer } from '../layers/GenomeInfoLayer';
@@ -21,7 +21,8 @@ const useLayers = ({
   searchTerm,
   searchTags,
   lineagePaths,
-  highlightedNodes
+  highlightedNodes,
+  polygonData
 }) => {
 
   const { bins = new Map(), localCoordinates = [], times = [] } = regions;
@@ -34,7 +35,8 @@ const useLayers = ({
       (vid === "ortho" && lid.startsWith("main")) ||
       (vid === "genome-positions" && lid.startsWith("genome-positions")) ||
       (vid === "genome-info" && lid.startsWith("genome-info")) ||
-      (vid === "tree-time" && lid.startsWith("tree-time"))
+      (vid === "tree-time" && lid.startsWith("tree-time")) ||
+      (vid === "pixel-overlay" && lid.startsWith("polygon-layer"))
     );
   }, []);
 
@@ -123,6 +125,31 @@ const useLayers = ({
     return newLayers;
   }, [bins, globalBpPerUnit, hoveredTreeIndex, populationFilter, sampleDetails, metadataColors, treeColors, searchTerm, searchTags, lineagePaths, highlightedNodes]);
 
+  const polygonLayer = useMemo(() => {
+    if (!polygonData || polygonData.length === 0) return null;
+
+    return new PolygonLayer({
+      id: 'polygon-layer',
+      data: polygonData,
+      pickable: true,
+      stroked: true,
+      filled: true,
+      wireframe: true,
+      lineWidthMinPixels: 1,
+      getPolygon: d => d.polygon,
+      getFillColor: d => {
+        const isHovered = (hoveredTreeIndex && (hoveredTreeIndex === d.treeIndex || hoveredTreeIndex?.tree_index === d.treeIndex));
+        return isHovered ? [145, 194, 244, 102] : [145, 194, 244, 46];
+      },
+      getLineColor: [0, 0, 0, 80],
+      getLineWidth: 1,
+      viewId: 'pixel-overlay',
+      updateTriggers: {
+        getFillColor: [hoveredTreeIndex]
+      }
+    });
+  }, [polygonData, hoveredTreeIndex]);
+
   const layers = useMemo(() => {
     const all = [...treeLayers];
     // const all = [];
@@ -131,8 +158,9 @@ const useLayers = ({
     // console.log("treeLayers",treeLayers)
     if (genomeInfoLayer) all.push(genomeInfoLayer);
     if (timeGridLayer) all.push(timeGridLayer);
+    // if (polygonLayer) all.push(polygonLayer);
     return all;
-  }, [treeLayers, genomeGridLayer, genomeInfoLayer, timeGridLayer]);
+  }, [treeLayers, genomeGridLayer, genomeInfoLayer, timeGridLayer, polygonLayer]);
 
   return { layers, layerFilter };
 };

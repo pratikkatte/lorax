@@ -6,7 +6,7 @@ import ViewportOverlay from "./components/ViewportOverlay";
 import { useState, useRef, useEffect } from "react";
 import PositionSlider from './components/PositionSlider'
 
-function Lorax({ backend, config, settings, setSettings, project, ucgbMode, statusMessage, setStatusMessage, setVisibleTrees, lineagePaths, highlightedNodes, deckRef, hoveredTreeIndex, setHoveredTreeIndex }) {
+function Lorax({ backend, config, settings, setSettings, project, ucgbMode, statusMessage, setStatusMessage, setVisibleTrees, lineagePaths, highlightedNodes, deckRef, captureRef, hoveredTreeIndex, setHoveredTreeIndex }) {
 
   const { tsconfig } = config;
 
@@ -37,6 +37,7 @@ function Lorax({ backend, config, settings, setSettings, project, ucgbMode, stat
                 view={view}
                 ariaHideApp={false}
                 deckRef={deckRef}
+                captureRef={captureRef}
                 mouseDownIsMinimap={mouseDownIsMinimap}
                 setMouseDownIsMinimap={setMouseDownIsMinimap}
                 settings={settings}

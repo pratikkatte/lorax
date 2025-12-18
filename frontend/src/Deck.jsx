@@ -1,9 +1,10 @@
 /// app.js
-import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useRef, useMemo, useImperativeHandle, forwardRef } from "react";
 import DeckGL from "@deck.gl/react";
 import { View } from '@deck.gl/core';
 
 import useLayers from "./hooks/useLayers";
+import { getSVG } from "./utils/deckglToSvg";
 import { Oval } from 'react-loader-spinner';
 import useRegions from "./hooks/useRegions";
 import LoraxMessage from "./components/loraxMessage";
@@ -73,6 +74,7 @@ function Deck({
   backend,
   view,
   deckRef,
+  captureRef,
   hoveredTreeIndex,
   setHoveredTreeIndex,
   config,
@@ -193,12 +195,35 @@ function Deck({
     highlightedNodes
   });
   const [dummy, setDummy] = useState(null);
+
+  // Expose capture method to parent via ref
+  useImperativeHandle(captureRef, () => ({
+    captureSVG: () => {
+      if (deckRef.current && deckRef.current.deck) {
+        const polygons = dummy?.pointsArray || [];
+        const svg = getSVG(deckRef.current.deck, polygons);
+        if (svg) {
+          const blob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = "lorax-capture.svg";
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+        }
+      }
+    }
+  }), [deckRef, dummy]);
+
   const getLayerPixelPositions = useCallback(
     (deckRef) => {
       if (!deckRef?.current?.deck) return;
       const deck = deckRef.current.deck;
       const { width } = deck;
       const pointsArray = [];
+      const worldUnits = [];
       const pointsGenomePositionsInfo = [];
       const currentVisibleTrees = [];
 
@@ -240,6 +265,7 @@ function Deck({
 
         // console.log("modelMatrix", modelMatrix, b.global_index);
 
+        worldUnits.push()
         pointsArray.push([
           [x0, y1 * 0.1],
           [pixel_s[0], 0],
@@ -273,7 +299,6 @@ function Deck({
   }, [regions, tsconfig, saveViewports.current])
 
   const handleAfterRender = useCallback(() => {
-
 
     const deck = deckRef?.current?.deck;
     if (!deck) return;

@@ -5,9 +5,9 @@ import { MyOrthographicController, setGlobalControllers } from "./modules/viewCo
 import { INITIAL_VIEW_STATE, getPanStep, panLimit } from "./modules/viewStateUtils";
 
 
-const useView = ({ config, valueRef, clickedGenomeInfo}) => {
+const useView = ({ config, valueRef, clickedGenomeInfo }) => {
 
-  const {globalBpPerUnit, tsconfig, genomeLength} = config;
+  const { globalBpPerUnit, tsconfig, genomeLength } = config;
 
   const [zoomAxis, setZoomAxis] = useState("Y");
   const [panDirection, setPanDirection] = useState(null);
@@ -18,34 +18,35 @@ const useView = ({ config, valueRef, clickedGenomeInfo}) => {
   const [isRendered, setIsRendered] = useState(false);
   const [genomicValues, setGenomicValues] = useState(valueRef.current);
 
-// Compute initial state only once genomeLength and globalBpPerUnit are available
-const initialState = useMemo(() => {
-  if (!genomeLength.current || !globalBpPerUnit) return null;
+  // Compute initial state only once genomeLength and globalBpPerUnit are available
+  const initialState = useMemo(() => {
+    if (!genomeLength.current || !globalBpPerUnit) return null;
 
-  const initial_position = Math.floor((genomeLength.current / globalBpPerUnit) / 2);
+    const initial_position = Math.floor((genomeLength.current / globalBpPerUnit) / 2);
 
-  setXzoom(INITIAL_VIEW_STATE['ortho'].zoom[0])
-  setYzoom(INITIAL_VIEW_STATE['ortho'].zoom[1])
-  return {
-    'ortho': {
-      ...INITIAL_VIEW_STATE['ortho'],
-      target: [initial_position, 0],
-    },
-    'genome-positions': {
-      ...INITIAL_VIEW_STATE['genome-positions'],
-      target: [initial_position, 1],
-    },
-    'genome-info': {
-      ...INITIAL_VIEW_STATE['genome-info'],
-      target: [initial_position, 1],
-    },
-    'tree-time': INITIAL_VIEW_STATE['tree-time'],
-  };
+    setXzoom(INITIAL_VIEW_STATE['ortho'].zoom[0])
+    setYzoom(INITIAL_VIEW_STATE['ortho'].zoom[1])
+    return {
+      'ortho': {
+        ...INITIAL_VIEW_STATE['ortho'],
+        target: [initial_position, 0],
+      },
+      'genome-positions': {
+        ...INITIAL_VIEW_STATE['genome-positions'],
+        target: [initial_position, 1],
+      },
+      'genome-info': {
+        ...INITIAL_VIEW_STATE['genome-info'],
+        target: [initial_position, 1],
+      },
+      'tree-time': INITIAL_VIEW_STATE['tree-time'],
+      'pixel-overlay': { target: [0, 0], zoom: 0 }
+    };
 
-}, [genomeLength.current, globalBpPerUnit]);
+  }, [genomeLength.current, globalBpPerUnit]);
 
-// Initialize viewState once from computed initialState
-const [viewState, setViewState] = useState(null);
+  // Initialize viewState once from computed initialState
+  const [viewState, setViewState] = useState(null);
 
   // Set global controllers for MyOrthographicController
   setGlobalControllers(setZoomAxis, setPanDirection);
@@ -55,15 +56,15 @@ const [viewState, setViewState] = useState(null);
   const updateValueRef = useCallback(() => {
 
     if (!viewState) return;
-        // let treeSpacing = 1.03;
+    // let treeSpacing = 1.03;
     let width = decksize.width;
 
     let tzoom = viewState['ortho'].zoom[0];
-    const W_w = width/ (Math.pow(2, tzoom));
+    const W_w = width / (Math.pow(2, tzoom));
 
     let x0 = viewState['genome-positions'].target[0] - (W_w / 2);
     let x1 = viewState['genome-positions'].target[0] + (W_w / 2);
-  
+
     if (globalBpPerUnit) {
       const newValue = [
         Math.max(0, Math.round((x0) * globalBpPerUnit)),
@@ -73,26 +74,26 @@ const [viewState, setViewState] = useState(null);
         xStopZoomRef.current = true;
       } else {
         xStopZoomRef.current = false;
-      }       
+      }
       return newValue;
     }
   }, [globalBpPerUnit, viewState, tsconfig]);
 
   const changeView = useCallback((val) => {
-  
+
     if (!val) return;
-    
+
     if (globalBpPerUnit && decksize && decksize.width) {
 
       let width = decksize.width;
-      
-      let [x0, x1] = [val[0]/globalBpPerUnit, val[1]/globalBpPerUnit];
+
+      let [x0, x1] = [val[0] / globalBpPerUnit, val[1] / globalBpPerUnit];
       let spacing = 0;
       const Z = Math.log2(width / (x1 - x0))
-      const target = ((x1+spacing)+(x0+spacing))/2;
+      const target = ((x1 + spacing) + (x0 + spacing)) / 2;
 
       setXzoom(Z)
-      
+
 
       setViewState((prev) => {
         if (!prev) return prev;
@@ -100,7 +101,7 @@ const [viewState, setViewState] = useState(null);
           ...prev,
           ['ortho']: {
             ...prev['ortho'],
-           'target': [target, prev['ortho'].target[1]],
+            'target': [target, prev['ortho'].target[1]],
             'zoom': [Z, prev['ortho'].zoom[1]],
           },
           ['genome-positions']: {
@@ -115,76 +116,86 @@ const [viewState, setViewState] = useState(null);
           },
         }
       })
-      
+
     }
   }, [globalBpPerUnit, decksize])
 
   useEffect(() => {
 
     if (clickedGenomeInfo) {
-    console.log("clickedGenomeInfo useView", clickedGenomeInfo)
+      console.log("clickedGenomeInfo useView", clickedGenomeInfo)
 
-    changeView([clickedGenomeInfo.s, clickedGenomeInfo.e])
+      changeView([clickedGenomeInfo.s, clickedGenomeInfo.e])
     }
   }, [clickedGenomeInfo])
 
 
   const views = useMemo(() => {
     return [
-        new OrthographicView({
-          x: '5%',
-          y: '6%',
-          height: '80%',
-          width:'95%',
-          id: "ortho",
-          controller: {
-            type: MyOrthographicController,
-            scrollZoom: { smooth: true, zoomAxis: zoomAxis },
-            dragPan:true,
-          },
-          initialViewState: INITIAL_VIEW_STATE.ortho
-        }),
-        new OrthographicView({
-          x: '5%',
-          y: '4%',
-          height: '2%',
-          width: '95%',
-          id: "genome-info",
-          controller:false,
-          initialViewState: INITIAL_VIEW_STATE['genome-info']
-        }),
-        new OrthographicView({
-          x: '5%',
-          y: '1%',
-          height: '3%',
-          width: '95%',
-          id: "genome-positions",
-          controller:false,
-          initialViewState: INITIAL_VIEW_STATE['genome-positions']
-        }),
-        new OrthographicView({
-          x: '2%',
-          y: '6%',
-          height: '80%',
-          width: '3%',
-          id: "tree-time",
-          // controller:false,
-          initialViewState: INITIAL_VIEW_STATE['tree-time']
-        }),
-      ]}, [tsconfig]);
+      new OrthographicView({
+        x: '5%',
+        y: '6%',
+        height: '80%',
+        width: '95%',
+        id: "ortho",
+        controller: {
+          type: MyOrthographicController,
+          scrollZoom: { smooth: true, zoomAxis: zoomAxis },
+          dragPan: true,
+        },
+        initialViewState: INITIAL_VIEW_STATE.ortho
+      }),
+      new OrthographicView({
+        x: '5%',
+        y: '4%',
+        height: '2%',
+        width: '95%',
+        id: "genome-info",
+        controller: false,
+        initialViewState: INITIAL_VIEW_STATE['genome-info']
+      }),
+      new OrthographicView({
+        x: '5%',
+        y: '1%',
+        height: '3%',
+        width: '95%',
+        id: "genome-positions",
+        controller: false,
+        initialViewState: INITIAL_VIEW_STATE['genome-positions']
+      }),
+      new OrthographicView({
+        x: '2%',
+        y: '6%',
+        height: '80%',
+        width: '3%',
+        id: "tree-time",
+        // controller:false,
+        initialViewState: INITIAL_VIEW_STATE['tree-time']
+      }),
+      new OrthographicView({
+        id: "pixel-overlay",
+        x: 0,
+        y: 0,
+        width: '100%',
+        height: '100%',
+        controller: false,
+        initialViewState: { target: [0, 0], zoom: 0 }
+      })
+    ]
+  }, [tsconfig]);
 
   const [mouseXY, setMouseXY] = useState(false);
 
   const debouncedUpdateRef = useMemo(
     () => debounce((newValue) => {
-        valueRef.current = newValue;
-        setGenomicValues(newValue);
-      }, 
+      valueRef.current = newValue;
+      setGenomicValues(newValue);
+    },
       100 // Adjust this delay (in milliseconds) to control frequency
     ),
     []
   );
-  
+
   const lastAppliedConfigRef = useRef(null);
 
   // Effect to apply initial view from config (URL params)
@@ -192,10 +203,10 @@ const [viewState, setViewState] = useState(null);
     if (!tsconfig || !decksize?.width || !viewState) return;
 
     if (tsconfig !== lastAppliedConfigRef.current) {
-        if (tsconfig.value){
-           changeView(tsconfig.value);
-        }
-        lastAppliedConfigRef.current = tsconfig;
+      if (tsconfig.value) {
+        changeView(tsconfig.value);
+      }
+      lastAppliedConfigRef.current = tsconfig;
     }
   }, [tsconfig, decksize?.width, changeView, viewState])
 
@@ -215,21 +226,21 @@ const [viewState, setViewState] = useState(null);
       return {
         ...prev,
         ...initialState
-    };
-  });
-  setIsRendered(true); 
+      };
+    });
+    setIsRendered(true);
   }, [decksize])
 
-  const handleViewStateChange = useCallback(({viewState:newViewState, viewId, oldViewState}) => {
-    if (!viewId || !newViewState ) return;
+  const handleViewStateChange = useCallback(({ viewState: newViewState, viewId, oldViewState }) => {
+    if (!viewId || !newViewState) return;
 
-    
+
     setViewState((prev) => {
       let zoom = [...oldViewState?.zoom];
-      let target = [...oldViewState?.target] || [0,0];
+      let target = [...oldViewState?.target] || [0, 0];
       let panStep = 0;
-      if(panDirection === null) { 
-        if(zoomAxis==='Y'){
+      if (panDirection === null) {
+        if (zoomAxis === 'Y') {
           // zoom[1] = newViewState.zoom[1] <= maxZoom ? newViewState.zoom[1] : maxZoom;
           zoom[1] = newViewState.zoom[1];
           // target[1] = zoom[1] >= maxZoom ? oldViewState.target[1] : newViewState.target[1]; 
@@ -237,44 +248,44 @@ const [viewState, setViewState] = useState(null);
           zoom[0] = oldViewState.zoom[0];
           target[0] = oldViewState.target[0];
         }
-        else if (zoomAxis=='X') {
+        else if (zoomAxis == 'X') {
           if (xStopZoomRef.current) {
             zoom[0] = oldViewState.zoom[0];
           } else {
-          // zoom[0] = newViewState.zoom[0] <= maxZoom ? newViewState.zoom[0] : maxZoom; 
-          zoom[0] = newViewState.zoom[0];
-        }
-        // target[0] = zoom[0] >= maxZoom ? oldViewState.target[0] : newViewState.target[0]; 
-        target[0] = newViewState.target[0];
+            // zoom[0] = newViewState.zoom[0] <= maxZoom ? newViewState.zoom[0] : maxZoom; 
+            zoom[0] = newViewState.zoom[0];
+          }
+          // target[0] = zoom[0] >= maxZoom ? oldViewState.target[0] : newViewState.target[0]; 
+          target[0] = newViewState.target[0];
           zoom[1] = oldViewState.zoom[1];
           target[1] = oldViewState.target[1];
         }
-      } else if (panDirection === "L"){
-        panStep = getPanStep({zoomX: zoom[0], baseStep: 8, sensitivity: zoom[0] >= 8 || zoom[0] < 0 ? 0.9 : 0.7})
+      } else if (panDirection === "L") {
+        panStep = getPanStep({ zoomX: zoom[0], baseStep: 8, sensitivity: zoom[0] >= 8 || zoom[0] < 0 ? 0.9 : 0.7 })
         target[0] = target[0] - panStep;
       }
 
-      else if (panDirection === "R"){
-        panStep = getPanStep({zoomX: zoom[0], baseStep: 8, sensitivity: zoom[0] >= 8 || zoom[0] < 0 ? 0.9 : 0.7})
-         target[0] = target[0] + panStep;
+      else if (panDirection === "R") {
+        panStep = getPanStep({ zoomX: zoom[0], baseStep: 8, sensitivity: zoom[0] >= 8 || zoom[0] < 0 ? 0.9 : 0.7 })
+        target[0] = target[0] + panStep;
       }
-      
+
       else {
         zoom = newViewState.zoom
         target = [newViewState.target[0], oldViewState.target[1]]
       }
 
-      if (target[0] < 0){
+      if (target[0] < 0) {
         target = [...oldViewState.target];
       }
-      if (target[0] > genomeLength.current/globalBpPerUnit){
+      if (target[0] > genomeLength.current / globalBpPerUnit) {
         target = [...oldViewState.target];
       }
 
       if (target.length > 0 && oldViewState.target.length > 0) {
-        target = panLimit(target,[...oldViewState.target], genomeLength.current, globalBpPerUnit);
+        target = panLimit(target, [...oldViewState.target], genomeLength.current, globalBpPerUnit);
       }
-      const W_w = newViewState.width/ (Math.pow(2, zoom[0]));
+      const W_w = newViewState.width / (Math.pow(2, zoom[0]));
 
       let x0 = target[0] - W_w / 2;
       let x1 = target[0] + W_w / 2;
@@ -290,7 +301,7 @@ const [viewState, setViewState] = useState(null);
       }
       if (xstop) {
         zoom[0] = oldViewState.zoom[0];
-      } 
+      }
 
       const newViewStates = {
         ...prev,
@@ -306,28 +317,28 @@ const [viewState, setViewState] = useState(null);
       if (prev['genome-positions']) {
         newViewStates['genome-positions'] = {
           ...prev['genome-positions'],
-            target: [target[0], prev['genome-positions'].target?.[1] || 0],
-          zoom: [zoom[0], prev['genome-positions'].zoom?.[1]]  
+          target: [target[0], prev['genome-positions'].target?.[1] || 0],
+          zoom: [zoom[0], prev['genome-positions'].zoom?.[1]]
         };
       }
       if (prev['genome-info']) {
         newViewStates['genome-info'] = {
           ...prev['genome-info'],
           target: [target[0], prev['genome-info'].target?.[1] || 0],
-          zoom: [zoom[0], prev['genome-info'].zoom?.[1]]  
+          zoom: [zoom[0], prev['genome-info'].zoom?.[1]]
         };
       }
       if (prev['tree-time']) {
         newViewStates['tree-time'] = {
           ...prev['tree-time'],
           target: [prev['tree-time'].target?.[0], target[1]],
-          zoom: [prev['tree-time'].zoom?.[1], zoom[1]]  
+          zoom: [prev['tree-time'].zoom?.[1], zoom[1]]
         };
       }
 
       return newViewStates;
     });
-    
+
   }, [zoomAxis, panDirection, tsconfig, xStopZoomRef, decksize, genomicValues])
 
   const panInterval = useRef(null);
@@ -335,67 +346,67 @@ const [viewState, setViewState] = useState(null);
   const viewReset = useCallback(() => {
     setViewState(prev => (
       {
-      ...prev,
-      'ortho': {
-        ...prev['ortho'],
-        zoom: [prev['ortho'].zoom[0], INITIAL_VIEW_STATE['ortho'].zoom[1]],
-        target: [prev['ortho'].target[0], INITIAL_VIEW_STATE['ortho'].target[1]]
-      },
-      'genome-positions': {
-        ...prev['genome-positions'],
-        zoom: [prev['genome-positions'].zoom[0], INITIAL_VIEW_STATE['genome-positions'].zoom[1]],
-        target: [prev['genome-positions'].target[0], INITIAL_VIEW_STATE['genome-positions'].target[1]]
-      },
-      'tree-time': {
-        ...prev['tree-time'],
-        zoom: [prev['tree-time'].zoom[0], INITIAL_VIEW_STATE['tree-time'].zoom[1]],
-        target: [prev['tree-time'].target[0], INITIAL_VIEW_STATE['tree-time'].target[1]]
-      },
-      'genome-info': {
-        ...prev['genome-info'],
-        zoom: [prev['genome-info'].zoom[0], INITIAL_VIEW_STATE['genome-info'].zoom[1]],
+        ...prev,
+        'ortho': {
+          ...prev['ortho'],
+          zoom: [prev['ortho'].zoom[0], INITIAL_VIEW_STATE['ortho'].zoom[1]],
+          target: [prev['ortho'].target[0], INITIAL_VIEW_STATE['ortho'].target[1]]
+        },
+        'genome-positions': {
+          ...prev['genome-positions'],
+          zoom: [prev['genome-positions'].zoom[0], INITIAL_VIEW_STATE['genome-positions'].zoom[1]],
+          target: [prev['genome-positions'].target[0], INITIAL_VIEW_STATE['genome-positions'].target[1]]
+        },
+        'tree-time': {
+          ...prev['tree-time'],
+          zoom: [prev['tree-time'].zoom[0], INITIAL_VIEW_STATE['tree-time'].zoom[1]],
+          target: [prev['tree-time'].target[0], INITIAL_VIEW_STATE['tree-time'].target[1]]
+        },
+        'genome-info': {
+          ...prev['genome-info'],
+          zoom: [prev['genome-info'].zoom[0], INITIAL_VIEW_STATE['genome-info'].zoom[1]],
 
-        target: [prev['genome-info'].target[0], INITIAL_VIEW_STATE['genome-info'].target[1]]
+          target: [prev['genome-info'].target[0], INITIAL_VIEW_STATE['genome-info'].target[1]]
+        }
       }
-    }
-  ));
+    ));
 
-  setYzoom(INITIAL_VIEW_STATE['ortho'].zoom[1])
-  
+    setYzoom(INITIAL_VIEW_STATE['ortho'].zoom[1])
+
   }, [viewState]);
 
-const startPan = useCallback((direction) => {
-  if (panInterval.current) return;
-  const stepDir = direction === 'L' ? -1 : 1;
-  panInterval.current = setInterval(() => {
-    setViewState(prev => {
-      const zoom = prev['ortho'].zoom[0];
-      const panStep = getPanStep({zoomX: zoom, baseStep: 8, sensitivity: zoom >= 8 || zoom < 0 ? 0.9 : 0.7})
-      const delta = panStep * stepDir;
-      let new_target = [...prev['ortho'].target];
-      new_target[0] += delta;
-      new_target = panLimit(new_target, prev['ortho'].target, genomeLength.current, globalBpPerUnit);
-      
-      return {
-        ...prev,
-        ['ortho']: { ...prev['ortho'], target: new_target },
-        ['genome-positions']: {
-          ...prev['genome-positions'],
-          target: [new_target[0], prev['genome-positions'].target[1]],
-        },
-        ['genome-info']: {
-          ...prev['genome-info'],
-          target: [new_target[0], prev['genome-info'].target[1]],
-        },
-      };
-    });
-  }, 16); // ~60 FPS
-}, []);
+  const startPan = useCallback((direction) => {
+    if (panInterval.current) return;
+    const stepDir = direction === 'L' ? -1 : 1;
+    panInterval.current = setInterval(() => {
+      setViewState(prev => {
+        const zoom = prev['ortho'].zoom[0];
+        const panStep = getPanStep({ zoomX: zoom, baseStep: 8, sensitivity: zoom >= 8 || zoom < 0 ? 0.9 : 0.7 })
+        const delta = panStep * stepDir;
+        let new_target = [...prev['ortho'].target];
+        new_target[0] += delta;
+        new_target = panLimit(new_target, prev['ortho'].target, genomeLength.current, globalBpPerUnit);
 
-const stopPan = useCallback(() => {
-  clearInterval(panInterval.current);
-  panInterval.current = null;
-}, []);
+        return {
+          ...prev,
+          ['ortho']: { ...prev['ortho'], target: new_target },
+          ['genome-positions']: {
+            ...prev['genome-positions'],
+            target: [new_target[0], prev['genome-positions'].target[1]],
+          },
+          ['genome-info']: {
+            ...prev['genome-info'],
+            target: [new_target[0], prev['genome-info'].target[1]],
+          },
+        };
+      });
+    }, 16); // ~60 FPS
+  }, []);
+
+  const stopPan = useCallback(() => {
+    clearInterval(panInterval.current);
+    panInterval.current = null;
+  }, []);
 
   const output = useMemo(() => {
     return {
@@ -428,16 +439,16 @@ const stopPan = useCallback(() => {
     setMouseXY,
     mouseXY,
     panDirection,
-   handleViewStateChange,
-   changeView,
-   startPan,
-   stopPan,
-   decksize,
-   setDecksize,
-   viewReset,
-   genomicValues,
-   yzoom,
-   setYzoom
+    handleViewStateChange,
+    changeView,
+    startPan,
+    stopPan,
+    decksize,
+    setDecksize,
+    viewReset,
+    genomicValues,
+    yzoom,
+    setYzoom
   ]);
 
   return output;

@@ -56,19 +56,19 @@ export class GenomeInfoLayer extends CompositeLayer {
       zOffset: -1,
     }),
 
-    new PolygonLayer({
-      id: `${this.props.id}-polygons`,
-      data: visbile_data,
-      getPolygon: d => [[d.s/globalBpPerUnit, y0], [d.e/globalBpPerUnit, y0], [d.e/globalBpPerUnit, y1], [d.s/globalBpPerUnit, y1]],
-      getFillColor: d => hoveredGenomeInfo === d.global_index ? [0, 0, 0, 80] : [255, 255, 255,50],
-      getLineColor: [255, 255, 255,0],
-      viewId,
-      pickable: true,
-      zOffset: 5,
-      updateTriggers: {
-        getFillColor: [hoveredGenomeInfo],
-      },
-    })
+    // new PolygonLayer({
+    //   id: `${this.props.id}-polygons`,
+    //   data: visbile_data,
+    //   getPolygon: d => [[d.s/globalBpPerUnit, y0], [d.e/globalBpPerUnit, y0], [d.e/globalBpPerUnit, y1], [d.s/globalBpPerUnit, y1]],
+    //   getFillColor: d => hoveredGenomeInfo === d.global_index ? [0, 0, 0, 80] : [255, 255, 255,50],
+    //   getLineColor: [255, 255, 255,0],
+    //   viewId,
+    //   pickable: true,
+    //   zOffset: 5,
+    //   updateTriggers: {
+    //     getFillColor: [hoveredGenomeInfo],
+    //   },
+    // })
   ].filter(Boolean);  
 }
 }
