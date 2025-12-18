@@ -125,30 +125,6 @@ const useLayers = ({
     return newLayers;
   }, [bins, globalBpPerUnit, hoveredTreeIndex, populationFilter, sampleDetails, metadataColors, treeColors, searchTerm, searchTags, lineagePaths, highlightedNodes]);
 
-  const polygonLayer = useMemo(() => {
-    if (!polygonData || polygonData.length === 0) return null;
-
-    return new PolygonLayer({
-      id: 'polygon-layer',
-      data: polygonData,
-      pickable: true,
-      stroked: true,
-      filled: true,
-      wireframe: true,
-      lineWidthMinPixels: 1,
-      getPolygon: d => d.polygon,
-      getFillColor: d => {
-        const isHovered = (hoveredTreeIndex && (hoveredTreeIndex === d.treeIndex || hoveredTreeIndex?.tree_index === d.treeIndex));
-        return isHovered ? [145, 194, 244, 102] : [145, 194, 244, 46];
-      },
-      getLineColor: [0, 0, 0, 80],
-      getLineWidth: 1,
-      viewId: 'pixel-overlay',
-      updateTriggers: {
-        getFillColor: [hoveredTreeIndex]
-      }
-    });
-  }, [polygonData, hoveredTreeIndex]);
 
   const layers = useMemo(() => {
     const all = [...treeLayers];
@@ -158,9 +134,8 @@ const useLayers = ({
     // console.log("treeLayers",treeLayers)
     if (genomeInfoLayer) all.push(genomeInfoLayer);
     if (timeGridLayer) all.push(timeGridLayer);
-    // if (polygonLayer) all.push(polygonLayer);
     return all;
-  }, [treeLayers, genomeGridLayer, genomeInfoLayer, timeGridLayer, polygonLayer]);
+  }, [treeLayers, genomeGridLayer, genomeInfoLayer, timeGridLayer]);
 
   return { layers, layerFilter };
 };

@@ -24,50 +24,54 @@ const StatusMessage = React.memo(({ status, message }) => (
 
 
 
-const GenomeVisualization = React.memo(({ pointsArray, pointsGenomePositionsInfo, setHoveredPolygonIndex, hoveredTreeIndex, setHoveredTreeIndex }) => (
-  <svg
-    style={{
-      position: 'absolute',
-      top: 0,
-      left: 0,
-      width: '100%',
-      height: '100%',
-      pointerEvents: 'none',
-    }}
-  >
-    {pointsArray?.map((points, idx) => {
-      const treeIndex = pointsGenomePositionsInfo?.[idx];
-      const isHovered = (hoveredTreeIndex && (hoveredTreeIndex === treeIndex || hoveredTreeIndex?.tree_index === treeIndex));
+const GenomeVisualization = React.memo(({ pointsArray, pointsGenomePositionsInfo, setHoveredPolygonIndex, hoveredTreeIndex, setHoveredTreeIndex, polygonColor }) => {
+  // Convert RGBA array to CSS rgba string
+  const baseColor = polygonColor || [145, 194, 244, 46];
+  const normalFill = `rgba(${baseColor[0]}, ${baseColor[1]}, ${baseColor[2]}, ${baseColor[3] / 255})`;
+  const hoverFill = `rgba(${baseColor[0]}, ${baseColor[1]}, ${baseColor[2]}, ${Math.min(baseColor[3] * 2, 255) / 255})`;
 
-      return (
-        <React.Fragment key={idx}>
-          <polygon
-            points={points.map(([x, y]) => `${x},${y}`).join(' ')}
-            fill={isHovered ? 'rgba(145, 194, 244, 0.4)' : "rgba(145, 194, 244, 0.18)"}
-            // stroke="rgba(0,0,0,0.3)"
-            style={{
-              cursor: 'pointer',
-              pointerEvents: 'auto',
-              zIndex: -1,
-              position: 'relative',
-            }}
+  return (
+    <svg
+      style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: '100%',
+        pointerEvents: 'none',
+      }}
+    >
+      {pointsArray?.map((points, idx) => {
+        const treeIndex = pointsGenomePositionsInfo?.[idx];
+        const isHovered = (hoveredTreeIndex && (hoveredTreeIndex === treeIndex || hoveredTreeIndex?.tree_index === treeIndex));
 
-            onMouseEnter={event => {
-              event.target.setAttribute('fill', 'rgba(145, 194, 244, 0.4)');
-              setHoveredPolygonIndex(treeIndex);
-              // setHoveredTreeIndex(treeIndex);
-            }}
-            onMouseLeave={event => {
-              event.target.setAttribute('fill', 'rgba(145, 194, 244, 0.18)');
-              setHoveredPolygonIndex(null);
-              // setHoveredTreeIndex(null);
-            }}
-          />
-        </React.Fragment>
-      )
-    })}
-  </svg>
-));
+        return (
+          <React.Fragment key={idx}>
+            <polygon
+              points={points.map(([x, y]) => `${x},${y}`).join(' ')}
+              fill={isHovered ? hoverFill : normalFill}
+              style={{
+                cursor: 'pointer',
+                pointerEvents: 'auto',
+                zIndex: -1,
+                position: 'relative',
+              }}
+
+              onMouseEnter={event => {
+                event.target.setAttribute('fill', hoverFill);
+                setHoveredPolygonIndex(treeIndex);
+              }}
+              onMouseLeave={event => {
+                event.target.setAttribute('fill', normalFill);
+                setHoveredPolygonIndex(null);
+              }}
+            />
+          </React.Fragment>
+        )
+      })}
+    </svg>
+  );
+});
 
 
 function Deck({
@@ -78,6 +82,7 @@ function Deck({
   hoveredTreeIndex,
   setHoveredTreeIndex,
   config,
+  settings,
   valueRef,
   statusMessage,
   setStatusMessage,
@@ -86,6 +91,8 @@ function Deck({
   lineagePaths,
   highlightedNodes
 }) {
+  // Get polygon color from settings
+  const polygonColor = settings?.polygonColor || [145, 194, 244, 46];
   const { tsconfig, globalBpPerUnit, populations, populationFilter, sampleNames, sampleDetails, metadataColors, treeColors, searchTerm, searchTags } = config;
 
   // Debug log
@@ -201,7 +208,7 @@ function Deck({
     captureSVG: () => {
       if (deckRef.current && deckRef.current.deck) {
         const polygons = dummy?.pointsArray || [];
-        const svg = getSVG(deckRef.current.deck, polygons);
+        const svg = getSVG(deckRef.current.deck, polygons, polygonColor);
         if (svg) {
           const blob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" });
           const url = URL.createObjectURL(blob);
@@ -215,7 +222,7 @@ function Deck({
         }
       }
     }
-  }), [deckRef, dummy]);
+  }), [deckRef, dummy, polygonColor]);
 
   const getLayerPixelPositions = useCallback(
     (deckRef) => {
@@ -339,7 +346,7 @@ function Deck({
             <View id="ortho">
               {/* {no_data && <LoadingSpinner />} */}
               {dummy && dummy.pointsArray.length > 0 && (
-                <GenomeVisualization pointsArray={dummy.pointsArray} pointsGenomePositionsInfo={dummy.pointsGenomePositionsInfo} setHoveredPolygonIndex={setHoveredPolygonIndex} hoveredTreeIndex={hoveredTreeIndex} />
+                <GenomeVisualization pointsArray={dummy.pointsArray} pointsGenomePositionsInfo={dummy.pointsGenomePositionsInfo} setHoveredPolygonIndex={setHoveredPolygonIndex} hoveredTreeIndex={hoveredTreeIndex} polygonColor={polygonColor} />
               )}
               {statusMessage?.status === "loading" && <LoraxMessage status={statusMessage.status} message={statusMessage.message} />}
 

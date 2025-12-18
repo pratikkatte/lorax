@@ -40,7 +40,6 @@ const useView = ({ config, valueRef, clickedGenomeInfo }) => {
         target: [initial_position, 1],
       },
       'tree-time': INITIAL_VIEW_STATE['tree-time'],
-      'pixel-overlay': { target: [0, 0], zoom: 0 }
     };
 
   }, [genomeLength.current, globalBpPerUnit]);
@@ -171,15 +170,6 @@ const useView = ({ config, valueRef, clickedGenomeInfo }) => {
         id: "tree-time",
         // controller:false,
         initialViewState: INITIAL_VIEW_STATE['tree-time']
-      }),
-      new OrthographicView({
-        id: "pixel-overlay",
-        x: 0,
-        y: 0,
-        width: '100%',
-        height: '100%',
-        controller: false,
-        initialViewState: { target: [0, 0], zoom: 0 }
       })
     ]
   }, [tsconfig]);

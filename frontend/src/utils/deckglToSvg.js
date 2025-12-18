@@ -3,9 +3,10 @@
  * 
  * @param {object} deck - The DeckGL instance (deck.current.deck)
  * @param {Array} additionalPolygons - Optional pixel-space polygons to render
+ * @param {Array} polygonColor - Optional RGBA color array [R, G, B, A] (0-255 range)
  * @returns {string} SVG content
  */
-export const getSVG = (deck, additionalPolygons = []) => {
+export const getSVG = (deck, additionalPolygons = [], polygonColor = [145, 194, 244, 46]) => {
     const layerManager = deck.layerManager;
     const layers = layerManager.getLayers();
     const viewports = deck.getViewports();
@@ -26,6 +27,9 @@ export const getSVG = (deck, additionalPolygons = []) => {
     clipPathDefs += '</defs>';
     svgContent += clipPathDefs;
 
+    // Convert polygon color to CSS rgba
+    const fillColor = `rgba(${polygonColor[0]}, ${polygonColor[1]}, ${polygonColor[2]}, ${polygonColor[3] / 255})`;
+
     // Render additional polygons (Background layer) - clipped to ortho viewport
     if (additionalPolygons && additionalPolygons.length > 0 && viewportMap['ortho']) {
         const orthoVP = viewportMap['ortho'];
@@ -34,7 +38,7 @@ export const getSVG = (deck, additionalPolygons = []) => {
             if (!Array.isArray(polyPoints) || polyPoints.length === 0) continue;
             // Add ortho viewport offset to polygon coordinates
             const pointsStr = polyPoints.map(p => `${p[0] + orthoVP.x},${p[1] + orthoVP.y}`).join(' ');
-            svgContent += `<polygon points="${pointsStr}" fill="rgba(145, 194, 244, 0.18)" stroke="none"/>`;
+            svgContent += `<polygon points="${pointsStr}" fill="${fillColor}" stroke="none"/>`;
         }
         svgContent += '</g>';
     }
