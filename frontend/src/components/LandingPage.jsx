@@ -43,8 +43,8 @@ export default function LandingPage({
               <img src="/logo.png" alt="Lorax Logo" className="w-full h-full object-contain" />
             </div>
             <div className="leading-tight">
-              <h1 className="font-display font-bold text-xl tracking-tight text-slate-900">Lorax</h1>
-              <p className="text-[11px] font-medium text-slate-500 uppercase tracking-wider">Genome Analysis</p>
+              <h1 className="font-display font-bold text-xl tracking-tight text-slate-900">LORAX</h1>
+              {/* <p className="text-[11px] font-medium text-slate-500 uppercase tracking-wider">ARG Analysis</p> */}
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -75,10 +75,10 @@ export default function LandingPage({
           <div className="max-w-xl">
             <div className="inline-flex items-center gap-2 rounded-full border border-emerald-100 bg-emerald-50/50 px-3 py-1 text-xs font-medium text-emerald-800 backdrop-blur-sm mb-6">
               <span className="flex h-2 w-2 rounded-full bg-emerald-500"></span>
-              Fast, Local ARG Visualization
+              ARG Visualization at scale
             </div>
             <h2 className="font-display text-5xl sm:text-6xl font-extrabold tracking-tight leading-[1.05] text-slate-900 mb-6">
-              Genome is a forest, <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-600 to-teal-500">Lorax speaks for every tree.</span>
+              Genome is a forest, <span className="text-transparent bg-clip-text bg-gradient-to-r from-green-600 to-green-500">Lorax speaks for every tree.</span>
             </h2>
             <p className="text-slate-600 text-lg leading-relaxed mb-8">
               Lorax enables smooth, interactive exploration of local genealogies and ancestral recombination graphs directly from tree-sequence data.
@@ -91,9 +91,12 @@ export default function LandingPage({
                 disabled={upload.isUploading}
               >
                 <BsCloudUpload className="text-lg group-hover:scale-110 transition-transform" />
-                {upload.isUploading ? upload.uploadStatus : "Load .trees File"}
+                {upload.isUploading ? upload.uploadStatus : "Load File"}
               </button>
             </div>
+            <p className="mt-2 text-xs text-slate-400 font-medium uppercase tracking-wide">
+              Supports .trees, .tszip and csv files
+            </p>
 
             {upload.selectedFileName && (
               <div className="mt-4 flex items-center gap-2 text-sm text-emerald-700 bg-emerald-50/50 p-2 rounded-lg border border-emerald-100 inline-block">
@@ -106,34 +109,20 @@ export default function LandingPage({
             <input {...upload.getInputProps()} />
           </div>
 
-          {/* Dropzone / Illustration */}
-          <div className="relative group">
-            <div className="absolute -inset-1 bg-gradient-to-r from-emerald-500 to-teal-500 rounded-[2rem] blur opacity-25 group-hover:opacity-40 transition duration-1000 group-hover:duration-200"></div>
-            <div
-              className={[
-                "relative rounded-3xl border border-slate-200 bg-white/80 backdrop-blur-xl p-8 transition-all duration-300",
-                upload.dragOver ? "border-emerald-500 ring-4 ring-emerald-500/10" : "hover:border-emerald-300/50",
-              ].join(" ")}
-              {...upload.getDropzoneProps()}
-            >
-              <div className="pointer-events-none select-none overflow-hidden rounded-2xl border border-slate-100 bg-slate-50/50">
-                <ARGIllustration />
-              </div>
-
-              <div className="absolute inset-0 grid place-items-center">
-                <div className={`transition-all duration-300 transform ${upload.dragOver ? 'scale-110' : 'scale-100'}`}>
-                  <div className="rounded-2xl bg-white/90 backdrop-blur shadow-xl border border-white/20 px-6 py-4 text-sm font-medium text-slate-600 flex flex-col items-center gap-2">
-                    <div className="p-2 bg-emerald-100 rounded-full text-emerald-600">
-                      <BsCloudUpload size={20} />
-                    </div>
-                    {upload.isUploading ? upload.uploadStatus : "Drop file to analyze"}
-                  </div>
+          {/* Lorax Logo */}
+          <div className="relative group" {...upload.getDropzoneProps()}>
+            <div className="flex flex-col items-center justify-center p-6 bg-white rounded-3xl shadow-sm">
+              <img
+                src="/lorax-logo.png"
+                alt="Lorax - Genome Analysis"
+                className="w-[28rem] h-auto object-contain"
+              />
+              {upload.isUploading && (
+                <div className="mt-4 text-sm font-medium text-emerald-600 bg-emerald-50 px-4 py-2 rounded-lg">
+                  {upload.uploadStatus}
                 </div>
-              </div>
+              )}
             </div>
-            <p className="mt-4 text-center text-xs text-slate-400 font-medium uppercase tracking-wide">
-              Supports tskit tree sequences (.trees)
-            </p>
           </div>
         </section>
 

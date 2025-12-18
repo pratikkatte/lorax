@@ -89,7 +89,7 @@ const Info = ({ backend, gettingDetails, setGettingDetails, setShowInfo, config,
     <div className="w-full h-full bg-slate-50 flex flex-col font-sans">
       <div className="w-full p-4 border-b border-slate-200 bg-white">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="font-display font-bold text-xl text-slate-800">Inspection</h2>
+          {/* <h2 className="font-display font-bold text-xl text-slate-800">Inspection</h2> */}
           <button
             onClick={() => setShowInfo(false)}
             className="text-slate-400 hover:text-slate-600 transition-colors"
