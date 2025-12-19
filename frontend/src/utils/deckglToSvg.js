@@ -366,6 +366,49 @@ export const getSVG = (deck, additionalPolygons = [], polygonColor = [145, 194, 
                     break;
                 }
 
+                case 'IconLayer': {
+                    const { data } = layer.props;
+                    let count = 0;
+
+                    for (const d of data) {
+                        const pos = getAccessor(layer, 'getPosition', d);
+                        if (!pos) continue;
+
+                        const m = layer.props.modelMatrix;
+                        let worldPos = pos;
+                        if (m) {
+                            const x = pos[0], y = pos[1], z = pos[2] || 0;
+                            worldPos = [
+                                x * m[0] + y * m[4] + z * m[8] + m[12],
+                                x * m[1] + y * m[5] + z * m[9] + m[13],
+                            ];
+                        }
+
+                        if (!Number.isFinite(worldPos[0]) || !Number.isFinite(worldPos[1])) continue;
+
+                        const [localPx, localPy] = viewport.project(worldPos);
+                        const px = localPx + vpX;
+                        const py = localPy + vpY;
+
+                        const color = normalizeColor(getAccessor(layer, 'getColor', d, [255, 0, 0, 255]));
+                        const size = getAccessor(layer, 'getSize', d, 12);
+
+                        // Render icon as an X marker (matching the /X.png icon atlas used for mutations)
+                        // The X is drawn as two crossed lines within a bounding box of 'size' pixels
+                        const halfSize = size / 2;
+                        const strokeWidth = Math.max(1, size / 6);
+
+                        svgContent += `<g transform="translate(${px}, ${py})">`;
+                        svgContent += `<line x1="${-halfSize}" y1="${-halfSize}" x2="${halfSize}" y2="${halfSize}" stroke="${color}" stroke-width="${strokeWidth}" stroke-linecap="round"/>`;
+                        svgContent += `<line x1="${halfSize}" y1="${-halfSize}" x2="${-halfSize}" y2="${halfSize}" stroke="${color}" stroke-width="${strokeWidth}" stroke-linecap="round"/>`;
+                        svgContent += `</g>`;
+
+                        count++;
+                    }
+                    console.log(`Exported ${count}/${data.length} icons from ${id}`);
+                    break;
+                }
+
                 default:
                 // Unsupported layer type
             }
