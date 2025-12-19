@@ -77,8 +77,9 @@ export default function LandingPage({
               <span className="flex h-2 w-2 rounded-full bg-emerald-500"></span>
               ARG Visualization at scale
             </div>
-            <h2 className="font-display text-5xl sm:text-6xl font-extrabold tracking-tight leading-[1.05] text-slate-900 mb-6">
-              Genome is a forest, <span className="text-transparent bg-clip-text bg-gradient-to-r from-green-600 to-green-500">Lorax speaks for every tree.</span>
+            <h2 className="font-display text-4xl sm:text-5xl font-extrabold tracking-tight leading-[1.1] text-slate-900 mb-6">
+              The Genome is a forest.<br />
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-green-600 to-green-500">The Lorax speaks for every tree.</span>
             </h2>
             <p className="text-slate-600 text-lg leading-relaxed mb-8">
               Lorax enables smooth, interactive exploration of local genealogies and ancestral recombination graphs directly from tree-sequence data.

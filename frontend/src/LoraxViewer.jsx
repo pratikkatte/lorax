@@ -81,6 +81,11 @@ export default function LoraxViewer({ backend, config, settings, setSettings, pr
       }
 
 
+      // If lineages are disabled, clear lineage paths immediately
+      if (!showLineages) {
+        setLineagePaths({});
+      }
+
       // Combined search
       if (sampleNames.length > 0) { // Check sampleNames instead of hasSearchTerm to capture mapped tags
 
@@ -100,19 +105,43 @@ export default function LoraxViewer({ backend, config, settings, setSettings, pr
 
         backend.search(config.searchTerm, sampleNames, { showLineages, sampleColors }).then((results) => {
           if (results) {
-            setLineagePaths(showLineages ? (results.lineage || {}) : {});
+            // Only set lineage paths if showLineages is still enabled
+            if (showLineages) {
+              setLineagePaths(results.lineage || {});
+            }
             setHighlightedNodes(results.highlights || {});
           } else {
-            setLineagePaths({});
+            if (showLineages) {
+              setLineagePaths({});
+            }
             setHighlightedNodes({});
           }
         });
       } else {
+        // No search terms - clear all search-related data
         setLineagePaths({});
         setHighlightedNodes({});
       }
     }
   }, [config.searchTerm, config.searchTags, config.populationFilter?.colorBy, config.sampleDetails, backend.isConnected, backend, visibleTrees, settings, statusMessage?.status]);
+
+  // Separate effect to immediately clear data when lineage is disabled or no search, independent of search timing
+  useEffect(() => {
+    const showLineages = settings && settings.display_lineage_paths;
+    const hasSearchTerm = config.searchTerm && config.searchTerm.trim() !== "";
+    const hasSearchTags = config.searchTags && config.searchTags.length > 0;
+
+    // Immediately clear lineage paths if the feature is disabled
+    if (!showLineages) {
+      setLineagePaths({});
+    }
+
+    // Clear highlighted nodes if there's no active search
+    if (!hasSearchTerm && !hasSearchTags) {
+      setHighlightedNodes({});
+      setLineagePaths({});
+    }
+  }, [settings?.display_lineage_paths, config.searchTerm, config.searchTags]);
 
   useEffect(() => {
     const qp = {
