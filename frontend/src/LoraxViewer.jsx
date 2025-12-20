@@ -30,7 +30,6 @@ export default function LoraxViewer({ backend, config, settings, setSettings, pr
 
   const deckRef = useRef();
   const captureRef = useRef();
-  const changeViewRef = useRef(null);
 
   // SVG capture callback - uses captureRef exposed by Deck component
   const handleScreenshot = useCallback(() => {
@@ -263,12 +262,12 @@ export default function LoraxViewer({ backend, config, settings, setSettings, pr
           {statusMessage?.status === "file-load" && <LoraxMessage status={statusMessage.status} message={statusMessage.message} />}
           <div className="w-full h-full relative rounded-r-2xl overflow-hidden shadow-2xl border-r border-slate-200 bg-white">
 
-            <Lorax backend={backend} config={config} settings={settings} setSettings={setSettings} project={project} ucgbMode={ucgbMode} statusMessage={statusMessage} setStatusMessage={setStatusMessage} setVisibleTrees={setVisibleTrees} lineagePaths={lineagePaths} highlightedNodes={highlightedNodes} deckRef={deckRef} captureRef={captureRef} hoveredTreeIndex={hoveredTreeIndex} setHoveredTreeIndex={setHoveredTreeIndex} changeViewRef={changeViewRef} />
+            <Lorax backend={backend} config={config} settings={settings} setSettings={setSettings} project={project} ucgbMode={ucgbMode} statusMessage={statusMessage} setStatusMessage={setStatusMessage} setVisibleTrees={setVisibleTrees} lineagePaths={lineagePaths} highlightedNodes={highlightedNodes} deckRef={deckRef} captureRef={captureRef} hoveredTreeIndex={hoveredTreeIndex} setHoveredTreeIndex={setHoveredTreeIndex} />
           </div>
         </div>
 
         <div className={`fixed top-0 right-8 h-full bg-white border-l border-slate-200 shadow-xl transition-transform duration-300 ease-in-out z-50 ${showInfo ? 'translate-x-0 w-[25%]' : 'translate-x-full w-[25%] hidden'}`}>
-          <Info backend={backend} gettingDetails={gettingDetails} setGettingDetails={setGettingDetails} setShowInfo={setShowInfo} config={config} setConfig={setConfig} selectedFileName={selectedFileName} setSelectedFileName={setSelectedFileName} visibleTrees={visibleTrees} settings={settings} setSettings={setSettings} hoveredTreeIndex={hoveredTreeIndex} setHoveredTreeIndex={setHoveredTreeIndex} changeViewRef={changeViewRef} />
+          <Info backend={backend} gettingDetails={gettingDetails} setGettingDetails={setGettingDetails} setShowInfo={setShowInfo} config={config} setConfig={setConfig} selectedFileName={selectedFileName} setSelectedFileName={setSelectedFileName} visibleTrees={visibleTrees} settings={settings} setSettings={setSettings} hoveredTreeIndex={hoveredTreeIndex} setHoveredTreeIndex={setHoveredTreeIndex} />
         </div>
 
         <div className={`fixed top-0 right-8 h-full bg-white border-l border-slate-200 shadow-xl transition-transform duration-300 ease-in-out z-50 ${showSettings ? 'translate-x-0 w-[25%]' : 'translate-x-full w-[25%] hidden'}`}>

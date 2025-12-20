@@ -4,7 +4,7 @@ import InfoMetadata from "./info/InfoMetadata";
 import InfoFilter from "./info/InfoFilter";
 import InfoMutations from "./info/InfoMutations";
 
-const Info = ({ backend, gettingDetails, setGettingDetails, setShowInfo, config, setConfig, selectedFileName, setSelectedFileName, visibleTrees, settings, setSettings, hoveredTreeIndex, setHoveredTreeIndex, changeViewRef }) => {
+const Info = ({ backend, gettingDetails, setGettingDetails, setShowInfo, config, setConfig, selectedFileName, setSelectedFileName, visibleTrees, settings, setSettings, hoveredTreeIndex, setHoveredTreeIndex }) => {
 
   const { socketRef, isConnected } = backend;
 
@@ -158,7 +158,6 @@ const Info = ({ backend, gettingDetails, setGettingDetails, setShowInfo, config,
           <InfoMutations
             mutationsByPosition={mutationsByPosition}
             sortedPositions={sortedMutationPositions}
-            changeViewRef={changeViewRef}
           />
         )}
         {activeTab === 'filter' && (

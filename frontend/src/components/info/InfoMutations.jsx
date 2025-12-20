@@ -2,7 +2,7 @@ import React, { useState, useMemo, useRef, useCallback } from "react";
 
 const ITEMS_PER_PAGE = 100; // Load 100 items at a time
 
-export default function InfoMutations({ mutationsByPosition, sortedPositions, changeViewRef }) {
+export default function InfoMutations({ mutationsByPosition, sortedPositions }) {
     const [searchPosition, setSearchPosition] = useState("");
     const [displayCount, setDisplayCount] = useState(ITEMS_PER_PAGE);
     const [showLoadMore, setShowLoadMore] = useState(false);
@@ -49,13 +49,6 @@ export default function InfoMutations({ mutationsByPosition, sortedPositions, ch
         const isNearBottom = scrollTop + clientHeight >= scrollHeight - 50;
         setShowLoadMore(isNearBottom && hasMore);
     }, [hasMore]);
-
-    // Handle click on mutation to navigate to that position
-    const handleMutationClick = useCallback((position) => {
-        if (changeViewRef?.current) {
-            changeViewRef.current([position - 200, position + 200]);
-        }
-    }, [changeViewRef]);
 
     if (!sortedPositions || sortedPositions.length === 0) {
         return (
@@ -117,11 +110,7 @@ export default function InfoMutations({ mutationsByPosition, sortedPositions, ch
                         const mutation = mutationsByPosition[position];
 
                         return (
-                            <div
-                                key={position}
-                                className="border-b border-slate-100 last:border-0 py-2 cursor-pointer hover:bg-slate-50 transition-colors rounded px-1 -mx-1"
-                                onClick={() => handleMutationClick(position)}
-                            >
+                            <div key={position} className="border-b border-slate-100 last:border-0 py-2">
                                 <div className="flex items-center justify-between text-sm">
                                     <span className="font-semibold text-emerald-700">
                                         Position {position.toLocaleString()}
