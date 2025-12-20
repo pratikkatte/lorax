@@ -93,7 +93,7 @@ function Deck({
 }) {
   // Get polygon color from settings
   const polygonColor = settings?.polygonColor || [145, 194, 244, 46];
-  const { tsconfig, globalBpPerUnit, populations, populationFilter, sampleNames, sampleDetails, metadataColors, treeColors, searchTerm, searchTags } = config;
+  const { tsconfig, globalBpPerUnit, populationFilter, sampleNames, sampleDetails, metadataColors, treeColors, searchTerm, searchTags } = config;
 
   // Debug log
   useEffect(() => {
@@ -145,11 +145,9 @@ function Deck({
             const x = srcEvent.clientX;
             const y = srcEvent.clientY;
 
-            const sample_population_id = populations?.nodes_population[parseInt(info.object?.name)];
-            const sample_population = populations?.populations[sample_population_id]
             const tree_index = info.layer?.props?.bin?.global_index
 
-            // Get sample metadata
+            // Get sample metadata from sampleDetails
             const nodeId = info.object?.name;
             const meta = sampleDetails && sampleDetails[nodeId];
 
@@ -159,9 +157,8 @@ function Deck({
                 path: info.object?.path,
                 name: info.object?.name,
                 center: [x, y],
-                'population': sample_population?.['population'],
-                'super_population': sample_population?.['super_population'],
-                metadata: meta
+                metadata: meta,
+                mutations: info.object?.mutations
               })
             }
           }
@@ -179,7 +176,7 @@ function Deck({
           setHoveredGenomeInfo(null)
         }
       }
-    }, [hoveredPolygonIndex, populations, sampleDetails])
+    }, [hoveredPolygonIndex, sampleDetails])
 
   const { layers, layerFilter } = useLayers({
     xzoom,
@@ -350,71 +347,82 @@ function Deck({
               )}
               {statusMessage?.status === "loading" && <LoraxMessage status={statusMessage.status} message={statusMessage.message} />}
 
-
-              {/* Tooltip on hoveredTreeIndex */}
-              {hoveredTreeIndex && hoveredTreeIndex.tree_index && hoveredTreeIndex.center && typeof hoveredTreeIndex.center[0] === "number" && typeof hoveredTreeIndex.center[1] === "number" && (
-                <div
-                  style={{
-                    position: 'fixed',
-                    left: hoveredTreeIndex.center[0] + 15,
-                    top: hoveredTreeIndex.center[1] - 15,
-                    zIndex: 9999,
-                    pointerEvents: 'none',
-                    backgroundColor: 'rgba(255,255,255,255)',
-                    boxShadow: '0 2px 8px 0 rgba(0,0,0,0.08)',
-                    borderRadius: 8,
-                    padding: "6px 12px",
-                    minWidth: 120,
-                    border: '1px solid #ddd',
-                    fontSize: '14px',
-                    color: '#1a2330',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {/* Display tree index and path */}
-                  <div>
-                    <b>Metadata:</b>
-                    {hoveredTreeIndex.tree_index &&
-                      <span>
-                        <br />
-                        <b>Tree Index:</b> {hoveredTreeIndex.tree_index}</span>
-                    }
-
-                    {hoveredTreeIndex.name &&
-                      <span>
-                        <br />
-                        <b>Name:</b> {hoveredTreeIndex.name}
-                      </span>
-                    }
-
-                    {hoveredTreeIndex.population &&
-                      <span>
-                        <br />
-                        <b>Population:</b> {hoveredTreeIndex.population}
-                      </span>
-                    }
-                    {hoveredTreeIndex.super_population &&
-                      <span>
-                        <br />
-                        <b>super_population:</b> {hoveredTreeIndex.super_population}
-                      </span>
-                    }
-
-                    {/* Display all metadata */}
-                    {hoveredTreeIndex.metadata && Object.entries(hoveredTreeIndex.metadata).map(([k, v]) => (
-                      <span key={k}>
-                        <br />
-                        <b>{k}:</b> {typeof v === 'object' ? JSON.stringify(v) : v}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
             </View>
             <View id="genome-positions">
             </View>
           </DeckGL>
+
+          {/* Tooltip on hoveredTreeIndex - Placed outside DeckGL to ensure it overlaps all elements */}
+          {hoveredTreeIndex && hoveredTreeIndex.tree_index && hoveredTreeIndex.center && typeof hoveredTreeIndex.center[0] === "number" && typeof hoveredTreeIndex.center[1] === "number" && (
+            <div
+              style={{
+                position: 'fixed',
+                left: hoveredTreeIndex.center[0] + 16,
+                top: hoveredTreeIndex.center[1] - 8,
+                zIndex: 99999,
+                pointerEvents: 'none',
+                backgroundColor: '#fff',
+                boxShadow: '0 4px 20px rgba(0,0,0,0.12), 0 1px 4px rgba(0,0,0,0.08)',
+                borderRadius: 10,
+                minWidth: 180,
+                maxWidth: 280,
+                border: '1px solid rgba(0,0,0,0.08)',
+                overflow: 'hidden',
+                fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+              }}
+            >
+              {/* Content */}
+              <div style={{ padding: '10px 12px', fontSize: '13px', color: '#374151' }}>
+                {/* Tree Index */}
+                {hoveredTreeIndex.tree_index && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid #f3f4f6' }}>
+                    <span style={{ color: '#6b7280', fontWeight: 500 }}>Tree Index</span>
+                    <span style={{ fontWeight: 600, color: '#111827' }}>{hoveredTreeIndex.tree_index}</span>
+                  </div>
+                )}
+
+                {/* Name */}
+                {hoveredTreeIndex.name && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid #f3f4f6' }}>
+                    <span style={{ color: '#6b7280', fontWeight: 500 }}>Name</span>
+                    <span style={{ fontWeight: 600, color: '#111827' }}>{hoveredTreeIndex.name}</span>
+                  </div>
+                )}
+
+
+
+                {/* Mutations */}
+                {hoveredTreeIndex.mutations && hoveredTreeIndex.mutations.length > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid #f3f4f6' }}>
+                    <span style={{ color: '#6b7280', fontWeight: 500 }}>Mutations</span>
+                    <span style={{ fontWeight: 600, color: '#111827', maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {hoveredTreeIndex.mutations.join(', ')}
+                    </span>
+                  </div>
+                )}
+
+                {/* Additional Metadata */}
+                {hoveredTreeIndex.metadata && Object.entries(hoveredTreeIndex.metadata).map(([k, v], idx, arr) => (
+                  <div
+                    key={k}
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      padding: '4px 0',
+                      borderBottom: idx < arr.length - 1 ? '1px solid #f3f4f6' : 'none'
+                    }}
+                  >
+                    <span style={{ color: '#6b7280', fontWeight: 500, textTransform: 'capitalize' }}>
+                      {k.replace(/_/g, ' ')}
+                    </span>
+                    <span style={{ fontWeight: 600, color: '#111827', maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {typeof v === 'object' ? JSON.stringify(v) : v}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div >
       </>
 

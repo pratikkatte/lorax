@@ -272,21 +272,30 @@ def ensure_json_dict(data):
 
     raise TypeError(f"Unsupported data type: {type(data)}")
 
+def extract_node_mutations_tables(ts):
+    t = ts.tables
+    s, m = t.sites, t.mutations
+
+    pos = s.position[m.site]
+    anc = ts.sites_ancestral_state
+    der = ts.mutations_derived_state
+
+    out = {}
+
+    for p, a, d in zip(pos, anc, der):
+        if a == d:
+            continue
+
+        out[str(int(p))] = f"{a}->{d}"
+
+    return out
+
 def get_config(ts, file_path, root_dir):
     """Extract configuration and metadata from a tree sequence file."""
     try:
         intervals = [tree.interval[0] for tree in ts.trees()]
         times = [ts.min_time, ts.max_time]
-        populations = {}
-        nodes_population = [ts.node(n).population for n in ts.samples()]
 
-        for s in ts.populations():
-            meta = ensure_json_dict(s.metadata) if s.metadata else {}
-            populations[str(s.id)] = {
-                "population": meta.get("name"),
-                "description": meta.get("description"),
-                "super_population": meta.get("super_population")
-            }
 
         sample_names = {}
         sample_details = flatten_all_metadata_by_sample(ts, sources=("individual", "node", "population"))
@@ -297,8 +306,8 @@ def get_config(ts, file_path, root_dir):
             'times': {'type': 'coalescent time', 'values': times},
             'intervals': intervals,
             'filename': str(filename),
-            'populations': populations,
-            'nodes_population': nodes_population,
+
+            'mutations': extract_node_mutations_tables(ts),
             'sample_names': sample_names,
             'sample_details': make_json_safe(sample_details)
         }
@@ -436,7 +445,6 @@ async def handle_details(file_path, data):
             return json.dumps({"error": "Tree sequence (ts) is not set. Please upload a file first."})
         
         return_data = {}
-        print("handle_details data", data)
         tree_index = data.get("treeIndex")
         if tree_index:
             return_data["tree"] = get_tree_details(ts, tree_index)

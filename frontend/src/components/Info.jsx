@@ -1,13 +1,14 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import websocketEvents from '../webworkers/websocketEvents';
 import InfoMetadata from "./info/InfoMetadata";
 import InfoFilter from "./info/InfoFilter";
+import InfoMutations from "./info/InfoMutations";
 
-const Info = ({ backend, gettingDetails, setGettingDetails, setShowInfo, config, setConfig, selectedFileName, setSelectedFileName, visibleTrees, settings, setSettings, hoveredTreeIndex, setHoveredTreeIndex }) => {
+const Info = ({ backend, gettingDetails, setGettingDetails, setShowInfo, config, setConfig, selectedFileName, setSelectedFileName, visibleTrees, settings, setSettings, hoveredTreeIndex, setHoveredTreeIndex, changeViewRef }) => {
 
   const { socketRef, isConnected } = backend;
 
-  const { tsconfig, populations: { populations }, populationFilter, sampleNames, setPopulationFilter, sampleDetails, metadataColors, metadataKeys, treeColors, setTreeColors, searchTerm, setSearchTerm, searchTags, setSearchTags } = config;
+  const { tsconfig, populationFilter, sampleNames, setPopulationFilter, sampleDetails, metadataColors, metadataKeys, treeColors, setTreeColors, searchTerm, setSearchTerm, searchTags, setSearchTags } = config;
 
   const [nodeDetails, setNodeDetails] = useState(null);
   const [individualDetails, setIndividualDetails] = useState(null);
@@ -16,7 +17,7 @@ const Info = ({ backend, gettingDetails, setGettingDetails, setShowInfo, config,
   const [coloryby, setColoryby] = useState({});
   const [selectedColorBy, setSelectedColorBy] = useState(null);
   const [enabledValues, setEnabledValues] = useState(new Set());
-  const [populationDetails, setPopulationDetails] = useState(null);
+
 
   // Build coloryby options dynamically from metadataKeys
   useEffect(() => {
@@ -56,6 +57,16 @@ const Info = ({ backend, gettingDetails, setGettingDetails, setShowInfo, config,
     }));
   }, [selectedColorBy, enabledValues]);
 
+  // Mutations are now {position: mutation} directly from backend
+  const mutationsByPosition = tsconfig?.mutations || {};
+
+  // Pre-compute sorted positions
+  const sortedMutationPositions = useMemo(() => {
+    return Object.keys(mutationsByPosition)
+      .map(p => parseInt(p))
+      .sort((a, b) => a - b);
+  }, [mutationsByPosition]);
+
   const safeParse = (v) => {
     if (typeof v !== "string") return v;
     try { return JSON.parse(v); } catch { return v; }
@@ -69,12 +80,10 @@ const Info = ({ backend, gettingDetails, setGettingDetails, setShowInfo, config,
       setShowInfo(true);
       setTreeDetails(data?.tree ? data.tree : null);
       setNodeDetails(data?.node ? data.node : null);
-
-      setPopulationDetails(populations[data?.node?.population]);
       setIndividualDetails(data?.individual ? data.individual : null);
       setActiveTab('metadata');
     }
-  }, [populations]);
+  }, []);
 
   useEffect(() => {
     if (!isConnected) return;
@@ -114,6 +123,16 @@ const Info = ({ backend, gettingDetails, setGettingDetails, setShowInfo, config,
           </button>
           <button
             className={`flex-1 px-4 py-2 rounded-md text-sm font-semibold transition-all duration-200
+              ${activeTab === 'mutations'
+                ? "bg-white text-emerald-700 shadow-sm ring-1 ring-slate-200"
+                : "text-slate-500 hover:text-slate-700"}
+            `}
+            onClick={() => setActiveTab('mutations')}
+          >
+            Mutations
+          </button>
+          <button
+            className={`flex-1 px-4 py-2 rounded-md text-sm font-semibold transition-all duration-200
               ${activeTab === 'filter'
                 ? "bg-white text-emerald-700 shadow-sm ring-1 ring-slate-200"
                 : "text-slate-500 hover:text-slate-700"}
@@ -126,17 +145,23 @@ const Info = ({ backend, gettingDetails, setGettingDetails, setShowInfo, config,
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
-        {activeTab === 'metadata' ? (
+        {activeTab === 'metadata' && (
           <InfoMetadata
             treeDetails={treeDetails}
             nodeDetails={nodeDetails}
             individualDetails={individualDetails}
             sampleDetails={sampleDetails}
-            populations={populations}
-            populationDetails={populationDetails}
             tsconfig={tsconfig}
           />
-        ) : (
+        )}
+        {activeTab === 'mutations' && (
+          <InfoMutations
+            mutationsByPosition={mutationsByPosition}
+            sortedPositions={sortedMutationPositions}
+            changeViewRef={changeViewRef}
+          />
+        )}
+        {activeTab === 'filter' && (
           <InfoFilter
             searchTerm={searchTerm}
             setSearchTerm={setSearchTerm}

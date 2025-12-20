@@ -6,7 +6,7 @@ import ViewportOverlay from "./components/ViewportOverlay";
 import { useState, useRef, useEffect } from "react";
 import PositionSlider from './components/PositionSlider'
 
-function Lorax({ backend, config, settings, setSettings, project, ucgbMode, statusMessage, setStatusMessage, setVisibleTrees, lineagePaths, highlightedNodes, deckRef, captureRef, hoveredTreeIndex, setHoveredTreeIndex }) {
+function Lorax({ backend, config, settings, setSettings, project, ucgbMode, statusMessage, setStatusMessage, setVisibleTrees, lineagePaths, highlightedNodes, deckRef, captureRef, hoveredTreeIndex, setHoveredTreeIndex, changeViewRef }) {
 
   const { tsconfig } = config;
 
@@ -17,6 +17,13 @@ function Lorax({ backend, config, settings, setSettings, project, ucgbMode, stat
   const [clickedGenomeInfo, setClickedGenomeInfo] = useState(null);
 
   const view = useView({ config, valueRef, clickedGenomeInfo, generation, setGeneration });
+
+  // Expose changeView to parent
+  React.useEffect(() => {
+    if (changeViewRef && view.changeView) {
+      changeViewRef.current = view.changeView;
+    }
+  }, [view.changeView, changeViewRef]);
 
   return (
     <>

@@ -32,10 +32,10 @@ vi.mock('./info/InfoMutations', () => ({
 vi.mock('./info/InfoFilter', () => ({
   default: ({ searchTerm, setSearchTerm }) => (
     <div data-testid="info-filter">
-      <input 
+      <input
         data-testid="search-input"
-        value={searchTerm || ''} 
-        onChange={(e) => setSearchTerm(e.target.value)} 
+        value={searchTerm || ''}
+        onChange={(e) => setSearchTerm(e.target.value)}
       />
     </div>
   ),
@@ -52,7 +52,7 @@ describe('Info', () => {
     setShowInfo: vi.fn(),
     config: {
       tsconfig: {},
-      populations: { populations: {} },
+
       populationFilter: {},
       sampleNames: [],
       setPopulationFilter: vi.fn(),
@@ -81,13 +81,13 @@ describe('Info', () => {
 
   it('renders the Info panel', () => {
     render(<Info {...createDefaultProps()} />);
-    
+
     expect(screen.getByRole('button', { name: /close/i })).toBeInTheDocument();
   });
 
   it('renders tab buttons', () => {
     render(<Info {...createDefaultProps()} />);
-    
+
     expect(screen.getByRole('button', { name: /Metadata/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Mutations/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Filter/i })).toBeInTheDocument();
@@ -95,46 +95,46 @@ describe('Info', () => {
 
   it('shows Metadata tab by default', () => {
     render(<Info {...createDefaultProps()} />);
-    
+
     expect(screen.getByTestId('info-metadata')).toBeInTheDocument();
   });
 
   it('switches to Mutations tab when clicked', async () => {
     const user = userEvent.setup();
     render(<Info {...createDefaultProps()} />);
-    
+
     await user.click(screen.getByRole('button', { name: /Mutations/i }));
-    
+
     expect(screen.getByTestId('info-mutations')).toBeInTheDocument();
   });
 
   it('switches to Filter tab when clicked', async () => {
     const user = userEvent.setup();
     render(<Info {...createDefaultProps()} />);
-    
+
     await user.click(screen.getByRole('button', { name: /Filter/i }));
-    
+
     expect(screen.getByTestId('info-filter')).toBeInTheDocument();
   });
 
   it('calls setShowInfo(false) when close button is clicked', async () => {
     const user = userEvent.setup();
     const setShowInfo = vi.fn();
-    
+
     render(<Info {...createDefaultProps({ setShowInfo })} />);
-    
+
     await user.click(screen.getByRole('button', { name: /close/i }));
-    
+
     expect(setShowInfo).toHaveBeenCalledWith(false);
   });
 
   it('highlights active tab', async () => {
     const user = userEvent.setup();
     render(<Info {...createDefaultProps()} />);
-    
+
     const mutationsTab = screen.getByRole('button', { name: /Mutations/i });
     await user.click(mutationsTab);
-    
+
     // Check that mutations tab has the active class
     expect(mutationsTab).toHaveClass('border-blue-500');
   });
@@ -146,9 +146,9 @@ describe('Info', () => {
         metadataKeys: ['population', 'super_population', 'region'],
       },
     });
-    
+
     render(<Info {...props} />);
-    
+
     // Component should render without errors
     expect(screen.getByTestId('info-metadata')).toBeInTheDocument();
   });
@@ -160,9 +160,9 @@ describe('Info', () => {
         metadataKeys: [],
       },
     });
-    
+
     render(<Info {...props} />);
-    
+
     expect(screen.getByTestId('info-metadata')).toBeInTheDocument();
   });
 
@@ -173,9 +173,9 @@ describe('Info', () => {
         isConnected: true,
       },
     });
-    
+
     render(<Info {...props} />);
-    
+
     expect(screen.getByTestId('info-metadata')).toBeInTheDocument();
   });
 });
