@@ -226,6 +226,7 @@ def flatten_all_metadata_by_sample(
                 if node.individual == tskit.NULL:
                     continue
                 meta = ts.individual(node.individual).metadata
+                meta = meta or {}
                 meta = ensure_json_dict(meta)
 
             elif source == "node":
@@ -235,6 +236,7 @@ def flatten_all_metadata_by_sample(
                 if node.population == tskit.NULL:
                     continue
                 meta = ts.population(node.population).metadata
+                meta = meta or {}
                 meta = ensure_json_dict(meta)
 
             else:
