@@ -275,6 +275,13 @@ const useView = ({ config, valueRef, clickedGenomeInfo }) => {
       if (target.length > 0 && oldViewState.target.length > 0) {
         target = panLimit(target, [...oldViewState.target], genomeLength.current, globalBpPerUnit);
       }
+
+      // bound y-limit
+      if (target[1] < 0 || target[1] > 1) {
+        target[1] = oldViewState.target[1];
+        zoom[1] = oldViewState.zoom[1];
+      }
+      // console.log("target", target, zoom);
       const W_w = newViewState.width / (Math.pow(2, zoom[0]));
 
       let x0 = target[0] - W_w / 2;
