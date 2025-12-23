@@ -2,7 +2,30 @@ import React, { useState, useMemo, useRef, useCallback } from "react";
 
 const ITEMS_PER_PAGE = 100; // Load 100 items at a time
 
-export default function InfoMutations({ mutationsByPosition, sortedPositions }) {
+/**
+ * Find the tree index that contains the given position using binary search.
+ * intervals is a sorted array of tree start positions.
+ * Returns the index of the interval that contains the position.
+ */
+function findTreeIndex(intervals, position) {
+    if (!intervals || intervals.length === 0) return -1;
+
+    let low = 0;
+    let high = intervals.length - 1;
+
+    while (low < high) {
+        const mid = Math.floor((low + high + 1) / 2);
+        if (intervals[mid] <= position) {
+            low = mid;
+        } else {
+            high = mid - 1;
+        }
+    }
+
+    return low;
+}
+
+export default function InfoMutations({ mutationsByPosition, sortedPositions, intervals, genomeLength, setClickedGenomeInfo, setHighlightedMutationNode }) {
     const [searchPosition, setSearchPosition] = useState("");
     const [displayCount, setDisplayCount] = useState(ITEMS_PER_PAGE);
     const [showLoadMore, setShowLoadMore] = useState(false);
@@ -49,6 +72,35 @@ export default function InfoMutations({ mutationsByPosition, sortedPositions }) 
         const isNearBottom = scrollTop + clientHeight >= scrollHeight - 50;
         setShowLoadMore(isNearBottom && hasMore);
     }, [hasMore]);
+
+    // Handle click on a mutation position - navigate to the tree containing this position
+    const handlePositionClick = useCallback((position) => {
+        if (!intervals || !setClickedGenomeInfo) return;
+
+        // Find the tree index for this position
+        const treeIndex = findTreeIndex(intervals, position);
+        if (treeIndex < 0) return;
+
+        // Get the start and end positions for this tree
+        const start = intervals[treeIndex];
+        const end = intervals[treeIndex + 1] !== undefined
+            ? intervals[treeIndex + 1]
+            : (genomeLength || start + 1000);
+
+        // Trigger the zoom to this tree
+        setClickedGenomeInfo({ s: start, e: end });
+
+        // Set the highlighted mutation node (using node ID from mutation data)
+        if (setHighlightedMutationNode) {
+            const mutationData = mutationsByPosition[position];
+            // If mutation data is an object with node, use it; otherwise use node ID string
+            const nodeId = typeof mutationData === 'object' && mutationData.node !== undefined
+                ? String(mutationData.node)
+                : null;
+
+            setHighlightedMutationNode(nodeId);
+        }
+    }, [intervals, genomeLength, setClickedGenomeInfo, setHighlightedMutationNode, mutationsByPosition]);
 
     if (!sortedPositions || sortedPositions.length === 0) {
         return (
@@ -110,13 +162,17 @@ export default function InfoMutations({ mutationsByPosition, sortedPositions }) 
                         const mutation = mutationsByPosition[position];
 
                         return (
-                            <div key={position} className="border-b border-slate-100 last:border-0 py-2">
+                            <div
+                                key={position}
+                                className="border-b border-slate-100 last:border-0 py-2 cursor-pointer hover:bg-emerald-50 transition-colors rounded px-2 -mx-2"
+                                onClick={() => handlePositionClick(position)}
+                            >
                                 <div className="flex items-center justify-between text-sm">
-                                    <span className="font-semibold text-emerald-700">
+                                    <span className="font-semibold text-emerald-700 hover:text-emerald-900">
                                         Position {position.toLocaleString()}
                                     </span>
                                     <span className="font-mono text-slate-800 bg-slate-100 px-2 py-0.5 rounded">
-                                        {mutation}
+                                        {typeof mutation === 'object' ? mutation.mutation : mutation}
                                     </span>
                                 </div>
                             </div>

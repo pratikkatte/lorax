@@ -181,7 +181,7 @@ export function new_complete_experiment_map(localBins, globalBpPerUnit, new_glob
     function computePrecision(totalSpan, maxSpan) {
       const diff = Math.max(1, totalSpan - maxSpan); // avoid log10(0)
       const logVal = Math.log10(diff);
-    
+
       // map logVal range [0 → 4+] into precision [6 → 2]
       let precision = 5 - Math.min(3, Math.max(0, logVal));
       return Math.round(precision);
@@ -222,5 +222,5 @@ export function new_complete_experiment_map(localBins, globalBpPerUnit, new_glob
     }
   }
 
-  return { return_local_bins:localBins, displayArray };
+  return { return_local_bins: localBins, displayArray };
 }

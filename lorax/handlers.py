@@ -281,14 +281,18 @@ def extract_node_mutations_tables(ts):
     pos = s.position[m.site]
     anc = ts.sites_ancestral_state
     der = ts.mutations_derived_state
+    nodes = m.node  # Node IDs for each mutation
 
     out = {}
 
-    for p, a, d in zip(pos, anc, der):
+    for p, a, d, node_id in zip(pos, anc, der, nodes):
         if a == d:
             continue
 
-        out[str(int(p))] = f"{a}->{d}"
+        out[str(int(p))] = {
+            "mutation": f"{a}->{d}",
+            "node": int(node_id)
+        }
 
     return out
 
@@ -415,6 +419,7 @@ def get_tree_details(ts, tree_index):
         site = ts.site(mut.site)
         mutations.append({
             "id": mut.id,
+            "node": mut.node,  # Node ID for highlighting
             "site_id": mut.site,
             "position": site.position,
             "derived_state": mut.derived_state,
