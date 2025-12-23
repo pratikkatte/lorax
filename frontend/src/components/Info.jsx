@@ -4,7 +4,7 @@ import InfoMetadata from "./info/InfoMetadata";
 import InfoFilter from "./info/InfoFilter";
 import InfoMutations from "./info/InfoMutations";
 
-const Info = ({ backend, gettingDetails, setGettingDetails, setShowInfo, config, setConfig, selectedFileName, setSelectedFileName, visibleTrees, settings, setSettings, hoveredTreeIndex, setHoveredTreeIndex }) => {
+const Info = ({ backend, gettingDetails, setGettingDetails, setShowInfo, config, setConfig, selectedFileName, setSelectedFileName, visibleTrees, settings, setSettings, hoveredTreeIndex, setHoveredTreeIndex, setClickedGenomeInfo, setHighlightedMutationNode }) => {
 
   const { socketRef, isConnected } = backend;
 
@@ -152,12 +152,17 @@ const Info = ({ backend, gettingDetails, setGettingDetails, setShowInfo, config,
             individualDetails={individualDetails}
             sampleDetails={sampleDetails}
             tsconfig={tsconfig}
+            setHighlightedMutationNode={setHighlightedMutationNode}
           />
         )}
         {activeTab === 'mutations' && (
           <InfoMutations
             mutationsByPosition={mutationsByPosition}
             sortedPositions={sortedMutationPositions}
+            intervals={tsconfig?.intervals}
+            genomeLength={tsconfig?.genome_length}
+            setClickedGenomeInfo={setClickedGenomeInfo}
+            setHighlightedMutationNode={setHighlightedMutationNode}
           />
         )}
         {activeTab === 'filter' && (

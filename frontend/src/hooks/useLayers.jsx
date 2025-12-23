@@ -22,6 +22,7 @@ const useLayers = ({
   searchTags,
   lineagePaths,
   highlightedNodes,
+  highlightedMutationNode,
   polygonData
 }) => {
 
@@ -116,14 +117,15 @@ const useLayers = ({
         searchTerm,
         searchTags,
         lineagePaths,
-        highlightedNodes
+        highlightedNodes,
+        highlightedMutationNode
       });
 
       newLayers.push(newLayer);
     }
 
     return newLayers;
-  }, [bins, globalBpPerUnit, hoveredTreeIndex, populationFilter, sampleDetails, metadataColors, treeColors, searchTerm, searchTags, lineagePaths, highlightedNodes]);
+  }, [bins, globalBpPerUnit, hoveredTreeIndex, populationFilter, sampleDetails, metadataColors, treeColors, searchTerm, searchTags, lineagePaths, highlightedNodes, highlightedMutationNode]);
 
 
   const layers = useMemo(() => {

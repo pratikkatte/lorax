@@ -11,11 +11,20 @@ export default function InfoMetadata({
   nodeDetails,
   individualDetails,
   sampleDetails,
-  tsconfig
+  tsconfig,
+  setHighlightedMutationNode
 }) {
   // Get sample name from node metadata if available
   const sampleName = nodeDetails?.metadata?.name || nodeDetails?.id;
   const sampleMetadata = sampleDetails && sampleName ? sampleDetails[sampleName] : null;
+
+  // Handle mutation click - highlight the mutation node
+  const handleMutationClick = (mutation) => {
+    if (setHighlightedMutationNode) {
+      // Use mutation.node as the node identifier (convert to string for consistency)
+      setHighlightedMutationNode(String(mutation.node));
+    }
+  };
 
   return (
     <>
@@ -29,11 +38,16 @@ export default function InfoMetadata({
               <div className="my-2 border-t border-gray-100"></div>
               <div className="text-xs font-semibold text-gray-500 mb-1">Mutations ({treeDetails.mutations.length})</div>
               {treeDetails.mutations.map((mut) => (
-                <DetailRow
+                <div
                   key={mut.id}
-                  label={`Mut ${mut.id}`}
-                  value={`${mut.inherited_state} → ${mut.derived_state} (Pos: ${Math.round(mut.position)})`}
-                />
+                  onClick={() => handleMutationClick(mut)}
+                  className="cursor-pointer hover:bg-emerald-50 transition-colors rounded px-1 -mx-1"
+                >
+                  <DetailRow
+                    label={`Mut ${mut.id}`}
+                    value={`${mut.inherited_state} → ${mut.derived_state} (Pos: ${Math.round(mut.position)})`}
+                  />
+                </div>
               ))}
             </>
           )}

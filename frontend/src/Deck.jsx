@@ -89,7 +89,8 @@ function Deck({
   setClickedGenomeInfo,
   setVisibleTrees,
   lineagePaths,
-  highlightedNodes
+  highlightedNodes,
+  highlightedMutationNode
 }) {
   // Get polygon color from settings
   const polygonColor = settings?.polygonColor || [145, 194, 244, 46];
@@ -196,7 +197,8 @@ function Deck({
     searchTerm,
     searchTags,
     lineagePaths,
-    highlightedNodes
+    highlightedNodes,
+    highlightedMutationNode
   });
   const [dummy, setDummy] = useState(null);
 

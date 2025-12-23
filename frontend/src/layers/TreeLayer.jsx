@@ -4,6 +4,7 @@ import { CompositeLayer } from '@deck.gl/core';
 import { PathLayer, ScatterplotLayer, IconLayer, TextLayer } from '@deck.gl/layers';
 import { COORDINATE_SYSTEM } from '@deck.gl/core';
 import { GL } from '@luma.gl/constants' // Note the ESM import
+import { DNA } from 'react-loader-spinner';
 
 export default class TreeLayer extends CompositeLayer {
   static defaultProps = {
@@ -22,10 +23,11 @@ export default class TreeLayer extends CompositeLayer {
     searchTags: [],
     lineagePaths: null,
     highlightedNodes: null,
+    highlightedMutationNode: null,
   };
 
   renderLayers() {
-    const { bin, viewId, hoveredTreeIndex, populationFilter, xzoom, sampleDetails, metadataColors, treeColors, searchTerm, searchTags, lineagePaths, highlightedNodes } = this.props;
+    const { bin, viewId, hoveredTreeIndex, populationFilter, xzoom, sampleDetails, metadataColors, treeColors, searchTerm, searchTags, lineagePaths, highlightedNodes, highlightedMutationNode } = this.props;
 
 
     // when searched for a sample name.
@@ -280,18 +282,21 @@ export default class TreeLayer extends CompositeLayer {
       }));
     }
 
+    // Mutations IconLayer
+    const mutationsData = bin.path.filter(d => d?.mutations !== undefined && d?.mutations !== null);
+
     layers.push(new IconLayer({
       id: `${this.props.id}-mutations-${bin.global_index}`,
-      data: bin.path.filter(d => d?.mutations !== undefined && d?.mutations !== null),
+      data: mutationsData,
       getPosition: d => {
         const position = [d.position[0] * scale_position + translate_position, d.position[1]];
         return position;
       },
       getIcon: () => 'marker',
-      modelMatrix: null, // bin.modelMatrix was used in commented out code, but Scatterplot used null with manual transform. Using manual transform to match Scatterplot.
+      modelMatrix: null,
       getColor: [255, 0, 0, 255],
       viewId,
-      getSize: 12, // Starting with a reasonable pixel size
+      getSize: 12,
       sizeUnits: 'pixels',
       iconAtlas: '/X.png',
       iconMapping: {
@@ -302,6 +307,36 @@ export default class TreeLayer extends CompositeLayer {
         data: [bin.path, bin.modelMatrix],
       },
     }));
+
+    // Highlight circle around mutation with matching node name
+    if (highlightedMutationNode !== null) {
+      const highlightedMutation = mutationsData.find(d => d.name === highlightedMutationNode);
+      console.log(highlightedMutation);
+      if (highlightedMutation) {
+        layers.push(new ScatterplotLayer({
+          id: `${this.props.id}-mutation-highlight-${bin.global_index}`,
+          data: [highlightedMutation],
+          getPosition: d => {
+            const position = [d.position[0] * scale_position + translate_position, d.position[1]];
+            return position;
+          },
+          getFillColor: [0, 0, 0, 0], // Transparent fill
+          getLineColor: [0, 0, 0, 255], // Emerald-500 green circle
+          getLineWidth: 2,
+          getRadius: 10,
+          stroked: true,
+          filled: false,
+          lineWidthUnits: 'pixels',
+          radiusUnits: 'pixels',
+          coordinateSystem: COORDINATE_SYSTEM.IDENTITY,
+          viewId,
+          modelMatrix: null,
+          updateTriggers: {
+            data: [highlightedMutationNode, bin.path, bin.modelMatrix],
+          },
+        }));
+      }
+    }
 
     return layers;
   }

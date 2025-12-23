@@ -6,15 +6,14 @@ import ViewportOverlay from "./components/ViewportOverlay";
 import { useState, useRef, useEffect } from "react";
 import PositionSlider from './components/PositionSlider'
 
-function Lorax({ backend, config, settings, setSettings, project, ucgbMode, statusMessage, setStatusMessage, setVisibleTrees, lineagePaths, highlightedNodes, deckRef, captureRef, hoveredTreeIndex, setHoveredTreeIndex }) {
+function Lorax({ backend, config, settings, setSettings, project, ucgbMode, statusMessage, setStatusMessage, setVisibleTrees, lineagePaths, highlightedNodes, deckRef, captureRef, hoveredTreeIndex, setHoveredTreeIndex, clickedGenomeInfo, setClickedGenomeInfo, highlightedMutationNode }) {
 
   const { tsconfig } = config;
 
   const [mouseDownIsMinimap, setMouseDownIsMinimap] = useState(false);
-  // hoveredTreeIndex, setHoveredTreeIndex are now props
+  // hoveredTreeIndex, setHoveredTreeIndex, clickedGenomeInfo, setClickedGenomeInfo are now props
   const valueRef = useRef(null);
   const [generation, setGeneration] = useState(null);
-  const [clickedGenomeInfo, setClickedGenomeInfo] = useState(null);
 
   const view = useView({ config, valueRef, clickedGenomeInfo, generation, setGeneration });
 
@@ -53,6 +52,7 @@ function Lorax({ backend, config, settings, setSettings, project, ucgbMode, stat
                 setVisibleTrees={setVisibleTrees}
                 lineagePaths={lineagePaths}
                 highlightedNodes={highlightedNodes}
+                highlightedMutationNode={highlightedMutationNode}
               />
             )}
           </div>
