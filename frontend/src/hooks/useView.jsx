@@ -122,8 +122,6 @@ const useView = ({ config, valueRef, clickedGenomeInfo }) => {
   useEffect(() => {
 
     if (clickedGenomeInfo) {
-      console.log("clickedGenomeInfo useView", clickedGenomeInfo)
-
       changeView([clickedGenomeInfo.s, clickedGenomeInfo.e])
     }
   }, [clickedGenomeInfo])
