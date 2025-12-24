@@ -32,8 +32,35 @@ function getDynamicBpPerUnit(globalBpPerUnit, zoom, baseZoom = 8) {
   return globalBpPerUnit * scaleFactor;
 }
 
-// useRegions Hook
-const useRegions = ({ backend, valueRef, globalBpPerUnit, tsconfig, setStatusMessage, xzoom, yzoom, genomicValues }) => {
+/**
+ * useRegions Hook
+ * Manages tree selection and binning based on viewport and zoom level
+ * 
+ * @param {Object} props
+ * @param {Object} props.backend - Backend API methods
+ * @param {Object} props.valueRef - Current genomic range reference
+ * @param {number} props.globalBpPerUnit - Base pairs per unit
+ * @param {Object} props.tsconfig - Tree sequence configuration
+ * @param {Function} props.setStatusMessage - Status message setter
+ * @param {number} props.xzoom - Current X-axis zoom level
+ * @param {number} props.yzoom - Current Y-axis zoom level
+ * @param {Array} props.genomicValues - Current genomic range
+ * @param {Object} props.displayOptions - Tree display configuration
+ * @param {string} props.displayOptions.selectionStrategy - 'largestSpan' | 'centerWeighted' | 'spanWeightedRandom' | 'first'
+ * @param {number} props.displayOptions.maxVisibleTrees - Maximum visible trees (default: 50)
+ * @param {number|null} props.displayOptions.fixedVisualWidth - Fixed width for all trees (null = auto)
+ */
+const useRegions = ({ 
+  backend, 
+  valueRef, 
+  globalBpPerUnit, 
+  tsconfig, 
+  setStatusMessage, 
+  xzoom, 
+  yzoom, 
+  genomicValues,
+  displayOptions = {}
+}) => {
   const { queryNodes, queryLocalBins, getTreeData } = backend;
 
   const [localBins, setLocalBins] = useState(null);
@@ -42,17 +69,20 @@ const useRegions = ({ backend, valueRef, globalBpPerUnit, tsconfig, setStatusMes
   
   const regionWidth = useRef(null);
 
-  // const [maxScale, setMaxScale] = useState(null);
-
   const [times, setTimes] = useState([]);
 
+  // Extract display options with defaults
+  const {
+    selectionStrategy = 'largestSpan',
+    maxVisibleTrees = 50,
+    fixedVisualWidth = null
+  } = displayOptions;
 
   const debouncedQuery = useMemo(
     () => debounce(async (val) => {
       if (isFetching.current) return;
 
       const [lo, hi] = val;
-      // const zoom = viewState["ortho"]?.zoom?.[0] ?? 8;
       const zoom = xzoom ?? 8;
 
       const new_globalBp = getDynamicBpPerUnit(globalBpPerUnit, zoom);
@@ -64,8 +94,19 @@ const useRegions = ({ backend, valueRef, globalBpPerUnit, tsconfig, setStatusMes
       }
       isFetching.current = true;
 
-      const { local_bins, lower_bound, upper_bound, displayArray} = await queryLocalBins(
-        lo, hi, globalBpPerUnit, null, new_globalBp, regionWidth.current
+      // Pass display options to queryLocalBins
+      const { local_bins, lower_bound, upper_bound, displayArray } = await queryLocalBins(
+        lo, 
+        hi, 
+        globalBpPerUnit, 
+        null, 
+        new_globalBp, 
+        regionWidth.current,
+        {
+          selectionStrategy,
+          maxVisibleTrees,
+          fixedVisualWidth
+        }
       );
 
       const rangeArray = [];
@@ -115,7 +156,7 @@ const useRegions = ({ backend, valueRef, globalBpPerUnit, tsconfig, setStatusMes
       setStatusMessage(null);
       isFetching.current = false;
     }, 400, { leading: false, trailing: true }),
-    [isFetching.current, valueRef.current, xzoom]
+    [isFetching.current, valueRef.current, xzoom, selectionStrategy, maxVisibleTrees, fixedVisualWidth]
   );
 
   useEffect(() => {

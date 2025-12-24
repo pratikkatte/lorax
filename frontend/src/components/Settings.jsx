@@ -16,6 +16,30 @@ const hexToRgb = (hex) => {
   ] : [145, 194, 244];
 };
 
+// Selection strategy options with descriptions
+const SELECTION_STRATEGIES = [
+  { 
+    value: 'largestSpan', 
+    label: 'Largest Span', 
+    description: 'Show tree with the largest genomic span in each slot' 
+  },
+  { 
+    value: 'centerWeighted', 
+    label: 'Center Weighted', 
+    description: 'Show tree closest to the center of each slot' 
+  },
+  { 
+    value: 'spanWeightedRandom', 
+    label: 'Weighted Random', 
+    description: 'Randomly select, weighted by span size' 
+  },
+  { 
+    value: 'first', 
+    label: 'First', 
+    description: 'Show the first tree by genomic position' 
+  }
+];
+
 export default function Settings({
   settings,
   setSettings,
@@ -23,7 +47,14 @@ export default function Settings({
   setShowSettings,
 }) {
   const DEFAULT_POLYGON_COLOR = [145, 194, 244, 46];
+  const DEFAULT_TREE_DISPLAY = {
+    selectionStrategy: 'largestSpan',
+    maxVisibleTrees: 50,
+    fixedVisualWidth: null
+  };
+  
   const polygonColor = settings?.polygonColor || DEFAULT_POLYGON_COLOR;
+  const treeDisplay = settings?.treeDisplay || DEFAULT_TREE_DISPLAY;
 
   const handleColorChange = useCallback((e) => {
     const rgb = hexToRgb(e.target.value);
@@ -50,6 +81,37 @@ export default function Settings({
     setSettings(prev => ({
       ...prev,
       polygonColor: DEFAULT_POLYGON_COLOR
+    }));
+  }, [setSettings]);
+
+  // Tree display setting handlers
+  const handleSelectionStrategyChange = useCallback((e) => {
+    setSettings(prev => ({
+      ...prev,
+      treeDisplay: {
+        ...prev.treeDisplay,
+        selectionStrategy: e.target.value
+      }
+    }));
+  }, [setSettings]);
+
+  const handleMaxVisibleTreesChange = useCallback((e) => {
+    const value = parseInt(e.target.value, 10);
+    if (!isNaN(value) && value >= 1) {
+      setSettings(prev => ({
+        ...prev,
+        treeDisplay: {
+          ...prev.treeDisplay,
+          maxVisibleTrees: value
+        }
+      }));
+    }
+  }, [setSettings]);
+
+  const handleTreeDisplayReset = useCallback(() => {
+    setSettings(prev => ({
+      ...prev,
+      treeDisplay: DEFAULT_TREE_DISPLAY
     }));
   }, [setSettings]);
 
@@ -140,6 +202,76 @@ export default function Settings({
               <div className="mt-4 pt-4 border-t border-slate-100 flex justify-end">
                 <button
                   onClick={handleReset}
+                  className="px-3 py-1.5 text-xs font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-md transition-colors"
+                >
+                  Reset to Default
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Tree Display Settings */}
+          <div className="bg-white rounded-lg p-4 shadow-sm border border-slate-200">
+            <h3 className="text-sm font-semibold text-slate-700 mb-3">Tree Display</h3>
+            <p className="text-xs text-slate-500 mb-4">
+              Configure how trees are selected and displayed when zoomed out.
+            </p>
+
+            <div className="space-y-4">
+              {/* Selection Strategy */}
+              <div>
+                <label className="text-xs font-medium text-slate-600 block mb-2">
+                  Selection Strategy
+                </label>
+                <select
+                  value={treeDisplay.selectionStrategy}
+                  onChange={handleSelectionStrategyChange}
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                >
+                  {SELECTION_STRATEGIES.map(strategy => (
+                    <option key={strategy.value} value={strategy.value}>
+                      {strategy.label}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-slate-400 mt-1">
+                  {SELECTION_STRATEGIES.find(s => s.value === treeDisplay.selectionStrategy)?.description}
+                </p>
+              </div>
+
+              {/* Max Visible Trees */}
+              <div>
+                <label className="text-xs font-medium text-slate-600 block mb-2">
+                  Max Visible Trees
+                </label>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="range"
+                    min="10"
+                    max="200"
+                    step="10"
+                    value={treeDisplay.maxVisibleTrees}
+                    onChange={handleMaxVisibleTreesChange}
+                    className="flex-1 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-emerald-500"
+                  />
+                  <input
+                    type="number"
+                    min="1"
+                    max="500"
+                    value={treeDisplay.maxVisibleTrees}
+                    onChange={handleMaxVisibleTreesChange}
+                    className="w-16 px-2 py-1 text-sm border border-slate-300 rounded-md text-center focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                  />
+                </div>
+                <p className="text-xs text-slate-400 mt-1">
+                  Maximum number of trees to display at once when zoomed out.
+                </p>
+              </div>
+
+              {/* Reset Button */}
+              <div className="mt-4 pt-4 border-t border-slate-100 flex justify-end">
+                <button
+                  onClick={handleTreeDisplayReset}
                   className="px-3 py-1.5 text-xs font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-md transition-colors"
                 >
                   Reset to Default

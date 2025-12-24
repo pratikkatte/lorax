@@ -246,13 +246,36 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
     };
   }, []);
 
+  /**
+   * Query local bins with display options
+   * @param {number} start - Start genomic position
+   * @param {number} end - End genomic position
+   * @param {number} globalBpPerUnit - Base pairs per unit
+   * @param {number} nTrees - Number of trees (legacy, unused)
+   * @param {number} new_globalBp - Zoom-adjusted bp per unit
+   * @param {number|null} regionWidth - Optional region width
+   * @param {Object} displayOptions - Display configuration
+   * @param {string} displayOptions.selectionStrategy - 'largestSpan' | 'centerWeighted' | 'spanWeightedRandom' | 'first'
+   * @param {number} displayOptions.maxVisibleTrees - Maximum visible trees
+   * @param {number|null} displayOptions.fixedVisualWidth - Fixed width for all trees
+   */
   const queryLocalBins = useCallback(
-    (start, end, globalBpPerUnit, nTrees, new_globalBp, regionWidth = null) => {
-
+    (start, end, globalBpPerUnit, nTrees, new_globalBp, regionWidth = null, displayOptions = {}) => {
       return new Promise((resolve) => {
         workerRef.current?.postMessage({
           type: "local-bins",
-          data: { start, end, globalBpPerUnit, nTrees, new_globalBp, regionWidth },
+          data: { 
+            start, 
+            end, 
+            globalBpPerUnit, 
+            nTrees, 
+            new_globalBp, 
+            regionWidth,
+            // Include display options in the message
+            selectionStrategy: displayOptions.selectionStrategy || 'largestSpan',
+            maxVisibleTrees: displayOptions.maxVisibleTrees || 50,
+            fixedVisualWidth: displayOptions.fixedVisualWidth || null
+          },
         });
 
         onLocalBinsReceipt = (receivedData) => {

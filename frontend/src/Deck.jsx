@@ -111,7 +111,25 @@ function Deck({
 
   const [hoveredPolygonIndex, setHoveredPolygonIndex] = useState(null);
 
-  const regions = useRegions({ backend, valueRef, saveViewports: saveViewports.current, globalBpPerUnit, tsconfig, setStatusMessage, xzoom, yzoom, genomicValues });
+  // Extract display options from settings
+  const displayOptions = useMemo(() => ({
+    selectionStrategy: settings?.treeDisplay?.selectionStrategy || 'largestSpan',
+    maxVisibleTrees: settings?.treeDisplay?.maxVisibleTrees || 50,
+    fixedVisualWidth: settings?.treeDisplay?.fixedVisualWidth || null
+  }), [settings?.treeDisplay]);
+
+  const regions = useRegions({ 
+    backend, 
+    valueRef, 
+    saveViewports: saveViewports.current, 
+    globalBpPerUnit, 
+    tsconfig, 
+    setStatusMessage, 
+    xzoom, 
+    yzoom, 
+    genomicValues,
+    displayOptions
+  });
 
   const onClickOrMouseMove = useCallback(
     (info, event) => {

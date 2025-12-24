@@ -49,6 +49,8 @@ export default class TreeLayer extends CompositeLayer {
     const translate_position = m[12];
     let display_labels = false;
 
+    console.log("scale_position", scale_position);
+    console.log("translate_position", translate_position);
 
     const mutations = bin.path.filter(d => d?.mutations !== undefined && d?.mutations !== null)
 
@@ -65,7 +67,6 @@ export default class TreeLayer extends CompositeLayer {
         data: bin.path,
         getPath: d => {
           if (!d?.path) return null;
-
           const paths = d?.path;
           const transformedPath = paths?.map(p => {
             const world = [p[0] * scale_position + translate_position, p[1]];
