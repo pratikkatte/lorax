@@ -149,13 +149,17 @@ export function getSelectionStrategy(strategyName) {
  * @param {string} options.selectionStrategy - Strategy name: 'largestSpan', 'centerWeighted', 'spanWeightedRandom', 'first'
  * @param {number} options.maxVisibleTrees - Maximum number of trees to display (affects slot count)
  * @param {number|null} options.fixedVisualWidth - Fixed width for all trees (null = auto-calculate)
+ * @param {number|null} options.viewportStart - Start of visible viewport in genomic coordinates (bp)
+ * @param {number|null} options.viewportEnd - End of visible viewport in genomic coordinates (bp)
  * @returns {Object} { return_local_bins, displayArray }
  */
 export function new_complete_experiment_map( localBins, globalBpPerUnit, new_globalBp, options = {}) {
   const {
     selectionStrategy = 'largestSpan',
     maxVisibleTrees = 50,
-    fixedVisualWidth = null
+    fixedVisualWidth = null,
+    viewportStart = null,
+    viewportEnd = null
   } = options;
 
   const spacing = 1.05;
@@ -220,15 +224,22 @@ export function new_complete_experiment_map( localBins, globalBpPerUnit, new_glo
   // STEP 3: When scaleFactor ≈ 1, show ALL trees with uniform width
   // ────────────────────────────────────────────────────────────────────────
   if (approxEqual) {
-    // Evenly distribute all trees across the visible genomic interval.
-    // This guarantees they stay inside the viewport even if gaps are large.
-    const slotWidth = viewportSpan / allTrees.length;
+    // Calculate tree width based on actual visible viewport (not tree bounds)
+    // This ensures all trees fit on screen regardless of their genomic distribution
     const fullZoomGapFill = 0.9; // widen to fit but keep a small gap
-    const uniformTreeWidth = (slotWidth / globalBpPerUnit) * fullZoomGapFill;
+    
+    // Use viewport bounds if provided, otherwise fall back to tree bounds
+    const effectiveStart = viewportStart ?? minStart;
+    const effectiveEnd = viewportEnd ?? maxEnd;
+    const visibleUnits = (effectiveEnd - effectiveStart) / globalBpPerUnit;
+    const uniformTreeWidth = (visibleUnits / allTrees.length) * fullZoomGapFill;
+    
+    // Recalculate slot width based on effective viewport
+    const slotWidth = (effectiveEnd - effectiveStart) / allTrees.length;
 
     for (let i = 0; i < allTrees.length; i++) {
       const tree = allTrees[i];
-      const slotCenter = minStart + (i + 0.5) * slotWidth;
+      const slotCenter = effectiveStart + (i + 0.5) * slotWidth;
       const translateX = (slotCenter / globalBpPerUnit) - (uniformTreeWidth / 2);
       
       const modelMatrix = tempMatrix.clone()

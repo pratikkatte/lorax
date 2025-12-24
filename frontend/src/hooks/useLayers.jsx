@@ -5,6 +5,7 @@ import { GenomeGridLayer } from "../layers/GenomeGridLayer";
 import TreeLayer from '../layers/TreeLayer';
 import { GenomeInfoLayer } from '../layers/GenomeInfoLayer';
 import { TimeGridLayer } from '../layers/TimeGridLayer';
+import useAnimatedBins from './useAnimatedBins';
 
 const useLayers = ({
   yzoom,
@@ -23,10 +24,17 @@ const useLayers = ({
   lineagePaths,
   highlightedNodes,
   highlightedMutationNode,
-  polygonData
+  polygonData,
+  animationOptions = {}
 }) => {
 
-  const { bins = new Map(), localCoordinates = [], times = [] } = regions;
+  const { bins: rawBins = new Map(), localCoordinates = [], times = [] } = regions;
+
+  // Apply smooth transitions to tree positions
+  const bins = useAnimatedBins(rawBins, {
+    transitionDuration: animationOptions.transitionDuration ?? 300,
+    easing: animationOptions.easing ?? 'easeOut'
+  });
 
   /** Filter visible layers by viewId (deck.gl native optimization) */
   const layerFilter = useCallback(({ layer, viewport }) => {
@@ -72,7 +80,7 @@ const useLayers = ({
     return new GenomeInfoLayer({
       id: "genome-info-grid",
       // data: Object.keys(tsconfig.new_intervals).map(key => ({ position: Number(key) })),
-      data: bins,
+      data: rawBins,
       globalBpPerUnit: globalBpPerUnit,
       y0: 0,
       y1: 2,
@@ -84,7 +92,7 @@ const useLayers = ({
       viewId: "genome-info",
       hoveredGenomeInfo,
     });
-  }, [bins, globalBpPerUnit, hoveredGenomeInfo]);
+  }, [rawBins, globalBpPerUnit, hoveredGenomeInfo]);
 
   const treeLayers = useMemo(() => {
     if (!bins || bins.size === 0) return [];
@@ -139,7 +147,7 @@ const useLayers = ({
     return all;
   }, [treeLayers, genomeGridLayer, genomeInfoLayer, timeGridLayer]);
 
-  return { layers, layerFilter };
+  return { layers, layerFilter, animatedBins: bins };
 };
 
 export default useLayers;

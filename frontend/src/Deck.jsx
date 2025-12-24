@@ -55,6 +55,7 @@ const GenomeVisualization = React.memo(({ pointsArray, pointsGenomePositionsInfo
                 pointerEvents: 'auto',
                 zIndex: -1,
                 position: 'relative',
+                transition: 'fill 0.15s ease-out',
               }}
 
               onMouseEnter={event => {
@@ -197,7 +198,7 @@ function Deck({
       }
     }, [hoveredPolygonIndex, sampleDetails])
 
-  const { layers, layerFilter } = useLayers({
+  const { layers, layerFilter, animatedBins } = useLayers({
     xzoom,
     tsconfig,
     deckRef,
@@ -258,7 +259,8 @@ function Deck({
       // Quick bail-out if viewports missing
       if (!genomeVP || !orthoVP) return;
 
-      const { bins } = regions;
+      // Use animated bins for smooth polygon transitions
+      const bins = animatedBins || regions.bins;
       if (!(bins instanceof Map)) return;
 
       // Iterate directly over map entries — much faster than Object.values()
@@ -315,12 +317,12 @@ function Deck({
         }
       }
     },
-    [deckRef, saveViewports, globalBpPerUnit, regions, setVisibleTrees]
+    [deckRef, saveViewports, globalBpPerUnit, regions, animatedBins, setVisibleTrees]
   );
 
   useEffect(() => {
     getLayerPixelPositions(deckRef)
-  }, [regions, tsconfig, saveViewports.current])
+  }, [regions, animatedBins, tsconfig, saveViewports.current])
 
   const handleAfterRender = useCallback(() => {
 

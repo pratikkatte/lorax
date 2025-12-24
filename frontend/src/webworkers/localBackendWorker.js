@@ -78,6 +78,7 @@ async function getLocalData(start, end, globalBpPerUnit, nTrees, new_globalBp, r
   } else {
     buffer = local_regionWidth;
   }
+  buffer = 0.0;
   const bufferStart = Math.max(0, start - buffer);
   const bufferEnd = end + (buffer);
 
@@ -145,7 +146,9 @@ async function getLocalData(start, end, globalBpPerUnit, nTrees, new_globalBp, r
     {
       selectionStrategy,
       maxVisibleTrees,
-      fixedVisualWidth
+      fixedVisualWidth,
+      viewportStart: start,
+      viewportEnd: end
     }
   );
 
