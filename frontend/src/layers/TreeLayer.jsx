@@ -153,7 +153,7 @@ export default class TreeLayer extends CompositeLayer {
         updateTriggers: {
           getFillColor: [populationFilter.colorBy, populationFilter.enabledValues],
           data: [bin.modelMatrix, bin.path],
-
+          getPosition: [bin.modelMatrix],
         },
       }),
     ];
@@ -208,6 +208,7 @@ export default class TreeLayer extends CompositeLayer {
           zOffset: 2, // Ensure it draws on top
           updateTriggers: {
             data: [highlightData, bin.modelMatrix],
+            getPosition: [bin.modelMatrix],
             getFillColor: [populationFilter.colorBy]
           }
         })
@@ -240,7 +241,8 @@ export default class TreeLayer extends CompositeLayer {
           zOffset: 1,
           fp64: true,
           updateTriggers: {
-            data: [lineageData, bin.modelMatrix]
+            data: [lineageData, bin.modelMatrix],
+            getPath: [bin.modelMatrix]
           }
         })
       );
@@ -276,7 +278,8 @@ export default class TreeLayer extends CompositeLayer {
         getAngle: 90,
         updateTriggers: {
           data: [bin.modelMatrix, bin.path],
-          getText: [bin.path]
+          getText: [bin.path],
+          getPosition: [bin.modelMatrix]
         }
       }));
     }
@@ -304,6 +307,7 @@ export default class TreeLayer extends CompositeLayer {
       pickable: true,
       updateTriggers: {
         data: [bin.path, bin.modelMatrix],
+        getPosition: [bin.modelMatrix],
       },
     }));
 
@@ -331,6 +335,7 @@ export default class TreeLayer extends CompositeLayer {
           modelMatrix: null,
           updateTriggers: {
             data: [highlightedMutationNode, bin.path, bin.modelMatrix],
+            getPosition: [bin.modelMatrix],
           },
         }));
       }
