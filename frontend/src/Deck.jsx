@@ -132,11 +132,16 @@ function Deck({
     displayOptions
   });
 
+  // Store regions.bins in a ref to avoid stale closure while keeping callback stable
+  const regionsRef = useRef(regions);
+  regionsRef.current = regions;
+
   const onClickOrMouseMove = useCallback(
     (info, event) => {
       const isClick = event.type === "click";
       const isHover = !isClick;
-      const { bins } = regions;
+      // Access bins from ref to get current value without adding to deps
+      const { bins } = regionsRef.current;
 
       if (info && isClick) {
         if (info?.layer?.id?.includes("main")) {
@@ -151,7 +156,7 @@ function Deck({
         }
       }
       if (isClick && hoveredPolygonIndex) {
-        const bin = bins.get(hoveredPolygonIndex);
+        const bin = bins?.get(hoveredPolygonIndex);
         setClickedGenomeInfo(bin)
         return;
       }
@@ -196,7 +201,7 @@ function Deck({
           setHoveredGenomeInfo(null)
         }
       }
-    }, [hoveredPolygonIndex, sampleDetails])
+    }, [hoveredPolygonIndex, sampleDetails, queryDetails, setClickedGenomeInfo, setHoveredTreeIndex])
 
   const { layers, layerFilter, animatedBins } = useLayers({
     xzoom,
@@ -243,18 +248,17 @@ function Deck({
   }), [deckRef, dummy, polygonColor]);
 
   const getLayerPixelPositions = useCallback(
-    (deckRef) => {
+    () => {
       if (!deckRef?.current?.deck) return;
       const deck = deckRef.current.deck;
       const { width } = deck;
       const pointsArray = [];
-      const worldUnits = [];
       const pointsGenomePositionsInfo = [];
       const currentVisibleTrees = [];
 
+      // Access viewports from ref (stable reference)
       const genomeVP = saveViewports.current?.["genome-positions"];
       const orthoVP = saveViewports.current?.["ortho"];
-
 
       // Quick bail-out if viewports missing
       if (!genomeVP || !orthoVP) return;
@@ -264,10 +268,8 @@ function Deck({
       if (!(bins instanceof Map)) return;
 
       // Iterate directly over map entries — much faster than Object.values()
-
       for (const [key, b] of bins) {
         if (!b?.visible) continue;
-
 
         const modelMatrix = b.modelMatrix;
         const coords_s = [b.s / globalBpPerUnit, 0];
@@ -289,9 +291,6 @@ function Deck({
           1,
         ]);
 
-        // console.log("modelMatrix", modelMatrix, b.global_index);
-
-        worldUnits.push()
         pointsArray.push([
           [x0, y1 * 0.1],
           [pixel_s[0], 0],
@@ -301,7 +300,6 @@ function Deck({
           [x0, y1],
         ]);
         pointsGenomePositionsInfo.push(b.global_index);
-
       }
 
       if (pointsArray.length > 0) {
@@ -317,15 +315,18 @@ function Deck({
         }
       }
     },
-    [deckRef, saveViewports, globalBpPerUnit, regions, animatedBins, setVisibleTrees]
+    // Only include values that affect the calculation
+    // Refs (deckRef, saveViewports, prevVisibleTreesRef) don't need to be in deps
+    [globalBpPerUnit, regions, animatedBins, setVisibleTrees]
   );
 
+  // Trigger pixel position update when bins or config changes
   useEffect(() => {
-    getLayerPixelPositions(deckRef)
-  }, [regions, animatedBins, tsconfig, saveViewports.current])
+    getLayerPixelPositions();
+  }, [getLayerPixelPositions])
 
+  // Handle after render to capture viewports - stable callback
   const handleAfterRender = useCallback(() => {
-
     const deck = deckRef?.current?.deck;
     if (!deck) return;
 
@@ -337,7 +338,10 @@ function Deck({
       'ortho': vpOrtho,
       'genome-positions': vpGenome
     };
-  }, [deckRef, tsconfig])
+    
+    // Trigger pixel position update after viewports are captured
+    getLayerPixelPositions();
+  }, [getLayerPixelPositions])
 
   return (
     <div className="w-full">

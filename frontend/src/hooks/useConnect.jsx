@@ -5,21 +5,24 @@ import useLoraxConfig from "../globalconfig.js";
 import workerSpec from "../webworkers/localBackendWorker.js?worker&inline";
 import { initSession } from "../services/api.js";
 
-// Keep old handlers for worker communication
-let onQueryReceipt = (receivedData) => { };
-let onStatusReceipt = (receivedData) => console.log("STATUS:", receivedData.data);
-let onConfigReceipt = (receivedData) => { };
-let onLocalBinsReceipt = (receivedData) => { };
-let onGetTreeDataReceipt = (receivedData) => { };
-let onDetailsReceipt = (receivedData) => { };
-let onValueChangedReceipt = (receivedData) => { };
-let onSearchResultReceipt = (receivedData) => { };
-
 function useConnect({ setGettingDetails, settings, statusMessage: providedStatusMessage, setStatusMessage: providedSetStatusMessage }) {
   const workerRef = useRef(null);
   const socketRef = useRef(null);
   const sidRef = useRef(null);
   const initSessionPromiseRef = useRef(null);
+  
+  // Move handlers inside hook using refs to avoid memory leaks
+  // Each instance gets its own handlers that can be properly cleaned up
+  const handlersRef = useRef({
+    onQueryReceipt: () => {},
+    onStatusReceipt: (data) => console.log("STATUS:", data.data),
+    onConfigReceipt: () => {},
+    onLocalBinsReceipt: () => {},
+    onGetTreeDataReceipt: () => {},
+    onDetailsReceipt: () => {},
+    onValueChangedReceipt: () => {},
+    onSearchResultReceipt: () => {}
+  });
 
   const [localStatusMessage, setLocalStatusMessage] = useState({ message: null });
 
@@ -31,6 +34,9 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
   const { API_BASE, IS_PROD } = useLoraxConfig();
 
   const searchRequests = useRef(new Map());
+  
+  // Track if component is mounted for cleanup
+  const isMountedRef = useRef(true);
 
   /** 🔑 Initialize session */
   const initializeSession = useCallback(() => {
@@ -142,15 +148,16 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
       workerRef.current = worker;
 
       worker.onmessage = (event) => {
-        if (event.data.type === "status") onStatusReceipt(event.data);
-        if (event.data.type === "query") onQueryReceipt(event.data.data);
-        if (event.data.type === "config") onConfigReceipt(event.data);
-        if (event.data.type === "details") onDetailsReceipt(event.data.data);
-        if (event.data.type === "local-bins")
-          onLocalBinsReceipt(event.data);
-        if (event.data.type === "gettree") onGetTreeDataReceipt(event.data);
-        if (event.data.type === "value-changed")
-          onValueChangedReceipt(event.data);
+        // Use handlers from ref to avoid stale closures
+        const handlers = handlersRef.current;
+        
+        if (event.data.type === "status") handlers.onStatusReceipt(event.data);
+        if (event.data.type === "query") handlers.onQueryReceipt(event.data.data);
+        if (event.data.type === "config") handlers.onConfigReceipt(event.data);
+        if (event.data.type === "details") handlers.onDetailsReceipt(event.data.data);
+        if (event.data.type === "local-bins") handlers.onLocalBinsReceipt(event.data);
+        if (event.data.type === "gettree") handlers.onGetTreeDataReceipt(event.data);
+        if (event.data.type === "value-changed") handlers.onValueChangedReceipt(event.data);
         if (event.data.type === "search-result" || event.data.type === "search-nodes-result") {
           const { id, data } = event.data;
           const resolve = searchRequests.current.get(id);
@@ -159,7 +166,7 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
             searchRequests.current.delete(id);
           } else if (!id) {
             // Fallback for calls without ID (if any)
-            onSearchResultReceipt(event.data);
+            handlers.onSearchResultReceipt(event.data);
           }
         }
       };
@@ -173,14 +180,38 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
 
   /** 🔑 Initialize once and cleanup properly */
   useEffect(() => {
+    isMountedRef.current = true;
     initializeSession();
 
     return () => {
+      isMountedRef.current = false;
+      
+      // Cleanup socket
       if (socketRef.current) {
         socketRef.current.disconnect();
         socketRef.current = null;
       }
       setIsConnected(false);
+      
+      // Cleanup pending search requests to prevent memory leaks
+      // Reject any pending promises so they don't hold references
+      searchRequests.current.forEach((resolve, id) => {
+        // Resolve with null to indicate cancellation
+        resolve(null);
+      });
+      searchRequests.current.clear();
+      
+      // Reset handlers to no-ops
+      handlersRef.current = {
+        onQueryReceipt: () => {},
+        onStatusReceipt: () => {},
+        onConfigReceipt: () => {},
+        onLocalBinsReceipt: () => {},
+        onGetTreeDataReceipt: () => {},
+        onDetailsReceipt: () => {},
+        onValueChangedReceipt: () => {},
+        onSearchResultReceipt: () => {}
+      };
     };
   }, [initializeSession]);
 
@@ -198,20 +229,32 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
   // ───────────────────────────────
   const getTreeData = useCallback((global_index, precision) => {
     return new Promise((resolve) => {
+      if (!isMountedRef.current) {
+        resolve(null);
+        return;
+      }
+      
       workerRef.current?.postMessage({
         type: "gettree",
         global_index,
         precision,
       });
 
-      onGetTreeDataReceipt = (receivedData) => {
-        resolve(receivedData.data);
+      handlersRef.current.onGetTreeDataReceipt = (receivedData) => {
+        if (isMountedRef.current) {
+          resolve(receivedData.data);
+        }
       };
     });
   }, []);
 
   const search = useCallback((term, terms = [], options = {}) => {
     return new Promise((resolve) => {
+      if (!isMountedRef.current) {
+        resolve(null);
+        return;
+      }
+      
       const id = Math.random().toString(36).substring(7);
       searchRequests.current.set(id, resolve);
       workerRef.current?.postMessage({
@@ -226,23 +269,33 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
 
   const queryConfig = useCallback((configData, globalBpPerUnit = null) => {
     return new Promise((resolve) => {
+      if (!isMountedRef.current) {
+        resolve(null);
+        return;
+      }
+      
       workerRef.current?.postMessage({
         type: "config",
         data: configData,
         globalBpPerUnit: globalBpPerUnit,
       });
-      // onConfigReceipt = (receivedData) => resolve(receivedData);
+      // Config doesn't need a response handler
+      resolve();
     });
   }, []);
 
   const valueChanged = useCallback((value, setResult) => {
+    if (!isMountedRef.current) return;
+    
     workerRef.current?.postMessage({
       type: "value-changed",
       data: value,
     });
 
-    onValueChangedReceipt = (receivedData) => {
-      setResult([receivedData.data.i0, receivedData.data.i1]);
+    handlersRef.current.onValueChangedReceipt = (receivedData) => {
+      if (isMountedRef.current) {
+        setResult([receivedData.data.i0, receivedData.data.i1]);
+      }
     };
   }, []);
 
@@ -262,6 +315,11 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
   const queryLocalBins = useCallback(
     (start, end, globalBpPerUnit, nTrees, new_globalBp, regionWidth = null, displayOptions = {}) => {
       return new Promise((resolve) => {
+        if (!isMountedRef.current) {
+          resolve({ local_bins: new Map(), lower_bound: 0, upper_bound: 0, displayArray: [] });
+          return;
+        }
+        
         workerRef.current?.postMessage({
           type: "local-bins",
           data: { 
@@ -278,8 +336,10 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
           },
         });
 
-        onLocalBinsReceipt = (receivedData) => {
-          resolve(receivedData.data);
+        handlersRef.current.onLocalBinsReceipt = (receivedData) => {
+          if (isMountedRef.current) {
+            resolve(receivedData.data);
+          }
         };
       });
     },
@@ -288,15 +348,19 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
 
   const queryNodes = useCallback(
     (value, localTrees) => {
-
-
       return new Promise((resolve) => {
+        if (!isMountedRef.current) {
+          resolve(null);
+          return;
+        }
+        
         socketRef.current?.emit("query", { value, localTrees, lorax_sid: sidRef.current });
 
-        onQueryReceipt = (receivedData) => {
-          // console.log("query", receivedData);
-          resolve(receivedData);
-        }
+        handlersRef.current.onQueryReceipt = (receivedData) => {
+          if (isMountedRef.current) {
+            resolve(receivedData);
+          }
+        };
       });
     }, []);
 
@@ -348,6 +412,8 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
     return !!socketRef.current?.connected;
   }, []);
 
+  // Memoize return object - only include values that actually change
+  // Note: callbacks are stable (empty deps), refs don't need to be tracked
   return useMemo(
     () => ({
       statusMessage,
@@ -363,15 +429,16 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
       connect,
       queryFile,
       getTreeData,
-      getTreeData,
       search
     }),
     [
-      connect,
       statusMessage,
+      isConnected,
+      // All callbacks below have empty deps, so they're stable
+      // but including them is fine for completeness
+      connect,
       queryNodes,
       queryDetails,
-      isConnected,
       checkConnection,
       queryConfig,
       queryLocalBins,

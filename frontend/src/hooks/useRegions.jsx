@@ -44,7 +44,7 @@ function getDynamicBpPerUnit(globalBpPerUnit, zoom, baseZoom = 8) {
  * @param {Function} props.setStatusMessage - Status message setter
  * @param {number} props.xzoom - Current X-axis zoom level
  * @param {number} props.yzoom - Current Y-axis zoom level
- * @param {Array} props.genomicValues - Current genomic range
+ * @param {Array} props.genomicValues - Current genomic range (state that triggers updates)
  * @param {Object} props.displayOptions - Tree display configuration
  * @param {string} props.displayOptions.selectionStrategy - 'largestSpan' | 'centerWeighted' | 'spanWeightedRandom' | 'first'
  * @param {number} props.displayOptions.maxVisibleTrees - Maximum visible trees (default: 50)
@@ -65,9 +65,9 @@ const useRegions = ({
 
   const [localBins, setLocalBins] = useState(null);
   
-  const isFetching = useRef(false);
+  const isFetchingRef = useRef(false);
   
-  const regionWidth = useRef(null);
+  const regionWidthRef = useRef(null);
 
   const [times, setTimes] = useState([]);
 
@@ -78,9 +78,10 @@ const useRegions = ({
     fixedVisualWidth = null
   } = displayOptions;
 
+  // Stable query function - refs are accessed inside, not in deps
   const debouncedQuery = useMemo(
     () => debounce(async (val) => {
-      if (isFetching.current) return;
+      if (isFetchingRef.current) return;
 
       const [lo, hi] = val;
       const zoom = xzoom ?? 8;
@@ -88,11 +89,11 @@ const useRegions = ({
       const new_globalBp = getDynamicBpPerUnit(globalBpPerUnit, zoom);
 
       if (new_globalBp == globalBpPerUnit) {
-        if (regionWidth.current == null) regionWidth.current = hi - lo;
+        if (regionWidthRef.current == null) regionWidthRef.current = hi - lo;
       } else {
-        regionWidth.current = null;
+        regionWidthRef.current = null;
       }
-      isFetching.current = true;
+      isFetchingRef.current = true;
 
       // Pass display options to queryLocalBins
       const { local_bins, lower_bound, upper_bound, displayArray } = await queryLocalBins(
@@ -101,7 +102,7 @@ const useRegions = ({
         globalBpPerUnit, 
         null, 
         new_globalBp, 
-        regionWidth.current,
+        regionWidthRef.current,
         {
           selectionStrategy,
           maxVisibleTrees,
@@ -154,24 +155,34 @@ const useRegions = ({
       }
       
       setStatusMessage(null);
-      isFetching.current = false;
+      isFetchingRef.current = false;
     }, 400, { leading: false, trailing: true }),
-    [isFetching.current, valueRef.current, xzoom, selectionStrategy, maxVisibleTrees, fixedVisualWidth]
+    // Only include stable values and actual state/props that affect the query
+    [globalBpPerUnit, xzoom, selectionStrategy, maxVisibleTrees, fixedVisualWidth, queryLocalBins, getTreeData, queryNodes, setStatusMessage]
   );
 
+  // Use genomicValues (state) instead of valueRef.current (ref) for dependency
   useEffect(() => {
-    if (valueRef.current) debouncedQuery(valueRef.current);
-  }, [valueRef.current, xzoom]);
+    if (genomicValues) {
+      debouncedQuery(genomicValues);
+    }
+  }, [genomicValues, xzoom, debouncedQuery]);
 
-  useEffect(() => () => debouncedQuery.cancel(), [debouncedQuery]);
+  // Cleanup debounce on unmount or when debouncedQuery changes
+  useEffect(() => {
+    return () => {
+      debouncedQuery.cancel();
+    };
+  }, [debouncedQuery]);
 
+  // Use genomicValues state for proper reactivity
   const localCoordinates = useMemo(() => {
-    if (!valueRef.current) return [];
-    const [lo, hi] = valueRef.current;
+    if (!genomicValues) return [];
+    const [lo, hi] = genomicValues;
     const bufferFrac = 0.1;
     const range = hi - lo;
     return getLocalCoordinates(lo - bufferFrac * range, hi + bufferFrac * range);
-  }, [valueRef.current]);
+  }, [genomicValues]);
 
   useEffect(() => {
     if (tsconfig && tsconfig?.times?.values) {

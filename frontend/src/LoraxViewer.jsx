@@ -1,8 +1,9 @@
 // src/components/ViewerScreen.jsx
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { useParams, useSearchParams, Navigate } from "react-router-dom";
 import { BsFillKanbanFill } from "react-icons/bs";
 import { FaGear, FaCamera } from "react-icons/fa6";
+import { debounce } from "lodash";
 import Lorax from './Lorax.jsx'
 import Info from './components/Info.jsx'
 import Settings from './components/Settings.jsx'
@@ -40,20 +41,25 @@ export default function LoraxViewer({ backend, config, settings, setSettings, pr
     }
   }, []);
 
-
-  useEffect(() => {
-    if (backend && backend.isConnected) {
-      const hasSearchTerm = config.searchTerm && config.searchTerm.trim() !== "";
-      const hasSearchTags = config.searchTags && config.searchTags.length > 0;
-      const showLineages = settings && settings.display_lineage_paths;
+  // Debounced search function to prevent excessive API calls
+  const debouncedSearch = useMemo(
+    () => debounce((searchParams) => {
+      const { 
+        searchTerm, 
+        searchTags, 
+        colorBy, 
+        sampleDetails, 
+        metadataColors, 
+        showLineages, 
+        backendSearch 
+      } = searchParams;
+      
+      const hasSearchTerm = searchTerm && searchTerm.trim() !== "";
+      const hasSearchTags = searchTags && searchTags.length > 0;
 
       // Common logic to resolve search terms -> sample names
       let sampleNames = [];
       if (hasSearchTerm || hasSearchTags) {
-        // Convert search terms to actual sample names based on colorBy
-        const colorBy = config.populationFilter?.colorBy;
-        const sampleDetails = config.sampleDetails;
-
         // Helper function to get sample names that match a search term
         const getSampleNamesForTerm = (term) => {
           if (!term || !colorBy || !sampleDetails) return [term];
@@ -72,32 +78,24 @@ export default function LoraxViewer({ backend, config, settings, setSettings, pr
         };
 
         if (hasSearchTerm) {
-          sampleNames.push(...getSampleNamesForTerm(config.searchTerm));
+          sampleNames.push(...getSampleNamesForTerm(searchTerm));
         }
 
         if (hasSearchTags) {
-          for (const tag of config.searchTags) {
+          for (const tag of searchTags) {
             sampleNames.push(...getSampleNamesForTerm(tag));
           }
         }
       }
 
-
-      // If lineages are disabled, clear lineage paths immediately
-      if (!showLineages) {
-        setLineagePaths({});
-      }
-
       // Combined search
-      if (sampleNames.length > 0) { // Check sampleNames instead of hasSearchTerm to capture mapped tags
-
+      if (sampleNames.length > 0) {
         const sampleColors = {};
-        if (config.populationFilter?.colorBy && config.sampleDetails && config.metadataColors && config.metadataColors[config.populationFilter.colorBy]) {
-          const colorBy = config.populationFilter.colorBy;
+        if (colorBy && sampleDetails && metadataColors && metadataColors[colorBy]) {
           for (const sample of sampleNames) {
-            const val = config.sampleDetails[sample]?.[colorBy];
+            const val = sampleDetails[sample]?.[colorBy];
             if (val !== undefined && val !== null) {
-              const c = config.metadataColors[colorBy][String(val)];
+              const c = metadataColors[colorBy][String(val)];
               if (c) {
                 sampleColors[sample.toLowerCase()] = c;
               }
@@ -105,7 +103,7 @@ export default function LoraxViewer({ backend, config, settings, setSettings, pr
           }
         }
 
-        backend.search(config.searchTerm, sampleNames, { showLineages, sampleColors }).then((results) => {
+        backendSearch(searchTerm, sampleNames, { showLineages, sampleColors }).then((results) => {
           if (results) {
             // Only set lineage paths if showLineages is still enabled
             if (showLineages) {
@@ -124,8 +122,48 @@ export default function LoraxViewer({ backend, config, settings, setSettings, pr
         setLineagePaths({});
         setHighlightedNodes({});
       }
+    }, 300), // 300ms debounce
+    [] // Empty deps - function is stable
+  );
+  
+  // Cleanup debounce on unmount
+  useEffect(() => {
+    return () => {
+      debouncedSearch.cancel();
+    };
+  }, [debouncedSearch]);
+
+  // Trigger debounced search when relevant params change
+  useEffect(() => {
+    if (!backend || !backend.isConnected) return;
+    
+    const showLineages = settings && settings.display_lineage_paths;
+    
+    // If lineages are disabled, clear lineage paths immediately
+    if (!showLineages) {
+      setLineagePaths({});
     }
-  }, [config.searchTerm, config.searchTags, config.populationFilter?.colorBy, config.sampleDetails, backend.isConnected, backend, visibleTrees, settings, statusMessage?.status]);
+    
+    debouncedSearch({
+      searchTerm: config.searchTerm,
+      searchTags: config.searchTags,
+      colorBy: config.populationFilter?.colorBy,
+      sampleDetails: config.sampleDetails,
+      metadataColors: config.metadataColors,
+      showLineages,
+      backendSearch: backend.search
+    });
+  }, [
+    config.searchTerm, 
+    config.searchTags, 
+    config.populationFilter?.colorBy, 
+    config.sampleDetails, 
+    config.metadataColors,
+    backend?.isConnected, 
+    backend?.search,
+    settings?.display_lineage_paths,
+    debouncedSearch
+  ]);
 
   // Separate effect to immediately clear data when lineage is disabled or no search, independent of search timing
   useEffect(() => {

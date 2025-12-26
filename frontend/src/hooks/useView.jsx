@@ -1,7 +1,7 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { debounce } from "lodash";
 import { OrthographicView } from "@deck.gl/core";
-import { MyOrthographicController, setGlobalControllers } from "./modules/viewController";
+import { MyOrthographicController, setGlobalControllers, resetGlobalControllers } from "./modules/viewController";
 import { INITIAL_VIEW_STATE, getPanStep, panLimit } from "./modules/viewStateUtils";
 
 
@@ -17,15 +17,23 @@ const useView = ({ config, valueRef, clickedGenomeInfo }) => {
 
   const [isRendered, setIsRendered] = useState(false);
   const [genomicValues, setGenomicValues] = useState(valueRef.current);
+  
+  // Track genomeLength changes properly (refs don't trigger re-renders)
+  const [genomeLengthValue, setGenomeLengthValue] = useState(null);
+  
+  // Update genomeLengthValue when genomeLength.current changes
+  useEffect(() => {
+    if (genomeLength?.current && genomeLength.current !== genomeLengthValue) {
+      setGenomeLengthValue(genomeLength.current);
+    }
+  }, [genomeLength?.current, genomeLengthValue]);
 
   // Compute initial state only once genomeLength and globalBpPerUnit are available
   const initialState = useMemo(() => {
-    if (!genomeLength.current || !globalBpPerUnit) return null;
+    if (!genomeLengthValue || !globalBpPerUnit) return null;
 
-    const initial_position = Math.floor((genomeLength.current / globalBpPerUnit) / 2);
+    const initial_position = Math.floor((genomeLengthValue / globalBpPerUnit) / 2);
 
-    setXzoom(INITIAL_VIEW_STATE['ortho'].zoom[0])
-    setYzoom(INITIAL_VIEW_STATE['ortho'].zoom[1])
     return {
       'ortho': {
         ...INITIAL_VIEW_STATE['ortho'],
@@ -41,14 +49,28 @@ const useView = ({ config, valueRef, clickedGenomeInfo }) => {
       },
       'tree-time': INITIAL_VIEW_STATE['tree-time'],
     };
-
-  }, [genomeLength.current, globalBpPerUnit]);
+  }, [genomeLengthValue, globalBpPerUnit]);
+  
+  // Set initial zoom values when initialState is computed
+  useEffect(() => {
+    if (initialState) {
+      setXzoom(INITIAL_VIEW_STATE['ortho'].zoom[0]);
+      setYzoom(INITIAL_VIEW_STATE['ortho'].zoom[1]);
+    }
+  }, [initialState]);
 
   // Initialize viewState once from computed initialState
   const [viewState, setViewState] = useState(null);
 
-  // Set global controllers for MyOrthographicController
-  setGlobalControllers(setZoomAxis, setPanDirection);
+  // Set global controllers for MyOrthographicController - only once on mount
+  useEffect(() => {
+    setGlobalControllers(setZoomAxis, setPanDirection);
+    
+    // Cleanup on unmount to prevent stale references
+    return () => {
+      resetGlobalControllers();
+    };
+  }, []); // Empty deps - setZoomAxis and setPanDirection are stable
 
   const [decksize, setDecksize] = useState(null);
 
@@ -166,23 +188,28 @@ const useView = ({ config, valueRef, clickedGenomeInfo }) => {
         height: '80%',
         width: '3%',
         id: "tree-time",
-        // controller:false,
         initialViewState: INITIAL_VIEW_STATE['tree-time']
       })
     ]
-  }, [tsconfig]);
+  }, [zoomAxis]); // zoomAxis is used in controller config
 
   const [mouseXY, setMouseXY] = useState(false);
 
+  // Create debounced update function - stable reference
   const debouncedUpdateRef = useMemo(
     () => debounce((newValue) => {
       valueRef.current = newValue;
       setGenomicValues(newValue);
-    },
-      100 // Adjust this delay (in milliseconds) to control frequency
-    ),
-    []
+    }, 100),
+    [] // valueRef is a ref, stable reference
   );
+  
+  // Cleanup debounce on unmount to prevent memory leak
+  useEffect(() => {
+    return () => {
+      debouncedUpdateRef.cancel();
+    };
+  }, [debouncedUpdateRef]);
 
   const lastAppliedConfigRef = useRef(null);
 
@@ -334,7 +361,7 @@ const useView = ({ config, valueRef, clickedGenomeInfo }) => {
       return newViewStates;
     });
 
-  }, [zoomAxis, panDirection, tsconfig, xStopZoomRef, decksize, genomicValues])
+  }, [zoomAxis, panDirection, globalBpPerUnit, genomeLength])
 
   const panInterval = useRef(null);
 
@@ -368,7 +395,7 @@ const useView = ({ config, valueRef, clickedGenomeInfo }) => {
 
     setYzoom(INITIAL_VIEW_STATE['ortho'].zoom[1])
 
-  }, [viewState]);
+  }, []); // No deps needed - only uses setViewState and setYzoom which are stable
 
   const startPan = useCallback((direction) => {
     if (panInterval.current) return;
@@ -403,28 +430,9 @@ const useView = ({ config, valueRef, clickedGenomeInfo }) => {
     panInterval.current = null;
   }, []);
 
-  const output = useMemo(() => {
-    return {
-      viewState,
-      setViewState,
-      views,
-      zoomAxis,
-      setZoomAxis,
-      xzoom,
-      setMouseXY,
-      mouseXY,
-      handleViewStateChange,
-      changeView,
-      startPan,
-      stopPan,
-      decksize,
-      setDecksize,
-      viewReset,
-      genomicValues,
-      yzoom,
-      setYzoom
-    };
-  }, [
+  // Memoize output object - only include values that change
+  // Note: React setState functions are stable and don't need to be in deps
+  const output = useMemo(() => ({
     viewState,
     setViewState,
     views,
@@ -433,7 +441,6 @@ const useView = ({ config, valueRef, clickedGenomeInfo }) => {
     xzoom,
     setMouseXY,
     mouseXY,
-    panDirection,
     handleViewStateChange,
     changeView,
     startPan,
@@ -444,6 +451,20 @@ const useView = ({ config, valueRef, clickedGenomeInfo }) => {
     genomicValues,
     yzoom,
     setYzoom
+  }), [
+    viewState,
+    views,
+    zoomAxis,
+    xzoom,
+    mouseXY,
+    handleViewStateChange,
+    changeView,
+    startPan,
+    stopPan,
+    decksize,
+    viewReset,
+    genomicValues,
+    yzoom
   ]);
 
   return output;

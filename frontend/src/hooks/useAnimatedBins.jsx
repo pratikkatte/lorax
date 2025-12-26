@@ -49,6 +49,10 @@ const useAnimatedBins = (rawBins, options = {}) => {
 
   // Preallocate a reusable Matrix4 for building animated matrices
   const tempMatrix = useRef(new Matrix4());
+  
+  // Use a ref to track previous bins to avoid stale closure when reading state
+  // This ref is updated after each animation frame or state update
+  const prevBinsRef = useRef(rawBins);
 
   /**
    * Animation loop using requestAnimationFrame
@@ -103,7 +107,9 @@ const useAnimatedBins = (rawBins, options = {}) => {
       }
     }
 
+    // Update state and ref together to keep them in sync
     setAnimatedBins(newAnimatedBins);
+    prevBinsRef.current = newAnimatedBins;
 
     if (hasActiveAnimations) {
       animationFrameRef.current = requestAnimationFrame(animate);
@@ -128,6 +134,7 @@ const useAnimatedBins = (rawBins, options = {}) => {
   useEffect(() => {
     if (!rawBins || rawBins.size === 0) {
       setAnimatedBins(rawBins);
+      prevBinsRef.current = rawBins;
       return;
     }
 
@@ -176,8 +183,8 @@ const useAnimatedBins = (rawBins, options = {}) => {
           needsAnimation = true;
         }
       } else {
-        // Check if we have a previous rendered position from animatedBins
-        const prevBin = animatedBins?.get?.(key);
+        // Use ref to get previous rendered position (avoids stale closure issue)
+        const prevBin = prevBinsRef.current?.get?.(key);
         
         if (prevBin && prevBin.modelMatrix && prevBin.visible) {
           const prevTranslate = prevBin.modelMatrix[12];
@@ -212,8 +219,9 @@ const useAnimatedBins = (rawBins, options = {}) => {
     if (needsAnimation) {
       startAnimationLoop();
     } else {
-      // No animations needed - just use raw bins
+      // No animations needed - just use raw bins and update ref
       setAnimatedBins(rawBins);
+      prevBinsRef.current = rawBins;
     }
   }, [rawBins, transitionDuration, easingFn, startAnimationLoop]);
 
