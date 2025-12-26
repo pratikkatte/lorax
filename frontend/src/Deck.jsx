@@ -112,12 +112,10 @@ function Deck({
 
   const [hoveredPolygonIndex, setHoveredPolygonIndex] = useState(null);
 
-  // Extract display options from settings
+  // Hardcoded display options for tree binning
   const displayOptions = useMemo(() => ({
-    selectionStrategy: settings?.treeDisplay?.selectionStrategy || 'largestSpan',
-    maxVisibleTrees: settings?.treeDisplay?.maxVisibleTrees || 50,
-    fixedVisualWidth: settings?.treeDisplay?.fixedVisualWidth || null
-  }), [settings?.treeDisplay]);
+    selectionStrategy: 'largestSpan',
+  }), []);
 
   const regions = useRegions({ 
     backend, 

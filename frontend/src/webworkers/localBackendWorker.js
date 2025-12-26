@@ -37,30 +37,22 @@ const MAX_CACHED_TREES = 30;
 
 // Helper to delete from pathsData for trees outside current range
 function deleteRangeByValue(min, max) {
-  const keysToDelete = [];
+  // const keysToDelete = [];
   for (const key of pathsData.keys()) {
     if (key < min || key > max) {
-      keysToDelete.push(key);
+      // keysToDelete.push(key);
+      pathsData.delete(key);
     }
-  }
-  // Delete outside the iteration to avoid mutation issues
-  for (const key of keysToDelete) {
-    pathsData.delete(key);
   }
 }
 
 // Aggressive cleanup when cache gets too large
-function enforcePathsCacheLimit() {
-  console.log("enforcePathsCacheLimit", pathsData.size, MAX_CACHED_TREES);
+function enforcePathsCacheLimit(invisibleKeys=new Set()) {
   if (pathsData.size > MAX_CACHED_TREES) {
-    // Keep only the most recently relevant trees
-    // Convert to array, sort by key (tree index), remove oldest
-    const entries = Array.from(pathsData.keys()).sort((a, b) => a - b);
-    const toRemove = entries.slice(0, entries.length - MAX_CACHED_TREES);
-    for (const key of toRemove) {
+    invisibleKeys.forEach(key => {
       pathsData.delete(key);
-    }
-    console.log(`[Worker] Cleaned pathsData cache: removed ${toRemove.length} trees, ${pathsData.size} remaining`);
+    });
+
   }
 }
 
@@ -75,16 +67,12 @@ function enforcePathsCacheLimit() {
  * @param {number|null} regionWidth - Optional region width override
  * @param {Object} displayOptions - Display configuration options
  * @param {string} displayOptions.selectionStrategy - Strategy: 'largestSpan', 'centerWeighted', 'spanWeightedRandom', 'first'
- * @param {number} displayOptions.maxVisibleTrees - Maximum number of trees to display
- * @param {number|null} displayOptions.fixedVisualWidth - Fixed width for all trees (null = auto)
  * @returns {Object} { local_bins, lower_bound, upper_bound, displayArray }
  */
 async function getLocalData(start, end, globalBpPerUnit, nTrees, new_globalBp, regionWidth = null, displayOptions = {}) {
   // Default display options
   const {
     selectionStrategy = 'largestSpan',
-    maxVisibleTrees = 50,
-    fixedVisualWidth = null
   } = displayOptions;
 
   let scaleFactor = new_globalBp / globalBpPerUnit;
@@ -161,17 +149,15 @@ async function getLocalData(start, end, globalBpPerUnit, nTrees, new_globalBp, r
   }
 
   // Pass display options to the binning function
-  const { return_local_bins, displayArray } = new_complete_experiment_map(
+  const { return_local_bins, displayArray, invisibleKeys } = new_complete_experiment_map(
     local_bins, 
     globalBpPerUnit, 
     new_globalBp,
     {
       selectionStrategy,
-      maxVisibleTrees,
-      fixedVisualWidth,
       viewportStart: start,
       viewportEnd: end
-    }
+    },
   );
 
   lastStart = lower_bound;
@@ -180,6 +166,8 @@ async function getLocalData(start, end, globalBpPerUnit, nTrees, new_globalBp, r
   
   // Cleanup pathsData for trees no longer in view (with buffer)
   deleteRangeByValue(lower_bound, upper_bound);
+  
+  enforcePathsCacheLimit(invisibleKeys);
 
   return { local_bins: return_local_bins, lower_bound, upper_bound, displayArray };
 }
@@ -261,7 +249,7 @@ function processData(localTrees, sendStatusMessage) {
     }
     
     // Enforce cache limit to prevent memory bloat
-    enforcePathsCacheLimit();
+    // enforcePathsCacheLimit();
   }
 
   return null;
@@ -364,9 +352,7 @@ onmessage = async (event) => {
     if (data.type === "local-bins") {
       // Extract display options from the message data
       const displayOptions = {
-        selectionStrategy: data.data.selectionStrategy || 'largestSpan',
-        maxVisibleTrees: data.data.maxVisibleTrees || 50,
-        fixedVisualWidth: data.data.fixedVisualWidth || null
+        selectionStrategy: 'largestSpan'
       };
       
       let result = await getLocalData(

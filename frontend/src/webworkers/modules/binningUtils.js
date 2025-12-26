@@ -1,5 +1,4 @@
 import { Matrix4 } from "@math.gl/core";
-
 // preallocate a reusable Matrix4 to avoid GC churn
 const tempMatrix = new Matrix4();
 
@@ -147,8 +146,6 @@ export function getSelectionStrategy(strategyName) {
  * @param {number} new_globalBp - Zoom-adjusted bp per unit
  * @param {Object} options - Configuration options
  * @param {string} options.selectionStrategy - Strategy name: 'largestSpan', 'centerWeighted', 'spanWeightedRandom', 'first'
- * @param {number} options.maxVisibleTrees - Maximum number of trees to display (affects slot count)
- * @param {number|null} options.fixedVisualWidth - Fixed width for all trees (null = auto-calculate)
  * @param {number|null} options.viewportStart - Start of visible viewport in genomic coordinates (bp)
  * @param {number|null} options.viewportEnd - End of visible viewport in genomic coordinates (bp)
  * @returns {Object} { return_local_bins, displayArray }
@@ -156,12 +153,11 @@ export function getSelectionStrategy(strategyName) {
 export function new_complete_experiment_map( localBins, globalBpPerUnit, new_globalBp, options = {}) {
   const {
     selectionStrategy = 'largestSpan',
-    maxVisibleTrees = 50,
-    fixedVisualWidth = null,
     viewportStart = null,
     viewportEnd = null
   } = options;
 
+  const invisibleKeys = new Set()
   const spacing = 1.05;
   const displayArray = [];
 
@@ -169,7 +165,7 @@ export function new_complete_experiment_map( localBins, globalBpPerUnit, new_glo
   const approxEqual = Math.abs(scaleFactor - 1) < 1e-6;
 
 
-  // Get selection strategy function
+  // TODO: later to provide user control over the selection strategy
   const selectFn = getSelectionStrategy(selectionStrategy);
 
   // ────────────────────────────────────────────────────────────────────────
@@ -215,7 +211,7 @@ export function new_complete_experiment_map( localBins, globalBpPerUnit, new_glo
   // As scale factor increases, reduce number of visible slots
   const effectiveMaxTrees = approxEqual 
     ? allTrees.length 
-    : Math.max(1, Math.min(maxVisibleTrees, Math.ceil(allTrees.length / scaleFactor)));
+    : Math.max(1, Math.ceil(allTrees.length / scaleFactor));
   
   const numSlots = Math.min(allTrees.length, effectiveMaxTrees);
   const slotWidth = viewportSpan / numSlots; // genomic width per slot
@@ -336,6 +332,7 @@ export function new_complete_experiment_map( localBins, globalBpPerUnit, new_glo
     // Mark non-selected trees as invisible
     for (const tree of treesInSlot) {
       if (!selectedTrees.has(tree.idx)) {
+        invisibleKeys.add(tree.idx);
         localBins.set(tree.idx, {
           ...tree.bin,
           modelMatrix: null,
@@ -352,7 +349,7 @@ export function new_complete_experiment_map( localBins, globalBpPerUnit, new_glo
     }
   }
 
-  return { return_local_bins: localBins, displayArray };
+  return { return_local_bins: localBins, displayArray, invisibleKeys };
 }
 
 /**

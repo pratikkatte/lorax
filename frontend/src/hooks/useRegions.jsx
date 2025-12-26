@@ -47,8 +47,6 @@ function getDynamicBpPerUnit(globalBpPerUnit, zoom, baseZoom = 8) {
  * @param {Array} props.genomicValues - Current genomic range
  * @param {Object} props.displayOptions - Tree display configuration
  * @param {string} props.displayOptions.selectionStrategy - 'largestSpan' | 'centerWeighted' | 'spanWeightedRandom' | 'first'
- * @param {number} props.displayOptions.maxVisibleTrees - Maximum visible trees (default: 50)
- * @param {number|null} props.displayOptions.fixedVisualWidth - Fixed width for all trees (null = auto)
  */
 const useRegions = ({ 
   backend, 
@@ -73,9 +71,7 @@ const useRegions = ({
 
   // Extract display options with defaults
   const {
-    selectionStrategy = 'largestSpan',
-    maxVisibleTrees = 50,
-    fixedVisualWidth = null
+    selectionStrategy = 'largestSpan'
   } = displayOptions;
 
   const debouncedQuery = useMemo(
@@ -103,9 +99,7 @@ const useRegions = ({
         new_globalBp, 
         regionWidth.current,
         {
-          selectionStrategy,
-          maxVisibleTrees,
-          fixedVisualWidth
+          selectionStrategy
         }
       );
 
@@ -156,7 +150,7 @@ const useRegions = ({
       setStatusMessage(null);
       isFetching.current = false;
     }, 400, { leading: false, trailing: true }),
-    [isFetching.current, valueRef.current, xzoom, selectionStrategy, maxVisibleTrees, fixedVisualWidth]
+    [isFetching.current, valueRef.current, xzoom, selectionStrategy]
   );
 
   useEffect(() => {

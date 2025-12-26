@@ -256,11 +256,9 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
    * @param {number|null} regionWidth - Optional region width
    * @param {Object} displayOptions - Display configuration
    * @param {string} displayOptions.selectionStrategy - 'largestSpan' | 'centerWeighted' | 'spanWeightedRandom' | 'first'
-   * @param {number} displayOptions.maxVisibleTrees - Maximum visible trees
-   * @param {number|null} displayOptions.fixedVisualWidth - Fixed width for all trees
    */
   const queryLocalBins = useCallback(
-    (start, end, globalBpPerUnit, nTrees, new_globalBp, regionWidth = null, displayOptions = {}) => {
+    (start, end, globalBpPerUnit, nTrees, new_globalBp, regionWidth = null) => {
       return new Promise((resolve) => {
         workerRef.current?.postMessage({
           type: "local-bins",
@@ -270,11 +268,7 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
             globalBpPerUnit, 
             nTrees, 
             new_globalBp, 
-            regionWidth,
-            // Include display options in the message
-            selectionStrategy: displayOptions.selectionStrategy || 'largestSpan',
-            maxVisibleTrees: displayOptions.maxVisibleTrees || 50,
-            fixedVisualWidth: displayOptions.fixedVisualWidth || null
+            regionWidth
           },
         });
 
