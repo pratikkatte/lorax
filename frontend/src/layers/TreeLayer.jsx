@@ -7,6 +7,7 @@ import { GL } from '@luma.gl/constants' // Note the ESM import
 import { DNA } from 'react-loader-spinner';
 
 export default class TreeLayer extends CompositeLayer {
+  static layerName = 'TreeLayer';
   static defaultProps = {
     bin: null,
     globalBpPerUnit: 1,
@@ -96,7 +97,7 @@ export default class TreeLayer extends CompositeLayer {
         viewId,
         modelMatrix: null,
         pickable: true,
-        coordinateSystem: COORDINATE_SYSTEM.IDENTITY,
+        coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
         zOffset: -1,
         fp64: true,
         updateTriggers: {
@@ -145,7 +146,7 @@ export default class TreeLayer extends CompositeLayer {
         getRadius: 2,
         radiusMinPixels: 1.2,
         radiusUnits: 'pixels',
-        coordinateSystem: COORDINATE_SYSTEM.IDENTITY,
+        coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
         pickable: true,
         modelMatrix: null,
         viewId,
@@ -200,7 +201,7 @@ export default class TreeLayer extends CompositeLayer {
           stroked: true,
           lineWidthUnits: 'pixels',
           radiusUnits: 'pixels',
-          coordinateSystem: COORDINATE_SYSTEM.IDENTITY,
+          coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
           viewId,
           modelMatrix: null,
           pickable: true,
@@ -235,7 +236,7 @@ export default class TreeLayer extends CompositeLayer {
           widthUnits: 'pixels',
           viewId,
           modelMatrix: null,
-          coordinateSystem: COORDINATE_SYSTEM.IDENTITY,
+          coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
           zOffset: 1,
           fp64: true,
           updateTriggers: {
@@ -267,7 +268,7 @@ export default class TreeLayer extends CompositeLayer {
         shadowBlur: 2,
         viewId,
         modelMatrix: null,
-        coordinateSystem: COORDINATE_SYSTEM.IDENTITY,
+        coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
         sizeUnits: 'pixels',
         getSize: () => (6 + Math.log2(Math.max(xzoom, 1))),
         getAlignmentBaseline: 'center',
@@ -325,7 +326,7 @@ export default class TreeLayer extends CompositeLayer {
           filled: false,
           lineWidthUnits: 'pixels',
           radiusUnits: 'pixels',
-          coordinateSystem: COORDINATE_SYSTEM.IDENTITY,
+          coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
           viewId,
           modelMatrix: null,
           updateTriggers: {

@@ -3,6 +3,7 @@ import {LineLayer, PolygonLayer} from '@deck.gl/layers';
 
 
 export class GenomeInfoLayer extends CompositeLayer {
+  static layerName = 'GenomeInfoLayer';
   static defaultProps = {
     data: [],
     y0: 0,

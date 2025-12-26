@@ -9,6 +9,7 @@ const NUMBER_FORMAT_OPTIONS = { maximumFractionDigits: 0 };
 const numberFormatter = new Intl.NumberFormat("en-US", NUMBER_FORMAT_OPTIONS);
 
 export class GenomeGridLayer extends CompositeLayer {
+  static layerName = 'GenomeGridLayer';
   static defaultProps = {
     data: [],
     y0: 0,

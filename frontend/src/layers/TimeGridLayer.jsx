@@ -7,6 +7,7 @@ import {DataFilterExtension} from '@deck.gl/extensions';
 
 
 export class TimeGridLayer extends CompositeLayer {
+  static layerName = 'TimeGridLayer';
   static defaultProps = {
     data: [],
     y0: 0,
