@@ -49,9 +49,6 @@ export default class TreeLayer extends CompositeLayer {
     const translate_position = m[12];
     let display_labels = false;
 
-    console.log("scale_position", scale_position);
-    console.log("translate_position", translate_position);
-
     const mutations = bin.path.filter(d => d?.mutations !== undefined && d?.mutations !== null)
 
 
@@ -312,7 +309,6 @@ export default class TreeLayer extends CompositeLayer {
     // Highlight circle around mutation with matching node name
     if (highlightedMutationNode !== null) {
       const highlightedMutation = mutationsData.find(d => d.name === highlightedMutationNode);
-      console.log(highlightedMutation);
       if (highlightedMutation) {
         layers.push(new ScatterplotLayer({
           id: `${this.props.id}-mutation-highlight-${bin.global_index}`,

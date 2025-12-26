@@ -1,46 +1,53 @@
 import {CompositeLayer} from '@deck.gl/core';
 import {TextLayer} from '@deck.gl/layers';
 
+// Hoist constants outside the class to avoid recreation
+const NUMBER_FORMAT_OPTIONS = { maximumFractionDigits: 0 };
+// const TEXT_COLOR = [0, 10, 0, 255];
+
+// Pre-create a number formatter (much faster than toLocaleString)
+const numberFormatter = new Intl.NumberFormat("en-US", NUMBER_FORMAT_OPTIONS);
 
 export class GenomeGridLayer extends CompositeLayer {
   static defaultProps = {
     data: [],
     y0: 0,
     y1: 2,
-    labelOffset: 0.05,             // offset above the line (in view coords)
+    labelOffset: 0.05,
     getColor: [100, 100, 100, 100],
     getTextColor: [60, 60, 60, 255],
-    getText: d => `${d.start}`,     // label content
     viewId: null,
     globalBpPerUnit: null,
+    text_color: [0, 10, 0, 255],
   };
 
   renderLayers() {
-    
-    const {
-      data, viewId, globalBpPerUnit, localCoordinates
-    } = this.props;
+    const { data, viewId, globalBpPerUnit, text_color } = this.props;
 
-    if (!Object.keys(data).length) return [];
+    if (!data?.length) return [];
+
+    // Cache globalBpPerUnit for the accessor
+    const bpPerUnit = globalBpPerUnit;
 
     return [
       new TextLayer({
         id: `${this.props.id}-labels`,
-        data: data,
-        getPosition: d => [d.x/globalBpPerUnit, 1],
-        getText: d => d.text.toLocaleString("en-US", { maximumFractionDigits: 0 }),
-        getColor: [0,10,0,255],
+        data,
+        // Use a closure that captures the value, not recreates objects
+        getPosition: d => [d / bpPerUnit, 1],
+        // Use cached Intl.NumberFormat instead of toLocaleString
+        getText: d => numberFormatter.format(d),
+        getColor: text_color,
         sizeUnits: 'pixels',
         getSize: 12,
         viewId,
         pickable: false,
         updateTriggers: {
-          data: localCoordinates,
-          getPosition: [globalBpPerUnit],
-          getText: [localCoordinates]   
+          getPosition: [bpPerUnit],
+          getText: [bpPerUnit],
         },
         zOffset: -1,
       })
-    ].filter(Boolean);
+    ];
   }
 }

@@ -22,7 +22,7 @@ const getLocalCoordinates = memoizeOne((lo, hi) => {
   const n = Math.floor((end - start) / stepSize) + 1;
   return Array.from({ length: n }, (_, i) => {
     const x = start + i * stepSize;
-    return { x, y: 0, text: x };
+    return x;
   });
 });
 

@@ -67,10 +67,10 @@ const useLayers = ({
       y0: 0,
       y1: 2,
       labelOffset: 0.06,
-      getColor: [100, 100, 100, 255],
-      getTextColor: [0, 0, 0, 255],
-      getText: d =>
-        d.end.toLocaleString("en-US", { maximumFractionDigits: 0 }),
+      // getColor: [100, 100, 100, 255],
+      // getTextColor: [0, 0, 0, 255],
+      // getText: d =>
+      //   d.end.toLocaleString("en-US", { maximumFractionDigits: 0 }),
       viewId: "genome-positions",
       showLabels: true,
     });
