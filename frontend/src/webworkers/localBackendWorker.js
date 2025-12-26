@@ -29,16 +29,38 @@ let globalBins = [];
 let tsconfig = null;
 let lastStart = null;
 let lastEnd = null;
-// let intervalKeys = [];
 let globalLocalBins = new Map();
 const pathsData = new Map();
 
-// Helper to delete from pathsData
+// Maximum number of trees to keep in cache to prevent memory bloat
+const MAX_CACHED_TREES = 30;
+
+// Helper to delete from pathsData for trees outside current range
 function deleteRangeByValue(min, max) {
-  for (const [key, value] of pathsData.entries()) {
+  const keysToDelete = [];
+  for (const key of pathsData.keys()) {
     if (key < min || key > max) {
+      keysToDelete.push(key);
+    }
+  }
+  // Delete outside the iteration to avoid mutation issues
+  for (const key of keysToDelete) {
+    pathsData.delete(key);
+  }
+}
+
+// Aggressive cleanup when cache gets too large
+function enforcePathsCacheLimit() {
+  console.log("enforcePathsCacheLimit", pathsData.size, MAX_CACHED_TREES);
+  if (pathsData.size > MAX_CACHED_TREES) {
+    // Keep only the most recently relevant trees
+    // Convert to array, sort by key (tree index), remove oldest
+    const entries = Array.from(pathsData.keys()).sort((a, b) => a - b);
+    const toRemove = entries.slice(0, entries.length - MAX_CACHED_TREES);
+    for (const key of toRemove) {
       pathsData.delete(key);
     }
+    console.log(`[Worker] Cleaned pathsData cache: removed ${toRemove.length} trees, ${pathsData.size} remaining`);
   }
 }
 
@@ -155,6 +177,9 @@ async function getLocalData(start, end, globalBpPerUnit, nTrees, new_globalBp, r
   lastStart = lower_bound;
   lastEnd = upper_bound;
   globalLocalBins = return_local_bins;
+  
+  // Cleanup pathsData for trees no longer in view (with buffer)
+  deleteRangeByValue(lower_bound, upper_bound);
 
   return { local_bins: return_local_bins, lower_bound, upper_bound, displayArray };
 }
@@ -220,29 +245,23 @@ export function getTreeData(global_index, precision) {
 }
 
 function processData(localTrees, sendStatusMessage) {
-  const paths = {};
-
-  let prev_tree = null;
   if (Array.isArray(localTrees)) {
-    localTrees.forEach((tree, index) => {
+    for (let i = 0; i < localTrees.length; i++) {
+      const tree = localTrees[i];
 
       const processedTree = processNewick(
         tree.newick,
         tree.mutations,
         -1 * tsconfig.times.values[1],
         tsconfig.times.values[0],
-        // tree.max_time,
-        // tree.min_time,
-        // tsconfig.times[0],
-        // -1*tsconfig.times[1],
         tree.time_range,
-
-        // tree.populations
       );
 
       pathsData.set(tree.global_index, processedTree);
-
-    });
+    }
+    
+    // Enforce cache limit to prevent memory bloat
+    enforcePathsCacheLimit();
   }
 
   return null;
