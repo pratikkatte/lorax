@@ -50,9 +50,9 @@ const useAnimatedBins = (rawBins, options = {}) => {
   // Preallocate a reusable Matrix4 for building animated matrices
   const tempMatrix = useRef(new Matrix4());
   
-  // Use a ref to track previous bins to avoid stale closure when reading state
-  // This ref is updated after each animation frame or state update
-  const prevBinsRef = useRef(rawBins);
+  // Track previous positions only (not full bin objects) to avoid keeping bin.path references alive
+  // Store only translate/scale values needed for animation comparison
+  const prevPositionsRef = useRef(new Map()); // Map<key, {translate, scale}>
 
   /**
    * Animation loop using requestAnimationFrame
@@ -107,9 +107,23 @@ const useAnimatedBins = (rawBins, options = {}) => {
       }
     }
 
-    // Update state and ref together to keep them in sync
+    // Update state and store positions (not full bins) to avoid keeping bin.path references alive
     setAnimatedBins(newAnimatedBins);
-    prevBinsRef.current = newAnimatedBins;
+    // Update prevPositionsRef with current positions from newAnimatedBins
+    for (const [key, bin] of newAnimatedBins.entries()) {
+      if (bin?.modelMatrix) {
+        prevPositionsRef.current.set(key, {
+          translate: bin.modelMatrix[12],
+          scale: bin.modelMatrix[0]
+        });
+      }
+    }
+    // Clean up positions for bins that no longer exist
+    for (const key of prevPositionsRef.current.keys()) {
+      if (!newAnimatedBins.has(key)) {
+        prevPositionsRef.current.delete(key);
+      }
+    }
 
     if (hasActiveAnimations) {
       animationFrameRef.current = requestAnimationFrame(animate);
@@ -134,7 +148,7 @@ const useAnimatedBins = (rawBins, options = {}) => {
   useEffect(() => {
     if (!rawBins || rawBins.size === 0) {
       setAnimatedBins(rawBins);
-      prevBinsRef.current = rawBins;
+      prevPositionsRef.current.clear();
       return;
     }
 
@@ -184,20 +198,17 @@ const useAnimatedBins = (rawBins, options = {}) => {
         }
       } else {
         // Use ref to get previous rendered position (avoids stale closure issue)
-        const prevBin = prevBinsRef.current?.get?.(key);
+        const prevPos = prevPositionsRef.current.get(key);
         
-        if (prevBin && prevBin.modelMatrix && prevBin.visible) {
-          const prevTranslate = prevBin.modelMatrix[12];
-          const prevScale = prevBin.modelMatrix[0];
-
-          const translateChanged = Math.abs(targetTranslate - prevTranslate) > 0.001;
-          const scaleChanged = Math.abs(targetScale - prevScale) > 0.001;
+        if (prevPos) {
+          const translateChanged = Math.abs(targetTranslate - prevPos.translate) > 0.001;
+          const scaleChanged = Math.abs(targetScale - prevPos.scale) > 0.001;
 
           if (translateChanged || scaleChanged) {
             // Position changed - start animation from previous to new
             animState.set(key, {
-              startTranslate: prevTranslate,
-              startScale: prevScale,
+              startTranslate: prevPos.translate,
+              startScale: prevPos.scale,
               targetTranslate,
               targetScale,
               startTime: now
@@ -210,18 +221,58 @@ const useAnimatedBins = (rawBins, options = {}) => {
     }
 
     // Clean up animation state for trees that are no longer in rawBins
+    let binsRemoved = false;
     for (const key of animState.keys()) {
       if (!rawBins.has(key)) {
         animState.delete(key);
+        binsRemoved = true;
+      }
+    }
+    
+    // Also check if prevPositionsRef has keys not in rawBins
+    if (!binsRemoved) {
+      for (const key of prevPositionsRef.current.keys()) {
+        if (!rawBins.has(key)) {
+          binsRemoved = true;
+          break;
+        }
       }
     }
 
+    // CRITICAL: Always update animatedBins immediately when bins are removed to allow GC of path data
+    // Don't wait for animation - removed bins must be removed from state immediately
+    
     if (needsAnimation) {
+      // If animating, the animate() function will create newAnimatedBins without removed bins
+      // But we should also immediately update state if bins were removed to allow GC
+      if (binsRemoved) {
+        // Create a new Map with only bins that still exist in rawBins
+        const cleanedBins = new Map();
+        for (const [key, bin] of rawBins.entries()) {
+          cleanedBins.set(key, bin);
+        }
+        setAnimatedBins(cleanedBins);
+      }
       startAnimationLoop();
     } else {
-      // No animations needed - just use raw bins and update ref
+      // No animations needed - immediately use raw bins (which doesn't include removed bins)
+      // This ensures removed bins are immediately removed from state, allowing GC of path data
       setAnimatedBins(rawBins);
-      prevBinsRef.current = rawBins;
+      // Update prevPositionsRef with current positions from rawBins
+      for (const [key, bin] of rawBins.entries()) {
+        if (bin?.modelMatrix) {
+          prevPositionsRef.current.set(key, {
+            translate: bin.modelMatrix[12],
+            scale: bin.modelMatrix[0]
+          });
+        }
+      }
+      // Clean up positions for bins that no longer exist
+      for (const key of prevPositionsRef.current.keys()) {
+        if (!rawBins.has(key)) {
+          prevPositionsRef.current.delete(key);
+        }
+      }
     }
   }, [rawBins, transitionDuration, easingFn, startAnimationLoop]);
 
@@ -240,4 +291,5 @@ const useAnimatedBins = (rawBins, options = {}) => {
 };
 
 export default useAnimatedBins;
+
 

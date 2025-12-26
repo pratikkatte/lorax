@@ -1,5 +1,5 @@
 // import genomeCoordinates from "../layers/genomeCoordinates";
-import { useMemo, useCallback, useRef, useEffect } from "react";
+import { useMemo, useCallback, useRef } from "react";
 import { PolygonLayer } from '@deck.gl/layers';
 import { GenomeGridLayer } from "../layers/GenomeGridLayer";
 import TreeLayer from '../layers/TreeLayer';
@@ -31,13 +31,17 @@ const useLayers = ({
   const { bins: rawBins = new Map(), localCoordinates = [], times = [] } = regions;
   
   // Cache layer instances to prevent recreation and memory leaks
+  // Store only size/keys for comparison, NOT full Map/Array references to avoid keeping data alive
   const layerCacheRef = useRef({
     timeGridLayer: null,
     genomeGridLayer: null,
     genomeInfoLayer: null,
     lastTimes: null,
-    lastLocalCoordinates: null,
-    lastRawBins: null,
+    lastLocalCoordinatesLength: 0,
+    lastLocalCoordinatesFirst: null,
+    lastLocalCoordinatesLast: null,
+    lastRawBinsSize: 0,
+    lastRawBinsKeys: null, // Store keys array, not Map reference
     lastHoveredGenomeInfo: null,
     lastGlobalBpPerUnit: null,
   });
@@ -98,8 +102,13 @@ const useLayers = ({
   const genomeGridLayer = useMemo(() => {
     const cache = layerCacheRef.current;
     
-    // Only recreate if coordinates or bpPerUnit changed
-    const coordsChanged = !arraysEqual(localCoordinates, cache.lastLocalCoordinates);
+    // Compare by length and first/last elements, NOT by array reference
+    const coordsLength = localCoordinates?.length || 0;
+    const coordsFirst = localCoordinates?.[0];
+    const coordsLast = localCoordinates?.[localCoordinates.length - 1];
+    const coordsChanged = coordsLength !== cache.lastLocalCoordinatesLength ||
+      coordsFirst !== cache.lastLocalCoordinatesFirst ||
+      coordsLast !== cache.lastLocalCoordinatesLast;
     const bpChanged = globalBpPerUnit !== cache.lastGlobalBpPerUnit;
     
     if (cache.genomeGridLayer && !coordsChanged && !bpChanged) {
@@ -121,7 +130,10 @@ const useLayers = ({
       viewId: "genome-positions",
       showLabels: true,
     });
-    cache.lastLocalCoordinates = localCoordinates;
+    // Store only length and first/last elements, NOT the array reference
+    cache.lastLocalCoordinatesLength = coordsLength;
+    cache.lastLocalCoordinatesFirst = coordsFirst;
+    cache.lastLocalCoordinatesLast = coordsLast;
     cache.lastGlobalBpPerUnit = globalBpPerUnit;
     return cache.genomeGridLayer;
   }, [localCoordinates, globalBpPerUnit, backend]);
@@ -130,9 +142,13 @@ const useLayers = ({
   const genomeInfoLayer = useMemo(() => {
     const cache = layerCacheRef.current;
     
-    // Only recreate if bins size changed or hover state changed
-    const binsChanged = rawBins !== cache.lastRawBins && 
-      (rawBins.size !== cache.lastRawBins?.size);
+    // Compare by size and keys, NOT by Map reference to avoid keeping old bins alive
+    const rawBinsSize = rawBins?.size || 0;
+    const rawBinsKeys = rawBins ? Array.from(rawBins.keys()).sort() : null;
+    const binsChanged = rawBinsSize !== cache.lastRawBinsSize || 
+      (rawBinsKeys && cache.lastRawBinsKeys && 
+       (rawBinsKeys.length !== cache.lastRawBinsKeys.length ||
+        rawBinsKeys.some((k, i) => k !== cache.lastRawBinsKeys[i])));
     const hoverChanged = hoveredGenomeInfo !== cache.lastHoveredGenomeInfo;
     const bpChanged = globalBpPerUnit !== cache.lastGlobalBpPerUnit;
     
@@ -154,7 +170,9 @@ const useLayers = ({
       viewId: "genome-info",
       hoveredGenomeInfo,
     });
-    cache.lastRawBins = rawBins;
+    // Store only size and keys, NOT the Map reference
+    cache.lastRawBinsSize = rawBinsSize;
+    cache.lastRawBinsKeys = rawBinsKeys;
     cache.lastHoveredGenomeInfo = hoveredGenomeInfo;
     cache.lastGlobalBpPerUnit = globalBpPerUnit;
     return cache.genomeInfoLayer;
@@ -199,7 +217,7 @@ const useLayers = ({
           getLineWidth: [yzoom, lineagePaths],
         }
       });
-
+      
       newLayers.push(newLayer);
     }
 
@@ -225,7 +243,7 @@ const useLayers = ({
 
 
   const layers = useMemo(() => {
-    const all = [...treeLayers];
+    const all = [treeLayers];
     if (genomeGridLayer) all.push(genomeGridLayer);
     if (genomeInfoLayer) all.push(genomeInfoLayer);
     if (timeGridLayer) all.push(timeGridLayer);

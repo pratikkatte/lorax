@@ -18,11 +18,13 @@ export class GenomeGridLayer extends CompositeLayer {
   renderLayers() {
     
     const {
-      data, viewId, globalBpPerUnit, localCoordinates
+      data, viewId, globalBpPerUnit
     } = this.props;
 
-    if (!Object.keys(data).length) return [];
+    if (!data || !data.length) return [];
 
+    // Use data.length for updateTriggers instead of storing data reference
+    // This prevents keeping old data arrays alive when layer instances are cached
     return [
       new TextLayer({
         id: `${this.props.id}-labels`,
@@ -35,9 +37,9 @@ export class GenomeGridLayer extends CompositeLayer {
         viewId,
         pickable: false,
         updateTriggers: {
-          data: localCoordinates,
+          data: data.length, // Use length instead of array reference
           getPosition: [globalBpPerUnit],
-          getText: [localCoordinates]   
+          getText: data.length // Use length instead of array reference
         },
         zOffset: -1,
       })
