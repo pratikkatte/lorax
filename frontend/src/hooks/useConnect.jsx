@@ -196,12 +196,27 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
   // ───────────────────────────────
   // Query and worker-bound methods
   // ───────────────────────────────
-  const getTreeData = useCallback((global_index, precision) => {
+  /**
+   * Get tree data with adaptive sparsification options.
+   * @param {number} global_index - Global tree index
+   * @param {Object} options - Sparsification options
+   * @param {number} options.precision - Precision level (fallback)
+   * @param {boolean} options.showingAllTrees - Whether all trees are being shown (skip sparsification)
+   */
+  const getTreeData = useCallback((global_index, options = {}) => {
+    // Support legacy call signature: getTreeData(global_index, precision)
+    if (typeof options === 'number') {
+      options = { precision: options };
+    }
+
+    const { precision, showingAllTrees } = options;
+
     return new Promise((resolve) => {
       workerRef.current?.postMessage({
         type: "gettree",
         global_index,
         precision,
+        showingAllTrees,
       });
 
       onGetTreeDataReceipt = (receivedData) => {
@@ -356,7 +371,6 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
       valueChanged,
       connect,
       queryFile,
-      getTreeData,
       getTreeData,
       search
     }),

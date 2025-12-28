@@ -77,7 +77,8 @@ async function getLocalData(start, end, globalBpPerUnit, nTrees, new_globalBp, r
 
   let scaleFactor = new_globalBp / globalBpPerUnit;
 
-  const computedPrecision = Math.max(2, Math.min(9, Math.floor(8 - Math.log10(scaleFactor || 1))));
+  // Lower precision range for better sparsification (will be overridden by binning logic)
+  const computedPrecision = Math.max(1, Math.min(3, Math.floor(4 - Math.log10(scaleFactor || 1))));
 
   // Calculate buffer so that it increases with region size, decreases as region shrinks
   let local_regionWidth = regionWidth ?? Math.max(1, end - start); // avoid 0/neg
@@ -215,7 +216,26 @@ export const queryNodes = async (localTrees) => {
   }
 };
 
-export function getTreeData(global_index, precision) {
+/**
+ * Get processed tree data with adaptive sparsification.
+ * 
+ * @param {number} global_index - Global tree index
+ * @param {Object} options - Sparsification options
+ * @param {number} options.precision - Precision parameter for coordinate quantization
+ * @param {boolean} options.showingAllTrees - Whether all trees are being shown (skip sparsification)
+ * @returns {Array|null} Array of segments or null if tree not found
+ */
+export function getTreeData(global_index, options = {}) {
+  // Support legacy call signature: getTreeData(global_index, precision)
+  if (typeof options === 'number') {
+    options = { precision: options };
+  }
+
+  const { 
+    precision = 9,
+    showingAllTrees = false
+  } = options;
+
   if (pathsData.has(global_index)) {
     const processedTree = pathsData.get(global_index);
     const segments = [];
@@ -226,7 +246,10 @@ export function getTreeData(global_index, precision) {
     } else if (processedTree.root) {
       extractSquarePaths(processedTree.root, segments);
     }
-    const dedupedSegments = dedupeSegments(segments, precision);
+    const dedupedSegments = dedupeSegments(segments, {
+      precision,
+      showingAllTrees
+    });
     return dedupedSegments;
   }
   return null;
@@ -298,7 +321,10 @@ onmessage = async (event) => {
   } else {
 
     if (data.type === "gettree") {
-      const result = await getTreeData(data.global_index, data.precision);
+      const result = await getTreeData(data.global_index, {
+        precision: data.precision,
+        showingAllTrees: data.showingAllTrees ?? false
+      });
       postMessage({ type: "gettree", data: result });
     }
     if (data.type === "query") {

@@ -86,10 +86,12 @@ const useRegions = ({
 
       
       if(showingAllTrees.current) {
-        if (region.current[0]>lo || region.current[1]<hi) {
+        if (region.current && (region.current[0] > lo || region.current[1] < hi)) {
+          region.current = [Math.min(region.current[0], lo), Math.max(region.current[1], hi)];
+        } else if (!region.current) {
           region.current = [lo, hi];
         }
-      } else{
+      } else {
         region.current = [lo, hi];
       }
 
@@ -114,14 +116,19 @@ const useRegions = ({
 
       showingAllTrees.current = showing_all_trees;
       const rangeArray = [];
+      
       for (const idx of displayArray){
         if (local_bins.has(idx)){
+          const bin = local_bins.get(idx);
 
-          const path = await getTreeData(idx, local_bins.get(idx).precision);
+          const path = await getTreeData(idx, {
+            precision: bin.precision,
+            showingAllTrees: showing_all_trees
+          });
           if (!path) rangeArray.push({ global_index: idx });
 
           local_bins.set(idx, {
-            ...local_bins.get(idx),
+            ...bin,
             path: path
           });
         }
@@ -135,7 +142,12 @@ const useRegions = ({
 
         const result_paths = {};
         for (const { global_index } of rangeArray) {
-          const path = await getTreeData(global_index, local_bins.get(global_index).precision);
+          const bin = local_bins.get(global_index);
+          
+          const path = await getTreeData(global_index, {
+            precision: bin.precision,
+            showingAllTrees: showing_all_trees
+          });
           result_paths[global_index] = path;
         }
         setLocalBins(prev => {

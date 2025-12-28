@@ -248,7 +248,7 @@ export function new_complete_experiment_map( localBins, globalBpPerUnit, new_glo
         visible: true,
         position: tree.s,
         span: tree.span,
-        precision: 6, // Maximum precision at full zoom
+        precision: 2, // Maximum precision at full zoom (lowered for better sparsification)
         slotIndex: i,
         isRepresentative: true,
         groupSize: 1
@@ -358,18 +358,19 @@ export function new_complete_experiment_map( localBins, globalBpPerUnit, new_glo
  * Higher precision (more detail) when fewer trees are grouped
  * @param {number} groupSize - Number of trees in the group
  * @param {number} scaleFactor - Current zoom scale factor
- * @returns {number} Precision level (2-6)
+ * @returns {number} Precision level (1-3)
  */
 function computePrecisionFromGroupSize(groupSize, scaleFactor) {
   if (groupSize === 1 && scaleFactor <= 1) {
-    return 6; // Maximum precision for single trees at full zoom
+    return 3; // Maximum precision for single trees at full zoom (lowered for sparsification)
   }
   
   // Reduce precision as group size increases
   const logGroup = Math.log10(Math.max(1, groupSize));
   const logScale = Math.log10(Math.max(1, scaleFactor));
   
-  // Map to precision range [2, 6]
-  const precision = Math.max(2, Math.min(6, 6 - Math.floor(logGroup + logScale / 2)));
+  // Map to precision range [1, 3] - lower values = more aggressive sparsification
+  // With 6 trees visible, logGroup ≈ 0.78, so precision ≈ 3 - 0.78 - logScale/2 ≈ 2-3
+  const precision = Math.max(1, Math.min(3, 3 - Math.floor(logGroup + logScale / 2)));
   return precision;
 }
