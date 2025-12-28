@@ -28,7 +28,7 @@ const getLocalCoordinates = memoizeOne((lo, hi) => {
 
 function getDynamicBpPerUnit(globalBpPerUnit, zoom, baseZoom = 8) {
   const zoomDiff = zoom - baseZoom;
-  const scaleFactor = Math.max(1, Math.pow(2, -zoomDiff));
+  const scaleFactor = Math.pow(2, -zoomDiff);
   return globalBpPerUnit * scaleFactor;
 }
 
@@ -65,9 +65,10 @@ const useRegions = ({
   
   const isFetching = useRef(false);
   
-  const regionWidth = useRef(null);
+  const region = useRef(null);
 
   const [times, setTimes] = useState([]);
+  const showingAllTrees = useRef(false);
 
   // Extract display options with defaults
   const {
@@ -83,26 +84,35 @@ const useRegions = ({
 
       const new_globalBp = getDynamicBpPerUnit(globalBpPerUnit, zoom);
 
-      if (new_globalBp == globalBpPerUnit) {
-        if (regionWidth.current == null) regionWidth.current = hi - lo;
-      } else {
-        regionWidth.current = null;
+      
+      if(showingAllTrees.current) {
+        if (region.current[0]>lo || region.current[1]<hi) {
+          region.current = [lo, hi];
+        }
+      } else{
+        region.current = [lo, hi];
       }
+
+      if (!region.current) {
+        region.current = [lo, hi];
+      }
+
       isFetching.current = true;
 
       // Pass display options to queryLocalBins
-      const { local_bins, lower_bound, upper_bound, displayArray } = await queryLocalBins(
-        lo, 
-        hi, 
+      const { local_bins, lower_bound, upper_bound, displayArray, showing_all_trees } = await queryLocalBins(
+        region.current[0], 
+        region.current[1], 
         globalBpPerUnit, 
         null, 
-        new_globalBp, 
-        regionWidth.current,
+        new_globalBp,
+        null,
         {
           selectionStrategy
         }
       );
 
+      showingAllTrees.current = showing_all_trees;
       const rangeArray = [];
       for (const idx of displayArray){
         if (local_bins.has(idx)){

@@ -162,8 +162,7 @@ export function new_complete_experiment_map( localBins, globalBpPerUnit, new_glo
   const displayArray = [];
 
   const scaleFactor = new_globalBp / globalBpPerUnit;
-  const approxEqual = Math.abs(scaleFactor - 1) < 1e-6;
-
+  const approxEqual = scaleFactor < 1;
 
   // TODO: later to provide user control over the selection strategy
   const selectFn = getSelectionStrategy(selectionStrategy);
@@ -209,13 +208,15 @@ export function new_complete_experiment_map( localBins, globalBpPerUnit, new_glo
   // Calculate how many slots we need based on zoom level
   // At scale factor 1 (fully zoomed in), show all trees
   // As scale factor increases, reduce number of visible slots
+  const maxVisibleTrees = 10; // maximum number of trees to show at full zoom
   const effectiveMaxTrees = approxEqual 
     ? allTrees.length 
-    : Math.max(1, Math.ceil(allTrees.length / scaleFactor));
+    : Math.max(1, Math.max(maxVisibleTrees, Math.ceil(allTrees.length / scaleFactor)));
   
   const numSlots = Math.min(allTrees.length, effectiveMaxTrees);
   const slotWidth = viewportSpan / numSlots; // genomic width per slot
 
+  const showingAllTrees = approxEqual;
   // ────────────────────────────────────────────────────────────────────────
   // STEP 3: When scaleFactor ≈ 1, show ALL trees with uniform width
   // ────────────────────────────────────────────────────────────────────────
@@ -256,7 +257,7 @@ export function new_complete_experiment_map( localBins, globalBpPerUnit, new_glo
       displayArray.push(tree.idx);
     }
 
-    return { return_local_bins: localBins, displayArray };
+    return { return_local_bins: localBins, displayArray, showingAllTrees };
   }
 
   // ────────────────────────────────────────────────────────────────────────
@@ -349,7 +350,7 @@ export function new_complete_experiment_map( localBins, globalBpPerUnit, new_glo
     }
   }
 
-  return { return_local_bins: localBins, displayArray, invisibleKeys };
+  return { return_local_bins: localBins, displayArray, invisibleKeys, showingAllTrees };
 }
 
 /**

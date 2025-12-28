@@ -149,7 +149,7 @@ async function getLocalData(start, end, globalBpPerUnit, nTrees, new_globalBp, r
   }
 
   // Pass display options to the binning function
-  const { return_local_bins, displayArray, invisibleKeys } = new_complete_experiment_map(
+  const { return_local_bins, displayArray, invisibleKeys, showingAllTrees } = new_complete_experiment_map(
     local_bins, 
     globalBpPerUnit, 
     new_globalBp,
@@ -169,7 +169,7 @@ async function getLocalData(start, end, globalBpPerUnit, nTrees, new_globalBp, r
   
   enforcePathsCacheLimit(invisibleKeys);
 
-  return { local_bins: return_local_bins, lower_bound, upper_bound, displayArray };
+  return { local_bins: return_local_bins, lower_bound, upper_bound, displayArray, showing_all_trees: showingAllTrees };
 }
 
 export const queryConfig = async (data) => {
