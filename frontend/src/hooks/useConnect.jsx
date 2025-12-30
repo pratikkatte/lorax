@@ -196,12 +196,27 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
   // ───────────────────────────────
   // Query and worker-bound methods
   // ───────────────────────────────
-  const getTreeData = useCallback((global_index, precision) => {
+  /**
+   * Get tree data with adaptive sparsification options.
+   * @param {number} global_index - Global tree index
+   * @param {Object} options - Sparsification options
+   * @param {number} options.precision - Precision level (fallback)
+   * @param {boolean} options.showingAllTrees - Whether all trees are being shown (skip sparsification)
+   */
+  const getTreeData = useCallback((global_index, options = {}) => {
+    // Support legacy call signature: getTreeData(global_index, precision)
+    if (typeof options === 'number') {
+      options = { precision: options };
+    }
+
+    const { precision, showingAllTrees } = options;
+
     return new Promise((resolve) => {
       workerRef.current?.postMessage({
         type: "gettree",
         global_index,
         precision,
+        showingAllTrees,
       });
 
       onGetTreeDataReceipt = (receivedData) => {
@@ -246,13 +261,30 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
     };
   }, []);
 
+  /**
+   * Query local bins with display options
+   * @param {number} start - Start genomic position
+   * @param {number} end - End genomic position
+   * @param {number} globalBpPerUnit - Base pairs per unit
+   * @param {number} nTrees - Number of trees (legacy, unused)
+   * @param {number} new_globalBp - Zoom-adjusted bp per unit
+   * @param {number|null} regionWidth - Optional region width
+   * @param {Object} displayOptions - Display configuration
+   * @param {string} displayOptions.selectionStrategy - 'largestSpan' | 'centerWeighted' | 'spanWeightedRandom' | 'first'
+   */
   const queryLocalBins = useCallback(
     (start, end, globalBpPerUnit, nTrees, new_globalBp, regionWidth = null) => {
-
       return new Promise((resolve) => {
         workerRef.current?.postMessage({
           type: "local-bins",
-          data: { start, end, globalBpPerUnit, nTrees, new_globalBp, regionWidth },
+          data: { 
+            start, 
+            end, 
+            globalBpPerUnit, 
+            nTrees, 
+            new_globalBp, 
+            regionWidth
+          },
         });
 
         onLocalBinsReceipt = (receivedData) => {
@@ -339,7 +371,6 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
       valueChanged,
       connect,
       queryFile,
-      getTreeData,
       getTreeData,
       search
     }),

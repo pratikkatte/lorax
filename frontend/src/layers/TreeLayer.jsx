@@ -7,6 +7,7 @@ import { GL } from '@luma.gl/constants' // Note the ESM import
 import { DNA } from 'react-loader-spinner';
 
 export default class TreeLayer extends CompositeLayer {
+  static layerName = 'TreeLayer';
   static defaultProps = {
     bin: null,
     globalBpPerUnit: 1,
@@ -49,7 +50,6 @@ export default class TreeLayer extends CompositeLayer {
     const translate_position = m[12];
     let display_labels = false;
 
-
     const mutations = bin.path.filter(d => d?.mutations !== undefined && d?.mutations !== null)
 
 
@@ -65,7 +65,6 @@ export default class TreeLayer extends CompositeLayer {
         data: bin.path,
         getPath: d => {
           if (!d?.path) return null;
-
           const paths = d?.path;
           const transformedPath = paths?.map(p => {
             const world = [p[0] * scale_position + translate_position, p[1]];
@@ -98,7 +97,7 @@ export default class TreeLayer extends CompositeLayer {
         viewId,
         modelMatrix: null,
         pickable: true,
-        coordinateSystem: COORDINATE_SYSTEM.IDENTITY,
+        coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
         zOffset: -1,
         fp64: true,
         updateTriggers: {
@@ -147,14 +146,14 @@ export default class TreeLayer extends CompositeLayer {
         getRadius: 2,
         radiusMinPixels: 1.2,
         radiusUnits: 'pixels',
-        coordinateSystem: COORDINATE_SYSTEM.IDENTITY,
+        coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
         pickable: true,
         modelMatrix: null,
         viewId,
         updateTriggers: {
           getFillColor: [populationFilter.colorBy, populationFilter.enabledValues],
           data: [bin.modelMatrix, bin.path],
-
+          getPosition: [bin.modelMatrix],
         },
       }),
     ];
@@ -202,13 +201,14 @@ export default class TreeLayer extends CompositeLayer {
           stroked: true,
           lineWidthUnits: 'pixels',
           radiusUnits: 'pixels',
-          coordinateSystem: COORDINATE_SYSTEM.IDENTITY,
+          coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
           viewId,
           modelMatrix: null,
           pickable: true,
           zOffset: 2, // Ensure it draws on top
           updateTriggers: {
             data: [highlightData, bin.modelMatrix],
+            getPosition: [bin.modelMatrix],
             getFillColor: [populationFilter.colorBy]
           }
         })
@@ -237,11 +237,12 @@ export default class TreeLayer extends CompositeLayer {
           widthUnits: 'pixels',
           viewId,
           modelMatrix: null,
-          coordinateSystem: COORDINATE_SYSTEM.IDENTITY,
+          coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
           zOffset: 1,
           fp64: true,
           updateTriggers: {
-            data: [lineageData, bin.modelMatrix]
+            data: [lineageData, bin.modelMatrix],
+            getPath: [bin.modelMatrix]
           }
         })
       );
@@ -269,7 +270,7 @@ export default class TreeLayer extends CompositeLayer {
         shadowBlur: 2,
         viewId,
         modelMatrix: null,
-        coordinateSystem: COORDINATE_SYSTEM.IDENTITY,
+        coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
         sizeUnits: 'pixels',
         getSize: () => (6 + Math.log2(Math.max(xzoom, 1))),
         getAlignmentBaseline: 'center',
@@ -277,7 +278,8 @@ export default class TreeLayer extends CompositeLayer {
         getAngle: 90,
         updateTriggers: {
           data: [bin.modelMatrix, bin.path],
-          getText: [bin.path]
+          getText: [bin.path],
+          getPosition: [bin.modelMatrix]
         }
       }));
     }
@@ -305,13 +307,13 @@ export default class TreeLayer extends CompositeLayer {
       pickable: true,
       updateTriggers: {
         data: [bin.path, bin.modelMatrix],
+        getPosition: [bin.modelMatrix],
       },
     }));
 
     // Highlight circle around mutation with matching node name
     if (highlightedMutationNode !== null) {
       const highlightedMutation = mutationsData.find(d => d.name === highlightedMutationNode);
-      console.log(highlightedMutation);
       if (highlightedMutation) {
         layers.push(new ScatterplotLayer({
           id: `${this.props.id}-mutation-highlight-${bin.global_index}`,
@@ -328,11 +330,12 @@ export default class TreeLayer extends CompositeLayer {
           filled: false,
           lineWidthUnits: 'pixels',
           radiusUnits: 'pixels',
-          coordinateSystem: COORDINATE_SYSTEM.IDENTITY,
+          coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
           viewId,
           modelMatrix: null,
           updateTriggers: {
             data: [highlightedMutationNode, bin.path, bin.modelMatrix],
+            getPosition: [bin.modelMatrix],
           },
         }));
       }

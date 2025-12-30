@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useCallback } from 'react';
 
 // Helper to convert RGBA array to hex color
 const rgbaToHex = (rgba) => {
@@ -23,6 +23,7 @@ export default function Settings({
   setShowSettings,
 }) {
   const DEFAULT_POLYGON_COLOR = [145, 194, 244, 46];
+  
   const polygonColor = settings?.polygonColor || DEFAULT_POLYGON_COLOR;
 
   const handleColorChange = useCallback((e) => {

@@ -22,61 +22,113 @@ const getLocalCoordinates = memoizeOne((lo, hi) => {
   const n = Math.floor((end - start) / stepSize) + 1;
   return Array.from({ length: n }, (_, i) => {
     const x = start + i * stepSize;
-    return { x, y: 0, text: x };
+    return x;
   });
 });
 
 function getDynamicBpPerUnit(globalBpPerUnit, zoom, baseZoom = 8) {
   const zoomDiff = zoom - baseZoom;
-  const scaleFactor = Math.max(1, Math.pow(2, -zoomDiff));
+  const scaleFactor = Math.pow(2, -zoomDiff);
   return globalBpPerUnit * scaleFactor;
 }
 
-// useRegions Hook
-const useRegions = ({ backend, valueRef, globalBpPerUnit, tsconfig, setStatusMessage, xzoom, yzoom, genomicValues }) => {
+/**
+ * useRegions Hook
+ * Manages tree selection and binning based on viewport and zoom level
+ * 
+ * @param {Object} props
+ * @param {Object} props.backend - Backend API methods
+ * @param {Object} props.valueRef - Current genomic range reference
+ * @param {number} props.globalBpPerUnit - Base pairs per unit
+ * @param {Object} props.tsconfig - Tree sequence configuration
+ * @param {Function} props.setStatusMessage - Status message setter
+ * @param {number} props.xzoom - Current X-axis zoom level
+ * @param {number} props.yzoom - Current Y-axis zoom level
+ * @param {Array} props.genomicValues - Current genomic range
+ * @param {Object} props.displayOptions - Tree display configuration
+ * @param {string} props.displayOptions.selectionStrategy - 'largestSpan' | 'centerWeighted' | 'spanWeightedRandom' | 'first'
+ */
+const useRegions = ({ 
+  backend, 
+  valueRef, 
+  globalBpPerUnit, 
+  tsconfig, 
+  setStatusMessage, 
+  xzoom, 
+  yzoom, 
+  genomicValues,
+  displayOptions = {}
+}) => {
   const { queryNodes, queryLocalBins, getTreeData } = backend;
 
   const [localBins, setLocalBins] = useState(null);
   
   const isFetching = useRef(false);
   
-  const regionWidth = useRef(null);
-
-  // const [maxScale, setMaxScale] = useState(null);
+  const region = useRef(null);
 
   const [times, setTimes] = useState([]);
+  const showingAllTrees = useRef(false);
 
+  // Extract display options with defaults
+  const {
+    selectionStrategy = 'largestSpan'
+  } = displayOptions;
 
   const debouncedQuery = useMemo(
     () => debounce(async (val) => {
       if (isFetching.current) return;
 
       const [lo, hi] = val;
-      // const zoom = viewState["ortho"]?.zoom?.[0] ?? 8;
       const zoom = xzoom ?? 8;
 
       const new_globalBp = getDynamicBpPerUnit(globalBpPerUnit, zoom);
 
-      if (new_globalBp == globalBpPerUnit) {
-        if (regionWidth.current == null) regionWidth.current = hi - lo;
+      
+      if(showingAllTrees.current) {
+        if (region.current && (region.current[0] > lo || region.current[1] < hi)) {
+          region.current = [Math.min(region.current[0], lo), Math.max(region.current[1], hi)];
+        } else if (!region.current) {
+          region.current = [lo, hi];
+        }
       } else {
-        regionWidth.current = null;
+        region.current = [lo, hi];
       }
+
+      if (!region.current) {
+        region.current = [lo, hi];
+      }
+
       isFetching.current = true;
 
-      const { local_bins, lower_bound, upper_bound, displayArray} = await queryLocalBins(
-        lo, hi, globalBpPerUnit, null, new_globalBp, regionWidth.current
+      // Pass display options to queryLocalBins
+      const { local_bins, lower_bound, upper_bound, displayArray, showing_all_trees } = await queryLocalBins(
+        region.current[0], 
+        region.current[1], 
+        globalBpPerUnit, 
+        null, 
+        new_globalBp,
+        null,
+        {
+          selectionStrategy
+        }
       );
 
+      showingAllTrees.current = showing_all_trees;
       const rangeArray = [];
+      
       for (const idx of displayArray){
         if (local_bins.has(idx)){
+          const bin = local_bins.get(idx);
 
-          const path = await getTreeData(idx, local_bins.get(idx).precision);
+          const path = await getTreeData(idx, {
+            precision: bin.precision,
+            showingAllTrees: showing_all_trees
+          });
           if (!path) rangeArray.push({ global_index: idx });
 
           local_bins.set(idx, {
-            ...local_bins.get(idx),
+            ...bin,
             path: path
           });
         }
@@ -90,7 +142,12 @@ const useRegions = ({ backend, valueRef, globalBpPerUnit, tsconfig, setStatusMes
 
         const result_paths = {};
         for (const { global_index } of rangeArray) {
-          const path = await getTreeData(global_index, local_bins.get(global_index).precision);
+          const bin = local_bins.get(global_index);
+          
+          const path = await getTreeData(global_index, {
+            precision: bin.precision,
+            showingAllTrees: showing_all_trees
+          });
           result_paths[global_index] = path;
         }
         setLocalBins(prev => {
@@ -115,7 +172,7 @@ const useRegions = ({ backend, valueRef, globalBpPerUnit, tsconfig, setStatusMes
       setStatusMessage(null);
       isFetching.current = false;
     }, 400, { leading: false, trailing: true }),
-    [isFetching.current, valueRef.current, xzoom]
+    [isFetching.current, valueRef.current, xzoom, selectionStrategy]
   );
 
   useEffect(() => {

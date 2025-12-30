@@ -43,18 +43,58 @@ export function extractSquarePaths(node, segments = []) {
   return segments;
 }
 
-export function dedupeSegments(segments, precision = 9) {
-  const factorX = Math.pow(10, precision);
-  const factorY = Math.pow(10, 9); // Keep vertical precision high to avoid breaking lineages
+/**
+ * Precision-based segment deduplication with viewport-aware full-detail mode.
+ * 
+ * @param {Array} segments - Array of segment objects with path or position properties
+ * @param {Object} options - Configuration options
+ * @param {boolean} options.skipDedup - Force skip deduplication entirely
+ * @param {boolean} options.showingAllTrees - Whether all trees are being shown (skip sparsification)
+ * @param {number} options.precision - Precision parameter for coordinate quantization
+ * @returns {Array} Deduplicated segments array
+ */
+export function dedupeSegments(segments, options = {}) {
+  // Support legacy call signature: dedupeSegments(segments, precision)
+  if (typeof options === 'number') {
+    options = { precision: options };
+  }
+
+  const { 
+    skipDedup = false,
+    showingAllTrees = false,
+    precision = 9
+  } = options;
+
+  // Skip deduplication if all trees are being shown or skipDedup flag is set
+  if (showingAllTrees || skipDedup) {
+    console.log('[dedupeSegments] Skipping dedup - showingAllTrees:', showingAllTrees, 'skipDedup:', skipDedup);
+    return segments;
+  }
+
+  // For paths: sparsify only X (horizontal), keep Y (time) at high precision
+  const factorX = Math.pow(10, precision); // Sparsify horizontal position
+  const factorY = Math.pow(10, 9); // Keep vertical (time) precision high to preserve tree structure
+  
+  // Use more aggressive precision for tips (they have radius and overlap more)
+  // Tips get precision reduced by 1-2 levels for better sparsification
+  const tipPrecision = Math.max(2, precision - 1);
+  const tipFactor = Math.pow(10, tipPrecision);
+  
+  console.log('[dedupeSegments] Applying precision:', precision, 'factorX:', factorX, 'factorY:', factorY, 'tipPrecision:', tipPrecision, 'tipFactor:', tipFactor, 'showingAllTrees:', showingAllTrees, 'segments:', segments.length);
   const seen = new Set();
   const result = [];
+  let pathCount = 0;
+  let tipCount = 0;
+  let pathRemoved = 0;
+  let tipRemoved = 0;
 
   for (let i = 0; i < segments.length; i++) {
     const s = segments[i];
     let key = "";
 
     if (s.path) {
-      // Optimization: quantize coordinates
+      pathCount++;
+      // Optimization: quantize coordinates for paths (branches)
       // s.path is [[x1,y1], [x2,y2], [x3,y3], [x4,y4]] (L-shape + extra)
       // or just a list of points.
 
@@ -76,16 +116,21 @@ export function dedupeSegments(segments, precision = 9) {
       }
 
       // Skip if all points quantize to the same location (invisible)
-      if (allPointsSame) continue;
+      if (allPointsSame) {
+        pathRemoved++;
+        continue;
+      }
 
       key = pKey;
 
     } else if (s.position) {
-      const x = Math.round(s.position[0] * factorX);
-      const y = Math.round(s.position[1] * factorY);
+      tipCount++;
+      // Tips (leaf nodes) - use more aggressive quantization due to radius overlap
+      const x = Math.round(s.position[0] * tipFactor);
+      const y = Math.round(s.position[1] * tipFactor);
       // Prefix with 'P' to avoid collision with paths if any
       key = `P${x},${y}`;
-      if (s.mutations) key += `M${s.mutations.length}`; // Differentiate by mutations count?
+      if (s.mutations) key += `M${s.mutations.length}`; // Differentiate by mutations count
     } else {
       continue;
     }
@@ -93,9 +138,15 @@ export function dedupeSegments(segments, precision = 9) {
     if (!seen.has(key)) {
       seen.add(key);
       result.push(s);
+    } else {
+      // Track what type was removed
+      if (s.path) pathRemoved++;
+      else if (s.position) tipRemoved++;
     }
   }
 
+  const totalRemoved = segments.length - result.length;
+  console.log('[dedupeSegments] Result: input:', segments.length, '-> output:', result.length, 'removed:', totalRemoved, '(paths:', pathCount, 'removed:', pathRemoved, '| tips:', tipCount, 'removed:', tipRemoved, ')');
   return result;
 }
 
