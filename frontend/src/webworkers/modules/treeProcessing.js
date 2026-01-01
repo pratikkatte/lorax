@@ -24,21 +24,21 @@ export function extractSquarePaths(node, segments = []) {
       extractSquarePaths(child, segments);
     }
   } else {
-    // Leaf node marker
-    segments.push({
-      name: node.name,
-      position: [node.y, node.x],
-    });
+      // Leaf node marker
+      segments.push({
+        name: node.name,
+        position: [node.y, node.x],
+      });
+
   }
 
-  // Mutations marker
-  if (node.mutations) {
-    segments.push({
-      mutations: node.mutations,
-      name: node.name,
-      position: [node.y, node.x],
-    });
-  }
+   if (node.mutations && node.mutations.length > 0) {
+      segments.push({
+        mutations: node.mutations,
+        name: node.name,
+        position: [node.y, node.x],
+      });
+    }
 
   return segments;
 }
@@ -59,7 +59,7 @@ export function dedupeSegments(segments, options = {}) {
     options = { precision: options };
   }
 
-  const { 
+  const {
     skipDedup = false,
     showingAllTrees = false,
     precision = 9
@@ -74,12 +74,12 @@ export function dedupeSegments(segments, options = {}) {
   // For paths: sparsify only X (horizontal), keep Y (time) at high precision
   const factorX = Math.pow(10, precision); // Sparsify horizontal position
   const factorY = Math.pow(10, 9); // Keep vertical (time) precision high to preserve tree structure
-  
+
   // Use more aggressive precision for tips (they have radius and overlap more)
   // Tips get precision reduced by 1-2 levels for better sparsification
   const tipPrecision = Math.max(2, precision - 1);
   const tipFactor = Math.pow(10, tipPrecision);
-  
+
   console.log('[dedupeSegments] Applying precision:', precision, 'factorX:', factorX, 'factorY:', factorY, 'tipPrecision:', tipPrecision, 'tipFactor:', tipFactor, 'showingAllTrees:', showingAllTrees, 'segments:', segments.length);
   const seen = new Set();
   const result = [];

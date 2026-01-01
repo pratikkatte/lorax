@@ -33,39 +33,29 @@ function getDynamicBpPerUnit(globalBpPerUnit, zoom, baseZoom = 8) {
 }
 
 /**
- * useRegions Hook
- * Manages tree selection and binning based on viewport and zoom level
- * 
- * @param {Object} props
- * @param {Object} props.backend - Backend API methods
- * @param {Object} props.valueRef - Current genomic range reference
- * @param {number} props.globalBpPerUnit - Base pairs per unit
- * @param {Object} props.tsconfig - Tree sequence configuration
- * @param {Function} props.setStatusMessage - Status message setter
- * @param {number} props.xzoom - Current X-axis zoom level
- * @param {number} props.yzoom - Current Y-axis zoom level
- * @param {Array} props.genomicValues - Current genomic range
- * @param {Object} props.displayOptions - Tree display configuration
- * @param {string} props.displayOptions.selectionStrategy - 'largestSpan' | 'centerWeighted' | 'spanWeightedRandom' | 'first'
+ * useRegions Hook (Edge-based)
+ * Manages tree selection and binning, fetches edges from backend,
+ * and builds trees locally from edge data.
  */
-const useRegions = ({ 
-  backend, 
-  valueRef, 
-  globalBpPerUnit, 
-  tsconfig, 
-  setStatusMessage, 
-  xzoom, 
-  yzoom, 
+const useRegions = ({
+  backend,
+  valueRef,
+  globalBpPerUnit,
+  tsconfig,
+  setStatusMessage,
+  xzoom,
+  yzoom,
   genomicValues,
   displayOptions = {}
 }) => {
-  const { queryNodes, queryLocalBins, getTreeData } = backend;
+  const { queryEdges, queryLocalBins, getTreeFromEdges } = backend;
 
   const [localBins, setLocalBins] = useState(null);
-  
+
   const isFetching = useRef(false);
-  
+
   const region = useRef(null);
+  const cachedEdgesRange = useRef({ start: null, end: null });
 
   const [times, setTimes] = useState([]);
   const showingAllTrees = useRef(false);
@@ -78,14 +68,18 @@ const useRegions = ({
   const debouncedQuery = useMemo(
     () => debounce(async (val) => {
       if (isFetching.current) return;
+      if (!tsconfig?.node_times) {
+        console.warn("[useRegions] tsconfig.node_times not available yet");
+        return;
+      }
 
       const [lo, hi] = val;
       const zoom = xzoom ?? 8;
 
       const new_globalBp = getDynamicBpPerUnit(globalBpPerUnit, zoom);
 
-      
-      if(showingAllTrees.current) {
+
+      if (showingAllTrees.current) {
         if (region.current && (region.current[0] > lo || region.current[1] < hi)) {
           region.current = [Math.min(region.current[0], lo), Math.max(region.current[1], hi)];
         } else if (!region.current) {
@@ -101,12 +95,12 @@ const useRegions = ({
 
       isFetching.current = true;
 
-      // Pass display options to queryLocalBins
+      // Step 1: Get local bins (determines which trees to show)
       const { local_bins, lower_bound, upper_bound, displayArray, showing_all_trees } = await queryLocalBins(
-        region.current[0], 
-        region.current[1], 
-        globalBpPerUnit, 
-        null, 
+        region.current[0],
+        region.current[1],
+        globalBpPerUnit,
+        null,
         new_globalBp,
         null,
         {
@@ -115,17 +109,40 @@ const useRegions = ({
       );
 
       showingAllTrees.current = showing_all_trees;
-      const rangeArray = [];
-      
-      for (const idx of displayArray){
-        if (local_bins.has(idx)){
+
+      // Step 2: Fetch edges for the viewport if needed
+      const needsEdges = displayArray.some(idx => {
+        const bin = local_bins.get(idx);
+        return !bin?.path;
+      });
+
+      if (needsEdges) {
+        setStatusMessage({ status: "loading", message: "Fetching tree data..." });
+
+        try {
+          // Fetch edges for the viewport range
+          const edgesResult = await queryEdges(region.current[0], region.current[1]);
+
+          if (edgesResult?.edges) {
+            // Store edges in worker
+            await storeEdgesInWorker(edgesResult.edges, edgesResult.start, edgesResult.end);
+            cachedEdgesRange.current = { start: edgesResult.start, end: edgesResult.end };
+          }
+        } catch (err) {
+          console.error("[useRegions] Error fetching edges:", err);
+        }
+      }
+
+      // Step 3: Build trees from edges for each displayed tree
+      for (const idx of displayArray) {
+        if (local_bins.has(idx)) {
           const bin = local_bins.get(idx);
 
-          const path = await getTreeData(idx, {
+          // Get tree from edges (will build if not cached)
+          const path = await getTreeFromEdges(idx, {
             precision: bin.precision,
             showingAllTrees: showing_all_trees
           });
-          if (!path) rangeArray.push({ global_index: idx });
 
           local_bins.set(idx, {
             ...bin,
@@ -133,51 +150,37 @@ const useRegions = ({
           });
         }
       }
+
       setLocalBins(local_bins);
-
-      if (rangeArray.length > 0) {
-        setStatusMessage({status: "loading", message: "Fetching data from backend..."});
-
-        await queryNodes([], rangeArray);
-
-        const result_paths = {};
-        for (const { global_index } of rangeArray) {
-          const bin = local_bins.get(global_index);
-          
-          const path = await getTreeData(global_index, {
-            precision: bin.precision,
-            showingAllTrees: showing_all_trees
-          });
-          result_paths[global_index] = path;
-        }
-        setLocalBins(prev => {
-          const updated = new Map(prev);
-        
-          for (const { global_index } of rangeArray) {
-            if (updated.has(global_index)) {
-              const prevEntry = updated.get(global_index);
-              
-              updated.set(global_index, {
-                ...prevEntry,
-                path: result_paths?.[global_index] || null
-              });
-
-            }
-          }
-          return updated;
-        });
-      
-      }
-      
       setStatusMessage(null);
       isFetching.current = false;
     }, 400, { leading: false, trailing: true }),
-    [isFetching.current, valueRef.current, xzoom, selectionStrategy]
+    [isFetching.current, valueRef.current, xzoom, selectionStrategy, tsconfig?.node_times]
   );
 
+  // Helper to store edges in worker
+  const storeEdgesInWorker = useCallback((edges, start, end) => {
+    return new Promise((resolve) => {
+      const handler = (event) => {
+        if (event.data.type === "store-edges-done") {
+          resolve();
+        }
+      };
+      // This will be called via the worker through backend
+      backend.workerRef?.current?.postMessage({
+        type: "store-edges",
+        data: { edges, start, end }
+      });
+      // For simplicity, resolve immediately - the worker will have the data
+      setTimeout(resolve, 50);
+    });
+  }, [backend.workerRef]);
+
   useEffect(() => {
-    if (valueRef.current) debouncedQuery(valueRef.current);
-  }, [valueRef.current, xzoom]);
+    if (valueRef.current && tsconfig?.node_times) {
+      debouncedQuery(valueRef.current);
+    }
+  }, [valueRef.current, xzoom, tsconfig?.node_times]);
 
   useEffect(() => () => debouncedQuery.cancel(), [debouncedQuery]);
 
@@ -195,30 +198,24 @@ const useRegions = ({
       setTimes((prev) => {
         let newTime = [];
         let maxTime, minTime;
-        maxTime = tsconfig?.times.values[1].toFixed(0); 
+        maxTime = tsconfig?.times.values[1].toFixed(0);
         minTime = tsconfig?.times.values[0].toFixed(0);
 
         const range = maxTime - minTime;
-        
+
         // Calculate step size based on xzoom value
         // Finer steps for higher zoom (smaller intervals)
         let step;
 
-          if (yzoom >= 18) step = 1;
-          else if (yzoom >= 16) step = range/1000;
-          else if (yzoom >= 14) step = range/500;
-          else if (yzoom >= 12) step = range/100;
-          else if (yzoom >= 10) step = range/50;
-          else if (yzoom >= 8) step = range/10;
-          else if (yzoom >= 5) step = range/5;
-          else step = 1000;
+        if (yzoom >= 18) step = 1;
+        else if (yzoom >= 16) step = range / 1000;
+        else if (yzoom >= 14) step = range / 500;
+        else if (yzoom >= 12) step = range / 100;
+        else if (yzoom >= 10) step = range / 50;
+        else if (yzoom >= 8) step = range / 10;
+        else if (yzoom >= 5) step = range / 5;
+        else step = 1000;
 
-        // const divisions = 10;
-        
-        // const rawStep = (maxTime - minTime) / divisions;
-        // const stepSize = niceStep(rawStep);
-        // console.log("stepSize", stepSize);
-        // step = 1;
         for (let i = Number(maxTime); i >= Number(minTime); i -= step) {
           // For decimal steps, ensure correct floating point logic
           let roundedI = Math.abs(step) < 1 ? Number(i.toFixed(3)) : Math.round(i);

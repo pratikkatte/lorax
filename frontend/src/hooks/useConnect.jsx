@@ -225,6 +225,34 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
     });
   }, []);
 
+  /**
+   * Get tree from cached edges - builds tree if not already processed.
+   * @param {number} global_index - Global tree index
+   * @param {Object} options - Options for tree building
+   * @param {number} options.precision - Precision level
+   * @param {boolean} options.showingAllTrees - Whether all trees are being shown
+   */
+  const getTreeFromEdges = useCallback((global_index, options = {}) => {
+    const { precision, showingAllTrees } = options;
+
+    return new Promise((resolve) => {
+      const handler = (event) => {
+        if (event.data.type === "get-tree-from-edges" && event.data.global_index === global_index) {
+          workerRef.current?.removeEventListener('message', handler);
+          resolve(event.data.data);
+        }
+      };
+      workerRef.current?.addEventListener('message', handler);
+
+      workerRef.current?.postMessage({
+        type: "get-tree-from-edges",
+        global_index,
+        precision,
+        showingAllTrees,
+      });
+    });
+  }, []);
+
   const search = useCallback((term, terms = [], options = {}) => {
     return new Promise((resolve) => {
       const id = Math.random().toString(36).substring(7);
@@ -277,12 +305,12 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
       return new Promise((resolve) => {
         workerRef.current?.postMessage({
           type: "local-bins",
-          data: { 
-            start, 
-            end, 
-            globalBpPerUnit, 
-            nTrees, 
-            new_globalBp, 
+          data: {
+            start,
+            end,
+            globalBpPerUnit,
+            nTrees,
+            new_globalBp,
             regionWidth
           },
         });
@@ -308,6 +336,35 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
         }
       });
     }, []);
+
+  /**
+   * Fetch edges for a genomic interval from the backend.
+   * @param {number} start - Start genomic position (bp)
+   * @param {number} end - End genomic position (bp)
+   * @returns {Promise<Object>} Promise resolving to edges data
+   */
+  const queryEdges = useCallback((start, end) => {
+    return new Promise((resolve, reject) => {
+      if (!socketRef.current) {
+        reject(new Error("Socket not available"));
+        return;
+      }
+
+      const handleResult = (message) => {
+        socketRef.current.off("edges-result", handleResult);
+        if (message.error) {
+          reject(new Error(message.error));
+        } else {
+          resolve(message.data);
+        }
+      };
+
+      socketRef.current.once("edges-result", handleResult);
+      socketRef.current.emit("query_edges", { start, end, lorax_sid: sidRef.current });
+    });
+  }, []);
+
+
 
   const queryFile = useCallback((payload) => {
     return new Promise((resolve, reject) => {
@@ -362,8 +419,10 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
       statusMessage,
       setStatusMessage,
       socketRef,
+      workerRef,
       queryConfig,
       queryNodes,
+      queryEdges,
       queryDetails,
       isConnected,
       checkConnection,
@@ -372,12 +431,14 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
       connect,
       queryFile,
       getTreeData,
+      getTreeFromEdges,
       search
     }),
     [
       connect,
       statusMessage,
       queryNodes,
+      queryEdges,
       queryDetails,
       isConnected,
       checkConnection,
@@ -386,6 +447,7 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
       valueChanged,
       queryFile,
       getTreeData,
+      getTreeFromEdges,
       search
     ]
   );

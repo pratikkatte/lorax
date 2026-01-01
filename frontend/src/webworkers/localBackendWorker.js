@@ -2,16 +2,21 @@ import { Matrix4 } from "@math.gl/core";
 import { computeLineageSegments } from "./modules/lineageUtils.js";
 import {
   extractSquarePaths,
-  processNewick,
   globalCleanup,
   dedupeSegments
 } from "./modules/treeProcessing.js";
+
 import {
   nearestIndex,
   upperBound,
   findClosestBinIndices,
   new_complete_experiment_map
 } from "./modules/binningUtils.js";
+import {
+  buildTreeFromEdges,
+  filterActiveEdges,
+  processTreeFromEdges
+} from "./modules/edgeTreeBuilder.js";
 
 console.log("[Worker] Initialized");
 
@@ -32,8 +37,13 @@ let lastEnd = null;
 let globalLocalBins = new Map();
 const pathsData = new Map();
 
+// Edge data cache - stores edges for current viewport
+let cachedEdgesData = null;
+let cachedEdgesRange = { start: null, end: null };
+
 // Maximum number of trees to keep in cache to prevent memory bloat
 const MAX_CACHED_TREES = 30;
+
 
 // Helper to delete from pathsData for trees outside current range
 function deleteRangeByValue(min, max) {
@@ -47,7 +57,7 @@ function deleteRangeByValue(min, max) {
 }
 
 // Aggressive cleanup when cache gets too large
-function enforcePathsCacheLimit(invisibleKeys=new Set()) {
+function enforcePathsCacheLimit(invisibleKeys = new Set()) {
   if (pathsData.size > MAX_CACHED_TREES) {
     invisibleKeys.forEach(key => {
       pathsData.delete(key);
@@ -151,8 +161,8 @@ async function getLocalData(start, end, globalBpPerUnit, nTrees, new_globalBp, r
 
   // Pass display options to the binning function
   const { return_local_bins, displayArray, invisibleKeys, showingAllTrees } = new_complete_experiment_map(
-    local_bins, 
-    globalBpPerUnit, 
+    local_bins,
+    globalBpPerUnit,
     new_globalBp,
     {
       selectionStrategy,
@@ -164,10 +174,10 @@ async function getLocalData(start, end, globalBpPerUnit, nTrees, new_globalBp, r
   lastStart = lower_bound;
   lastEnd = upper_bound;
   globalLocalBins = return_local_bins;
-  
+
   // Cleanup pathsData for trees no longer in view (with buffer)
   deleteRangeByValue(lower_bound, upper_bound);
-  
+
   enforcePathsCacheLimit(invisibleKeys);
 
   return { local_bins: return_local_bins, lower_bound, upper_bound, displayArray, showing_all_trees: showingAllTrees };
@@ -195,27 +205,6 @@ export const queryValueChanged = async (value) => {
   return { i0, i1 };
 }
 
-export const queryNodes = async (localTrees) => {
-  try {
-    // const received_data = JSON.parse(data);
-
-    // const localTrees = received_data.tree_dict;
-    const processed_data = await processData(localTrees, sendStatusMessage)
-    const result = {
-      paths: processed_data,
-      // genome_positions: received_data.genome_positions,
-      // tree_index: tree_index,
-      // times: times
-    }
-
-
-    return result;
-  } catch (error) {
-    console.log("error", error)
-    // console.error("Error in queryNodes: ", error);
-  }
-};
-
 /**
  * Get processed tree data with adaptive sparsification.
  * 
@@ -231,7 +220,7 @@ export function getTreeData(global_index, options = {}) {
     options = { precision: options };
   }
 
-  const { 
+  const {
     precision = 9,
     showingAllTrees = false
   } = options;
@@ -255,28 +244,6 @@ export function getTreeData(global_index, options = {}) {
   return null;
 }
 
-function processData(localTrees, sendStatusMessage) {
-  if (Array.isArray(localTrees)) {
-    for (let i = 0; i < localTrees.length; i++) {
-      const tree = localTrees[i];
-
-      const processedTree = processNewick(
-        tree.newick,
-        tree.mutations,
-        -1 * tsconfig.times.values[1],
-        tsconfig.times.values[0],
-        tree.time_range,
-      );
-
-      pathsData.set(tree.global_index, processedTree);
-    }
-    
-    // Enforce cache limit to prevent memory bloat
-    // enforcePathsCacheLimit();
-  }
-
-  return null;
-}
 
 // Helper: Find highlights and lineage seeds in a single pass
 function findHighlights(tree, uniqueTerms, collectSeeds = true, sampleColors = {}) {
@@ -327,10 +294,71 @@ onmessage = async (event) => {
       });
       postMessage({ type: "gettree", data: result });
     }
-    if (data.type === "query") {
-      const result = await queryNodes(data.data.tree_dict);
-      postMessage({ type: "query", data: result });
+
+    // Store edges received from backend
+    if (data.type === "store-edges") {
+      const { edges, start, end } = data.data;
+      cachedEdgesData = edges;
+      cachedEdgesRange = { start, end };
+      console.log(`[Worker] Stored edges for range [${start}, ${end}]`);
+      postMessage({ type: "store-edges-done", data: { start, end } });
     }
+
+    // Build tree from cached edges for a specific global index
+    if (data.type === "get-tree-from-edges") {
+      const { global_index, precision, showingAllTrees } = data;
+
+      if (!cachedEdgesData || !tsconfig?.node_times) {
+        console.warn(`[Worker] Cannot build tree ${global_index}: missing edges or node_times`);
+        postMessage({ type: "get-tree-from-edges", data: null });
+        return;
+      }
+
+      // Check if tree is already processed
+      if (pathsData.has(global_index)) {
+        const processedTree = pathsData.get(global_index);
+        const segments = [];
+        if (processedTree.roots) {
+          processedTree.roots.forEach(root => {
+            extractSquarePaths(root, segments);
+          });
+        } else if (processedTree.root) {
+          extractSquarePaths(processedTree.root, segments);
+        }
+        const dedupedSegments = dedupeSegments(segments, {
+          precision: precision || 9,
+          showingAllTrees: showingAllTrees || false
+        });
+        postMessage({ type: "get-tree-from-edges", data: dedupedSegments, global_index });
+        return;
+      }
+
+      // Build tree from edges
+      const processedTree = buildTreeFromEdges(global_index, cachedEdgesData, tsconfig);
+
+      if (processedTree) {
+        pathsData.set(global_index, processedTree);
+
+        const segments = [];
+        if (processedTree.roots) {
+          processedTree.roots.forEach(root => {
+            extractSquarePaths(root, segments);
+          });
+        } else if (processedTree.root) {
+          extractSquarePaths(processedTree.root, segments);
+        }
+
+        const dedupedSegments = dedupeSegments(segments, {
+          precision: precision || 9,
+          showingAllTrees: showingAllTrees || false
+        });
+        postMessage({ type: "get-tree-from-edges", data: dedupedSegments, global_index });
+      } else {
+        postMessage({ type: "get-tree-from-edges", data: null, global_index });
+      }
+    }
+
+
     if (data.type === "search") {
       const { term, terms, id, options } = data;
       const { showLineages = true, sampleColors = {} } = options || {};
@@ -380,13 +408,13 @@ onmessage = async (event) => {
       const displayOptions = {
         selectionStrategy: 'largestSpan'
       };
-      
+
       let result = await getLocalData(
-        data.data.start, 
-        data.data.end, 
-        data.data.globalBpPerUnit, 
-        data.data.nTrees, 
-        data.data.new_globalBp, 
+        data.data.start,
+        data.data.end,
+        data.data.globalBpPerUnit,
+        data.data.nTrees,
+        data.data.new_globalBp,
         data.data.regionWidth,
         displayOptions
       );
