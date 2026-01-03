@@ -84,7 +84,7 @@ export function constructTreeFromEdges(activeEdges, nodeTimes, mutationsByNode =
  * Uses explicit stack to avoid stack overflow on large trees.
  * @param {Object} root - Root node of tree
  */
-function assignNumTips(root) {
+export function assignNumTips(root) {
     // Post-order traversal using explicit stack
     const stack = [];
     const visited = new Set();
@@ -125,7 +125,7 @@ function assignNumTips(root) {
  * Uses BFS to process all nodes.
  * @param {Object} root - Root node of tree
  */
-function sortWithNumTips(root) {
+export function sortWithNumTips(root) {
     const queue = [root];
 
     while (queue.length > 0) {
@@ -144,7 +144,7 @@ function sortWithNumTips(root) {
  * @param {Object} tree - Tree with roots
  * @returns {number} Current Y position counter
  */
-function assignTipCoordinates(tree) {
+export function assignTipCoordinates(tree) {
     let tipCounter = 0;
 
     for (const root of tree.roots) {
@@ -219,7 +219,7 @@ export function scaleTimeCoordinates(tree, globalMinTime, globalMaxTime) {
  * Normalize Y coordinates to [0, 1] range.
  * @param {Object} tree - Tree with nodes having y coordinates
  */
-function normalizeTipCoordinates(tree) {
+export function normalizeTipCoordinates(tree) {
     if (!tree.nodes || tree.nodes.length === 0) {
         return;
     }

@@ -54,6 +54,7 @@ const useRegions = ({
   const isFetching = useRef(false);
 
   const region = useRef(null);
+  const [edgesData, setEdgesData] = useState(null);
 
   const [times, setTimes] = useState([]);
   const showingAllTrees = useRef(false);
@@ -96,8 +97,12 @@ const useRegions = ({
       // Step 1: Fetch edges for the viewport range and cache in worker
       setStatusMessage({ status: "loading", message: "Fetching tree data..." });
 
+      let edgesResult;
       try {
-        await queryEdges(region.current[0], region.current[1]);
+        edgesResult = await queryEdges(region.current[0], region.current[1]);
+        if (edgesResult?.edges) {
+          setEdgesData(edgesResult.edges);
+        }
       } catch (err) {
         console.error("[useRegions] Error fetching edges:", err);
         setStatusMessage({
@@ -233,7 +238,8 @@ const useRegions = ({
     bins: localBins,
     localCoordinates,
     times,
-  }), [localBins, localCoordinates, times]);
+    edgesData,
+  }), [localBins, localCoordinates, times, edgesData]);
 };
 
 export default useRegions;

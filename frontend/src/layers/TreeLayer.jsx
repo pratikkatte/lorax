@@ -60,53 +60,53 @@ export default class TreeLayer extends CompositeLayer {
     }
 
     const layers = [
-      new PathLayer({
-        id: `${this.props.id}-path-${bin.global_index}`,
-        data: bin.path,
-        getPath: d => {
-          if (!d?.path) return null;
-          const paths = d?.path;
-          const transformedPath = paths?.map(p => {
-            const world = [p[0] * scale_position + translate_position, p[1]];
-            return world;
-          })
-          return transformedPath
-        },
-        jointRounded: true,
-        capRounded: true,
-        getColor: d => {
-          if (treeColors) {
-            const key = String(bin.global_index);
-            if (treeColors[key]) {
-              const hex = treeColors[key];
-              // console.log(`TreeLayer ${key} color override:`, hex);
-              const r = parseInt(hex.slice(1, 3), 16);
-              const g = parseInt(hex.slice(3, 5), 16);
-              const b = parseInt(hex.slice(5, 7), 16);
-              return [r, g, b, 255];
-            }
-          }
+      // new PathLayer({
+      //   id: `${this.props.id}-path-${bin.global_index}`,
+      //   data: bin.path,
+      //   getPath: d => {
+      //     if (!d?.path) return null;
+      //     const paths = d?.path;
+      //     const transformedPath = paths?.map(p => {
+      //       const world = [p[0] * scale_position + translate_position, p[1]];
+      //       return world;
+      //     })
+      //     return transformedPath
+      //   },
+      //   jointRounded: true,
+      //   capRounded: true,
+      //   getColor: d => {
+      //     if (treeColors) {
+      //       const key = String(bin.global_index);
+      //       if (treeColors[key]) {
+      //         const hex = treeColors[key];
+      //         // console.log(`TreeLayer ${key} color override:`, hex);
+      //         const r = parseInt(hex.slice(1, 3), 16);
+      //         const g = parseInt(hex.slice(3, 5), 16);
+      //         const b = parseInt(hex.slice(5, 7), 16);
+      //         return [r, g, b, 255];
+      //       }
+      //     }
 
-          return hoveredTreeIndex && d.path === hoveredTreeIndex.path
-            ? [50, 50, 50, 255]
-            : [150, 145, 140, 230]
-        },
-        getWidth: d =>
-          hoveredTreeIndex && d.path === hoveredTreeIndex.path ? 2 : 1.2,
-        widthUnits: 'pixels',
-        viewId,
-        modelMatrix: null,
-        pickable: true,
-        coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
-        zOffset: -1,
-        fp64: true,
-        updateTriggers: {
-          getWidth: [hoveredTreeIndex],
-          getColor: [hoveredTreeIndex, treeColors],
-          data: [bin.path, bin.modelMatrix],
-          getPath: [bin.modelMatrix, bin.path],
-        },
-      }),
+      //     return hoveredTreeIndex && d.path === hoveredTreeIndex.path
+      //       ? [50, 50, 50, 255]
+      //       : [150, 145, 140, 230]
+      //   },
+      //   getWidth: d =>
+      //     hoveredTreeIndex && d.path === hoveredTreeIndex.path ? 2 : 1.2,
+      //   widthUnits: 'pixels',
+      //   viewId,
+      //   modelMatrix: null,
+      //   pickable: true,
+      //   coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+      //   zOffset: -1,
+      //   fp64: true,
+      //   updateTriggers: {
+      //     getWidth: [hoveredTreeIndex],
+      //     getColor: [hoveredTreeIndex, treeColors],
+      //     data: [bin.path, bin.modelMatrix],
+      //     getPath: [bin.modelMatrix, bin.path],
+      //   },
+      // }),
 
       new ScatterplotLayer({
         id: `${this.props.id}-smaples-${bin.global_index}`,

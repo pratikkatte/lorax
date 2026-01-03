@@ -5,6 +5,7 @@ import { GenomeGridLayer } from "../layers/GenomeGridLayer";
 import TreeLayer from '../layers/TreeLayer';
 import { GenomeInfoLayer } from '../layers/GenomeInfoLayer';
 import { TimeGridLayer } from '../layers/TimeGridLayer';
+import EdgeCompositeLayer from "../layers/EdgeCompositeLayer";
 import useAnimatedBins from './useAnimatedBins';
 
 const useLayers = ({
@@ -25,10 +26,11 @@ const useLayers = ({
   highlightedNodes,
   highlightedMutationNode,
   polygonData,
-  animationOptions = {}
+  animationOptions = {},
+  tsconfig // Ensure tsconfig is destructured
 }) => {
 
-  const { bins: rawBins = new Map(), localCoordinates = [], times = [] } = regions;
+  const { bins: rawBins = new Map(), localCoordinates = [], times = [], edgesData } = regions;
 
   // Apply smooth transitions to tree positions
   const bins = useAnimatedBins(rawBins, {
@@ -41,7 +43,7 @@ const useLayers = ({
     const vid = viewport.id;
     const lid = layer.id;
     return (
-      (vid === "ortho" && lid.startsWith("main")) ||
+      (vid === "ortho" && (lid.startsWith("main") || lid === "edge-composite-layer" || lid.startsWith("edge-composite-layer"))) ||
       (vid === "genome-positions" && lid.startsWith("genome-positions")) ||
       (vid === "genome-info" && lid.startsWith("genome-info")) ||
       (vid === "tree-time" && lid.startsWith("tree-time")) ||
@@ -94,6 +96,24 @@ const useLayers = ({
     });
   }, [rawBins, globalBpPerUnit, hoveredGenomeInfo]);
 
+  const edgeCompositeLayer = useMemo(() => {
+    if (!edgesData || !bins || bins.size === 0 || !tsconfig?.node_times) return null;
+
+    const minTime = tsconfig.times?.values?.[0] ?? 0;
+    const maxTime = tsconfig.times?.values?.[1] ?? 1;
+
+    return new EdgeCompositeLayer({
+      id: 'edge-composite-layer',
+      bins: bins,
+      edgesData: edgesData,
+      nodeTimes: tsconfig.node_times,
+      minNodeTime: minTime,
+      maxNodeTime: maxTime,
+      globalBpPerUnit: globalBpPerUnit,
+      viewId: "ortho"
+    });
+  }, [bins, edgesData, tsconfig, globalBpPerUnit]);
+
   const treeLayers = useMemo(() => {
     if (!bins || bins.size === 0) return [];
 
@@ -106,6 +126,8 @@ const useLayers = ({
 
       const existing = false;
 
+      // If we have edgeCompositeLayer, maybe we don't need tree layers? 
+      // But keeping them for now as user said "create a new layer", implying addition.
       if (!bin?.path || !bin.visible) {
         continue;
       }
@@ -144,8 +166,9 @@ const useLayers = ({
     // console.log("treeLayers",treeLayers)
     if (genomeInfoLayer) all.push(genomeInfoLayer);
     if (timeGridLayer) all.push(timeGridLayer);
+    if (edgeCompositeLayer) all.push(edgeCompositeLayer);
     return all;
-  }, [treeLayers, genomeGridLayer, genomeInfoLayer, timeGridLayer]);
+  }, [treeLayers, genomeGridLayer, genomeInfoLayer, timeGridLayer, edgeCompositeLayer]);
 
   return { layers, layerFilter, animatedBins: bins };
 };

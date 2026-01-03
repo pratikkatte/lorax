@@ -432,9 +432,9 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
               end: data.end
             }
           });
-          waitForStore().then(() => resolve()).catch(() => resolve());
+          waitForStore().then(() => resolve(data)).catch(() => resolve(data));
         } else {
-          resolve();
+          resolve(data);
         }
       };
 
