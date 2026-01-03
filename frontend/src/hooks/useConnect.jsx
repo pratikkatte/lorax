@@ -348,7 +348,7 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
    * @param {string} displayOptions.selectionStrategy - 'largestSpan' | 'centerWeighted' | 'spanWeightedRandom' | 'first'
    */
   const queryLocalBins = useCallback(
-    (start, end, globalBpPerUnit, nTrees, new_globalBp, regionWidth = null) => {
+    (start, end, globalBpPerUnit, nTrees, new_globalBp, regionWidth = null, displayOptions = {}) => {
       return new Promise((resolve) => {
         workerRef.current?.postMessage({
           type: "local-bins",
@@ -358,7 +358,8 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
             globalBpPerUnit,
             nTrees,
             new_globalBp,
-            regionWidth
+            regionWidth,
+            displayOptions
           },
         });
 
@@ -385,10 +386,10 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
     }, []);
 
   /**
-   * Fetch edges for a genomic interval from the backend.
+   * Fetch edges for a genomic interval from the backend and cache them in the worker.
+   * Resolves once the worker has stored the edges; no data is returned.
    * @param {number} start - Start genomic position (bp)
    * @param {number} end - End genomic position (bp)
-   * @returns {Promise<Object>} Promise resolving to edges data
    */
   const queryEdges = useCallback((start, end) => {
     return new Promise((resolve, reject) => {
@@ -397,12 +398,43 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
         return;
       }
 
+      const waitForStore = () => {
+        return new Promise((res) => {
+          const handler = (event) => {
+            if (event.data?.type === "store-edges-done") {
+              workerRef.current?.removeEventListener("message", handler);
+              res();
+            }
+          };
+
+          workerRef.current?.addEventListener("message", handler);
+          setTimeout(() => {
+            workerRef.current?.removeEventListener("message", handler);
+            res();
+          }, 50);
+        });
+      };
+
       const handleResult = (message) => {
         socketRef.current.off("edges-result", handleResult);
         if (message.error) {
           reject(new Error(message.error));
+          return;
+        }
+
+        const data = message.data;
+        if (data?.edges) {
+          workerRef.current?.postMessage({
+            type: "store-edges",
+            data: {
+              edges: data.edges,
+              start: data.start,
+              end: data.end
+            }
+          });
+          waitForStore().then(() => resolve()).catch(() => resolve());
         } else {
-          resolve(message.data);
+          resolve();
         }
       };
 

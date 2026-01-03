@@ -1,4 +1,3 @@
-
 import { useMemo, useEffect, useState, useRef, useCallback } from "react";
 import debounce from "lodash.debounce";
 import memoizeOne from "memoize-one";
@@ -55,7 +54,6 @@ const useRegions = ({
   const isFetching = useRef(false);
 
   const region = useRef(null);
-  const cachedEdgesRange = useRef({ start: null, end: null });
 
   const [times, setTimes] = useState([]);
   const showingAllTrees = useRef(false);
@@ -95,49 +93,52 @@ const useRegions = ({
 
       isFetching.current = true;
 
-      // Step 1: Get local bins (determines which trees to show)
-      const { local_bins, lower_bound, upper_bound, displayArray, showing_all_trees } = await queryLocalBins(
-        region.current[0],
-        region.current[1],
-        globalBpPerUnit,
-        null,
-        new_globalBp,
-        null,
-        {
-          selectionStrategy
-        }
-      );
+      // Step 1: Fetch edges for the viewport range and cache in worker
+      setStatusMessage({ status: "loading", message: "Fetching tree data..." });
+
+      try {
+        await queryEdges(region.current[0], region.current[1]);
+      } catch (err) {
+        console.error("[useRegions] Error fetching edges:", err);
+        setStatusMessage({
+          status: "error",
+          message: "Failed to fetch tree data. Try reloading or selecting a smaller region."
+        });
+        isFetching.current = false;
+        return;
+      }
+
+      // Step 2: Compute local bins and select visible trees in the worker
+      let binsResult;
+      try {
+        binsResult = await queryLocalBins(
+          region.current[0],
+          region.current[1],
+          globalBpPerUnit,
+          null,
+          new_globalBp,
+          null,
+          {
+            selectionStrategy
+          }
+        );
+      } catch (err) {
+        console.error("[useRegions] Error computing local bins:", err);
+        setStatusMessage({
+          status: "error",
+          message: "Failed to compute visible trees. Try reloading or selecting a smaller region."
+        });
+        isFetching.current = false;
+        return;
+      }
+
+      const {
+        local_bins = new Map(),
+        displayArray = [],
+        showing_all_trees = false
+      } = binsResult || {};
 
       showingAllTrees.current = showing_all_trees;
-
-      // Step 2: Fetch edges for the viewport if needed
-      const needsEdges = displayArray.some(idx => {
-        const bin = local_bins.get(idx);
-        return !bin?.path;
-      });
-
-      if (needsEdges) {
-        setStatusMessage({ status: "loading", message: "Fetching tree data..." });
-
-        try {
-          // Fetch edges for the viewport range
-          const edgesResult = await queryEdges(region.current[0], region.current[1]);
-
-          if (edgesResult?.edges) {
-            // Store edges in worker
-            await storeEdgesInWorker(edgesResult.edges, edgesResult.start, edgesResult.end);
-            cachedEdgesRange.current = { start: edgesResult.start, end: edgesResult.end };
-          }
-        } catch (err) {
-          console.error("[useRegions] Error fetching edges:", err);
-          setStatusMessage({
-            status: "error",
-            message: "Failed to fetch tree data. Try reloading or selecting a smaller region."
-          });
-          isFetching.current = false;
-          return;
-        }
-      }
 
       // Step 3: Build trees from edges for each displayed tree
       let hadError = false;
@@ -146,7 +147,7 @@ const useRegions = ({
           const bin = local_bins.get(idx);
 
           // Get tree from edges (will build if not cached)
-          const path = await getTreeFromEdges(idx, {
+          const path = bin.path ?? await getTreeFromEdges(idx, {
             precision: bin.precision,
             showingAllTrees: showing_all_trees
           });
@@ -173,26 +174,8 @@ const useRegions = ({
       }
       isFetching.current = false;
     }, 400, { leading: false, trailing: true }),
-    [isFetching.current, valueRef.current, xzoom, selectionStrategy, tsconfig?.node_times]
+    [isFetching.current, valueRef.current, xzoom, selectionStrategy, tsconfig?.node_times, queryLocalBins, queryEdges, globalBpPerUnit, getTreeFromEdges]
   );
-
-  // Helper to store edges in worker
-  const storeEdgesInWorker = useCallback((edges, start, end) => {
-    return new Promise((resolve) => {
-      const handler = (event) => {
-        if (event.data.type === "store-edges-done") {
-          resolve();
-        }
-      };
-      // This will be called via the worker through backend
-      backend.workerRef?.current?.postMessage({
-        type: "store-edges",
-        data: { edges, start, end }
-      });
-      // For simplicity, resolve immediately - the worker will have the data
-      setTimeout(resolve, 50);
-    });
-  }, [backend.workerRef]);
 
   useEffect(() => {
     if (valueRef.current && tsconfig?.node_times) {

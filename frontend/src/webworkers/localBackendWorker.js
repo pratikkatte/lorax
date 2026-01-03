@@ -417,10 +417,8 @@ onmessage = async (event) => {
     }
 
     if (data.type === "local-bins") {
-      // Extract display options from the message data
-      const displayOptions = {
-        selectionStrategy: 'largestSpan'
-      };
+      // Extract display options from the message data (fallback to defaults inside getLocalData)
+      const displayOptions = data.data.displayOptions || {};
 
       let result = await getLocalData(
         data.data.start,
