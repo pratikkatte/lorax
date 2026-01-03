@@ -40,9 +40,17 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
 
     initSessionPromiseRef.current = (async () => {
       try {
+        // Check localStorage for existing session
+        const storedSid = localStorage.getItem('lorax_sid');
+        if (storedSid) {
+          sidRef.current = storedSid;
+          console.log("Session restored from localStorage:", storedSid);
+        }
+
         const sid = await initSession(API_BASE);
         if (sid) {
           sidRef.current = sid;
+          localStorage.setItem('lorax_sid', sid);  // Persist session
           console.log("Session initialized:", sid);
           connect(sid); // connect socket.io after session init
         } else {
@@ -58,6 +66,19 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
 
     return initSessionPromiseRef.current;
   }, [API_BASE]);
+
+  useEffect(() => {
+    onStatusReceipt = (receivedData) => {
+      const msg = receivedData?.data ?? receivedData;
+      if (msg) {
+        setStatusMessage(msg);
+      }
+    };
+
+    return () => {
+      onStatusReceipt = (receivedData) => console.log("STATUS:", receivedData?.data);
+    };
+  }, [setStatusMessage]);
 
   /** 🔌 Connect to Socket.IO */
   const connect = useCallback(() => {
@@ -110,6 +131,32 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
       websocketEvents.emit("status", msg); // used websocketevents.js to emit events
     });
 
+    // Handle session errors from backend
+    socket.on("error", (data) => {
+      console.error("Socket error:", data);
+      if (data.code === "SESSION_NOT_FOUND" || data.code === "MISSING_SESSION") {
+        // Clear stale session and reinitialize
+        localStorage.removeItem('lorax_sid');
+        sidRef.current = null;
+        setStatusMessage({ type: 'error', message: data.message || 'Session expired. Reconnecting...' });
+        // Attempt to reinitialize session
+        initSessionPromiseRef.current = null;
+        initializeSession();
+      } else if (data.code === "NO_FILE_LOADED") {
+        setStatusMessage({ type: 'warning', message: data.message || 'No file loaded.' });
+      } else {
+        setStatusMessage({ type: 'error', message: data.message || 'An error occurred.' });
+      }
+      websocketEvents.emit("error", data);
+    });
+
+    // Handle session restoration (file was already loaded in previous session)
+    socket.on("session-restored", (data) => {
+      console.log("Session restored:", data);
+      setStatusMessage({ message: `Session restored. File: ${data.file_path?.split('/').pop() || 'unknown'}` });
+      websocketEvents.emit("session-restored", data);
+    });
+
 
     socket.on("query-result", (message) => {
 
@@ -132,7 +179,7 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
     return () => {
       socket.disconnect();
     };
-  }, [API_BASE, settings, setGettingDetails]);
+  }, [API_BASE, settings, setGettingDetails, initializeSession]);
 
   /** 🔄 Worker setup when connected */
   useEffect(() => {

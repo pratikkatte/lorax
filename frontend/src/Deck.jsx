@@ -365,7 +365,9 @@ function Deck({
               {dummy && dummy.pointsArray.length > 0 && (
                 <GenomeVisualization pointsArray={dummy.pointsArray} pointsGenomePositionsInfo={dummy.pointsGenomePositionsInfo} setHoveredPolygonIndex={setHoveredPolygonIndex} hoveredTreeIndex={hoveredTreeIndex} polygonColor={polygonColor} />
               )}
-              {statusMessage?.status === "loading" && <LoraxMessage status={statusMessage.status} message={statusMessage.message} />}
+              {["loading", "error"].includes(statusMessage?.status) && (
+                <LoraxMessage status={statusMessage.status} message={statusMessage.message} />
+              )}
 
             </View>
             <View id="genome-positions">

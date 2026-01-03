@@ -34,7 +34,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 
-from lorax.handlers import handle_upload, handle_query, get_projects, cache_status, handle_details, get_or_load_config
+from lorax.handlers import handle_upload, handle_edges_query, get_projects, cache_status, handle_details, get_or_load_config
+from lorax.constants import (
+    SESSION_COOKIE, COOKIE_MAX_AGE, UPLOADS_DIR,
+    SOCKET_PING_TIMEOUT, SOCKET_PING_INTERVAL, MAX_HTTP_BUFFER_SIZE,
+    ERROR_SESSION_NOT_FOUND, ERROR_MISSING_SESSION, ERROR_NO_FILE_LOADED
+)
+
+
 
 # Setup
 
@@ -75,8 +82,7 @@ else:
     print("Running without Redis (in-memory mode)")
 
 
-SESSION_COOKIE = "lorax_sid"
-COOKIE_MAX_AGE = 7 * 24 * 60 * 60
+# Session constants imported from lorax.constants
 
 class Session:
     """Per-user session."""
@@ -112,7 +118,7 @@ async def get_or_create_session(request: Request, response: Response):
             session = Session(sid)
             await redis_client.setex(f"sessions:{sid}", COOKIE_MAX_AGE, json.dumps(session.to_dict()))
 
-            response.set_cookie(key=SESSION_COOKIE, value=sid, httponly=True, samesite="Lax", max_age=COOKIE_MAX_AGE, secure=False) # HARDCODED FALSE. FIX IT LATER. 
+            response.set_cookie(key=SESSION_COOKIE, value=sid, httponly=True, samesite="Lax", max_age=COOKIE_MAX_AGE, secure=secure) 
             return sid, session
 
         data = await redis_client.get(f"sessions:{sid}")
@@ -139,27 +145,25 @@ async def save_session(session: Session):
 
 
 if USE_REDIS:
-
     sio = socketio.AsyncServer(
         async_mode="asgi",
         cors_allowed_origins="*",
         client_manager=socketio.AsyncRedisManager(REDIS_URL),
         logger=False,
         engineio_logger=False,
-        ping_timeout=60, 
-        ping_interval=25,
-        max_http_buffer_size=50_000_000
+        ping_timeout=SOCKET_PING_TIMEOUT,
+        ping_interval=SOCKET_PING_INTERVAL,
+        max_http_buffer_size=MAX_HTTP_BUFFER_SIZE
     )
 else:
-    
     sio = socketio.AsyncServer(
         async_mode="asgi",
         cors_allowed_origins="*",
         logger=False,
         engineio_logger=False,
-        ping_timeout=60, 
-        ping_interval=25,
-        max_http_buffer_size=50_000_000
+        ping_timeout=SOCKET_PING_TIMEOUT,
+        ping_interval=SOCKET_PING_INTERVAL,
+        max_http_buffer_size=MAX_HTTP_BUFFER_SIZE
     )
 
 sio_app = socketio.ASGIApp(sio, other_asgi_app=app)
@@ -274,20 +278,57 @@ async def upload(request: Request, response: Response, file: UploadFile = File(.
         print("❌ Upload error:", e)
         return JSONResponse(status_code=500, content={"error": "Upload error"})
 
+async def get_session(lorax_sid: str):
+    """Get session from Redis or memory, with proper error handling."""
+    if not lorax_sid:
+        return None
+
+    if USE_REDIS:
+        raw = await redis_client.get(f"sessions:{lorax_sid}")
+        if not raw:
+            return None
+        return Session.from_dict(json.loads(raw))
+    else:
+        return sessions.get(lorax_sid)
+
+
+async def require_session(lorax_sid: str, socket_sid: str):
+    """Get session or emit error to client. Returns None if session not found."""
+    session = await get_session(lorax_sid)
+    if not session:
+        await sio.emit("error", {
+            "code": ERROR_SESSION_NOT_FOUND,
+            "message": "Session expired. Please refresh the page."
+        }, to=socket_sid)
+        return None
+    return session
+
+
 @sio.event
 async def connect(sid, environ, auth=None):
     print(f"🔌 Socket.IO connected: {sid}")
 
     cookie = environ.get("HTTP_COOKIE", "")
-
     cookies = SimpleCookie()
     cookies.load(cookie)
 
-    print("cookie", cookies.get("lorax_sid"))
+    lorax_sid_cookie = cookies.get("lorax_sid")
+    session_id = lorax_sid_cookie.value if lorax_sid_cookie else None
 
-    session_id = cookies.get("lorax_sid").value
-       
-    await sio.emit("status", {"message": "Connected", "lorax_sid": session_id}, to=sid)
+    if not session_id:
+        print(f"⚠️ No lorax_sid cookie found for socket {sid}")
+        await sio.emit("error", {"code": ERROR_SESSION_NOT_FOUND, "message": "Session not found. Please refresh the page."}, to=sid)
+        return
+
+    # Validate session exists and send appropriate event
+    session = await get_session(session_id)
+    if session and session.file_path:
+        await sio.emit("session-restored", {
+            "lorax_sid": session_id,
+            "file_path": session.file_path
+        }, to=sid)
+    else:
+        await sio.emit("status", {"message": "Connected", "lorax_sid": session_id}, to=sid)
 
 @sio.event
 async def disconnect(sid):
@@ -304,18 +345,14 @@ async def background_load_file(sid, data):
 
         if not lorax_sid:
             print(f"⚠️ Missing lorax_sid")
+            await sio.emit("error", {"code": ERROR_MISSING_SESSION, "message": "Session ID is missing."}, to=sid)
             return
-        # session = sessions[lorax_sid]
 
-        if USE_REDIS:
-            raw = await redis_client.get(f"sessions:{lorax_sid}")
-            print("raw", raw)
-            if not raw:
-                print(f"⚠️ Unknown sid {lorax_sid}")
-                return
-            session = Session.from_dict(json.loads(raw))
-        else:
-            session = sessions.get(lorax_sid)
+        session = await get_session(lorax_sid)
+        if not session:
+            print(f"⚠️ Unknown sid {lorax_sid}")
+            await sio.emit("error", {"code": ERROR_SESSION_NOT_FOUND, "message": "Session expired. Please refresh the page."}, to=sid)
+            return
 
         project = str(data.get("project"))
         filename = str(data.get("file"))
@@ -369,53 +406,18 @@ async def load_file(sid, data):
         asyncio.create_task(background_load_file(sid, data))
 
 @sio.event
-async def query(sid, data):
-    try:
-        lorax_sid = data.get("lorax_sid")
-        if not lorax_sid:
-            print(f"⚠️ Missing lorax_sid")
-            return
-
-        # Retrieve session from Redis or memory
-        if USE_REDIS:
-            raw = await redis_client.get(f"sessions:{lorax_sid}")
-            if not raw:
-                print(f"⚠️ Unknown sid {lorax_sid}")
-                return
-            session = Session.from_dict(json.loads(raw))
-        else:
-            session = sessions.get(lorax_sid)
-
-        if not session or not session.file_path:
-            print(f"⚠️ No file loaded for session {lorax_sid}")
-            return
-
-
-        result = await handle_query(session.file_path, data.get("localTrees"))
-        print("sending data to", sid)
-        await sio.emit("query-result", {"data": json.loads(result)}, to=sid)
-    except Exception as e:
-        print(f"❌ Query error: {e}")
-        await sio.emit("query-result", {"error": str(e)}, to=sid)
-
-@sio.event
 async def details(sid, data):
     try:
         lorax_sid = data.get("lorax_sid")
-        if USE_REDIS:
-            raw = await redis_client.get(f"sessions:{lorax_sid}")
-            if not raw:
-                print(f"⚠️ Unknown sid {lorax_sid}")
-                return
-
-            session = Session.from_dict(json.loads(raw))
-        else:
-            session = sessions.get(lorax_sid)
-
-        if not session or not session.file_path:
-            print(f"⚠️ No file loaded for session {lorax_sid}")
+        session = await require_session(lorax_sid, sid)
+        if not session:
             return
-        
+
+        if not session.file_path:
+            print(f"⚠️ No file loaded for session {lorax_sid}")
+            await sio.emit("error", {"code": ERROR_NO_FILE_LOADED, "message": "No file loaded. Please load a file first."}, to=sid)
+            return
+
         print("fetch details in ", session.sid, os.getpid())
 
         result = await handle_details(session.file_path, data)
@@ -423,3 +425,52 @@ async def details(sid, data):
     except Exception as e:
         print(f"❌ Details error: {e}")
         await sio.emit("details-result", {"error": str(e)}, to=sid)
+
+
+@sio.event
+async def query(sid, data):
+    """Socket event to query tree nodes."""
+    try:
+        lorax_sid = data.get("lorax_sid")
+        session = await require_session(lorax_sid, sid)
+        if not session:
+            return
+
+        if not session.file_path:
+            print(f"⚠️ No file loaded for session {lorax_sid}")
+            await sio.emit("error", {"code": ERROR_NO_FILE_LOADED, "message": "No file loaded. Please load a file first."}, to=sid)
+            return
+
+        value = data.get("value")
+        local_trees = data.get("localTrees", [])
+
+        # Acknowledge the query - the actual tree data is processed by the frontend worker
+        # This handler ensures the session is valid and the file is loaded
+        await sio.emit("query-result", {"data": {"value": value, "localTrees": local_trees}}, to=sid)
+    except Exception as e:
+        print(f"❌ Query error: {e}")
+        await sio.emit("query-result", {"error": str(e)}, to=sid)
+
+
+@sio.event
+async def query_edges(sid, data):
+    """Socket event to fetch edges for a genomic interval."""
+    try:
+        lorax_sid = data.get("lorax_sid")
+        session = await require_session(lorax_sid, sid)
+        if not session:
+            return
+
+        if not session.file_path:
+            print(f"⚠️ No file loaded for session {lorax_sid}")
+            await sio.emit("error", {"code": ERROR_NO_FILE_LOADED, "message": "No file loaded. Please load a file first."}, to=sid)
+            return
+
+        start = data.get("start", 0)
+        end = data.get("end", 0)
+
+        result = await handle_edges_query(session.file_path, start, end)
+        await sio.emit("edges-result", {"data": json.loads(result)}, to=sid)
+    except Exception as e:
+        print(f"❌ Edges query error: {e}")
+        await sio.emit("edges-result", {"error": str(e)}, to=sid)

@@ -310,50 +310,63 @@ onmessage = async (event) => {
 
       if (!cachedEdgesData || !tsconfig?.node_times) {
         console.warn(`[Worker] Cannot build tree ${global_index}: missing edges or node_times`);
-        postMessage({ type: "get-tree-from-edges", data: null });
+        sendStatusMessage({
+          status: "error",
+          message: "Tree data unavailable. Try reloading or selecting a smaller region."
+        });
+        postMessage({ type: "get-tree-from-edges", data: null, global_index });
         return;
       }
 
-      // Check if tree is already processed
-      if (pathsData.has(global_index)) {
-        const processedTree = pathsData.get(global_index);
-        const segments = [];
-        if (processedTree.roots) {
-          processedTree.roots.forEach(root => {
-            extractSquarePaths(root, segments);
+      try {
+        // Check if tree is already processed
+        if (pathsData.has(global_index)) {
+          const processedTree = pathsData.get(global_index);
+          const segments = [];
+          if (processedTree.roots) {
+            processedTree.roots.forEach(root => {
+              extractSquarePaths(root, segments);
+            });
+          } else if (processedTree.root) {
+            extractSquarePaths(processedTree.root, segments);
+          }
+          const dedupedSegments = dedupeSegments(segments, {
+            precision: precision || 9,
+            showingAllTrees: showingAllTrees || false
           });
-        } else if (processedTree.root) {
-          extractSquarePaths(processedTree.root, segments);
-        }
-        const dedupedSegments = dedupeSegments(segments, {
-          precision: precision || 9,
-          showingAllTrees: showingAllTrees || false
-        });
-        postMessage({ type: "get-tree-from-edges", data: dedupedSegments, global_index });
-        return;
-      }
-
-      // Build tree from edges
-      const processedTree = buildTreeFromEdges(global_index, cachedEdgesData, tsconfig);
-
-      if (processedTree) {
-        pathsData.set(global_index, processedTree);
-
-        const segments = [];
-        if (processedTree.roots) {
-          processedTree.roots.forEach(root => {
-            extractSquarePaths(root, segments);
-          });
-        } else if (processedTree.root) {
-          extractSquarePaths(processedTree.root, segments);
+          postMessage({ type: "get-tree-from-edges", data: dedupedSegments, global_index });
+          return;
         }
 
-        const dedupedSegments = dedupeSegments(segments, {
-          precision: precision || 9,
-          showingAllTrees: showingAllTrees || false
+        // Build tree from edges
+        const processedTree = buildTreeFromEdges(global_index, cachedEdgesData, tsconfig);
+
+        if (processedTree) {
+          pathsData.set(global_index, processedTree);
+
+          const segments = [];
+          if (processedTree.roots) {
+            processedTree.roots.forEach(root => {
+              extractSquarePaths(root, segments);
+            });
+          } else if (processedTree.root) {
+            extractSquarePaths(processedTree.root, segments);
+          }
+
+          const dedupedSegments = dedupeSegments(segments, {
+            precision: precision || 9,
+            showingAllTrees: showingAllTrees || false
+          });
+          postMessage({ type: "get-tree-from-edges", data: dedupedSegments, global_index });
+        } else {
+          postMessage({ type: "get-tree-from-edges", data: null, global_index });
+        }
+      } catch (error) {
+        console.error(`[Worker] Failed to build tree ${global_index}`, error);
+        sendStatusMessage({
+          status: "error",
+          message: "Failed to render tree data. Try zooming in or reloading."
         });
-        postMessage({ type: "get-tree-from-edges", data: dedupedSegments, global_index });
-      } else {
         postMessage({ type: "get-tree-from-edges", data: null, global_index });
       }
     }

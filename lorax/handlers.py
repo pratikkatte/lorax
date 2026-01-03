@@ -11,7 +11,8 @@ import psutil
 import tskit
 import tszip
 
-from lorax.viz.trees_to_taxonium import old_new_tree_samples, process_csv
+from lorax.viz.trees_to_taxonium import process_csv
+
 from lorax.utils.gcs_utils import get_public_gcs_dict
 
 _cache_lock = asyncio.Lock()
@@ -113,20 +114,28 @@ async def cache_status():
         "pid": os.getpid(),
     }
 
-async def handle_query(file_path, localTrees):
-    """Process a query for tree data at specified genomic intervals."""
+
+async def handle_edges_query(file_path, start, end):
+    """Fetch edges for a genomic interval [start, end).
+    
+    Args:
+        file_path: Path to tree sequence file
+        start: Start genomic position (bp)
+        end: End genomic position (bp)
+    
+    Returns:
+        JSON string with edges data or error
+    """
     ts = await get_or_load_ts(file_path)
     if ts is None:
-        return json.dumps({"error": "Tree sequence (ts) is not set. Please upload a file first. Or file_path is not valid or not found."})
+        return json.dumps({"error": "Tree sequence not loaded. Please load a file first."})
     try:
-        if file_path.endswith('.tsz') or file_path.endswith('.trees'):
-            tree_dict = await asyncio.to_thread(old_new_tree_samples, localTrees, ts)
-        else:
-            tree_dict = await asyncio.to_thread(process_csv, ts, localTrees, outgroup="Etal")
-        return json.dumps({"tree_dict": tree_dict})
+        edges = await asyncio.to_thread(get_edges_for_interval, ts, start, end)
+        return json.dumps({"edges": edges, "start": start, "end": end})
     except Exception as e:
-        print("Error in handle_query", e)
-        return json.dumps({"error": f"Error processing query: {str(e)}"})
+        print("Error in handle_edges_query", e)
+        return json.dumps({"error": f"Error fetching edges: {str(e)}"})
+
 
 def extract_sample_names(newick_str):
     tokens = re.findall(r'([^(),:]+):', newick_str)
@@ -275,6 +284,7 @@ def ensure_json_dict(data):
     raise TypeError(f"Unsupported data type: {type(data)}")
 
 def extract_node_mutations_tables(ts):
+    """Extract mutations keyed by position for UI display."""
     t = ts.tables
     s, m = t.sites, t.mutations
 
@@ -296,6 +306,62 @@ def extract_node_mutations_tables(ts):
 
     return out
 
+
+def extract_mutations_by_node(ts):
+    """Extract mutations grouped by node ID for tree building.
+    
+    Returns:
+        dict: {node_id (int): [{position, mutation_str}, ...]}
+    """
+    t = ts.tables
+    s, m = t.sites, t.mutations
+
+    pos = s.position[m.site]
+    anc = ts.sites_ancestral_state
+    der = ts.mutations_derived_state
+    nodes = m.node
+
+    out = {}
+
+    for p, a, d, node_id in zip(pos, anc, der, nodes):
+        if a == d:
+            continue
+        node_id = int(node_id)
+        if node_id not in out:
+            out[node_id] = []
+        out[node_id].append({
+            "position": int(p),
+            "mutation": f"{a}{int(p)}{d}"
+        })
+
+    return out
+
+
+def get_edges_for_interval(ts, start, end):
+    """Return edge data for trees spanning [start, end].
+    
+    Args:
+        ts: tskit TreeSequence
+        start: Start genomic position (bp)
+        end: End genomic position (bp)
+    
+    Returns:
+        dict with left, right, parent, child arrays for edges active in interval
+    """
+    edges = ts.tables.edges
+    
+    # Filter edges that are active in the interval
+    # An edge is active if its span [left, right) overlaps with [start, end)
+    mask = (edges.left < end) & (edges.right > start)
+    
+    return {
+        'left': edges.left[mask].tolist(),
+        'right': edges.right[mask].tolist(),
+        'parent': edges.parent[mask].tolist(),
+        'child': edges.child[mask].tolist(),
+    }
+
+
 def get_config(ts, file_path, root_dir):
     """Extract configuration and metadata from a tree sequence file."""
     try:
@@ -312,8 +378,9 @@ def get_config(ts, file_path, root_dir):
             'times': {'type': 'coalescent time', 'values': times},
             'intervals': intervals,
             'filename': str(filename),
-
+            'node_times': ts.tables.nodes.time.tolist(),
             'mutations': extract_node_mutations_tables(ts),
+            'mutations_by_node': extract_mutations_by_node(ts),
             'sample_names': sample_names,
             'sample_details': make_json_safe(sample_details)
         }
@@ -326,9 +393,7 @@ async def handle_upload(file_path, root_dir):
     """Load a tree sequence file and return its configuration."""
     ts = await get_or_load_ts(file_path)
     print("File loading complete")
-    # config = await asyncio.to_thread(get_or_load_config, ts, file_path, root_dir)
     return ts
-    return config, None
 
 def list_project_files(directory, projects, root):
         """

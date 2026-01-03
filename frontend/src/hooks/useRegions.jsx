@@ -130,10 +130,17 @@ const useRegions = ({
           }
         } catch (err) {
           console.error("[useRegions] Error fetching edges:", err);
+          setStatusMessage({
+            status: "error",
+            message: "Failed to fetch tree data. Try reloading or selecting a smaller region."
+          });
+          isFetching.current = false;
+          return;
         }
       }
 
       // Step 3: Build trees from edges for each displayed tree
+      let hadError = false;
       for (const idx of displayArray) {
         if (local_bins.has(idx)) {
           const bin = local_bins.get(idx);
@@ -144,6 +151,15 @@ const useRegions = ({
             showingAllTrees: showing_all_trees
           });
 
+          if (!path) {
+            hadError = true;
+            setStatusMessage({
+              status: "error",
+              message: "Failed to render tree data. Try zooming in or reloading."
+            });
+            break;
+          }
+
           local_bins.set(idx, {
             ...bin,
             path: path
@@ -152,7 +168,9 @@ const useRegions = ({
       }
 
       setLocalBins(local_bins);
-      setStatusMessage(null);
+      if (!hadError) {
+        setStatusMessage(null);
+      }
       isFetching.current = false;
     }, 400, { leading: false, trailing: true }),
     [isFetching.current, valueRef.current, xzoom, selectionStrategy, tsconfig?.node_times]

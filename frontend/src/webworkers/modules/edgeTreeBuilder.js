@@ -80,59 +80,109 @@ export function constructTreeFromEdges(activeEdges, nodeTimes, mutationsByNode =
 }
 
 /**
- * Recursively count tips for each node (ladderize preparation).
- * @param {Object} node - Tree node
- * @returns {number} Number of tips under this node
+ * Iteratively count tips for each node (ladderize preparation).
+ * Uses explicit stack to avoid stack overflow on large trees.
+ * @param {Object} root - Root node of tree
  */
-function assignNumTips(node) {
-    if (node.child.length === 0) {
-        node.num_tips = 1;
-        return 1;
-    }
+function assignNumTips(root) {
+    // Post-order traversal using explicit stack
+    const stack = [];
+    const visited = new Set();
 
-    node.num_tips = 0;
-    for (const child of node.child) {
-        node.num_tips += assignNumTips(child);
+    stack.push(root);
+
+    while (stack.length > 0) {
+        const node = stack[stack.length - 1];
+
+        if (node.child.length === 0) {
+            // Leaf node
+            node.num_tips = 1;
+            stack.pop();
+            visited.add(node);
+        } else {
+            // Check if all children have been processed
+            const allChildrenVisited = node.child.every(c => visited.has(c));
+
+            if (allChildrenVisited) {
+                // All children processed, compute num_tips
+                node.num_tips = node.child.reduce((sum, c) => sum + c.num_tips, 0);
+                stack.pop();
+                visited.add(node);
+            } else {
+                // Push unvisited children onto stack
+                for (const child of node.child) {
+                    if (!visited.has(child)) {
+                        stack.push(child);
+                    }
+                }
+            }
+        }
     }
-    return node.num_tips;
 }
 
 /**
- * Sort children by num_tips (ladderize).
- * @param {Object} node - Tree node
+ * Iteratively sort children by num_tips (ladderize).
+ * Uses BFS to process all nodes.
+ * @param {Object} root - Root node of tree
  */
-function sortWithNumTips(node) {
-    node.child.sort((a, b) => a.num_tips - b.num_tips);
-    for (const child of node.child) {
-        sortWithNumTips(child);
+function sortWithNumTips(root) {
+    const queue = [root];
+
+    while (queue.length > 0) {
+        const node = queue.shift();
+        node.child.sort((a, b) => a.num_tips - b.num_tips);
+        for (const child of node.child) {
+            queue.push(child);
+        }
     }
 }
 
 /**
  * Assign Y coordinates (tip ordering) after ladderizing.
  * Tips get spread along the Y axis (vertical spread).
+ * Uses iterative post-order traversal to avoid stack overflow.
  * @param {Object} tree - Tree with roots
  * @returns {number} Current Y position counter
  */
 function assignTipCoordinates(tree) {
     let tipCounter = 0;
 
-    function traverse(node) {
-        if (node.child.length === 0) {
-            // Leaf node - assign tip position on Y axis (vertical)
-            node.y = tipCounter++;
-        } else {
-            // Internal node - average of children's y positions
-            for (const child of node.child) {
-                traverse(child);
-            }
-            const sumY = node.child.reduce((sum, c) => sum + c.y, 0);
-            node.y = sumY / node.child.length;
-        }
-    }
-
     for (const root of tree.roots) {
-        traverse(root);
+        // Post-order traversal using explicit stack
+        const stack = [];
+        const visited = new Set();
+
+        stack.push(root);
+
+        while (stack.length > 0) {
+            const node = stack[stack.length - 1];
+
+            if (node.child.length === 0) {
+                // Leaf node - assign tip position
+                node.y = tipCounter++;
+                stack.pop();
+                visited.add(node);
+            } else {
+                // Check if all children have been processed
+                const allChildrenVisited = node.child.every(c => visited.has(c));
+
+                if (allChildrenVisited) {
+                    // All children processed, compute average Y
+                    const sumY = node.child.reduce((sum, c) => sum + c.y, 0);
+                    node.y = sumY / node.child.length;
+                    stack.pop();
+                    visited.add(node);
+                } else {
+                    // Push unvisited children onto stack (in reverse for correct order)
+                    for (let i = node.child.length - 1; i >= 0; i--) {
+                        const child = node.child[i];
+                        if (!visited.has(child)) {
+                            stack.push(child);
+                        }
+                    }
+                }
+            }
+        }
     }
 
     return tipCounter;
@@ -170,11 +220,23 @@ export function scaleTimeCoordinates(tree, globalMinTime, globalMaxTime) {
  * @param {Object} tree - Tree with nodes having y coordinates
  */
 function normalizeTipCoordinates(tree) {
-    const yValues = tree.nodes.map(n => n.y);
-    const minY = Math.min(...yValues);
-    const maxY = Math.max(...yValues);
-    const yRange = maxY - minY || 1;
+    if (!tree.nodes || tree.nodes.length === 0) {
+        return;
+    }
 
+    let minY = Infinity;
+    let maxY = -Infinity;
+    for (const node of tree.nodes) {
+        const y = Number.isFinite(node.y) ? node.y : 0;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+    }
+
+    if (!Number.isFinite(minY) || !Number.isFinite(maxY)) {
+        return;
+    }
+
+    const yRange = maxY - minY || 1;
     for (const node of tree.nodes) {
         node.y = (node.y - minY) / yRange;
     }
@@ -277,4 +339,3 @@ export function buildTreeFromEdges(globalIndex, edgesData, tsconfig) {
         globalMaxTime
     );
 }
-
