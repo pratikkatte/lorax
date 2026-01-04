@@ -6,30 +6,91 @@
  */
 
 /**
+ * Binary search to find first index where left[i] > target.
+ * Returns length if all elements are <= target.
+ * @param {ArrayLike<number>} arr - Sorted array
+ * @param {number} target - Target value
+ * @returns {number} First index where arr[i] > target
+ */
+function upperBound(arr, target) {
+    let lo = 0, hi = arr.length;
+    while (lo < hi) {
+        const mid = (lo + hi) >>> 1;
+        if (arr[mid] <= target) {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+    return lo;
+}
+
+/**
  * Filter edges that are active within a specific tree's interval.
+ * Uses binary search on sorted 'left' array for O(log n + k) complexity.
  * An edge is active if its span [left, right) contains the tree's interval.
- * 
+ *
  * @param {Object} edgesData - Full edges data {left, right, parent, child}
  * @param {number} treeStart - Start of tree interval (bp)
  * @param {number} treeEnd - End of tree interval (bp)
  * @returns {Object} Filtered edges {parent, child} arrays
  */
-export function filterActiveEdges(edgesData, treeStart, treeEnd) {
-    const { left, right, parent, child } = edgesData;
-    const activeParent = [];
-    const activeChild = [];
+export function filterActiveEdges(layoutData, treeStart, treeEnd) {
+    const { left, right, parent, child } = layoutData;
 
-    for (let i = 0; i < left.length; i++) {
-        // Edge is active if it spans across the tree interval
-        // Edge [left[i], right[i]) is active at position x if left[i] <= x < right[i]
-        // For a tree at [treeStart, treeEnd), we check if the edge covers treeStart
-        if (left[i] <= treeStart && right[i] > treeStart) {
-            activeParent.push(parent[i]);
-            activeChild.push(child[i]);
+    if (!left || left.length === 0) {
+        return { parent: [], child: [], left: [], right: [] };
+    }
+
+    // Binary search: find first index where left > treeStart
+    // All edges with left <= treeStart are candidates
+    const endIdx = upperBound(left, treeStart);
+
+    // Pre-allocate with estimated size (avoid multiple reallocations)
+    const estimatedSize = Math.min(endIdx, 10000);
+    let activeParent = new Array(estimatedSize);
+    let activeChild = new Array(estimatedSize);
+    let activeLeft = new Array(estimatedSize);
+    let activeRight = new Array(estimatedSize);
+    let count = 0;
+
+    // Only check edges where left <= treeStart
+    for (let i = 0; i < endIdx; i++) {
+        // Edge is active if right > treeStart (and we already know left <= treeStart)
+        if (right[i] > treeStart) {
+            if (count >= activeParent.length) {
+                // Grow arrays
+                const newSize = count * 2;
+                const newParent = new Array(newSize);
+                const newChild = new Array(newSize);
+                const newLeft = new Array(newSize);
+                const newRight = new Array(newSize);
+                for (let j = 0; j < count; j++) {
+                    newParent[j] = activeParent[j];
+                    newChild[j] = activeChild[j];
+                    newLeft[j] = activeLeft[j];
+                    newRight[j] = activeRight[j];
+                }
+                activeParent = newParent;
+                activeChild = newChild;
+                activeLeft = newLeft;
+                activeRight = newRight;
+            }
+            activeParent[count] = parent[i];
+            activeChild[count] = child[i];
+            activeLeft[count] = left[i];
+            activeRight[count] = right[i];
+            count++;
         }
     }
 
-    return { parent: activeParent, child: activeChild };
+    // Trim to actual size
+    return {
+        parent: activeParent.slice(0, count),
+        child: activeChild.slice(0, count),
+        left: activeLeft.slice(0, count),
+        right: activeRight.slice(0, count)
+    };
 }
 
 /**

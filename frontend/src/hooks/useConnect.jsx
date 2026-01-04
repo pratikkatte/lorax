@@ -443,6 +443,27 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
     });
   }, []);
 
+  const queryLayout = useCallback((displayArray) => {
+    return new Promise((resolve, reject) => {
+      if (!socketRef.current) {
+        reject(new Error("Socket not available"));
+        return;
+      }
+
+      const handleResult = (message) => {
+        socketRef.current.off("layout-result", handleResult);
+        if (message.error) {
+          reject(new Error(message.error));
+          return;
+        }
+        resolve(message.data);
+      };
+
+      socketRef.current.once("layout-result", handleResult);
+      socketRef.current.emit("process_layout", { displayArray, lorax_sid: sidRef.current });
+    });
+  }, []);
+
 
 
   const queryFile = useCallback((payload) => {
@@ -502,6 +523,7 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
       queryConfig,
       queryNodes,
       queryEdges,
+      queryLayout,
       queryDetails,
       isConnected,
       checkConnection,
@@ -511,7 +533,8 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
       queryFile,
       getTreeData,
       getTreeFromEdges,
-      search
+      search,
+      queryLayout
     }),
     [
       connect,
@@ -527,7 +550,8 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
       queryFile,
       getTreeData,
       getTreeFromEdges,
-      search
+      search,
+      queryLayout
     ]
   );
 }

@@ -30,7 +30,7 @@ const useLayers = ({
   tsconfig // Ensure tsconfig is destructured
 }) => {
 
-  const { bins: rawBins = new Map(), localCoordinates = [], times = [], edgesData } = regions;
+  const { bins: rawBins = new Map(), localCoordinates = [], times = [], edgesData, layoutData } = regions;
 
   // Apply smooth transitions to tree positions
   const bins = useAnimatedBins(rawBins, {
@@ -97,7 +97,7 @@ const useLayers = ({
   }, [rawBins, globalBpPerUnit, hoveredGenomeInfo]);
 
   const edgeCompositeLayer = useMemo(() => {
-    if (!edgesData || !bins || bins.size === 0 || !tsconfig?.node_times) return null;
+    if (!bins || bins.size === 0 || !tsconfig?.node_times) return null;
 
     const minTime = tsconfig.times?.values?.[0] ?? 0;
     const maxTime = tsconfig.times?.values?.[1] ?? 1;
@@ -110,9 +110,10 @@ const useLayers = ({
       minNodeTime: minTime,
       maxNodeTime: maxTime,
       globalBpPerUnit: globalBpPerUnit,
+      layoutData: layoutData,
       viewId: "ortho"
     });
-  }, [bins, edgesData, tsconfig, globalBpPerUnit]);
+  }, [bins, edgesData, tsconfig, globalBpPerUnit, layoutData]);
 
   const treeLayers = useMemo(() => {
     if (!bins || bins.size === 0) return [];

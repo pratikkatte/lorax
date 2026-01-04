@@ -34,7 +34,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 
-from lorax.handlers import handle_upload, handle_edges_query, get_projects, cache_status, handle_details, get_or_load_config
+from lorax.handlers import handle_upload, handle_edges_query, get_projects, cache_status, handle_details, get_or_load_config, handle_layout_query
 from lorax.constants import (
     SESSION_COOKIE, COOKIE_MAX_AGE, UPLOADS_DIR,
     SOCKET_PING_TIMEOUT, SOCKET_PING_INTERVAL, MAX_HTTP_BUFFER_SIZE,
@@ -474,3 +474,27 @@ async def query_edges(sid, data):
     except Exception as e:
         print(f"❌ Edges query error: {e}")
         await sio.emit("edges-result", {"error": str(e)}, to=sid)
+
+
+@sio.event
+async def process_layout(sid, data):
+    """Socket event to compute tree layout on backend."""
+    try:
+        lorax_sid = data.get("lorax_sid")
+        session = await require_session(lorax_sid, sid)
+        if not session:
+            return
+
+        if not session.file_path:
+            print(f"⚠️ No file loaded for session {lorax_sid}")
+            await sio.emit("error", {"code": ERROR_NO_FILE_LOADED, "message": "No file loaded. Please load a file first."}, to=sid)
+            return
+
+        display_array = data.get("displayArray", [])
+        
+        # print(f"Processing layout for {len(display_array)} trees")
+        result = await handle_layout_query(session.file_path, display_array)
+        await sio.emit("layout-result", {"data": json.loads(result)}, to=sid)
+    except Exception as e:
+        print(f"❌ Layout query error: {e}")
+        await sio.emit("layout-result", {"error": str(e)}, to=sid)

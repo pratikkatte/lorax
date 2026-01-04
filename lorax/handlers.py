@@ -131,10 +131,266 @@ async def handle_edges_query(file_path, start, end):
         return json.dumps({"error": "Tree sequence not loaded. Please load a file first."})
     try:
         edges = await asyncio.to_thread(get_edges_for_interval, ts, start, end)
-        return json.dumps({"edges": edges, "start": start, "end": end})
+        return json.dumps({"edges": edges.tolist(), "start": start, "end": end})
     except Exception as e:
         print("Error in handle_edges_query", e)
         return json.dumps({"error": f"Error fetching edges: {str(e)}"})
+
+
+def compute_tree_layout(ts, tree_index, global_min_time, global_max_time):
+    """
+    Compute layout for a single tree.
+    Returns:
+        nodes: dict {node_id: {x, y, is_tip}}
+        edges: list of [x1, y1, x2, y2, x3, y3] (L-shaped path)
+    """
+    tree = ts.at_index(tree_index)
+    
+    # 1. Compute Num Tips (for Ladderization)
+    num_tips = {}
+    
+    # Post-order traversal to compute tip counts
+    # tskit.Tree.nodes(order="postorder") yields nodes in postorder
+    for node in tree.nodes(order="postorder"):
+        if tree.is_leaf(node):
+            num_tips[node] = 1
+        else:
+            total = 0
+            for child in tree.children(node):
+                total += num_tips[child]
+            num_tips[node] = total
+
+    # 2. Assign Y Coordinates
+    y_coords = {}
+    
+    # Build adjacency list sorted by tip count (Ladderization)
+    children_map = {}
+    for node in tree.nodes():
+        children = tree.children(node)
+        if len(children) > 0:
+            sorted_children = sorted(children, key=lambda c: num_tips[c])
+            children_map[node] = sorted_children
+
+    # Pass 1: DFS to assign Tip Ys in ladderized order
+    dfs_stack = []
+    if tree.num_roots > 0:
+        dfs_stack.extend(list(tree.roots))
+        
+    visited_tips = []
+    
+    while dfs_stack:
+        node = dfs_stack.pop()
+        children = children_map.get(node, [])
+        if not children:
+            visited_tips.append(node)
+        else:
+            # Push children in reverse order so they pop in sorted order
+            for child in reversed(children):
+                dfs_stack.append(child)
+                
+    for i, node in enumerate(visited_tips):
+        y_coords[node] = i
+        
+    tips_count = len(visited_tips)
+    
+    # Pass 2: Assign Internal Ys (Average of children)
+    for node in tree.nodes(order="postorder"):
+        if node not in y_coords: # Internal node
+            children = tree.children(node)
+            if children:
+                avg_y = sum(y_coords[c] for c in children) / len(children)
+                y_coords[node] = avg_y
+            else:
+                y_coords[node] = 0
+                
+    # Normalize Y to 0-1
+    max_y = max(1, tips_count - 1)
+    for node in y_coords:
+        y_coords[node] /= max_y
+        
+    # 4. Compute X Coordinates (Time)
+    time_range = max(1e-9, global_max_time - global_min_time)
+    
+    x_coords = {}
+    for node in tree.nodes():
+        node_time = ts.node(node).time
+        norm_time = (node_time - global_min_time) / time_range
+        x_coords[node] = 1.0 - norm_time
+        
+    # 5. Generate Edges
+    edge_list = []
+    
+    # Walk tree to build edges
+    for node in tree.nodes():
+        children = tree.children(node)
+        if len(children) > 0:
+            px = x_coords[node]
+            py = y_coords[node]
+            
+            for child in children:
+                cx = x_coords[child]
+                cy = y_coords[child]
+                
+                # L-Shape: Parent(px,py) -> Corner(px, cy) -> Child(cx, cy)
+                edge_list.extend([px, py, px, cy, cx, cy])
+                
+    return edge_list, x_coords, y_coords
+
+
+def filter_edges_by_intervals(all_edges, intervals):
+    if len(all_edges) == 0:
+        return all_edges
+
+    edge_left = all_edges[:, 0]
+    edge_right = all_edges[:, 1]
+
+    keep = np.zeros(len(all_edges), dtype=bool)
+
+    for left, right in intervals:
+        # An edge is keep-worthy if it overlaps with the tree interval
+        keep |= (edge_left < right) & (edge_right > left)
+
+    return all_edges[keep]
+
+
+async def handle_layout_query(file_path, tree_indices):
+    """
+    Compute pre-computed layout for multiple trees.
+
+    Args:
+        file_path: Path to tree sequence file
+        tree_indices: List of tree indices to compute layout for
+
+    Returns JSON with:
+    - edge_coords: flat array [y1,x1, y2,x2, y3,x3, ...] for L-shaped paths
+    - tip_coords: flat array [y, x, node_id, ...] for tip positions
+    - tree_intervals: [[start, end], ...] for each tree
+    - tree_edge_counts: number of edges per tree (to split edge_coords)
+    - tree_tip_counts: number of tips per tree (to split tip_coords)
+    """
+    ts = await get_or_load_ts(file_path)
+    if ts is None:
+        return json.dumps({"error": "Tree sequence not loaded. Please load a file first."})
+
+    global_min_time = ts.min_time
+    global_max_time = ts.max_time
+    time_range = max(1e-9, global_max_time - global_min_time)
+
+    if len(tree_indices) == 0:
+        return json.dumps({
+            "edge_coords": [],
+            "tip_coords": [],
+            "tree_intervals": [],
+            "tree_edge_counts": [],
+            "tree_tip_counts": [],
+            "global_min_time": global_min_time,
+            "global_max_time": global_max_time
+        })
+
+    all_edge_coords = []
+    all_tip_coords = []
+    tree_intervals = []
+    tree_edge_counts = []
+    tree_tip_counts = []
+
+    node_times_array = ts.tables.nodes.time
+
+    for tree_idx in tree_indices:
+        tree = ts.at_index(tree_idx)
+        tree_intervals.append([float(tree.interval[0]), float(tree.interval[1])])
+
+        # 1. Compute num_tips for ladderization (post-order traversal)
+        num_tips = {}
+        for node in tree.nodes(order="postorder"):
+            if tree.is_leaf(node):
+                num_tips[node] = 1
+            else:
+                num_tips[node] = sum(num_tips[c] for c in tree.children(node))
+
+        # 2. Build ladderized children map
+        children_map = {}
+        for node in tree.nodes():
+            children = tree.children(node)
+            if len(children) > 0:
+                children_map[node] = sorted(children, key=lambda c: num_tips[c])
+
+        # 3. DFS to assign tip Y coordinates in ladderized order
+        y_coords = {}
+        dfs_stack = list(tree.roots) if tree.num_roots > 0 else []
+        visited_tips = []
+
+        while dfs_stack:
+            node = dfs_stack.pop()
+            children = children_map.get(node, [])
+            if not children:
+                visited_tips.append(node)
+            else:
+                for child in reversed(children):
+                    dfs_stack.append(child)
+
+        for i, node in enumerate(visited_tips):
+            y_coords[node] = i
+
+        tips_count = len(visited_tips)
+
+        # 4. Assign internal Y coords (average of children)
+        for node in tree.nodes(order="postorder"):
+            if node not in y_coords:
+                children = tree.children(node)
+                if children:
+                    y_coords[node] = sum(y_coords[c] for c in children) / len(children)
+                else:
+                    y_coords[node] = 0
+
+        # 5. Normalize Y to [0, 1]
+        max_y = max(1, tips_count - 1)
+        for node in y_coords:
+            y_coords[node] /= max_y
+
+        # 6. Compute X coordinates from time
+        x_coords = {}
+        for node in tree.nodes():
+            node_time = node_times_array[node]
+            x_coords[node] = 1.0 - (node_time - global_min_time) / time_range
+
+        # 7. Generate L-shaped edge geometry
+        edge_count = 0
+        for node in tree.nodes():
+            children = tree.children(node)
+            if len(children) > 0:
+                py = y_coords[node]
+                px = x_coords[node]
+
+                for child in children:
+                    cy = y_coords[child]
+                    cx = x_coords[child]
+
+                    # L-shape path: (py, px) -> (cy, px) -> (cy, cx)
+                    # Note: y first for deck.gl CARTESIAN (y = horizontal position, x = time)
+                    all_edge_coords.extend([py, px, cy, px, cy, cx])
+                    edge_count += 1
+
+        tree_edge_counts.append(edge_count)
+
+        # 8. Collect tip positions
+        tip_count = 0
+        for tip_node in visited_tips:
+            y = y_coords[tip_node]
+            x = x_coords[tip_node]
+            all_tip_coords.extend([y, x, int(tip_node)])
+            tip_count += 1
+
+        tree_tip_counts.append(tip_count)
+
+    return json.dumps({
+        "edge_coords": all_edge_coords,
+        "tip_coords": all_tip_coords,
+        "tree_intervals": tree_intervals,
+        "tree_edge_counts": tree_edge_counts,
+        "tree_tip_counts": tree_tip_counts,
+        "global_min_time": float(global_min_time),
+        "global_max_time": float(global_max_time)
+    })
 
 
 def extract_sample_names(newick_str):
@@ -338,28 +594,19 @@ def extract_mutations_by_node(ts):
 
 
 def get_edges_for_interval(ts, start, end):
-    """Return edge data for trees spanning [start, end].
-    
-    Args:
-        ts: tskit TreeSequence
-        start: Start genomic position (bp)
-        end: End genomic position (bp)
-    
-    Returns:
-        dict with left, right, parent, child arrays for edges active in interval
-    """
     edges = ts.tables.edges
-    
-    # Filter edges that are active in the interval
-    # An edge is active if its span [left, right) overlaps with [start, end)
-    mask = (edges.left < end) & (edges.right > start)
-    
-    return {
-        'left': edges.left[mask].tolist(),
-        'right': edges.right[mask].tolist(),
-        'parent': edges.parent[mask].tolist(),
-        'child': edges.child[mask].tolist(),
-    }
+
+    # FAST slicing: edges.left is sorted
+    hi = np.searchsorted(edges.left, end, side="left")
+
+    mask = edges.right[:hi] > start
+
+    return np.column_stack((
+        edges.left[:hi][mask],
+        edges.right[:hi][mask],
+        edges.parent[:hi][mask],
+        edges.child[:hi][mask],
+    ))
 
 
 def get_config(ts, file_path, root_dir):

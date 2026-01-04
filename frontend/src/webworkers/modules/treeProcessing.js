@@ -24,21 +24,21 @@ export function extractSquarePaths(node, segments = []) {
       extractSquarePaths(child, segments);
     }
   } else {
-      // Leaf node marker
-      segments.push({
-        name: node.name,
-        position: [node.y, node.x],
-      });
+    // Leaf node marker
+    segments.push({
+      name: node.name,
+      position: [node.y, node.x],
+    });
 
   }
 
-   if (node.mutations && node.mutations.length > 0) {
-      segments.push({
-        mutations: node.mutations,
-        name: node.name,
-        position: [node.y, node.x],
-      });
-    }
+  if (node.mutations && node.mutations.length > 0) {
+    segments.push({
+      mutations: node.mutations,
+      name: node.name,
+      position: [node.y, node.x],
+    });
+  }
 
   return segments;
 }
