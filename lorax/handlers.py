@@ -56,8 +56,9 @@ class LRUCache:
     def clear(self):
         self.cache.clear()
 
-_ts_cache = LRUCache(max_size=1)        
+_ts_cache = LRUCache(max_size=1)
 _config_cache = LRUCache(max_size=2)
+_metadata_cache = LRUCache(max_size=10)  # Per-key metadata cache
 
 async def get_or_load_ts(file_path):
     """
@@ -525,6 +526,237 @@ def flatten_all_metadata_by_sample(
     }
 
 
+def get_metadata_schema(
+    ts,
+    sources=("individual", "node", "population"),
+    sample_name_key="name"
+):
+    """
+    Extract metadata keys and unique values only, without sample associations.
+    Much lighter than flatten_all_metadata_by_sample for large tree sequences.
+
+    Parameters
+    ----------
+    ts : tskit.TreeSequence
+    sources : tuple
+        Any of ("individual", "node", "population")
+    sample_name_key : str
+        Key in node metadata used as sample name
+
+    Returns
+    -------
+    dict
+        {
+            "metadata_keys": [key1, key2, ...],
+            "metadata_values": {key1: [val1, val2, ...], ...}
+        }
+    """
+    keys_values = defaultdict(set)
+
+    for node_id in ts.samples():
+        node = ts.node(node_id)
+
+        for source in sources:
+            if source == "individual":
+                if node.individual == tskit.NULL:
+                    continue
+                meta = ts.individual(node.individual).metadata
+                meta = meta or {}
+                meta = ensure_json_dict(meta)
+
+            elif source == "node":
+                meta = node.metadata or {}
+                meta = ensure_json_dict(meta)
+
+            elif source == "population":
+                if node.population == tskit.NULL:
+                    continue
+                meta = ts.population(node.population).metadata
+                meta = meta or {}
+                meta = ensure_json_dict(meta)
+
+            else:
+                raise ValueError(f"Unknown source: {source}")
+
+            if not meta:
+                continue
+
+            for key, value in meta.items():
+                if isinstance(value, (list, dict)):
+                    value = repr(value)
+                # Skip None values
+                if value is not None:
+                    keys_values[key].add(str(value))
+
+    return {
+        "metadata_keys": list(keys_values.keys()),
+        "metadata_values": {k: sorted(list(v)) for k, v in keys_values.items()}
+    }
+
+
+def get_metadata_for_key(
+    ts,
+    file_path,
+    key,
+    sources=("individual", "node", "population"),
+    sample_name_key="name"
+):
+    """
+    Get sample-to-value mapping for a specific metadata key.
+    Results are cached per (file_path, key) for performance.
+
+    Parameters
+    ----------
+    ts : tskit.TreeSequence
+    file_path : str
+        Used as part of cache key
+    key : str
+        The metadata key to extract
+    sources : tuple
+        Any of ("individual", "node", "population")
+    sample_name_key : str
+        Key in node metadata used as sample name
+
+    Returns
+    -------
+    dict
+        {sample_name: value} for the specified key
+    """
+    cache_key = f"{file_path}:{key}"
+    cached = _metadata_cache.get(cache_key)
+    if cached is not None:
+        print(f"✅ Using cached metadata for key: {key}")
+        return cached
+
+    result = {}
+
+    for node_id in ts.samples():
+        node = ts.node(node_id)
+        node_meta = node.metadata or {}
+        node_meta = ensure_json_dict(node_meta)
+        sample_name = node_meta.get(sample_name_key, f"{node_id}")
+
+        for source in sources:
+            if source == "individual":
+                if node.individual == tskit.NULL:
+                    continue
+                meta = ts.individual(node.individual).metadata
+                meta = meta or {}
+                meta = ensure_json_dict(meta)
+
+            elif source == "node":
+                meta = node_meta
+
+            elif source == "population":
+                if node.population == tskit.NULL:
+                    continue
+                meta = ts.population(node.population).metadata
+                meta = meta or {}
+                meta = ensure_json_dict(meta)
+
+            else:
+                continue
+
+            if not meta:
+                continue
+
+            if key in meta:
+                value = meta[key]
+                if value is None:
+                    break  # Skip None values
+                if isinstance(value, (list, dict)):
+                    value = repr(value)
+                result[sample_name] = str(value)
+                break  # Found the key, move to next sample
+
+    _metadata_cache.set(cache_key, result)
+    return result
+
+
+def search_samples_by_metadata(
+    ts,
+    file_path,
+    key,
+    value,
+    sources=("individual", "node", "population"),
+    sample_name_key="name"
+):
+    """
+    Search for samples that have a specific value for a metadata key.
+
+    Parameters
+    ----------
+    ts : tskit.TreeSequence
+    file_path : str
+        Used for cache lookup
+    key : str
+        The metadata key to search
+    value : str
+        The value to match
+    sources : tuple
+        Any of ("individual", "node", "population")
+    sample_name_key : str
+        Key in node metadata used as sample name
+
+    Returns
+    -------
+    list
+        List of sample names matching the criteria
+    """
+    # Try to use cached metadata if available
+    cache_key = f"{file_path}:{key}"
+    cached = _metadata_cache.get(cache_key)
+
+    if cached is not None:
+        # Use cached data for fast lookup
+        return [sample for sample, val in cached.items() if str(val) == str(value)]
+
+    # If not cached, compute on the fly
+    matching_samples = []
+
+    for node_id in ts.samples():
+        node = ts.node(node_id)
+        node_meta = node.metadata or {}
+        node_meta = ensure_json_dict(node_meta)
+        sample_name = node_meta.get(sample_name_key, f"{node_id}")
+
+        for source in sources:
+            if source == "individual":
+                if node.individual == tskit.NULL:
+                    continue
+                meta = ts.individual(node.individual).metadata
+                meta = meta or {}
+                meta = ensure_json_dict(meta)
+
+            elif source == "node":
+                meta = node_meta
+
+            elif source == "population":
+                if node.population == tskit.NULL:
+                    continue
+                meta = ts.population(node.population).metadata
+                meta = meta or {}
+                meta = ensure_json_dict(meta)
+
+            else:
+                continue
+
+            if not meta:
+                continue
+
+            if key in meta:
+                meta_value = meta[key]
+                if meta_value is None:
+                    break  # Skip None values
+                if isinstance(meta_value, (list, dict)):
+                    meta_value = repr(meta_value)
+                if str(meta_value) == str(value):
+                    matching_samples.append(sample_name)
+                break
+
+    return matching_samples
+
+
 def ensure_json_dict(data):
     # If already a dict, return as-is
     if isinstance(data, dict):
@@ -610,14 +842,18 @@ def get_edges_for_interval(ts, start, end):
 
 
 def get_config(ts, file_path, root_dir):
-    """Extract configuration and metadata from a tree sequence file."""
+    """Extract configuration and metadata from a tree sequence file.
+
+    Note: Uses get_metadata_schema() for lightweight initial load.
+    Full metadata mappings are fetched on-demand via fetch_metadata_for_key.
+    """
     try:
         intervals = [tree.interval[0] for tree in ts.trees()]
         times = [ts.min_time, ts.max_time]
 
-
         sample_names = {}
-        sample_details = flatten_all_metadata_by_sample(ts, sources=("individual", "node", "population"))
+        # Use schema-only extraction for lightweight initial load
+        metadata_schema = get_metadata_schema(ts, sources=("individual", "node", "population"))
 
         filename = os.path.basename(file_path)
         config = {
@@ -629,7 +865,8 @@ def get_config(ts, file_path, root_dir):
             'mutations': extract_node_mutations_tables(ts),
             'mutations_by_node': extract_mutations_by_node(ts),
             'sample_names': sample_names,
-            'sample_details': make_json_safe(sample_details)
+            # Send schema only - full mappings fetched on-demand
+            'metadata_schema': metadata_schema
         }
         return config
     except Exception as e:

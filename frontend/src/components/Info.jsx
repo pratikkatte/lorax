@@ -8,7 +8,7 @@ const Info = ({ backend, gettingDetails, setGettingDetails, setShowInfo, config,
 
   const { socketRef, isConnected } = backend;
 
-  const { tsconfig, populationFilter, sampleNames, setPopulationFilter, sampleDetails, metadataColors, metadataKeys, treeColors, setTreeColors, searchTerm, setSearchTerm, searchTags, setSearchTags } = config;
+  const { tsconfig, populationFilter, sampleNames, setPopulationFilter, sampleDetails, metadataColors, metadataKeys, loadedMetadataKeys, metadataLoading, fetchMetadataForKey, treeColors, setTreeColors, searchTerm, setSearchTerm, searchTags, setSearchTags } = config;
 
   const [nodeDetails, setNodeDetails] = useState(null);
   const [individualDetails, setIndividualDetails] = useState(null);
@@ -48,6 +48,17 @@ const Info = ({ backend, gettingDetails, setGettingDetails, setShowInfo, config,
       setEnabledValues(allValues);
     }
   }, [selectedColorBy, metadataColors]);
+
+  // Fetch metadata for the selected colorBy key when it changes (lazy loading)
+  useEffect(() => {
+    if (!selectedColorBy || !fetchMetadataForKey) return;
+
+    // Fetch metadata if not already loaded
+    if (!loadedMetadataKeys?.has(selectedColorBy)) {
+      console.log(`Triggering fetch for metadata key: ${selectedColorBy}`);
+      fetchMetadataForKey(selectedColorBy);
+    }
+  }, [selectedColorBy, fetchMetadataForKey, loadedMetadataKeys]);
 
   useEffect(() => {
     setPopulationFilter(prev => ({

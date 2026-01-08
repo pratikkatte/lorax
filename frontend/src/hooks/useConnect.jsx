@@ -27,6 +27,7 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
   const setStatusMessage = providedSetStatusMessage || setLocalStatusMessage;
 
   const [isConnected, setIsConnected] = useState(false);
+  const [loraxSid, setLoraxSid] = useState(null); // Track session ID in state for reactivity
 
   const { API_BASE, IS_PROD } = useLoraxConfig();
 
@@ -44,12 +45,14 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
         const storedSid = localStorage.getItem('lorax_sid');
         if (storedSid) {
           sidRef.current = storedSid;
+          setLoraxSid(storedSid);
           console.log("Session restored from localStorage:", storedSid);
         }
 
         const sid = await initSession(API_BASE);
         if (sid) {
           sidRef.current = sid;
+          setLoraxSid(sid);
           localStorage.setItem('lorax_sid', sid);  // Persist session
           console.log("Session initialized:", sid);
           connect(sid); // connect socket.io after session init
@@ -138,6 +141,7 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
         // Clear stale session and reinitialize
         localStorage.removeItem('lorax_sid');
         sidRef.current = null;
+        setLoraxSid(null);
         setStatusMessage({ type: 'error', message: data.message || 'Session expired. Reconnecting...' });
         // Attempt to reinitialize session
         initSessionPromiseRef.current = null;
@@ -170,6 +174,16 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
     socket.on("details-result", (message) => {
       websocketEvents.emit("viz", { role: "details-result", data: message.data });
       setGettingDetails(false);
+    });
+
+    // Handle metadata-key-result for lazy-loaded metadata
+    socket.on("metadata-key-result", (message) => {
+      websocketEvents.emit("viz", { role: "metadata-key-result", ...message });
+    });
+
+    // Handle search-result for backend metadata search
+    socket.on("search-result", (message) => {
+      websocketEvents.emit("viz", { role: "search-result", ...message });
     });
 
     socket.on("pong", (msg) => {
@@ -534,7 +548,8 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
       getTreeData,
       getTreeFromEdges,
       search,
-      queryLayout
+      queryLayout,
+      loraxSid
     }),
     [
       connect,
@@ -551,7 +566,8 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
       getTreeData,
       getTreeFromEdges,
       search,
-      queryLayout
+      queryLayout,
+      loraxSid
     ]
   );
 }

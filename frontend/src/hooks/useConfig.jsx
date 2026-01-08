@@ -7,7 +7,7 @@ function useConfig({ backend, setStatusMessage, timeRef }) {
 
   const navigate = useNavigate();
   const [tsconfig, setConfig] = useState(null);
-  const { isConnected, queryConfig } = backend;
+  const { isConnected, queryConfig, socketRef, loraxSid } = backend;
 
   const [globalBpPerUnit, setGlobalBpPerUnit] = useState(null);
   const [populationFilter, setPopulationFilter] = useState(null);
@@ -15,9 +15,11 @@ function useConfig({ backend, setStatusMessage, timeRef }) {
   const pathArray = useRef([]);
   const [filename, setFilename] = useState("");
   const [sampleNames, setSampleNames] = useState(null);
-  const [sampleDetails, setSampleDetails] = useState(null);  // {sample_name: {key: value}}
+  const [sampleDetails, setSampleDetails] = useState({});  // {sample_name: {key: value}} - lazy loaded
   const [metadataColors, setMetadataColors] = useState(null); // {metadata_key: {metadata_value: [r,g,b,a]}}
   const [metadataKeys, setMetadataKeys] = useState([]);  // List of available metadata keys for coloring
+  const [loadedMetadataKeys, setLoadedMetadataKeys] = useState(new Set()); // Track which keys have been fetched
+  const [metadataLoading, setMetadataLoading] = useState(false); // Loading state for metadata fetch
   const [treeColors, setTreeColors] = useState({});
   const [searchTerm, setSearchTerm] = useState("");
   const [searchTags, setSearchTags] = useState([]);
@@ -62,6 +64,11 @@ function useConfig({ backend, setStatusMessage, timeRef }) {
   };
 
   const handleConfigUpdate = useCallback((data, value = null, project = null, sid = null) => {
+    // Guard against null/undefined data
+    if (!data) {
+      console.warn("handleConfigUpdate called with null/undefined data");
+      return;
+    }
 
     if (timeRef.current && timeRef.current.start) {
 
@@ -96,37 +103,28 @@ function useConfig({ backend, setStatusMessage, timeRef }) {
 
     setSampleNames({ 'sample_names': assignUniqueColors(data.sample_names) });
 
-    // Process sample_details from backend
-    // Backend format: {metadata_key: {metadata_value: [sample_names]}}
-    // We need to transform to: {sample_name: {key: value}} for per-sample lookup
-    const backendSampleDetails = data.sample_details || {};
+    // Process metadata_schema from backend (lightweight - no sample associations)
+    // Backend format: { metadata_keys: [key1, key2, ...], metadata_values: {key1: [val1, val2, ...], ...} }
+    const metadataSchema = data.metadata_schema || {};
     const mColors = {};
-    const mKeys = [];
-    const perSampleDetails = {};
+    const mKeys = metadataSchema.metadata_keys || [];
+    const metadataValues = metadataSchema.metadata_values || {};
 
-    // 1. Build metadataColors and transform to per-sample structure
-    Object.entries(backendSampleDetails).forEach(([metadataKey, valueToSamples]) => {
-      mKeys.push(metadataKey);
-      const values = Object.keys(valueToSamples).sort();
+    // Build metadataColors from unique values (no sample mapping yet)
+    mKeys.forEach(metadataKey => {
+      const values = metadataValues[metadataKey] || [];
       const valueColorMap = {};
 
       values.forEach((val, index) => {
         valueColorMap[val] = getColor(index, values.length);
-
-        // Transform: for each sample in this value's list, add the key-value pair
-        const samples = valueToSamples[val] || [];
-        samples.forEach(sampleName => {
-          if (!perSampleDetails[sampleName]) {
-            perSampleDetails[sampleName] = {};
-          }
-          perSampleDetails[sampleName][metadataKey] = val;
-        });
       });
 
       mColors[metadataKey] = valueColorMap;
     });
 
-    setSampleDetails(perSampleDetails);
+    // sampleDetails starts empty - will be populated on-demand via fetchMetadataForKey
+    setSampleDetails({});
+    setLoadedMetadataKeys(new Set());
     setMetadataColors(mColors);
     setMetadataKeys(mKeys);
 
@@ -138,6 +136,135 @@ function useConfig({ backend, setStatusMessage, timeRef }) {
     queryConfig(data);
 
   }, [queryConfig, setStatusMessage, timeRef]);
+
+  // Function to fetch metadata for a specific key (on-demand)
+  const fetchMetadataForKey = useCallback((key) => {
+    if (!key || !isConnected || !socketRef?.current || !loraxSid) {
+      console.warn("Cannot fetch metadata: not connected or missing params");
+      return;
+    }
+
+    // Skip if already loaded
+    if (loadedMetadataKeys.has(key)) {
+      console.log(`Metadata for key "${key}" already loaded`);
+      return;
+    }
+
+    console.log(`Fetching metadata for key: ${key}`);
+    setMetadataLoading(true);
+    socketRef.current.emit("fetch_metadata_for_key", {
+      lorax_sid: loraxSid,
+      key: key
+    });
+  }, [isConnected, socketRef, loraxSid, loadedMetadataKeys]);
+
+  // Handle metadata-key-result event from backend
+  const handleMetadataKeyResult = useCallback((data) => {
+    setMetadataLoading(false);
+
+    if (data.error) {
+      console.error("Error fetching metadata:", data.error);
+      return;
+    }
+
+    const key = data.key;
+    const sampleToValue = data.data || {};
+
+    console.log(`Received metadata for key "${key}":`, Object.keys(sampleToValue).length, "samples");
+
+    // Merge into sampleDetails: for each sample, add/update the key-value pair
+    setSampleDetails(prev => {
+      const updated = { ...prev };
+      Object.entries(sampleToValue).forEach(([sampleName, value]) => {
+        if (!updated[sampleName]) {
+          updated[sampleName] = {};
+        }
+        updated[sampleName][key] = value;
+      });
+      return updated;
+    });
+
+    // Mark this key as loaded
+    setLoadedMetadataKeys(prev => new Set([...prev, key]));
+  }, []);
+
+  // Listen for metadata-key-result events
+  useEffect(() => {
+    if (!isConnected) return;
+
+    const handler = (msg) => {
+      if (msg.role === "metadata-key-result") {
+        // msg contains: { role, key, data, error? }
+        handleMetadataKeyResult(msg);
+      }
+    };
+
+    websocketEvents.on("viz", handler);
+
+    return () => {
+      websocketEvents.off("viz", handler);
+    };
+  }, [isConnected, handleMetadataKeyResult]);
+
+  // Map to store pending search promises
+  const searchPromisesRef = useRef(new Map());
+
+  // Function to search for samples matching a metadata value (uses backend)
+  const searchMetadataValue = useCallback((key, value) => {
+    return new Promise((resolve, reject) => {
+      if (!key || value === undefined || value === null || !isConnected || !socketRef?.current || !loraxSid) {
+        console.warn("Cannot search metadata: missing params or not connected");
+        resolve([]);
+        return;
+      }
+
+      const searchKey = `${key}:${value}`;
+
+      // Check if we already have a pending request for this key-value
+      if (searchPromisesRef.current.has(searchKey)) {
+        return searchPromisesRef.current.get(searchKey);
+      }
+
+      // Create a one-time handler for this specific search
+      const handler = (msg) => {
+        if (msg.role === "search-result" && msg.key === key && msg.value === value) {
+          websocketEvents.off("viz", handler);
+          searchPromisesRef.current.delete(searchKey);
+
+          if (msg.error) {
+            console.error("Search error:", msg.error);
+            resolve([]);
+          } else {
+            resolve(msg.samples || []);
+          }
+        }
+      };
+
+      websocketEvents.on("viz", handler);
+
+      // Store promise for deduplication
+      const promise = new Promise((res) => {
+        // Resolve will be called by the handler above
+      });
+      searchPromisesRef.current.set(searchKey, promise);
+
+      // Emit the search request
+      socketRef.current.emit("search_metadata", {
+        lorax_sid: loraxSid,
+        key: key,
+        value: value
+      });
+
+      // Set a timeout to prevent hanging
+      setTimeout(() => {
+        if (searchPromisesRef.current.has(searchKey)) {
+          websocketEvents.off("viz", handler);
+          searchPromisesRef.current.delete(searchKey);
+          resolve([]);
+        }
+      }, 10000); // 10 second timeout
+    });
+  }, [isConnected, socketRef, loraxSid]);
 
   useEffect(() => {
     if (tsconfig && tsconfig.filename) {
@@ -174,6 +301,10 @@ function useConfig({ backend, setStatusMessage, timeRef }) {
     sampleDetails,
     metadataColors,
     metadataKeys,
+    loadedMetadataKeys,
+    metadataLoading,
+    fetchMetadataForKey,
+    searchMetadataValue,
     treeColors,
     setTreeColors,
     searchTerm,
@@ -181,7 +312,7 @@ function useConfig({ backend, setStatusMessage, timeRef }) {
     searchTags,
     setSearchTags,
     handleConfigUpdate
-  }), [tsconfig, sampleNames, setConfig, globalBpPerUnit, populationFilter, setPopulationFilter, genomeLength, pathArray, filename, sampleDetails, metadataColors, metadataKeys, treeColors, setTreeColors, searchTerm, setSearchTerm, searchTags, setSearchTags, handleConfigUpdate]);
+  }), [tsconfig, sampleNames, setConfig, globalBpPerUnit, populationFilter, setPopulationFilter, genomeLength, pathArray, filename, sampleDetails, metadataColors, metadataKeys, loadedMetadataKeys, metadataLoading, fetchMetadataForKey, searchMetadataValue, treeColors, setTreeColors, searchTerm, setSearchTerm, searchTags, setSearchTags, handleConfigUpdate]);
 };
 
 export default useConfig;

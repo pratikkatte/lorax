@@ -34,7 +34,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 
-from lorax.handlers import handle_upload, handle_edges_query, get_projects, cache_status, handle_details, get_or_load_config, handle_layout_query
+from lorax.handlers import (
+    handle_upload, handle_edges_query, get_projects, cache_status,
+    handle_details, get_or_load_config, handle_layout_query,
+    get_or_load_ts, get_metadata_for_key, search_samples_by_metadata
+)
 from lorax.constants import (
     SESSION_COOKIE, COOKIE_MAX_AGE, UPLOADS_DIR,
     SOCKET_PING_TIMEOUT, SOCKET_PING_INTERVAL, MAX_HTTP_BUFFER_SIZE,
@@ -491,10 +495,74 @@ async def process_layout(sid, data):
             return
 
         display_array = data.get("displayArray", [])
-        
+
         # print(f"Processing layout for {len(display_array)} trees")
         result = await handle_layout_query(session.file_path, display_array)
         await sio.emit("layout-result", {"data": json.loads(result)}, to=sid)
     except Exception as e:
         print(f"❌ Layout query error: {e}")
         await sio.emit("layout-result", {"error": str(e)}, to=sid)
+
+
+@sio.event
+async def fetch_metadata_for_key(sid, data):
+    """Socket event to fetch metadata mapping for a specific key."""
+    try:
+        lorax_sid = data.get("lorax_sid")
+        session = await require_session(lorax_sid, sid)
+        if not session:
+            return
+
+        if not session.file_path:
+            print(f"⚠️ No file loaded for session {lorax_sid}")
+            await sio.emit("error", {"code": ERROR_NO_FILE_LOADED, "message": "No file loaded. Please load a file first."}, to=sid)
+            return
+
+        key = data.get("key")
+        if not key:
+            await sio.emit("metadata-key-result", {"error": "Missing 'key' parameter"}, to=sid)
+            return
+
+        ts = await get_or_load_ts(session.file_path)
+        if ts is None:
+            await sio.emit("metadata-key-result", {"error": "Failed to load tree sequence"}, to=sid)
+            return
+
+        result = await asyncio.to_thread(get_metadata_for_key, ts, session.file_path, key)
+        await sio.emit("metadata-key-result", {"key": key, "data": result}, to=sid)
+    except Exception as e:
+        print(f"❌ Metadata fetch error: {e}")
+        await sio.emit("metadata-key-result", {"error": str(e)}, to=sid)
+
+
+@sio.event
+async def search_metadata(sid, data):
+    """Socket event to search for samples matching a metadata value."""
+    try:
+        lorax_sid = data.get("lorax_sid")
+        session = await require_session(lorax_sid, sid)
+        if not session:
+            return
+
+        if not session.file_path:
+            print(f"⚠️ No file loaded for session {lorax_sid}")
+            await sio.emit("error", {"code": ERROR_NO_FILE_LOADED, "message": "No file loaded. Please load a file first."}, to=sid)
+            return
+
+        key = data.get("key")
+        value = data.get("value")
+
+        if not key or value is None:
+            await sio.emit("search-result", {"error": "Missing 'key' or 'value' parameter"}, to=sid)
+            return
+
+        ts = await get_or_load_ts(session.file_path)
+        if ts is None:
+            await sio.emit("search-result", {"error": "Failed to load tree sequence"}, to=sid)
+            return
+
+        result = await asyncio.to_thread(search_samples_by_metadata, ts, session.file_path, key, value)
+        await sio.emit("search-result", {"key": key, "value": value, "samples": result}, to=sid)
+    except Exception as e:
+        print(f"❌ Search error: {e}")
+        await sio.emit("search-result", {"error": str(e)}, to=sid)

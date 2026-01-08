@@ -47,59 +47,96 @@ export default function LoraxViewer({ backend, config, settings, setSettings, pr
       const hasSearchTags = config.searchTags && config.searchTags.length > 0;
       const showLineages = settings && settings.display_lineage_paths;
 
-      // Common logic to resolve search terms -> sample names
-      let sampleNames = [];
-      if (hasSearchTerm || hasSearchTags) {
-        // Convert search terms to actual sample names based on colorBy
-        const colorBy = config.populationFilter?.colorBy;
-        const sampleDetails = config.sampleDetails;
-
-        // Helper function to get sample names that match a search term
-        const getSampleNamesForTerm = (term) => {
-          if (!term || !colorBy || !sampleDetails) return [term];
-
-          const lowerTerm = term.trim().toLowerCase();
-          const matchingSamples = [];
-          for (const [sampleName, details] of Object.entries(sampleDetails)) {
-            const val = details?.[colorBy];
-            if (val !== undefined && val !== null && String(val).toLowerCase() === lowerTerm) {
-              matchingSamples.push(sampleName);
-            }
-          }
-
-          // If we found matching samples, return them; otherwise return original term
-          return matchingSamples.length > 0 ? matchingSamples : [term];
-        };
-
-        if (hasSearchTerm) {
-          sampleNames.push(...getSampleNamesForTerm(config.searchTerm));
-        }
-
-        if (hasSearchTags) {
-          for (const tag of config.searchTags) {
-            sampleNames.push(...getSampleNamesForTerm(tag));
-          }
-        }
-      }
-
-
       // If lineages are disabled, clear lineage paths immediately
       if (!showLineages) {
         setLineagePaths({});
       }
 
-      // Combined search
-      if (sampleNames.length > 0) { // Check sampleNames instead of hasSearchTerm to capture mapped tags
+      // No search - clear all search-related data
+      if (!hasSearchTerm && !hasSearchTags) {
+        setLineagePaths({});
+        setHighlightedNodes({});
+        return;
+      }
 
+      // Collect all search terms
+      const searchTerms = [];
+      if (hasSearchTerm) {
+        searchTerms.push(config.searchTerm.trim());
+      }
+      if (hasSearchTags) {
+        searchTerms.push(...config.searchTags);
+      }
+
+      const colorBy = config.populationFilter?.colorBy;
+
+      // Helper to get sample names for a term - uses backend search or local lookup
+      const getSampleNamesForTerm = async (term) => {
+        if (!term || !colorBy) return [term];
+
+        // First try local lookup if metadata is already loaded
+        if (config.sampleDetails && Object.keys(config.sampleDetails).length > 0) {
+          const lowerTerm = term.trim().toLowerCase();
+          const matchingSamples = [];
+          for (const [sampleName, details] of Object.entries(config.sampleDetails)) {
+            const val = details?.[colorBy];
+            if (val !== undefined && val !== null && String(val).toLowerCase() === lowerTerm) {
+              matchingSamples.push(sampleName);
+            }
+          }
+          if (matchingSamples.length > 0) {
+            return matchingSamples;
+          }
+        }
+
+        // Use backend search if local lookup didn't find anything
+        if (config.searchMetadataValue) {
+          const backendResults = await config.searchMetadataValue(colorBy, term);
+          if (backendResults && backendResults.length > 0) {
+            return backendResults;
+          }
+        }
+
+        // Fall back to treating term as sample name
+        return [term];
+      };
+
+      // Resolve all search terms to sample names (async)
+      const resolveSearchTerms = async () => {
+        const allSampleNames = [];
+        for (const term of searchTerms) {
+          const samples = await getSampleNamesForTerm(term);
+          allSampleNames.push(...samples);
+        }
+        return allSampleNames;
+      };
+
+      resolveSearchTerms().then((sampleNames) => {
+        if (sampleNames.length === 0) {
+          setLineagePaths({});
+          setHighlightedNodes({});
+          return;
+        }
+
+        // Build sample colors from metadataColors (if available)
         const sampleColors = {};
-        if (config.populationFilter?.colorBy && config.sampleDetails && config.metadataColors && config.metadataColors[config.populationFilter.colorBy]) {
-          const colorBy = config.populationFilter.colorBy;
+        if (colorBy && config.metadataColors && config.metadataColors[colorBy]) {
           for (const sample of sampleNames) {
-            const val = config.sampleDetails[sample]?.[colorBy];
+            // Try to get value from local sampleDetails first
+            const val = config.sampleDetails?.[sample]?.[colorBy];
             if (val !== undefined && val !== null) {
               const c = config.metadataColors[colorBy][String(val)];
               if (c) {
                 sampleColors[sample.toLowerCase()] = c;
+              }
+            } else {
+              // If not in local cache, find the matching color from the search term
+              for (const term of searchTerms) {
+                const c = config.metadataColors[colorBy][term];
+                if (c) {
+                  sampleColors[sample.toLowerCase()] = c;
+                  break;
+                }
               }
             }
           }
@@ -107,7 +144,6 @@ export default function LoraxViewer({ backend, config, settings, setSettings, pr
 
         backend.search(config.searchTerm, sampleNames, { showLineages, sampleColors }).then((results) => {
           if (results) {
-            // Only set lineage paths if showLineages is still enabled
             if (showLineages) {
               setLineagePaths(results.lineage || {});
             }
@@ -119,13 +155,9 @@ export default function LoraxViewer({ backend, config, settings, setSettings, pr
             setHighlightedNodes({});
           }
         });
-      } else {
-        // No search terms - clear all search-related data
-        setLineagePaths({});
-        setHighlightedNodes({});
-      }
+      });
     }
-  }, [config.searchTerm, config.searchTags, config.populationFilter?.colorBy, config.sampleDetails, backend.isConnected, backend, visibleTrees, settings, statusMessage?.status]);
+  }, [config.searchTerm, config.searchTags, config.populationFilter?.colorBy, config.sampleDetails, config.searchMetadataValue, config.metadataColors, backend.isConnected, backend, visibleTrees, settings, statusMessage?.status]);
 
   // Separate effect to immediately clear data when lineage is disabled or no search, independent of search timing
   useEffect(() => {

@@ -151,7 +151,7 @@ export default class TreeLayer extends CompositeLayer {
         modelMatrix: null,
         viewId,
         updateTriggers: {
-          getFillColor: [populationFilter.colorBy, populationFilter.enabledValues],
+          getFillColor: [populationFilter.colorBy, populationFilter.enabledValues, sampleDetails],
           data: [bin.modelMatrix, bin.path],
           getPosition: [bin.modelMatrix],
         },
@@ -209,7 +209,7 @@ export default class TreeLayer extends CompositeLayer {
           updateTriggers: {
             data: [highlightData, bin.modelMatrix],
             getPosition: [bin.modelMatrix],
-            getFillColor: [populationFilter.colorBy]
+            getFillColor: [populationFilter.colorBy, sampleDetails]
           }
         })
       );
