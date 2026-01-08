@@ -483,7 +483,11 @@ async def query_edges(sid, data):
 
 @sio.event
 async def process_layout(sid, data):
-    """Socket event to compute tree layout on backend."""
+    """Socket event to extract edges for trees using tskit tables.
+
+    Returns PyArrow IPC binary data for efficient transfer.
+    Frontend computes layout from raw edge data.
+    """
     try:
         lorax_sid = data.get("lorax_sid")
         session = await require_session(lorax_sid, sid)
@@ -497,9 +501,18 @@ async def process_layout(sid, data):
 
         display_array = data.get("displayArray", [])
 
-        # print(f"Processing layout for {len(display_array)} trees")
+        # handle_layout_query now returns dict with PyArrow buffer
         result = await handle_layout_query(session.file_path, display_array)
-        await sio.emit("layout-result", {"data": json.loads(result)}, to=sid)
+
+        if "error" in result:
+            await sio.emit("layout-result", {"error": result["error"]}, to=sid)
+        else:
+            # Send binary buffer with node_ids and node_times
+            await sio.emit("layout-result", {
+                "buffer": result["buffer"],  # Binary PyArrow IPC data
+                "node_ids": result["node_ids"],
+                "node_times": result["node_times"]
+            }, to=sid)
     except Exception as e:
         print(f"❌ Layout query error: {e}")
         await sio.emit("layout-result", {"error": str(e)}, to=sid)

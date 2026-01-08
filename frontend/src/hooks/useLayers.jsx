@@ -98,20 +98,21 @@ const useLayers = ({
   }, [rawBins, globalBpPerUnit, hoveredGenomeInfo]);
 
   const edgeCompositeLayer = useMemo(() => {
-    if (!bins || bins.size === 0 || !tsconfig?.node_times) return null;
+    if (!bins || bins.size === 0 || !layoutData) return null;
 
-    const minTime = tsconfig.times?.values?.[0] ?? 0;
-    const maxTime = tsconfig.times?.values?.[1] ?? 1;
+    const minTime = tsconfig?.times?.values?.[0] ?? 0;
+    const maxTime = tsconfig?.times?.values?.[1] ?? 1;
 
     return new EdgeCompositeLayer({
       id: 'edge-composite-layer',
       bins: bins,
       edgesData: edgesData,
-      nodeTimes: tsconfig.node_times,
+      // node_times now comes from layoutData, not tsconfig
       minNodeTime: minTime,
       maxNodeTime: maxTime,
       globalBpPerUnit: globalBpPerUnit,
-      layoutData: layoutData,
+      layoutData: layoutData,  // Contains {left, right, parent, child, node_times}
+      tsconfig: tsconfig,  // For intervals and genome_length
       metadataArrays,
       metadataColors,
       viewId: "ortho"

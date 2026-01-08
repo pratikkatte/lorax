@@ -305,10 +305,14 @@ onmessage = async (event) => {
     }
 
     // Build tree from cached edges for a specific global index
+    // Note: This code path is legacy - new flow uses EdgeCompositeLayer with edgeTreeBuilder
     if (data.type === "get-tree-from-edges") {
-      const { global_index, precision, showingAllTrees } = data;
+      const { global_index, precision, showingAllTrees, node_times: providedNodeTimes } = data;
 
-      if (!cachedEdgesData || !tsconfig?.node_times) {
+      // node_times can come from data (new flow) or tsconfig (legacy)
+      const nodeTimes = providedNodeTimes || tsconfig?.node_times;
+
+      if (!cachedEdgesData || !nodeTimes) {
         console.warn(`[Worker] Cannot build tree ${global_index}: missing edges or node_times`);
         sendStatusMessage({
           status: "error",
@@ -339,7 +343,9 @@ onmessage = async (event) => {
         }
 
         // Build tree from edges
-        const processedTree = buildTreeFromEdges(global_index, cachedEdgesData, tsconfig);
+        // Pass nodeTimes in tsconfig for buildTreeFromEdges compatibility
+        const configWithNodeTimes = { ...tsconfig, node_times: nodeTimes };
+        const processedTree = buildTreeFromEdges(global_index, cachedEdgesData, configWithNodeTimes);
 
         if (processedTree) {
           pathsData.set(global_index, processedTree);

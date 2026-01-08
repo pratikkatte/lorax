@@ -31,90 +31,30 @@ function getDynamicBpPerUnit(globalBpPerUnit, zoom, baseZoom = 8) {
   return globalBpPerUnit * scaleFactor;
 }
 
-// Maximum cached tree layouts to prevent memory bloat
-const MAX_CACHED_LAYOUTS = 100;
-
 /**
- * Parse pre-computed layout from backend into per-tree format.
- * Backend returns flat arrays; we split them by tree for efficient access.
+ * Process raw edge data from backend.
+ * Backend now returns raw edges (left, right, parent, child) + node_times.
+ * EdgeCompositeLayer computes the layout using edgeTreeBuilder.
  */
-function parseLayoutData(backendData, displayArray) {
+function processRawEdgeData(backendData) {
   if (!backendData || backendData.error) return null;
 
-  const {
-    edge_coords = [],
-    tip_coords = [],
-    tree_intervals = [],
-    tree_edge_counts = [],
-    tree_tip_counts = []
-  } = backendData;
+  const { left, right, parent, child, node_times } = backendData;
 
-  const layoutMap = new Map();
-  let edgeOffset = 0;
-  let tipOffset = 0;
-
-  for (let i = 0; i < displayArray.length; i++) {
-    const treeIdx = displayArray[i];
-    const edgeCount = tree_edge_counts[i] || 0;
-    const tipCount = tree_tip_counts[i] || 0;
-    const interval = tree_intervals[i] || [0, 0];
-
-    // Extract edge coordinates for this tree (6 floats per edge: y1,x1, y2,x2, y3,x3)
-    const edgeSliceEnd = edgeOffset + edgeCount * 6;
-    const edges = new Float32Array(edge_coords.slice(edgeOffset, edgeSliceEnd));
-    edgeOffset = edgeSliceEnd;
-
-    // Extract tip coordinates for this tree (3 floats per tip: y, x, node_id)
-    const tipSliceEnd = tipOffset + tipCount * 3;
-    const tips = new Float32Array(tip_coords.slice(tipOffset, tipSliceEnd));
-    tipOffset = tipSliceEnd;
-
-    layoutMap.set(treeIdx, {
-      edges,
-      tips,
-      edgeCount,
-      tipCount,
-      interval
-    });
-  }
-
-  return layoutMap;
+  // Return raw data for EdgeCompositeLayer to process
+  return {
+    left: Array.from(left),
+    right: Array.from(right),
+    parent: Array.from(parent),
+    child: Array.from(child),
+    node_times
+  };
 }
 
 /**
- * Evict old layouts from cache when it exceeds max size.
- * Keeps layouts closest to current viewport.
- */
-function evictOldLayouts(cache, currentViewport, maxSize) {
-  if (cache.size <= maxSize) return cache;
-
-  const [vpStart, vpEnd] = currentViewport;
-  const vpCenter = (vpStart + vpEnd) / 2;
-
-  // Sort by distance from viewport center
-  const entries = [...cache.entries()];
-  entries.sort((a, b) => {
-    const distA = Math.abs(a[1].interval[0] - vpCenter);
-    const distB = Math.abs(b[1].interval[0] - vpCenter);
-    return distB - distA; // Furthest first
-  });
-
-  // Remove furthest until under limit
-  const newCache = new Map();
-  const keepCount = maxSize;
-  for (let i = entries.length - keepCount; i < entries.length; i++) {
-    if (i >= 0) {
-      newCache.set(entries[i][0], entries[i][1]);
-    }
-  }
-
-  return newCache;
-}
-
-/**
- * useRegions Hook (Edge-based with Layout Caching)
- * Manages tree selection and binning, fetches pre-computed layouts from backend,
- * and caches them for efficient re-use during panning.
+ * useRegions Hook (Edge-based)
+ * Manages tree selection and binning, fetches raw edges from backend.
+ * EdgeCompositeLayer computes layout from raw edges using edgeTreeBuilder.
  */
 const useRegions = ({
   backend,
@@ -137,9 +77,6 @@ const useRegions = ({
   const [edgesData, setEdgesData] = useState(null);
   const [layoutData, setLayoutData] = useState(null);
 
-  // Layout cache: tree_index -> { edges, tips, edgeCount, tipCount, interval }
-  const layoutCacheRef = useRef(new Map());
-
   const [times, setTimes] = useState([]);
   const showingAllTrees = useRef(false);
 
@@ -151,8 +88,8 @@ const useRegions = ({
   const debouncedQuery = useMemo(
     () => debounce(async (val) => {
       if (isFetching.current) return;
-      if (!tsconfig?.node_times) {
-        console.warn("[useRegions] tsconfig.node_times not available yet");
+      if (!tsconfig?.intervals) {
+        console.warn("[useRegions] tsconfig.intervals not available yet");
         return;
       }
 
@@ -230,46 +167,18 @@ const useRegions = ({
       showingAllTrees.current = showing_all_trees;
 
 
-      // Step 3: Fetch layout from backend only for uncached trees
+      // Step 3: Fetch raw edge data from backend
+      // Backend now returns raw edges (left, right, parent, child) + node_times
+      // EdgeCompositeLayer computes layout using edgeTreeBuilder
       let layoutData_backend = null;
       try {
         if (displayArray.length > 0) {
-          // Check which trees are already cached
-          const uncachedTrees = displayArray.filter(
-            idx => !layoutCacheRef.current.has(idx)
-          );
+          // Fetch raw edges for all displayed trees
+          const backendResult = await queryLayout(displayArray);
 
-          if (uncachedTrees.length > 0) {
-            // Fetch only uncached trees from backend
-            const backendResult = await queryLayout(uncachedTrees);
-
-            if (backendResult && !backendResult.error) {
-              // Parse and add to cache
-              const newLayouts = parseLayoutData(backendResult, uncachedTrees);
-              if (newLayouts) {
-                for (const [treeIdx, layout] of newLayouts) {
-                  layoutCacheRef.current.set(treeIdx, layout);
-                }
-              }
-            }
-          }
-
-          // Evict old layouts if cache is too large
-          if (layoutCacheRef.current.size > MAX_CACHED_LAYOUTS) {
-            layoutCacheRef.current = evictOldLayouts(
-              layoutCacheRef.current,
-              [lo, hi],
-              MAX_CACHED_LAYOUTS
-            );
-          }
-
-          // Assemble layout data for all visible trees from cache
-          layoutData_backend = new Map();
-          for (const treeIdx of displayArray) {
-            const cached = layoutCacheRef.current.get(treeIdx);
-            if (cached) {
-              layoutData_backend.set(treeIdx, cached);
-            }
+          if (backendResult && !backendResult.error) {
+            // Process raw edge data - no per-tree splitting needed
+            layoutData_backend = processRawEdgeData(backendResult);
           }
         }
       } catch (err) {
@@ -288,14 +197,14 @@ const useRegions = ({
       }
       isFetching.current = false;
     }, 400, { leading: false, trailing: true }),
-    [isFetching.current, valueRef.current, xzoom, selectionStrategy, tsconfig?.node_times, queryLocalBins, queryEdges, globalBpPerUnit, getTreeFromEdges]
+    [isFetching.current, valueRef.current, xzoom, selectionStrategy, tsconfig?.intervals, queryLocalBins, queryEdges, globalBpPerUnit, getTreeFromEdges]
   );
 
   useEffect(() => {
-    if (valueRef.current && tsconfig?.node_times) {
+    if (valueRef.current && tsconfig?.intervals) {
       debouncedQuery(valueRef.current);
     }
-  }, [valueRef.current, xzoom, tsconfig?.node_times]);
+  }, [valueRef.current, xzoom, tsconfig?.intervals]);
 
   useEffect(() => () => debouncedQuery.cancel(), [debouncedQuery]);
 

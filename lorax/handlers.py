@@ -257,142 +257,159 @@ def filter_edges_by_intervals(all_edges, intervals):
 
 async def handle_layout_query(file_path, tree_indices):
     """
-    Compute pre-computed layout for multiple trees.
+    Extract edges for multiple trees using tskit tables directly.
+
+    Performance optimization: Uses tables instead of tree traversal.
+    Frontend computes layout from raw edge data using edgeTreeBuilder.js.
+    Frontend already has tree intervals and time bounds from tsconfig.
 
     Args:
         file_path: Path to tree sequence file
-        tree_indices: List of tree indices to compute layout for
+        tree_indices: List of tree indices to get edges for
 
-    Returns JSON with:
-    - edge_coords: flat array [y1,x1, y2,x2, y3,x3, ...] for L-shaped paths
-    - tip_coords: flat array [y, x, node_id, ...] for tip positions
-    - tree_intervals: [[start, end], ...] for each tree
-    - tree_edge_counts: number of edges per tree (to split edge_coords)
-    - tree_tip_counts: number of tips per tree (to split tip_coords)
+    Returns dict with:
+    - buffer: PyArrow IPC binary data containing left, right, parent, child columns
+    - node_ids: list of unique node IDs appearing in edges
+    - node_times: list of times for each node_id (parallel to node_ids)
     """
     ts = await get_or_load_ts(file_path)
     if ts is None:
-        return json.dumps({"error": "Tree sequence not loaded. Please load a file first."})
-
-    global_min_time = ts.min_time
-    global_max_time = ts.max_time
-    time_range = max(1e-9, global_max_time - global_min_time)
+        return {"error": "Tree sequence not loaded. Please load a file first."}
 
     if len(tree_indices) == 0:
-        return json.dumps({
-            "edge_coords": [],
-            "tip_coords": [],
-            "tree_intervals": [],
-            "tree_edge_counts": [],
-            "tree_tip_counts": [],
-            "global_min_time": global_min_time,
-            "global_max_time": global_max_time
+        # Return empty PyArrow buffer
+        empty_table = pa.table({
+            'left': pa.array([], type=pa.float64()),
+            'right': pa.array([], type=pa.float64()),
+            'parent': pa.array([], type=pa.int32()),
+            'child': pa.array([], type=pa.int32())
         })
+        sink = pa.BufferOutputStream()
+        writer = pa.ipc.new_stream(sink, empty_table.schema)
+        writer.write_table(empty_table)
+        writer.close()
+        return {
+            "buffer": sink.getvalue().to_pybytes(),
+            "node_ids": [],
+            "node_times": []
+        }
 
-    all_edge_coords = []
-    all_tip_coords = []
+    # Get breakpoints efficiently (no tree instantiation)
+    # ts.breakpoints() returns a generator, convert to list first
+    breakpoints = np.array(list(ts.breakpoints()))
+
+    # Build list of tree intervals for filtering
     tree_intervals = []
-    tree_edge_counts = []
-    tree_tip_counts = []
-
-    node_times_array = ts.tables.nodes.time
-
     for tree_idx in tree_indices:
-        tree = ts.at_index(tree_idx)
-        tree_intervals.append([float(tree.interval[0]), float(tree.interval[1])])
+        # Ensure tree_idx is a Python int, not numpy scalar
+        tree_idx = int(tree_idx)
+        if tree_idx < 0 or tree_idx + 1 >= len(breakpoints):
+            continue  # Skip invalid tree indices
+        tree_left = float(breakpoints[tree_idx])
+        tree_right = float(breakpoints[tree_idx + 1])
+        tree_intervals.append((tree_left, tree_right))
 
-        # 1. Compute num_tips for ladderization (post-order traversal)
-        num_tips = {}
-        for node in tree.nodes(order="postorder"):
-            if tree.is_leaf(node):
-                num_tips[node] = 1
-            else:
-                num_tips[node] = sum(num_tips[c] for c in tree.children(node))
+    # If no valid tree intervals, return empty
+    if len(tree_intervals) == 0:
+        empty_table = pa.table({
+            'left': pa.array([], type=pa.float64()),
+            'right': pa.array([], type=pa.float64()),
+            'parent': pa.array([], type=pa.int32()),
+            'child': pa.array([], type=pa.int32())
+        })
+        sink = pa.BufferOutputStream()
+        writer = pa.ipc.new_stream(sink, empty_table.schema)
+        writer.write_table(empty_table)
+        writer.close()
+        return {
+            "buffer": sink.getvalue().to_pybytes(),
+            "node_ids": [],
+            "node_times": []
+        }
 
-        # 2. Build ladderized children map
-        children_map = {}
-        for node in tree.nodes():
-            children = tree.children(node)
-            if len(children) > 0:
-                children_map[node] = sorted(children, key=lambda c: num_tips[c])
+    # Access edge tables directly
+    edges = ts.tables.edges
+    all_left = np.asarray(edges.left)
+    all_right = np.asarray(edges.right)
+    all_parent = np.asarray(edges.parent)
+    all_child = np.asarray(edges.child)
 
-        # 3. DFS to assign tip Y coordinates in ladderized order
-        y_coords = {}
-        dfs_stack = list(tree.roots) if tree.num_roots > 0 else []
-        visited_tips = []
+    # Handle empty edge tables
+    if len(all_left) == 0:
+        empty_table = pa.table({
+            'left': pa.array([], type=pa.float64()),
+            'right': pa.array([], type=pa.float64()),
+            'parent': pa.array([], type=pa.int32()),
+            'child': pa.array([], type=pa.int32())
+        })
+        sink = pa.BufferOutputStream()
+        writer = pa.ipc.new_stream(sink, empty_table.schema)
+        writer.write_table(empty_table)
+        writer.close()
+        return {
+            "buffer": sink.getvalue().to_pybytes(),
+            "node_ids": [],
+            "node_times": []
+        }
 
-        while dfs_stack:
-            node = dfs_stack.pop()
-            children = children_map.get(node, [])
-            if not children:
-                visited_tips.append(node)
-            else:
-                for child in reversed(children):
-                    dfs_stack.append(child)
+    # Build mask for edges overlapping any requested tree interval
+    keep = np.zeros(len(all_left), dtype=bool)
+    for tree_left, tree_right in tree_intervals:
+        # Edge overlaps tree if: edge.left < tree.right AND edge.right > tree.left
+        overlap = (all_left < tree_right) & (all_right > tree_left)
+        keep |= overlap
 
-        for i, node in enumerate(visited_tips):
-            y_coords[node] = i
+    # Filter edges
+    filtered_left = all_left[keep]
+    filtered_right = all_right[keep]
+    filtered_parent = all_parent[keep]
+    filtered_child = all_child[keep]
 
-        tips_count = len(visited_tips)
+    # Handle case when no edges match (empty result)
+    if len(filtered_left) == 0:
+        empty_table = pa.table({
+            'left': pa.array([], type=pa.float64()),
+            'right': pa.array([], type=pa.float64()),
+            'parent': pa.array([], type=pa.int32()),
+            'child': pa.array([], type=pa.int32())
+        })
+        sink = pa.BufferOutputStream()
+        writer = pa.ipc.new_stream(sink, empty_table.schema)
+        writer.write_table(empty_table)
+        writer.close()
+        return {
+            "buffer": sink.getvalue().to_pybytes(),
+            "node_ids": [],
+            "node_times": []
+        }
 
-        # 4. Assign internal Y coords (average of children)
-        for node in tree.nodes(order="postorder"):
-            if node not in y_coords:
-                children = tree.children(node)
-                if children:
-                    y_coords[node] = sum(y_coords[c] for c in children) / len(children)
-                else:
-                    y_coords[node] = 0
+    # Get unique node IDs from filtered edges (both parent and child)
+    unique_nodes = np.unique(np.concatenate([filtered_parent, filtered_child]))
 
-        # 5. Normalize Y to [0, 1]
-        max_y = max(1, tips_count - 1)
-        for node in y_coords:
-            y_coords[node] /= max_y
+    # Get node times for these nodes
+    all_node_times = ts.tables.nodes.time
+    node_ids = [int(node_id) for node_id in unique_nodes]
+    node_times = [float(all_node_times[node_id]) for node_id in unique_nodes]
 
-        # 6. Compute X coordinates from time
-        x_coords = {}
-        for node in tree.nodes():
-            node_time = node_times_array[node]
-            x_coords[node] = 1.0 - (node_time - global_min_time) / time_range
-
-        # 7. Generate L-shaped edge geometry
-        edge_count = 0
-        for node in tree.nodes():
-            children = tree.children(node)
-            if len(children) > 0:
-                py = y_coords[node]
-                px = x_coords[node]
-
-                for child in children:
-                    cy = y_coords[child]
-                    cx = x_coords[child]
-
-                    # L-shape path: (py, px) -> (cy, px) -> (cy, cx)
-                    # Note: y first for deck.gl CARTESIAN (y = horizontal position, x = time)
-                    all_edge_coords.extend([py, px, cy, px, cy, cx])
-                    edge_count += 1
-
-        tree_edge_counts.append(edge_count)
-
-        # 8. Collect tip positions
-        tip_count = 0
-        for tip_node in visited_tips:
-            y = y_coords[tip_node]
-            x = x_coords[tip_node]
-            all_tip_coords.extend([y, x, int(tip_node)])
-            tip_count += 1
-
-        tree_tip_counts.append(tip_count)
-
-    return json.dumps({
-        "edge_coords": all_edge_coords,
-        "tip_coords": all_tip_coords,
-        "tree_intervals": tree_intervals,
-        "tree_edge_counts": tree_edge_counts,
-        "tree_tip_counts": tree_tip_counts,
-        "global_min_time": float(global_min_time),
-        "global_max_time": float(global_max_time)
+    # Build PyArrow table for efficient serialization
+    table = pa.table({
+        'left': pa.array(filtered_left, type=pa.float64()),
+        'right': pa.array(filtered_right, type=pa.float64()),
+        'parent': pa.array(filtered_parent, type=pa.int32()),
+        'child': pa.array(filtered_child, type=pa.int32())
     })
+
+    # Serialize to IPC format
+    sink = pa.BufferOutputStream()
+    writer = pa.ipc.new_stream(sink, table.schema)
+    writer.write_table(table)
+    writer.close()
+
+    return {
+        "buffer": sink.getvalue().to_pybytes(),
+        "node_ids": node_ids,
+        "node_times": node_times
+    }
 
 
 def extract_sample_names(newick_str):
@@ -984,7 +1001,7 @@ def get_config(ts, file_path, root_dir):
             'times': {'type': 'coalescent time', 'values': times},
             'intervals': intervals,
             'filename': str(filename),
-            'node_times': ts.tables.nodes.time.tolist(),
+            # node_times removed - now sent per-query from handle_layout_query for efficiency
             # 'mutations': extract_node_mutations_tables(ts),
             # 'mutations_by_node': extract_mutations_by_node(ts),
             'sample_names': sample_names,

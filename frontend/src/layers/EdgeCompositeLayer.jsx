@@ -1,24 +1,26 @@
 import { CompositeLayer, COORDINATE_SYSTEM } from '@deck.gl/core';
 import { PathLayer, ScatterplotLayer } from '@deck.gl/layers';
+import { filterActiveEdges, processTreeFromEdges } from '../webworkers/modules/edgeTreeBuilder.js';
 
 /**
  * EdgeCompositeLayer - Optimized for rendering millions of tree edges.
  *
- * Uses pre-computed layout from backend (y,x coordinates) and typed arrays
- * for efficient memory usage and rendering performance.
+ * Computes tree layout from raw edge data using edgeTreeBuilder.
+ * Backend sends raw edges (left, right, parent, child) + node_times.
+ * This layer filters edges per tree, builds tree structure, and computes layout.
  *
- * Layout data format from backend (per tree):
- * - edges: Float32Array [y1,x1, y2,x2, y3,x3, ...] - L-shaped paths
- * - tips: Float32Array [y, x, node_id, ...] - tip node positions
+ * Layout data format from backend:
+ * - left, right, parent, child: arrays of edge data
+ * - node_times: {node_id: time} mapping
  */
 export default class EdgeCompositeLayer extends CompositeLayer {
     static layerName = 'EdgeCompositeLayer';
     static defaultProps = {
         bins: null,
-        layoutData: null,  // Map<tree_index, {edges, tips, edgeCount, tipCount}>
-        nodeTimes: null,
-        globalMinTime: 0,
-        globalMaxTime: 1,
+        layoutData: null,  // {left, right, parent, child, node_times}
+        tsconfig: null,    // For intervals and genome_length
+        minNodeTime: 0,
+        maxNodeTime: 1,
         globalBpPerUnit: 1,
         edgeColor: [100, 100, 100, 255],
         tipColor: [255, 0, 0, 255],
@@ -38,39 +40,39 @@ export default class EdgeCompositeLayer extends CompositeLayer {
     }
 
     /**
-     * Process pre-computed layout data into flat typed arrays for rendering.
-     * No tree construction needed - backend already computed coordinates.
+     * Process raw edge data into flat typed arrays for rendering.
+     * Uses edgeTreeBuilder to compute layout per tree from raw edges.
      */
     processDataOptimized(props) {
-        const { bins, layoutData } = props;
+        const { bins, layoutData, tsconfig, minNodeTime, maxNodeTime } = props;
 
-        if (!bins || bins.size === 0 || !layoutData || layoutData.size === 0) {
+        if (!bins || bins.size === 0 || !layoutData) {
             return { pathPositions: null, tipPositions: null, edgeCount: 0, tipCount: 0 };
         }
 
-        // Count total edges and tips across all visible bins
-        let totalEdgeVertices = 0;
-        let totalTips = 0;
+        const { left, right, parent, child, node_times } = layoutData;
 
-        for (const [key, bin] of bins) {
-            if (!bin.visible) continue;
-
-            const treeIdx = bin.global_index;
-            const treeLayout = layoutData.get(treeIdx);
-            if (treeLayout) {
-                // Each edge has 3 vertices (L-shape), 2 coords each = 6 floats per edge
-                totalEdgeVertices += treeLayout.edgeCount * 3;
-                totalTips += treeLayout.tipCount;
-            }
-        }
-
-        if (totalEdgeVertices === 0) {
+        if (!left || left.length === 0 || !node_times) {
             return { pathPositions: null, tipPositions: null, edgeCount: 0, tipCount: 0 };
         }
 
-        // Allocate flat typed arrays
-        const pathPositions = new Float32Array(totalEdgeVertices * 2);
-        const tipPositions = new Float32Array(totalTips * 2);
+        const intervals = tsconfig?.intervals || [];
+        const genome_length = tsconfig?.genome_length || 0;
+
+        // Time range for Y coordinate transformation
+        // Y=0 at maxTime (root), Y=1 at minTime (tips)
+        const timeRange = maxNodeTime - minNodeTime || 1;
+
+        // Estimate sizes for pre-allocation
+        const estimatedEdgesPerTree = Math.ceil(left.length / Math.max(1, bins.size)) * 3;
+        const estimatedTipsPerTree = 100;
+        const visibleBinCount = [...bins.values()].filter(b => b.visible).length;
+
+        const maxPathPositions = visibleBinCount * estimatedEdgesPerTree * 6;
+        const maxTipPositions = visibleBinCount * estimatedTipsPerTree * 2;
+
+        const pathPositions = new Float32Array(maxPathPositions);
+        const tipPositions = new Float32Array(maxTipPositions);
         const pathStartIndices = [0];
 
         let pathOffset = 0;
@@ -81,43 +83,71 @@ export default class EdgeCompositeLayer extends CompositeLayer {
             if (!bin.visible) continue;
 
             const treeIdx = bin.global_index;
-            const treeLayout = layoutData.get(treeIdx);
-            if (!treeLayout || !treeLayout.edges) continue;
+            const treeStart = intervals[treeIdx];
+            const treeEnd = intervals[treeIdx + 1] ?? genome_length;
+
+            if (treeStart === undefined) continue;
+
+            // Filter edges active in this tree's interval
+            const activeEdges = filterActiveEdges(layoutData, treeStart, treeEnd);
+
+            if (activeEdges.parent.length === 0) continue;
+
+            // Build tree and compute layout
+            const tree = processTreeFromEdges(
+                activeEdges,
+                node_times,  // node_times is now an object {node_id: time}
+                {},  // mutations - not needed for layout
+                minNodeTime,
+                maxNodeTime
+            );
+
+            if (!tree || !tree.nodes || tree.nodes.length === 0) continue;
 
             const m = bin.modelMatrix;
             const scaleX = m[0];
             const translateX = m[12];
 
-            const edges = treeLayout.edges;
-            const tips = treeLayout.tips;
+            // Generate L-shaped edges from tree nodes
+            for (const node of tree.nodes) {
+                if (!node.child || node.child.length === 0) continue;
 
-            // Process edges: each edge = 6 floats (y1,x1, y2,x2, y3,x3)
-            for (let i = 0; i < edges.length; i += 6) {
-                const y1 = edges[i], x1 = edges[i + 1];
-                const y2 = edges[i + 2], x2 = edges[i + 3];
-                const y3 = edges[i + 4], x3 = edges[i + 5];
+                const py = node.y;  // Normalized horizontal spread [0, 1]
+                // Transform time to Y: maxTime->0, minTime->1 (inverted)
+                const pt = (maxNodeTime - node.time) / timeRange;
 
-                // Transform Y (horizontal in our coord system) and keep X (time/vertical)
-                // deck.gl CARTESIAN: [x, y] where x is horizontal, y is vertical
-                pathPositions[pathOffset++] = y1 * scaleX + translateX;
-                pathPositions[pathOffset++] = x1;
-                pathPositions[pathOffset++] = y2 * scaleX + translateX;
-                pathPositions[pathOffset++] = x2;
-                pathPositions[pathOffset++] = y3 * scaleX + translateX;
-                pathPositions[pathOffset++] = x3;
+                for (const childNode of node.child) {
+                    const cy = childNode.y;
+                    const ct = (maxNodeTime - childNode.time) / timeRange;
 
-                pathStartIndices.push(pathOffset / 2);
-                edgeCount++;
+                    // Ensure we have space
+                    if (pathOffset + 6 > pathPositions.length) {
+                        // Need to grow - just skip for now (should rarely happen)
+                        continue;
+                    }
+
+                    // L-shape path: parent -> horizontal to child x -> down to child
+                    // X coord: horizontal position on genome (transformed with model matrix)
+                    // Y coord: normalized time (0=maxTime/root, 1=minTime/tips)
+                    pathPositions[pathOffset++] = py * scaleX + translateX;
+                    pathPositions[pathOffset++] = pt;
+                    pathPositions[pathOffset++] = cy * scaleX + translateX;
+                    pathPositions[pathOffset++] = pt;
+                    pathPositions[pathOffset++] = cy * scaleX + translateX;
+                    pathPositions[pathOffset++] = ct;
+
+                    pathStartIndices.push(pathOffset / 2);
+                    edgeCount++;
+                }
             }
 
-            // Process tips: each tip = 3 floats (y, x, node_id)
-            if (tips) {
-                for (let i = 0; i < tips.length; i += 3) {
-                    const y = tips[i], x = tips[i + 1];
-                    // node_id at tips[i + 2] - not used for rendering but available for picking
+            // Collect tip positions
+            for (const node of tree.nodes) {
+                if (node.is_tip) {
+                    if (tipOffset + 2 > tipPositions.length) continue;
 
-                    tipPositions[tipOffset++] = y * scaleX + translateX;
-                    tipPositions[tipOffset++] = x;
+                    tipPositions[tipOffset++] = node.y * scaleX + translateX;
+                    tipPositions[tipOffset++] = (maxNodeTime - node.time) / timeRange;
                 }
             }
         }

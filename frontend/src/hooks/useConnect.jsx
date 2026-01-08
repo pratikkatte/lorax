@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { io } from "socket.io-client";
+import * as arrow from "apache-arrow";
 import websocketEvents from "../webworkers/websocketEvents";
 import useLoraxConfig from "../globalconfig.js";
 import workerSpec from "../webworkers/localBackendWorker.js?worker&inline";
@@ -475,7 +476,54 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
           reject(new Error(message.error));
           return;
         }
-        resolve(message.data);
+
+        try {
+          // Parse PyArrow buffer
+          const buffer = new Uint8Array(message.buffer);
+          const table = arrow.tableFromIPC(buffer);
+
+          // Extract columns as arrays - handle empty tables gracefully
+          const numRows = table.numRows;
+          let left, right, parent, child;
+
+          if (numRows === 0) {
+            // Empty table - return empty arrays
+            left = [];
+            right = [];
+            parent = [];
+            child = [];
+          } else {
+            // Use toArray() for non-empty columns
+            const leftCol = table.getChild('left');
+            const rightCol = table.getChild('right');
+            const parentCol = table.getChild('parent');
+            const childCol = table.getChild('child');
+
+            left = leftCol ? Array.from(leftCol.toArray()) : [];
+            right = rightCol ? Array.from(rightCol.toArray()) : [];
+            parent = parentCol ? Array.from(parentCol.toArray()) : [];
+            child = childCol ? Array.from(childCol.toArray()) : [];
+          }
+
+          // Build node_times lookup from parallel arrays
+          const nodeIds = message.node_ids || [];
+          const nodeTimes = message.node_times || [];
+          const nodeTimesMap = {};
+          for (let i = 0; i < nodeIds.length; i++) {
+            nodeTimesMap[nodeIds[i]] = nodeTimes[i];
+          }
+
+          resolve({
+            left,
+            right,
+            parent,
+            child,
+            node_times: nodeTimesMap
+          });
+        } catch (parseError) {
+          console.error("Error parsing PyArrow buffer:", parseError);
+          reject(parseError);
+        }
       };
 
       socketRef.current.once("layout-result", handleResult);
