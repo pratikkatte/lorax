@@ -40,6 +40,7 @@ from lorax.handlers import (
     get_or_load_ts, get_metadata_for_key, search_samples_by_metadata,
     get_metadata_array_for_key
 )
+from lorax.handlers_postorder import handle_postorder_query
 from lorax.constants import (
     SESSION_COOKIE, COOKIE_MAX_AGE, UPLOADS_DIR,
     SOCKET_PING_TIMEOUT, SOCKET_PING_INTERVAL, MAX_HTTP_BUFFER_SIZE,
@@ -516,6 +517,44 @@ async def process_layout(sid, data):
     except Exception as e:
         print(f"❌ Layout query error: {e}")
         await sio.emit("layout-result", {"error": str(e)}, to=sid)
+
+
+@sio.event
+async def process_postorder_layout(sid, data):
+    """Socket event to get post-order tree traversal for efficient rendering.
+
+    Returns PyArrow IPC binary data with post-order node arrays.
+    Frontend computes layout using stack-based reconstruction.
+    """
+    try:
+        lorax_sid = data.get("lorax_sid")
+        session = await require_session(lorax_sid, sid)
+        if not session:
+            return
+
+        if not session.file_path:
+            print(f"⚠️ No file loaded for session {lorax_sid}")
+            await sio.emit("error", {"code": ERROR_NO_FILE_LOADED, "message": "No file loaded. Please load a file first."}, to=sid)
+            return
+
+        display_array = data.get("displayArray", [])
+
+        # handle_postorder_query returns dict with PyArrow buffer
+        result = await handle_postorder_query(session.file_path, display_array)
+
+        if "error" in result:
+            await sio.emit("postorder-layout-result", {"error": result["error"]}, to=sid)
+        else:
+            # Send binary buffer with metadata
+            await sio.emit("postorder-layout-result", {
+                "buffer": result["buffer"],  # Binary PyArrow IPC data
+                "global_min_time": result["global_min_time"],
+                "global_max_time": result["global_max_time"],
+                "tree_indices": result["tree_indices"]
+            }, to=sid)
+    except Exception as e:
+        print(f"❌ Postorder layout query error: {e}")
+        await sio.emit("postorder-layout-result", {"error": str(e)}, to=sid)
 
 
 @sio.event

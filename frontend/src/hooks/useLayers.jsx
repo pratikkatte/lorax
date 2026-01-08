@@ -5,7 +5,7 @@ import { GenomeGridLayer } from "../layers/GenomeGridLayer";
 import TreeLayer from '../layers/TreeLayer';
 import { GenomeInfoLayer } from '../layers/GenomeInfoLayer';
 import { TimeGridLayer } from '../layers/TimeGridLayer';
-import EdgeCompositeLayer from "../layers/EdgeCompositeLayer";
+import PostOrderCompositeLayer from "../layers/PostOrderCompositeLayer";
 import useAnimatedBins from './useAnimatedBins';
 
 const useLayers = ({
@@ -31,7 +31,7 @@ const useLayers = ({
   tsconfig // Ensure tsconfig is destructured
 }) => {
 
-  const { bins: rawBins = new Map(), localCoordinates = [], times = [], edgesData, layoutData } = regions;
+  const { bins: rawBins = new Map(), localCoordinates = [], times = [], edgesData, layoutData, postorderData } = regions;
 
   // Apply smooth transitions to tree positions
   const bins = useAnimatedBins(rawBins, {
@@ -44,7 +44,7 @@ const useLayers = ({
     const vid = viewport.id;
     const lid = layer.id;
     return (
-      (vid === "ortho" && (lid.startsWith("main") || lid === "edge-composite-layer" || lid.startsWith("edge-composite-layer"))) ||
+      (vid === "ortho" && (lid.startsWith("main") || lid.startsWith("postorder-composite-layer"))) ||
       (vid === "genome-positions" && lid.startsWith("genome-positions")) ||
       (vid === "genome-info" && lid.startsWith("genome-info")) ||
       (vid === "tree-time" && lid.startsWith("tree-time")) ||
@@ -97,27 +97,24 @@ const useLayers = ({
     });
   }, [rawBins, globalBpPerUnit, hoveredGenomeInfo]);
 
-  const edgeCompositeLayer = useMemo(() => {
-    if (!bins || bins.size === 0 || !layoutData) return null;
+  const postOrderCompositeLayer = useMemo(() => {
+    if (!bins || bins.size === 0 || !postorderData) return null;
 
-    const minTime = tsconfig?.times?.values?.[0] ?? 0;
-    const maxTime = tsconfig?.times?.values?.[1] ?? 1;
+    // Use global time from postorderData (from backend) or fallback to tsconfig
+    const minTime = postorderData.global_min_time ?? tsconfig?.times?.values?.[0] ?? 0;
+    const maxTime = postorderData.global_max_time ?? tsconfig?.times?.values?.[1] ?? 1;
 
-    return new EdgeCompositeLayer({
-      id: 'edge-composite-layer',
+    return new PostOrderCompositeLayer({
+      id: 'postorder-composite-layer',
       bins: bins,
-      edgesData: edgesData,
-      // node_times now comes from layoutData, not tsconfig
+      postorderData: postorderData,  // Contains {node_id, parent_id, time, is_tip, tree_idx}
       minNodeTime: minTime,
       maxNodeTime: maxTime,
       globalBpPerUnit: globalBpPerUnit,
-      layoutData: layoutData,  // Contains {left, right, parent, child, node_times}
-      tsconfig: tsconfig,  // For intervals and genome_length
-      metadataArrays,
-      metadataColors,
+      tsconfig: tsconfig,
       viewId: "ortho"
     });
-  }, [bins, edgesData, tsconfig, globalBpPerUnit, layoutData, metadataArrays, metadataColors]);
+  }, [bins, postorderData, tsconfig, globalBpPerUnit]);
 
   const treeLayers = useMemo(() => {
     if (!bins || bins.size === 0) return [];
@@ -172,9 +169,9 @@ const useLayers = ({
     // console.log("treeLayers",treeLayers)
     if (genomeInfoLayer) all.push(genomeInfoLayer);
     if (timeGridLayer) all.push(timeGridLayer);
-    if (edgeCompositeLayer) all.push(edgeCompositeLayer);
+    if (postOrderCompositeLayer) all.push(postOrderCompositeLayer);
     return all;
-  }, [treeLayers, genomeGridLayer, genomeInfoLayer, timeGridLayer, edgeCompositeLayer]);
+  }, [treeLayers, genomeGridLayer, genomeInfoLayer, timeGridLayer, postOrderCompositeLayer]);
 
   return { layers, layerFilter, animatedBins: bins };
 };

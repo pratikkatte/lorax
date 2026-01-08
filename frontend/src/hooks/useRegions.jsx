@@ -32,29 +32,32 @@ function getDynamicBpPerUnit(globalBpPerUnit, zoom, baseZoom = 8) {
 }
 
 /**
- * Process raw edge data from backend.
- * Backend now returns raw edges (left, right, parent, child) + node_times.
- * EdgeCompositeLayer computes the layout using edgeTreeBuilder.
+ * Process post-order data from backend.
+ * Backend returns post-order traversal arrays with parent pointers.
+ * PostOrderCompositeLayer computes layout using stack-based reconstruction.
  */
-function processRawEdgeData(backendData) {
+function processPostorderData(backendData) {
   if (!backendData || backendData.error) return null;
 
-  const { left, right, parent, child, node_times } = backendData;
+  const { node_id, parent_id, time, is_tip, tree_idx, global_min_time, global_max_time, tree_indices } = backendData;
 
-  // Return raw data for EdgeCompositeLayer to process
+  // Return data for PostOrderCompositeLayer to process
   return {
-    left: Array.from(left),
-    right: Array.from(right),
-    parent: Array.from(parent),
-    child: Array.from(child),
-    node_times
+    node_id: Array.from(node_id),
+    parent_id: Array.from(parent_id),
+    time: Array.from(time),
+    is_tip: Array.from(is_tip),
+    tree_idx: Array.from(tree_idx),
+    global_min_time,
+    global_max_time,
+    tree_indices
   };
 }
 
 /**
- * useRegions Hook (Edge-based)
- * Manages tree selection and binning, fetches raw edges from backend.
- * EdgeCompositeLayer computes layout from raw edges using edgeTreeBuilder.
+ * useRegions Hook (Post-order based)
+ * Manages tree selection and binning, fetches post-order traversal from backend.
+ * PostOrderCompositeLayer computes layout using stack-based reconstruction.
  */
 const useRegions = ({
   backend,
@@ -67,7 +70,7 @@ const useRegions = ({
   genomicValues,
   displayOptions = {}
 }) => {
-  const { queryEdges, queryLocalBins, getTreeFromEdges, queryLayout } = backend;
+  const { queryEdges, queryLocalBins, getTreeFromEdges, queryPostorderLayout } = backend;
 
   const [localBins, setLocalBins] = useState(null);
 
@@ -75,7 +78,7 @@ const useRegions = ({
 
   const region = useRef(null);
   const [edgesData, setEdgesData] = useState(null);
-  const [layoutData, setLayoutData] = useState(null);
+  const [postorderData, setPostorderData] = useState(null);
 
   const [times, setTimes] = useState([]);
   const showingAllTrees = useRef(false);
@@ -167,22 +170,22 @@ const useRegions = ({
       showingAllTrees.current = showing_all_trees;
 
 
-      // Step 3: Fetch raw edge data from backend
-      // Backend now returns raw edges (left, right, parent, child) + node_times
-      // EdgeCompositeLayer computes layout using edgeTreeBuilder
-      let layoutData_backend = null;
+      // Step 3: Fetch post-order data from backend
+      // Backend returns post-order traversal arrays with parent pointers
+      // PostOrderCompositeLayer computes layout using stack-based reconstruction
+      let postorderData_backend = null;
       try {
         if (displayArray.length > 0) {
-          // Fetch raw edges for all displayed trees
-          const backendResult = await queryLayout(displayArray);
+          // Fetch post-order traversal for all displayed trees
+          const backendResult = await queryPostorderLayout(displayArray);
 
           if (backendResult && !backendResult.error) {
-            // Process raw edge data - no per-tree splitting needed
-            layoutData_backend = processRawEdgeData(backendResult);
+            // Process post-order data
+            postorderData_backend = processPostorderData(backendResult);
           }
         }
       } catch (err) {
-        console.error("[useRegions] Error fetching layout:", err);
+        console.error("[useRegions] Error fetching postorder layout:", err);
         setStatusMessage({
           status: "error",
           message: "Failed to render tree layout."
@@ -190,14 +193,14 @@ const useRegions = ({
       }
 
       setLocalBins(local_bins);
-      setLayoutData(layoutData_backend);
+      setPostorderData(postorderData_backend);
 
-      if (!layoutData_backend?.error) {
+      if (!postorderData_backend?.error) {
         setStatusMessage(null);
       }
       isFetching.current = false;
     }, 400, { leading: false, trailing: true }),
-    [isFetching.current, valueRef.current, xzoom, selectionStrategy, tsconfig?.intervals, queryLocalBins, queryEdges, globalBpPerUnit, getTreeFromEdges]
+    [isFetching.current, valueRef.current, xzoom, selectionStrategy, tsconfig?.intervals, queryLocalBins, queryEdges, globalBpPerUnit, getTreeFromEdges, queryPostorderLayout]
   );
 
   useEffect(() => {
@@ -257,8 +260,8 @@ const useRegions = ({
     localCoordinates,
     times,
     edgesData,
-    layoutData
-  }), [localBins, localCoordinates, times, edgesData, layoutData]);
+    postorderData
+  }), [localBins, localCoordinates, times, edgesData, postorderData]);
 };
 
 export default useRegions;

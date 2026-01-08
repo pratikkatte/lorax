@@ -531,6 +531,76 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
     });
   }, []);
 
+  /**
+   * Query post-order tree traversal for efficient rendering.
+   * Returns flattened post-order arrays with parent pointers.
+   * @param {Array} displayArray - Array of tree indices to fetch
+   */
+  const queryPostorderLayout = useCallback((displayArray) => {
+    return new Promise((resolve, reject) => {
+      if (!socketRef.current) {
+        reject(new Error("Socket not available"));
+        return;
+      }
+
+      const handleResult = (message) => {
+        socketRef.current.off("postorder-layout-result", handleResult);
+        if (message.error) {
+          reject(new Error(message.error));
+          return;
+        }
+
+        try {
+          // Parse PyArrow buffer
+          const buffer = new Uint8Array(message.buffer);
+          const table = arrow.tableFromIPC(buffer);
+
+          const numRows = table.numRows;
+          let node_id, parent_id, time, is_tip, tree_idx;
+
+          if (numRows === 0) {
+            // Empty table - return empty arrays
+            node_id = [];
+            parent_id = [];
+            time = [];
+            is_tip = [];
+            tree_idx = [];
+          } else {
+            // Extract columns
+            const nodeIdCol = table.getChild('node_id');
+            const parentIdCol = table.getChild('parent_id');
+            const timeCol = table.getChild('time');
+            const isTipCol = table.getChild('is_tip');
+            const treeIdxCol = table.getChild('tree_idx');
+
+            node_id = nodeIdCol ? Array.from(nodeIdCol.toArray()) : [];
+            parent_id = parentIdCol ? Array.from(parentIdCol.toArray()) : [];
+            time = timeCol ? Array.from(timeCol.toArray()) : [];
+            is_tip = isTipCol ? Array.from(isTipCol.toArray()) : [];
+            tree_idx = treeIdxCol ? Array.from(treeIdxCol.toArray()) : [];
+          }
+
+          resolve({
+            node_id,
+            parent_id,
+            time,
+            is_tip,
+            tree_idx,
+            global_min_time: message.global_min_time,
+            global_max_time: message.global_max_time,
+            tree_indices: message.tree_indices
+          });
+        } catch (parseError) {
+          console.error("Error parsing PyArrow buffer:", parseError);
+          reject(parseError);
+        }
+      };
+
+      socketRef.current.once("postorder-layout-result", handleResult);
+      socketRef.current.emit("process_postorder_layout", { displayArray, lorax_sid: sidRef.current });
+    });
+  }, []);
+
 
 
   const queryFile = useCallback((payload) => {
@@ -591,6 +661,7 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
       queryNodes,
       queryEdges,
       queryLayout,
+      queryPostorderLayout,
       queryDetails,
       isConnected,
       checkConnection,
@@ -601,7 +672,6 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
       getTreeData,
       getTreeFromEdges,
       search,
-      queryLayout,
       loraxSid
     }),
     [
@@ -620,6 +690,7 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
       getTreeFromEdges,
       search,
       queryLayout,
+      queryPostorderLayout,
       loraxSid
     ]
   );
