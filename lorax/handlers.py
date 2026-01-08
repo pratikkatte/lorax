@@ -8,6 +8,7 @@ from collections import OrderedDict, defaultdict
 import numpy as np
 import pandas as pd
 import psutil
+import pyarrow as pa
 import tskit
 import tszip
 
@@ -757,6 +758,128 @@ def search_samples_by_metadata(
     return matching_samples
 
 
+def _get_sample_metadata_value(ts, node_id, key, sources, sample_name_key="name"):
+    """
+    Helper to get a specific metadata value for a sample node.
+    Returns (sample_name, value) tuple.
+    """
+    node = ts.node(node_id)
+    node_meta = node.metadata or {}
+    node_meta = ensure_json_dict(node_meta)
+    sample_name = node_meta.get(sample_name_key, f"{node_id}")
+
+    for source in sources:
+        if source == "individual":
+            if node.individual == tskit.NULL:
+                continue
+            meta = ts.individual(node.individual).metadata
+            meta = meta or {}
+            meta = ensure_json_dict(meta)
+
+        elif source == "node":
+            meta = node_meta
+
+        elif source == "population":
+            if node.population == tskit.NULL:
+                continue
+            meta = ts.population(node.population).metadata
+            meta = meta or {}
+            meta = ensure_json_dict(meta)
+
+        else:
+            continue
+
+        if not meta:
+            continue
+
+        if key in meta:
+            value = meta[key]
+            if isinstance(value, (list, dict)):
+                value = repr(value)
+            return (sample_name, value)
+
+    return (sample_name, None)
+
+
+def get_metadata_array_for_key(
+    ts,
+    file_path,
+    key,
+    sources=("individual", "node", "population"),
+    sample_name_key="name"
+):
+    """
+    Build efficient array-based metadata for a key using PyArrow.
+
+    Returns indices array where indices[i] is the index into unique_values
+    for the i-th sample (ordered by node_id from ts.samples()).
+
+    Parameters
+    ----------
+    ts : tskit.TreeSequence
+    file_path : str
+        Used as part of cache key
+    key : str
+        The metadata key to extract
+    sources : tuple
+        Any of ("individual", "node", "population")
+    sample_name_key : str
+        Key in node metadata used as sample name
+
+    Returns
+    -------
+    dict
+        {
+            'unique_values': [val0, val1, ...],  # Index i -> value string
+            'sample_node_ids': [node_id0, node_id1, ...],  # Sample order
+            'arrow_buffer': bytes  # PyArrow IPC serialized indices
+        }
+    """
+    cache_key = f"{file_path}:{key}:array"
+    cached = _metadata_cache.get(cache_key)
+    if cached is not None:
+        print(f"✅ Using cached metadata array for key: {key}")
+        return cached
+
+    sample_ids = list(ts.samples())
+    n_samples = len(sample_ids)
+
+    unique_values = []
+    value_to_idx = {}
+    indices = np.zeros(n_samples, dtype=np.uint16)
+
+    for i, node_id in enumerate(sample_ids):
+        sample_name, value = _get_sample_metadata_value(ts, node_id, key, sources, sample_name_key)
+
+        if value is None:
+            value = ""  # Handle missing values
+
+        value_str = str(value)
+
+        if value_str not in value_to_idx:
+            value_to_idx[value_str] = len(unique_values)
+            unique_values.append(value_str)
+
+        indices[i] = value_to_idx[value_str]
+
+    # Serialize to Arrow IPC format
+    table = pa.table({'idx': pa.array(indices, type=pa.uint16())})
+    sink = pa.BufferOutputStream()
+    writer = pa.ipc.new_stream(sink, table.schema)
+    writer.write_table(table)
+    writer.close()
+
+    result = {
+        'unique_values': unique_values,
+        'sample_node_ids': [int(x) for x in sample_ids],  # Convert to Python int for JSON
+        'arrow_buffer': sink.getvalue().to_pybytes()
+    }
+
+    _metadata_cache.set(cache_key, result)
+    print(f"✅ Built metadata array for key: {key} ({n_samples} samples, {len(unique_values)} unique values)")
+    return result
+
+
 def ensure_json_dict(data):
     # If already a dict, return as-is
     if isinstance(data, dict):
@@ -862,8 +985,8 @@ def get_config(ts, file_path, root_dir):
             'intervals': intervals,
             'filename': str(filename),
             'node_times': ts.tables.nodes.time.tolist(),
-            'mutations': extract_node_mutations_tables(ts),
-            'mutations_by_node': extract_mutations_by_node(ts),
+            # 'mutations': extract_node_mutations_tables(ts),
+            # 'mutations_by_node': extract_mutations_by_node(ts),
             'sample_names': sample_names,
             # Send schema only - full mappings fetched on-demand
             'metadata_schema': metadata_schema

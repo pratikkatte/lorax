@@ -19,6 +19,7 @@ const useLayers = ({
   hoveredGenomeInfo,
   sampleDetails,
   metadataColors,
+  metadataArrays,  // PyArrow-based efficient metadata for large tree sequences
   treeColors,
   searchTerm,
   searchTags,
@@ -111,9 +112,11 @@ const useLayers = ({
       maxNodeTime: maxTime,
       globalBpPerUnit: globalBpPerUnit,
       layoutData: layoutData,
+      metadataArrays,
+      metadataColors,
       viewId: "ortho"
     });
-  }, [bins, edgesData, tsconfig, globalBpPerUnit, layoutData]);
+  }, [bins, edgesData, tsconfig, globalBpPerUnit, layoutData, metadataArrays, metadataColors]);
 
   const treeLayers = useMemo(() => {
     if (!bins || bins.size === 0) return [];
@@ -142,6 +145,7 @@ const useLayers = ({
         populationFilter,
         sampleDetails,
         metadataColors,
+        metadataArrays,  // Pass PyArrow-based metadata for O(1) lookup
         treeColors,
         yzoom,
         xzoom,
@@ -156,7 +160,7 @@ const useLayers = ({
     }
 
     return newLayers;
-  }, [bins, globalBpPerUnit, hoveredTreeIndex, populationFilter, sampleDetails, metadataColors, treeColors, searchTerm, searchTags, lineagePaths, highlightedNodes, highlightedMutationNode]);
+  }, [bins, globalBpPerUnit, hoveredTreeIndex, populationFilter, sampleDetails, metadataColors, metadataArrays, treeColors, searchTerm, searchTags, lineagePaths, highlightedNodes, highlightedMutationNode]);
 
 
   const layers = useMemo(() => {

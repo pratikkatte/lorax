@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { tableFromIPC } from "apache-arrow";
 import websocketEvents from "../webworkers/websocketEvents";
 import { useNavigate } from "react-router-dom";
 
@@ -20,6 +21,8 @@ function useConfig({ backend, setStatusMessage, timeRef }) {
   const [metadataKeys, setMetadataKeys] = useState([]);  // List of available metadata keys for coloring
   const [loadedMetadataKeys, setLoadedMetadataKeys] = useState(new Set()); // Track which keys have been fetched
   const [metadataLoading, setMetadataLoading] = useState(false); // Loading state for metadata fetch
+  const [metadataArrays, setMetadataArrays] = useState({}); // {key: {uniqueValues, indices, nodeIdToIdx}} - PyArrow-based efficient metadata
+  const [loadedMetadataArrayKeys, setLoadedMetadataArrayKeys] = useState(new Set()); // Track which keys have array-format loaded
   const [treeColors, setTreeColors] = useState({});
   const [searchTerm, setSearchTerm] = useState("");
   const [searchTags, setSearchTags] = useState([]);
@@ -125,6 +128,9 @@ function useConfig({ backend, setStatusMessage, timeRef }) {
     // sampleDetails starts empty - will be populated on-demand via fetchMetadataForKey
     setSampleDetails({});
     setLoadedMetadataKeys(new Set());
+    // Reset array-based metadata state
+    setMetadataArrays({});
+    setLoadedMetadataArrayKeys(new Set());
     setMetadataColors(mColors);
     setMetadataKeys(mKeys);
 
@@ -205,6 +211,93 @@ function useConfig({ backend, setStatusMessage, timeRef }) {
       websocketEvents.off("viz", handler);
     };
   }, [isConnected, handleMetadataKeyResult]);
+
+  // Function to fetch metadata as efficient PyArrow array format (for large tree sequences)
+  const fetchMetadataArrayForKey = useCallback((key) => {
+    if (!key || !isConnected || !socketRef?.current || !loraxSid) {
+      console.warn("Cannot fetch metadata array: not connected or missing params");
+      return;
+    }
+
+    // Skip if already loaded
+    if (loadedMetadataArrayKeys.has(key)) {
+      console.log(`Metadata array for key "${key}" already loaded`);
+      return;
+    }
+
+    console.log(`Fetching metadata array for key: ${key}`);
+    setMetadataLoading(true);
+    socketRef.current.emit("fetch_metadata_array", {
+      lorax_sid: loraxSid,
+      key: key
+    });
+  }, [isConnected, socketRef, loraxSid, loadedMetadataArrayKeys]);
+
+  // Handle metadata-array-result event from backend (PyArrow format)
+  const handleMetadataArrayResult = useCallback((msg) => {
+    setMetadataLoading(false);
+
+    if (msg.error) {
+      console.error("Error fetching metadata array:", msg.error);
+      return;
+    }
+
+    const { key, unique_values, sample_node_ids, buffer } = msg;
+
+    if (!buffer || !unique_values || !sample_node_ids) {
+      console.error("Invalid metadata array result - missing data");
+      return;
+    }
+
+    try {
+      // Parse Arrow buffer to get indices array
+      const arrayBuffer = buffer instanceof ArrayBuffer ? buffer : buffer.buffer || new Uint8Array(buffer).buffer;
+      const table = tableFromIPC(arrayBuffer);
+      const indicesColumn = table.getChild('idx');
+
+      if (!indicesColumn) {
+        console.error("Invalid Arrow table - missing 'idx' column");
+        return;
+      }
+
+      const indices = indicesColumn.toArray(); // Uint16Array
+
+      // Build nodeId -> array index mapping for O(1) lookup
+      const nodeIdToIdx = new Map();
+      sample_node_ids.forEach((nodeId, i) => {
+        nodeIdToIdx.set(nodeId, i);
+      });
+
+      console.log(`Received metadata array for key "${key}":`, sample_node_ids.length, "samples,", unique_values.length, "unique values");
+
+      setMetadataArrays(prev => ({
+        ...prev,
+        [key]: { uniqueValues: unique_values, indices, nodeIdToIdx }
+      }));
+
+      // Mark this key as loaded
+      setLoadedMetadataArrayKeys(prev => new Set([...prev, key]));
+    } catch (err) {
+      console.error("Error parsing Arrow buffer:", err);
+    }
+  }, []);
+
+  // Listen for metadata-array-result events
+  useEffect(() => {
+    if (!isConnected) return;
+
+    const handler = (msg) => {
+      if (msg.role === "metadata-array-result") {
+        handleMetadataArrayResult(msg);
+      }
+    };
+
+    websocketEvents.on("viz", handler);
+
+    return () => {
+      websocketEvents.off("viz", handler);
+    };
+  }, [isConnected, handleMetadataArrayResult]);
 
   // Map to store pending search promises
   const searchPromisesRef = useRef(new Map());
@@ -304,6 +397,10 @@ function useConfig({ backend, setStatusMessage, timeRef }) {
     loadedMetadataKeys,
     metadataLoading,
     fetchMetadataForKey,
+    // PyArrow-based efficient metadata for large tree sequences
+    metadataArrays,
+    loadedMetadataArrayKeys,
+    fetchMetadataArrayForKey,
     searchMetadataValue,
     treeColors,
     setTreeColors,
@@ -312,7 +409,7 @@ function useConfig({ backend, setStatusMessage, timeRef }) {
     searchTags,
     setSearchTags,
     handleConfigUpdate
-  }), [tsconfig, sampleNames, setConfig, globalBpPerUnit, populationFilter, setPopulationFilter, genomeLength, pathArray, filename, sampleDetails, metadataColors, metadataKeys, loadedMetadataKeys, metadataLoading, fetchMetadataForKey, searchMetadataValue, treeColors, setTreeColors, searchTerm, setSearchTerm, searchTags, setSearchTags, handleConfigUpdate]);
+  }), [tsconfig, sampleNames, setConfig, globalBpPerUnit, populationFilter, setPopulationFilter, genomeLength, pathArray, filename, sampleDetails, metadataColors, metadataKeys, loadedMetadataKeys, metadataLoading, fetchMetadataForKey, metadataArrays, loadedMetadataArrayKeys, fetchMetadataArrayForKey, searchMetadataValue, treeColors, setTreeColors, searchTerm, setSearchTerm, searchTags, setSearchTags, handleConfigUpdate]);
 };
 
 export default useConfig;

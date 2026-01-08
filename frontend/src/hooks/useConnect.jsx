@@ -186,6 +186,11 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
       websocketEvents.emit("viz", { role: "search-result", ...message });
     });
 
+    // Handle metadata-array-result for PyArrow-based efficient metadata
+    socket.on("metadata-array-result", (message) => {
+      websocketEvents.emit("viz", { role: "metadata-array-result", ...message });
+    });
+
     socket.on("pong", (msg) => {
       // console.log("pong", msg);
     });

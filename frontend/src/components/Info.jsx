@@ -8,7 +8,7 @@ const Info = ({ backend, gettingDetails, setGettingDetails, setShowInfo, config,
 
   const { socketRef, isConnected } = backend;
 
-  const { tsconfig, populationFilter, sampleNames, setPopulationFilter, sampleDetails, metadataColors, metadataKeys, loadedMetadataKeys, metadataLoading, fetchMetadataForKey, treeColors, setTreeColors, searchTerm, setSearchTerm, searchTags, setSearchTags } = config;
+  const { tsconfig, populationFilter, sampleNames, setPopulationFilter, sampleDetails, metadataColors, metadataKeys, loadedMetadataKeys, metadataLoading, fetchMetadataForKey, metadataArrays, loadedMetadataArrayKeys, fetchMetadataArrayForKey, treeColors, setTreeColors, searchTerm, setSearchTerm, searchTags, setSearchTags } = config;
 
   const [nodeDetails, setNodeDetails] = useState(null);
   const [individualDetails, setIndividualDetails] = useState(null);
@@ -50,15 +50,28 @@ const Info = ({ backend, gettingDetails, setGettingDetails, setShowInfo, config,
   }, [selectedColorBy, metadataColors]);
 
   // Fetch metadata for the selected colorBy key when it changes (lazy loading)
+  // Prefer PyArrow array format for efficiency with large tree sequences
   useEffect(() => {
-    if (!selectedColorBy || !fetchMetadataForKey) return;
+    if (!selectedColorBy) return;
 
-    // Fetch metadata if not already loaded
-    if (!loadedMetadataKeys?.has(selectedColorBy)) {
-      console.log(`Triggering fetch for metadata key: ${selectedColorBy}`);
+    // Skip if already loaded in array format (PyArrow)
+    if (loadedMetadataArrayKeys?.has(selectedColorBy)) {
+      return;
+    }
+
+    // Prefer PyArrow array format (efficient for 1M+ samples)
+    if (fetchMetadataArrayForKey) {
+      console.log(`Triggering fetch for metadata array key: ${selectedColorBy}`);
+      fetchMetadataArrayForKey(selectedColorBy);
+      return;  // Don't also fetch JSON format
+    }
+
+    // Fallback to JSON format only if array fetch not available and not already loaded
+    if (fetchMetadataForKey && !loadedMetadataKeys?.has(selectedColorBy)) {
+      console.log(`Triggering fetch for metadata key (JSON): ${selectedColorBy}`);
       fetchMetadataForKey(selectedColorBy);
     }
-  }, [selectedColorBy, fetchMetadataForKey, loadedMetadataKeys]);
+  }, [selectedColorBy, fetchMetadataForKey, fetchMetadataArrayForKey, loadedMetadataKeys, loadedMetadataArrayKeys]);
 
   useEffect(() => {
     setPopulationFilter(prev => ({

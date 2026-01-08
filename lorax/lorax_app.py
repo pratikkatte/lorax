@@ -37,7 +37,8 @@ from fastapi.responses import JSONResponse
 from lorax.handlers import (
     handle_upload, handle_edges_query, get_projects, cache_status,
     handle_details, get_or_load_config, handle_layout_query,
-    get_or_load_ts, get_metadata_for_key, search_samples_by_metadata
+    get_or_load_ts, get_metadata_for_key, search_samples_by_metadata,
+    get_metadata_array_for_key
 )
 from lorax.constants import (
     SESSION_COOKIE, COOKIE_MAX_AGE, UPLOADS_DIR,
@@ -566,3 +567,47 @@ async def search_metadata(sid, data):
     except Exception as e:
         print(f"❌ Search error: {e}")
         await sio.emit("search-result", {"error": str(e)}, to=sid)
+
+
+@sio.event
+async def fetch_metadata_array(sid, data):
+    """Socket event to fetch metadata as efficient PyArrow array format.
+
+    This is optimized for large tree sequences (1M+ samples) where JSON
+    serialization would be too slow/large. Returns binary Arrow IPC data
+    with indices that map node_id -> value index.
+    """
+    try:
+        lorax_sid = data.get("lorax_sid")
+        session = await require_session(lorax_sid, sid)
+        if not session:
+            return
+
+        if not session.file_path:
+            print(f"⚠️ No file loaded for session {lorax_sid}")
+            await sio.emit("error", {"code": ERROR_NO_FILE_LOADED, "message": "No file loaded. Please load a file first."}, to=sid)
+            return
+
+        key = data.get("key")
+        if not key:
+            await sio.emit("metadata-array-result", {"error": "Missing 'key' parameter"}, to=sid)
+            return
+
+        ts = await get_or_load_ts(session.file_path)
+        if ts is None:
+            await sio.emit("metadata-array-result", {"error": "Failed to load tree sequence"}, to=sid)
+            return
+
+        result = await asyncio.to_thread(get_metadata_array_for_key, ts, session.file_path, key)
+
+        # Send metadata with Arrow buffer as binary
+        await sio.emit("metadata-array-result", {
+            "key": key,
+            "unique_values": result['unique_values'],
+            "sample_node_ids": result['sample_node_ids'],
+            "buffer": result['arrow_buffer']  # Binary data
+        }, to=sid)
+
+    except Exception as e:
+        print(f"❌ Metadata array fetch error: {e}")
+        await sio.emit("metadata-array-result", {"error": str(e)}, to=sid)

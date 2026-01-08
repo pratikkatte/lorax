@@ -95,7 +95,7 @@ function Deck({
 }) {
   // Get polygon color from settings
   const polygonColor = settings?.polygonColor || [145, 194, 244, 46];
-  const { tsconfig, globalBpPerUnit, populationFilter, sampleNames, sampleDetails, metadataColors, treeColors, searchTerm, searchTags } = config;
+  const { tsconfig, globalBpPerUnit, populationFilter, sampleNames, sampleDetails, metadataColors, metadataArrays, treeColors, searchTerm, searchTags } = config;
 
   // Debug log
   useEffect(() => {
@@ -210,6 +210,7 @@ function Deck({
     yzoom,
     sampleDetails,
     metadataColors,
+    metadataArrays,  // Pass PyArrow-based metadata for efficient lookup
     treeColors,
     searchTerm,
     searchTags,

@@ -19,6 +19,7 @@ export default class TreeLayer extends CompositeLayer {
     xzoom: null,
     sampleDetails: null,
     metadataColors: null,
+    metadataArrays: null,  // PyArrow-based efficient metadata: {key: {uniqueValues, indices, nodeIdToIdx}}
     treeColors: null,
     searchTerm: null,
     searchTags: [],
@@ -28,7 +29,7 @@ export default class TreeLayer extends CompositeLayer {
   };
 
   renderLayers() {
-    const { bin, viewId, hoveredTreeIndex, populationFilter, xzoom, sampleDetails, metadataColors, treeColors, searchTerm, searchTags, lineagePaths, highlightedNodes, highlightedMutationNode } = this.props;
+    const { bin, viewId, hoveredTreeIndex, populationFilter, xzoom, sampleDetails, metadataColors, metadataArrays, treeColors, searchTerm, searchTags, lineagePaths, highlightedNodes, highlightedMutationNode } = this.props;
 
 
     // when searched for a sample name.
@@ -127,8 +128,24 @@ export default class TreeLayer extends CompositeLayer {
           let color = [150, 150, 150, 100];
           let computedColor = color;
 
-          // Color by metadata key from sampleDetails
-          if (colorBy && metadataColors && metadataColors[colorBy] && sampleDetails) {
+          // Try efficient array-based lookup first (PyArrow format)
+          if (colorBy && metadataArrays && metadataArrays[colorBy] && metadataColors && metadataColors[colorBy]) {
+            const { uniqueValues, indices, nodeIdToIdx } = metadataArrays[colorBy];
+            const nodeId = d.node_id;  // node_id is available from edgeTreeBuilder.js
+            if (nodeId !== undefined && nodeIdToIdx) {
+              const idx = nodeIdToIdx.get(nodeId);
+              if (idx !== undefined) {
+                const valueIdx = indices[idx];
+                const value = uniqueValues[valueIdx];
+                if (populationFilter.enabledValues?.includes(value)) {
+                  const c = metadataColors[colorBy][value];
+                  if (c) computedColor = [...c.slice(0, 3), 200];
+                }
+              }
+            }
+          }
+          // Fallback to sampleDetails-based lookup (JSON format)
+          else if (colorBy && metadataColors && metadataColors[colorBy] && sampleDetails) {
             const val = sampleDetails[d.name]?.[colorBy];
             // If value exists and is enabled, return its color
             if (val !== undefined && val !== null && populationFilter.enabledValues?.includes(String(val))) {
@@ -151,7 +168,7 @@ export default class TreeLayer extends CompositeLayer {
         modelMatrix: null,
         viewId,
         updateTriggers: {
-          getFillColor: [populationFilter.colorBy, populationFilter.enabledValues, sampleDetails],
+          getFillColor: [populationFilter.colorBy, populationFilter.enabledValues, sampleDetails, metadataArrays],
           data: [bin.modelMatrix, bin.path],
           getPosition: [bin.modelMatrix],
         },
@@ -175,6 +192,21 @@ export default class TreeLayer extends CompositeLayer {
           getFillColor: d => {
             // Use the same assigned color logic but fully opaque/brighter
             const colorBy = populationFilter?.colorBy;
+            // Try array-based lookup first
+            if (colorBy && metadataArrays && metadataArrays[colorBy] && metadataColors && metadataColors[colorBy]) {
+              const { uniqueValues, indices, nodeIdToIdx } = metadataArrays[colorBy];
+              const nodeId = d.node_id;
+              if (nodeId !== undefined && nodeIdToIdx) {
+                const idx = nodeIdToIdx.get(nodeId);
+                if (idx !== undefined) {
+                  const valueIdx = indices[idx];
+                  const value = uniqueValues[valueIdx];
+                  const c = metadataColors[colorBy][value];
+                  if (c) return [...c.slice(0, 3), 255];
+                }
+              }
+            }
+            // Fallback to sampleDetails
             if (colorBy && metadataColors && metadataColors[colorBy] && sampleDetails) {
               const val = sampleDetails[d.name]?.[colorBy];
               if (val !== undefined && val !== null) {
@@ -186,6 +218,21 @@ export default class TreeLayer extends CompositeLayer {
           },
           getLineColor: d => {
             const colorBy = populationFilter?.colorBy;
+            // Try array-based lookup first
+            if (colorBy && metadataArrays && metadataArrays[colorBy] && metadataColors && metadataColors[colorBy]) {
+              const { uniqueValues, indices, nodeIdToIdx } = metadataArrays[colorBy];
+              const nodeId = d.node_id;
+              if (nodeId !== undefined && nodeIdToIdx) {
+                const idx = nodeIdToIdx.get(nodeId);
+                if (idx !== undefined) {
+                  const valueIdx = indices[idx];
+                  const value = uniqueValues[valueIdx];
+                  const c = metadataColors[colorBy][value];
+                  if (c) return [...c.slice(0, 3), 255];
+                }
+              }
+            }
+            // Fallback to sampleDetails
             if (colorBy && metadataColors && metadataColors[colorBy] && sampleDetails) {
               const val = sampleDetails[d.name]?.[colorBy];
               if (val !== undefined && val !== null) {
@@ -209,7 +256,7 @@ export default class TreeLayer extends CompositeLayer {
           updateTriggers: {
             data: [highlightData, bin.modelMatrix],
             getPosition: [bin.modelMatrix],
-            getFillColor: [populationFilter.colorBy, sampleDetails]
+            getFillColor: [populationFilter.colorBy, sampleDetails, metadataArrays]
           }
         })
       );
