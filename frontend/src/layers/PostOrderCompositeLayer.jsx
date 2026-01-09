@@ -112,18 +112,55 @@ export default class PostOrderCompositeLayer extends CompositeLayer {
             }
         }
 
-        // Pass 3: Assign Y coordinates (post-order guarantees children before parents)
+        // Pass 2.5: Sort children at each node for consistent layout ordering
+        for (const node of nodeMap.values()) {
+            if (node.children.length > 1) {
+                node.children.sort((a, b) => a.node_id - b.node_id);
+            }
+        }
+
+        // Pass 3: Assign Y coordinates using iterative DFS from roots
+        // This ensures tips in the same subtree get contiguous Y values (proper local genealogy)
+
+        // Find roots (nodes with parent_id === -1)
+        const roots = [];
         for (const n of postorderNodes) {
-            const node = nodeMap.get(n.node_id);
-            if (n.is_tip) {
-                node.y = tipCounter++;
-            } else if (node.children.length > 0) {
-                // Internal node: average of children Y
-                const sumY = node.children.reduce((sum, c) => sum + c.y, 0);
-                node.y = sumY / node.children.length;
+            if (n.parent_id === -1) {
+                roots.push(nodeMap.get(n.node_id));
+            }
+        }
+        roots.sort((a, b) => a.node_id - b.node_id);
+
+        // Iterative post-order DFS to assign Y in proper subtree order
+        // Uses explicit stack to avoid call stack overflow on deep trees
+        const stack = [];
+
+        // Push roots in reverse order so first root is processed first
+        for (let i = roots.length - 1; i >= 0; i--) {
+            stack.push({ node: roots[i], childIdx: 0 });
+        }
+
+        while (stack.length > 0) {
+            const frame = stack[stack.length - 1];
+            const node = frame.node;
+
+            if (node.is_tip || frame.childIdx >= node.children.length) {
+                // All children processed (or is tip) - assign Y and pop
+                if (node.is_tip) {
+                    node.y = tipCounter++;
+                } else if (node.children.length > 0) {
+                    const sumY = node.children.reduce((sum, c) => sum + c.y, 0);
+                    node.y = sumY / node.children.length;
+                } else {
+                    // Edge case: internal node with no children (shouldn't happen)
+                    node.y = tipCounter++;
+                }
+                stack.pop();
             } else {
-                // Edge case: internal node with no children (shouldn't happen)
-                node.y = tipCounter++;
+                // Push next child to process
+                const child = node.children[frame.childIdx];
+                frame.childIdx++;
+                stack.push({ node: child, childIdx: 0 });
             }
         }
 
