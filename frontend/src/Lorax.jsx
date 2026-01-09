@@ -6,7 +6,7 @@ import ViewportOverlay from "./components/ViewportOverlay";
 import { useState, useRef, useEffect } from "react";
 import PositionSlider from './components/PositionSlider'
 
-function Lorax({ backend, config, settings, setSettings, project, ucgbMode, statusMessage, setStatusMessage, setVisibleTrees, lineagePaths, highlightedNodes, deckRef, captureRef, hoveredTreeIndex, setHoveredTreeIndex, clickedGenomeInfo, setClickedGenomeInfo, highlightedMutationNode }) {
+function Lorax({ backend, config, settings, setSettings, project, ucgbMode, statusMessage, setStatusMessage, setVisibleTrees, lineagePaths, highlightedNodes, deckRef, captureRef, hoveredTreeIndex, setHoveredTreeIndex, clickedGenomeInfo, setClickedGenomeInfo, highlightedMutationNode, setGenomicValues }) {
 
   const { tsconfig } = config;
 
@@ -16,6 +16,13 @@ function Lorax({ backend, config, settings, setSettings, project, ucgbMode, stat
   const [generation, setGeneration] = useState(null);
 
   const view = useView({ config, valueRef, clickedGenomeInfo, generation, setGeneration });
+
+  // Sync view's genomicValues with parent component
+  useEffect(() => {
+    if (view.genomicValues && setGenomicValues) {
+      setGenomicValues(view.genomicValues);
+    }
+  }, [view.genomicValues, setGenomicValues]);
 
   return (
     <>

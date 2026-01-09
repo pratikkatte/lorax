@@ -1,6 +1,4 @@
-import React, { useState, useMemo, useRef, useCallback } from "react";
-
-const ITEMS_PER_PAGE = 100; // Load 100 items at a time
+import React, { useState, useRef, useCallback, useEffect } from "react";
 
 /**
  * Find the tree index that contains the given position using binary search.
@@ -25,57 +23,89 @@ function findTreeIndex(intervals, position) {
     return low;
 }
 
-export default function InfoMutations({ mutationsByPosition, sortedPositions, intervals, genomeLength, setClickedGenomeInfo, setHighlightedMutationNode }) {
-    const [searchPosition, setSearchPosition] = useState("");
-    const [displayCount, setDisplayCount] = useState(ITEMS_PER_PAGE);
+/**
+ * Format search range for display
+ */
+function formatRange(range) {
+    if (range >= 1000000) {
+        return `${(range / 1000000).toFixed(1)}M bp`;
+    } else if (range >= 1000) {
+        return `${(range / 1000).toFixed(1)}K bp`;
+    }
+    return `${range} bp`;
+}
+
+export default function InfoMutations({
+    // New props from useMutations hook
+    mutations,
+    totalCount,
+    hasMore,
+    isLoading,
+    error,
+    searchPosition: activeSearchPosition,
+    searchRange,
+    isSearchMode,
+    loadMore,
+    triggerSearch,
+    clearSearch,
+    setSearchRange,
+    // Legacy props for navigation
+    intervals,
+    genomeLength,
+    setClickedGenomeInfo,
+    setHighlightedMutationNode
+}) {
+    const [searchInput, setSearchInput] = useState("");
     const [showLoadMore, setShowLoadMore] = useState(false);
     const scrollContainerRef = useRef(null);
+    const loadMoreTimeoutRef = useRef(null);
 
-    // Filter and sort positions based on search - find positions around the searched number
-    const filteredPositions = useMemo(() => {
-        if (!searchPosition.trim()) {
-            return sortedPositions;
-        }
-
-        const searchNum = parseInt(searchPosition.trim());
-        if (isNaN(searchNum)) {
-            return sortedPositions;
-        }
-
-        // Sort by distance from search number, showing closest positions first
-        return [...sortedPositions].sort((a, b) => {
-            return Math.abs(a - searchNum) - Math.abs(b - searchNum);
-        });
-    }, [sortedPositions, searchPosition]);
-
-    // Reset display count when search changes
-    React.useEffect(() => {
-        setDisplayCount(ITEMS_PER_PAGE);
-        setShowLoadMore(false);
-    }, [searchPosition]);
-
-    // Limit displayed items
-    const displayedPositions = useMemo(() => {
-        return filteredPositions.slice(0, displayCount);
-    }, [filteredPositions, displayCount]);
-
-    const hasMore = filteredPositions.length > displayCount;
-
-    const handleLoadMore = () => {
-        setDisplayCount(prev => prev + ITEMS_PER_PAGE);
-        setShowLoadMore(false);
-    };
+    // Search range options (in bp)
+    const rangeOptions = [
+        { value: 1000, label: "1K bp" },
+        { value: 5000, label: "5K bp" },
+        { value: 10000, label: "10K bp" },
+        { value: 50000, label: "50K bp" },
+        { value: 100000, label: "100K bp" },
+    ];
 
     // Handle scroll to detect when user reaches bottom
     const handleScroll = useCallback((e) => {
         const { scrollTop, scrollHeight, clientHeight } = e.target;
         const isNearBottom = scrollTop + clientHeight >= scrollHeight - 50;
-        setShowLoadMore(isNearBottom && hasMore);
-    }, [hasMore]);
+        setShowLoadMore(isNearBottom && hasMore && !isLoading);
+    }, [hasMore, isLoading]);
 
-    // Handle click on a mutation position - navigate to the tree containing this position
-    const handlePositionClick = useCallback((position) => {
+    // Handle search submission
+    const handleSearch = useCallback((e) => {
+        e?.preventDefault();
+        const position = parseInt(searchInput.trim());
+        if (!isNaN(position) && position >= 0) {
+            triggerSearch(position, searchRange);
+        }
+    }, [searchInput, searchRange, triggerSearch]);
+
+    // Handle clear search
+    const handleClearSearch = useCallback(() => {
+        setSearchInput("");
+        clearSearch();
+    }, [clearSearch]);
+
+    // Handle search range change
+    const handleRangeChange = useCallback((e) => {
+        const newRange = parseInt(e.target.value);
+        setSearchRange(newRange);
+        // Re-trigger search if in search mode
+        if (isSearchMode && activeSearchPosition !== null) {
+            triggerSearch(activeSearchPosition, newRange);
+        }
+    }, [setSearchRange, isSearchMode, activeSearchPosition, triggerSearch]);
+
+    // Handle click on a mutation - navigate to the tree containing this position
+    const handleMutationClick = useCallback((mutation) => {
         if (!intervals || !setClickedGenomeInfo) return;
+
+        const position = mutation.position;
 
         // Find the tree index for this position
         const treeIndex = findTreeIndex(intervals, position);
@@ -90,39 +120,61 @@ export default function InfoMutations({ mutationsByPosition, sortedPositions, in
         // Trigger the zoom to this tree
         setClickedGenomeInfo({ s: start, e: end });
 
-        // Set the highlighted mutation node (using node ID from mutation data)
-        if (setHighlightedMutationNode) {
-            const mutationData = mutationsByPosition[position];
-            // If mutation data is an object with node, use it; otherwise use node ID string
-            const nodeId = typeof mutationData === 'object' && mutationData.node !== undefined
-                ? String(mutationData.node)
-                : null;
-
-            setHighlightedMutationNode(nodeId);
+        // Set the highlighted mutation node
+        if (setHighlightedMutationNode && mutation.node_id !== undefined) {
+            setHighlightedMutationNode(String(mutation.node_id));
         }
-    }, [intervals, genomeLength, setClickedGenomeInfo, setHighlightedMutationNode, mutationsByPosition]);
+    }, [intervals, genomeLength, setClickedGenomeInfo, setHighlightedMutationNode]);
 
-    if (!sortedPositions || sortedPositions.length === 0) {
+    // Auto-load more when scrolled to bottom
+    useEffect(() => {
+        if (showLoadMore && hasMore && !isLoading) {
+            // Debounce load more to avoid rapid firing
+            if (loadMoreTimeoutRef.current) {
+                clearTimeout(loadMoreTimeoutRef.current);
+            }
+            loadMoreTimeoutRef.current = setTimeout(() => {
+                loadMore();
+            }, 100);
+        }
+        return () => {
+            if (loadMoreTimeoutRef.current) {
+                clearTimeout(loadMoreTimeoutRef.current);
+            }
+        };
+    }, [showLoadMore, hasMore, isLoading, loadMore]);
+
+    // Show loading state when no mutations and loading
+    if (isLoading && (!mutations || mutations.length === 0)) {
         return (
             <div className="text-center py-6">
-                <div className="text-gray-400 text-base">
-                    No mutations data available
-                </div>
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500 mx-auto mb-2"></div>
+                <div className="text-gray-400 text-sm">Loading mutations...</div>
+            </div>
+        );
+    }
+
+    // Show error state
+    if (error) {
+        return (
+            <div className="text-center py-6">
+                <div className="text-red-400 text-sm mb-2">Error loading mutations</div>
+                <div className="text-gray-400 text-xs">{error}</div>
             </div>
         );
     }
 
     return (
         <>
-            {/* Search input */}
-            <div className="mb-4">
-                <div className="relative">
+            {/* Search form */}
+            <form onSubmit={handleSearch} className="mb-4">
+                <div className="relative mb-2">
                     <input
                         type="text"
                         placeholder="Search by position..."
-                        value={searchPosition}
-                        onChange={(e) => setSearchPosition(e.target.value)}
-                        className="w-full px-4 py-2.5 pl-10 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
+                        value={searchInput}
+                        onChange={(e) => setSearchInput(e.target.value)}
+                        className="w-full px-4 py-2.5 pl-10 pr-20 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
                     />
                     <svg
                         xmlns="http://www.w3.org/2000/svg"
@@ -138,59 +190,124 @@ export default function InfoMutations({ mutationsByPosition, sortedPositions, in
                             d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
                         />
                     </svg>
-                    {searchPosition && (
+                    <button
+                        type="submit"
+                        disabled={!searchInput.trim()}
+                        className="absolute right-2 top-1/2 transform -translate-y-1/2 px-3 py-1 bg-emerald-500 text-white text-xs rounded hover:bg-emerald-600 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors"
+                    >
+                        Search
+                    </button>
+                </div>
+
+                {/* Search range selector */}
+                <div className="flex items-center gap-2 text-sm">
+                    <label className="text-slate-500">Range:</label>
+                    <select
+                        value={searchRange}
+                        onChange={handleRangeChange}
+                        className="px-2 py-1 border border-slate-200 rounded text-slate-700 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    >
+                        {rangeOptions.map(option => (
+                            <option key={option.value} value={option.value}>
+                                {option.label}
+                            </option>
+                        ))}
+                    </select>
+                    {isSearchMode && (
                         <button
-                            onClick={() => setSearchPosition("")}
-                            className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                            type="button"
+                            onClick={handleClearSearch}
+                            className="ml-auto text-slate-400 hover:text-slate-600 text-xs"
                         >
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                            </svg>
+                            Clear search
                         </button>
                     )}
                 </div>
+            </form>
+
+            {/* Search mode indicator */}
+            {isSearchMode && activeSearchPosition !== null && (
+                <div className="mb-3 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-lg text-sm">
+                    <span className="text-emerald-700">
+                        Showing mutations around position <strong>{activeSearchPosition.toLocaleString()}</strong>
+                    </span>
+                    <span className="text-emerald-500 ml-1">
+                        ({formatRange(searchRange)} range)
+                    </span>
+                </div>
+            )}
+
+            {/* Stats bar */}
+            <div className="mb-3 text-sm text-slate-500">
+                {totalCount > 0 ? (
+                    <span>
+                        Showing {mutations.length} of {totalCount.toLocaleString()} mutation{totalCount !== 1 ? 's' : ''}
+                        {isSearchMode ? ' in search range' : ' in current view'}
+                    </span>
+                ) : (
+                    <span>No mutations in {isSearchMode ? 'search range' : 'current view'}</span>
+                )}
             </div>
 
-            {/* Mutations list by position */}
+            {/* Mutations list */}
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
                 <div
                     ref={scrollContainerRef}
                     onScroll={handleScroll}
                     className="max-h-[500px] overflow-y-auto custom-scrollbar"
                 >
-                    {displayedPositions.map((position) => {
-                        const mutation = mutationsByPosition[position];
-
-                        return (
-                            <div
-                                key={position}
-                                className="border-b border-slate-100 last:border-0 py-2 cursor-pointer hover:bg-emerald-50 transition-colors rounded px-2 -mx-2"
-                                onClick={() => handlePositionClick(position)}
-                            >
-                                <div className="flex items-center justify-between text-sm">
+                    {mutations.map((mutation, index) => (
+                        <div
+                            key={`${mutation.position}-${mutation.node_id}-${index}`}
+                            className="border-b border-slate-100 last:border-0 py-2 cursor-pointer hover:bg-emerald-50 transition-colors rounded px-2 -mx-2"
+                            onClick={() => handleMutationClick(mutation)}
+                        >
+                            <div className="flex items-center justify-between text-sm">
+                                <div className="flex flex-col">
                                     <span className="font-semibold text-emerald-700 hover:text-emerald-900">
-                                        Position {position.toLocaleString()}
+                                        Position {mutation.position.toLocaleString()}
                                     </span>
+                                    {isSearchMode && mutation.distance !== undefined && mutation.distance > 0 && (
+                                        <span className="text-xs text-slate-400">
+                                            {mutation.distance.toLocaleString()} bp from search
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="flex flex-col items-end">
                                     <span className="font-mono text-slate-800 bg-slate-100 px-2 py-0.5 rounded">
-                                        {typeof mutation === 'object' ? mutation.mutation : mutation}
+                                        {mutation.mutation}
+                                    </span>
+                                    <span className="text-xs text-slate-400 mt-0.5">
+                                        Node {mutation.node_id}
                                     </span>
                                 </div>
                             </div>
-                        );
-                    })}
-                    {displayedPositions.length === 0 && (
+                        </div>
+                    ))}
+
+                    {mutations.length === 0 && !isLoading && (
                         <div className="text-center py-4 text-gray-400 text-sm">
-                            No mutations match position "{searchPosition}"
+                            {isSearchMode
+                                ? `No mutations found near position ${activeSearchPosition?.toLocaleString()}`
+                                : 'No mutations in current view. Pan or zoom to see mutations.'}
                         </div>
                     )}
 
-                    {/* Show Load more only when scrolled to bottom */}
-                    {showLoadMore && (
+                    {/* Loading indicator for pagination */}
+                    {isLoading && mutations.length > 0 && (
+                        <div className="flex items-center justify-center py-3 border-t border-slate-100">
+                            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-emerald-500 mr-2"></div>
+                            <span className="text-sm text-slate-500">Loading more...</span>
+                        </div>
+                    )}
+
+                    {/* Load more button (shown when scrolled to bottom) */}
+                    {showLoadMore && !isLoading && (
                         <div className="flex items-center justify-between py-3 border-t border-slate-100 text-sm text-slate-500 sticky bottom-0 bg-white">
-                            <span>Showing {displayedPositions.length} of {filteredPositions.length}</span>
+                            <span>Showing {mutations.length} of {totalCount.toLocaleString()}</span>
                             <button
-                                onClick={handleLoadMore}
-                                className="text-blue-500 hover:text-blue-600 font-medium transition-colors"
+                                onClick={loadMore}
+                                className="text-emerald-500 hover:text-emerald-600 font-medium transition-colors"
                             >
                                 Load more
                             </button>

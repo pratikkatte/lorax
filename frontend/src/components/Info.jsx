@@ -3,10 +3,11 @@ import websocketEvents from '../webworkers/websocketEvents';
 import InfoMetadata from "./info/InfoMetadata";
 import InfoFilter from "./info/InfoFilter";
 import InfoMutations from "./info/InfoMutations";
+import useMutations from "../hooks/useMutations";
 
-const Info = ({ backend, gettingDetails, setGettingDetails, setShowInfo, config, setConfig, selectedFileName, setSelectedFileName, visibleTrees, settings, setSettings, hoveredTreeIndex, setHoveredTreeIndex, setClickedGenomeInfo, setHighlightedMutationNode }) => {
+const Info = ({ backend, gettingDetails, setGettingDetails, setShowInfo, config, setConfig, selectedFileName, setSelectedFileName, visibleTrees, settings, setSettings, hoveredTreeIndex, setHoveredTreeIndex, setClickedGenomeInfo, setHighlightedMutationNode, genomicValues }) => {
 
-  const { socketRef, isConnected } = backend;
+  const { socketRef, isConnected, queryMutationsWindow, searchMutations } = backend;
 
   const { tsconfig, populationFilter, sampleNames, setPopulationFilter, sampleDetails, metadataColors, metadataKeys, loadedMetadataKeys, metadataLoading, fetchMetadataForKey, metadataArrays, loadedMetadataArrayKeys, fetchMetadataArrayForKey, treeColors, setTreeColors, searchTerm, setSearchTerm, searchTags, setSearchTags } = config;
 
@@ -18,6 +19,13 @@ const Info = ({ backend, gettingDetails, setGettingDetails, setShowInfo, config,
   const [selectedColorBy, setSelectedColorBy] = useState(null);
   const [enabledValues, setEnabledValues] = useState(new Set());
 
+  // Use the mutations hook for dynamic mutation fetching
+  const mutationsHook = useMutations({
+    genomicValues,
+    queryMutationsWindow,
+    searchMutations,
+    isConnected
+  });
 
   // Build coloryby options dynamically from metadataKeys
   useEffect(() => {
@@ -80,16 +88,6 @@ const Info = ({ backend, gettingDetails, setGettingDetails, setShowInfo, config,
       enabledValues: Array.from(enabledValues || []),
     }));
   }, [selectedColorBy, enabledValues]);
-
-  // Mutations are now {position: mutation} directly from backend
-  const mutationsByPosition = tsconfig?.mutations || {};
-
-  // Pre-compute sorted positions
-  const sortedMutationPositions = useMemo(() => {
-    return Object.keys(mutationsByPosition)
-      .map(p => parseInt(p))
-      .sort((a, b) => a - b);
-  }, [mutationsByPosition]);
 
   const safeParse = (v) => {
     if (typeof v !== "string") return v;
@@ -181,8 +179,20 @@ const Info = ({ backend, gettingDetails, setGettingDetails, setShowInfo, config,
         )}
         {activeTab === 'mutations' && (
           <InfoMutations
-            mutationsByPosition={mutationsByPosition}
-            sortedPositions={sortedMutationPositions}
+            // Props from useMutations hook
+            mutations={mutationsHook.mutations}
+            totalCount={mutationsHook.totalCount}
+            hasMore={mutationsHook.hasMore}
+            isLoading={mutationsHook.isLoading}
+            error={mutationsHook.error}
+            searchPosition={mutationsHook.searchPosition}
+            searchRange={mutationsHook.searchRange}
+            isSearchMode={mutationsHook.isSearchMode}
+            loadMore={mutationsHook.loadMore}
+            triggerSearch={mutationsHook.triggerSearch}
+            clearSearch={mutationsHook.clearSearch}
+            setSearchRange={mutationsHook.setSearchRange}
+            // Navigation props
             intervals={tsconfig?.intervals}
             genomeLength={tsconfig?.genome_length}
             setClickedGenomeInfo={setClickedGenomeInfo}

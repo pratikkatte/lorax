@@ -583,6 +583,162 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
     return !!socketRef.current?.connected;
   }, []);
 
+  /**
+   * Query mutations within a genomic window.
+   * Returns PyArrow data with mutations in the specified range.
+   * @param {number} start - Start genomic position (bp)
+   * @param {number} end - End genomic position (bp)
+   * @param {number} offset - Pagination offset (default 0)
+   * @param {number} limit - Maximum mutations to return (default 1000)
+   */
+  const queryMutationsWindow = useCallback((start, end, offset = 0, limit = 1000) => {
+    return new Promise((resolve, reject) => {
+      if (!socketRef.current) {
+        reject(new Error("Socket not available"));
+        return;
+      }
+
+      const handleResult = (message) => {
+        socketRef.current.off("mutations-window-result", handleResult);
+        if (message.error) {
+          reject(new Error(message.error));
+          return;
+        }
+
+        try {
+          // Parse PyArrow buffer
+          const buffer = new Uint8Array(message.buffer);
+          const table = arrow.tableFromIPC(buffer);
+
+          const numRows = table.numRows;
+          let mutations = [];
+
+          if (numRows > 0) {
+            const positionCol = table.getChild('position');
+            const mutationCol = table.getChild('mutation');
+            const nodeIdCol = table.getChild('node_id');
+            const siteIdCol = table.getChild('site_id');
+            const ancestralStateCol = table.getChild('ancestral_state');
+            const derivedStateCol = table.getChild('derived_state');
+
+            for (let i = 0; i < numRows; i++) {
+              mutations.push({
+                position: Number(positionCol.get(i)),
+                mutation: mutationCol.get(i),
+                node_id: nodeIdCol.get(i),
+                site_id: siteIdCol.get(i),
+                ancestral_state: ancestralStateCol.get(i),
+                derived_state: derivedStateCol.get(i),
+              });
+            }
+          }
+
+          resolve({
+            mutations,
+            total_count: message.total_count,
+            has_more: message.has_more,
+            start: message.start,
+            end: message.end,
+            offset: message.offset,
+            limit: message.limit
+          });
+        } catch (parseError) {
+          console.error("Error parsing mutations PyArrow buffer:", parseError);
+          reject(parseError);
+        }
+      };
+
+      socketRef.current.once("mutations-window-result", handleResult);
+      socketRef.current.emit("query_mutations_window", {
+        start,
+        end,
+        offset,
+        limit,
+        lorax_sid: sidRef.current
+      });
+    });
+  }, []);
+
+  /**
+   * Search mutations by position with configurable range.
+   * Returns mutations sorted by distance from the searched position.
+   * @param {number} position - Center position to search around (bp)
+   * @param {number} rangeBp - Total range to search (default 5000)
+   * @param {number} offset - Pagination offset (default 0)
+   * @param {number} limit - Maximum mutations to return (default 1000)
+   */
+  const searchMutations = useCallback((position, rangeBp = 5000, offset = 0, limit = 1000) => {
+    return new Promise((resolve, reject) => {
+      if (!socketRef.current) {
+        reject(new Error("Socket not available"));
+        return;
+      }
+
+      const handleResult = (message) => {
+        socketRef.current.off("mutations-search-result", handleResult);
+        if (message.error) {
+          reject(new Error(message.error));
+          return;
+        }
+
+        try {
+          // Parse PyArrow buffer
+          const buffer = new Uint8Array(message.buffer);
+          const table = arrow.tableFromIPC(buffer);
+
+          const numRows = table.numRows;
+          let mutations = [];
+
+          if (numRows > 0) {
+            const positionCol = table.getChild('position');
+            const mutationCol = table.getChild('mutation');
+            const nodeIdCol = table.getChild('node_id');
+            const siteIdCol = table.getChild('site_id');
+            const ancestralStateCol = table.getChild('ancestral_state');
+            const derivedStateCol = table.getChild('derived_state');
+            const distanceCol = table.getChild('distance');
+
+            for (let i = 0; i < numRows; i++) {
+              mutations.push({
+                position: Number(positionCol.get(i)),
+                mutation: mutationCol.get(i),
+                node_id: nodeIdCol.get(i),
+                site_id: siteIdCol.get(i),
+                ancestral_state: ancestralStateCol.get(i),
+                derived_state: derivedStateCol.get(i),
+                distance: Number(distanceCol.get(i)),
+              });
+            }
+          }
+
+          resolve({
+            mutations,
+            total_count: message.total_count,
+            has_more: message.has_more,
+            search_start: message.search_start,
+            search_end: message.search_end,
+            position: message.position,
+            range_bp: message.range_bp,
+            offset: message.offset,
+            limit: message.limit
+          });
+        } catch (parseError) {
+          console.error("Error parsing mutations search PyArrow buffer:", parseError);
+          reject(parseError);
+        }
+      };
+
+      socketRef.current.once("mutations-search-result", handleResult);
+      socketRef.current.emit("search_mutations", {
+        position,
+        range_bp: rangeBp,
+        offset,
+        limit,
+        lorax_sid: sidRef.current
+      });
+    });
+  }, []);
+
   return useMemo(
     () => ({
       statusMessage,
@@ -603,7 +759,9 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
       getTreeData,
       getTreeFromEdges,
       search,
-      loraxSid
+      loraxSid,
+      queryMutationsWindow,
+      searchMutations
     }),
     [
       connect,
@@ -621,7 +779,9 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
       getTreeFromEdges,
       search,
       queryPostorderLayout,
-      loraxSid
+      loraxSid,
+      queryMutationsWindow,
+      searchMutations
     ]
   );
 }

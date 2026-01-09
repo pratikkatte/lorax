@@ -38,7 +38,8 @@ from lorax.handlers import (
     handle_upload, handle_edges_query, get_projects, cache_status,
     handle_details, get_or_load_config,
     get_or_load_ts, get_metadata_for_key, search_samples_by_metadata,
-    get_metadata_array_for_key
+    get_metadata_array_for_key,
+    get_mutations_in_window, search_mutations_by_position, mutations_to_arrow_buffer
 )
 from lorax.handlers_postorder import handle_postorder_query
 from lorax.constants import (
@@ -626,3 +627,107 @@ async def fetch_metadata_array(sid, data):
     except Exception as e:
         print(f"❌ Metadata array fetch error: {e}")
         await sio.emit("metadata-array-result", {"error": str(e)}, to=sid)
+
+
+@sio.event
+async def query_mutations_window(sid, data):
+    """Socket event to fetch mutations within a genomic window.
+
+    Returns PyArrow IPC binary data with mutations in the specified range.
+    Supports pagination via offset and limit parameters.
+    """
+    try:
+        lorax_sid = data.get("lorax_sid")
+        session = await require_session(lorax_sid, sid)
+        if not session:
+            return
+
+        if not session.file_path:
+            print(f"⚠️ No file loaded for session {lorax_sid}")
+            await sio.emit("error", {"code": ERROR_NO_FILE_LOADED, "message": "No file loaded. Please load a file first."}, to=sid)
+            return
+
+        start = data.get("start", 0)
+        end = data.get("end", 0)
+        offset = data.get("offset", 0)
+        limit = data.get("limit", 1000)
+
+        ts = await get_or_load_ts(session.file_path)
+        if ts is None:
+            await sio.emit("mutations-window-result", {"error": "Failed to load tree sequence"}, to=sid)
+            return
+
+        # Get mutations in the window
+        result = await asyncio.to_thread(get_mutations_in_window, ts, start, end, offset, limit)
+
+        # Convert to PyArrow buffer
+        buffer = await asyncio.to_thread(mutations_to_arrow_buffer, result)
+
+        await sio.emit("mutations-window-result", {
+            "buffer": buffer,
+            "total_count": result['total_count'],
+            "has_more": result['has_more'],
+            "start": start,
+            "end": end,
+            "offset": offset,
+            "limit": limit
+        }, to=sid)
+
+    except Exception as e:
+        print(f"❌ Mutations window query error: {e}")
+        await sio.emit("mutations-window-result", {"error": str(e)}, to=sid)
+
+
+@sio.event
+async def search_mutations(sid, data):
+    """Socket event to search mutations by position with configurable range.
+
+    Returns PyArrow IPC binary data with mutations sorted by distance from position.
+    Supports pagination via offset and limit parameters.
+    """
+    try:
+        lorax_sid = data.get("lorax_sid")
+        session = await require_session(lorax_sid, sid)
+        if not session:
+            return
+
+        if not session.file_path:
+            print(f"⚠️ No file loaded for session {lorax_sid}")
+            await sio.emit("error", {"code": ERROR_NO_FILE_LOADED, "message": "No file loaded. Please load a file first."}, to=sid)
+            return
+
+        position = data.get("position")
+        if position is None:
+            await sio.emit("mutations-search-result", {"error": "Missing 'position' parameter"}, to=sid)
+            return
+
+        range_bp = data.get("range_bp", 5000)
+        offset = data.get("offset", 0)
+        limit = data.get("limit", 1000)
+
+        ts = await get_or_load_ts(session.file_path)
+        if ts is None:
+            await sio.emit("mutations-search-result", {"error": "Failed to load tree sequence"}, to=sid)
+            return
+
+        # Search mutations around the position
+        result = await asyncio.to_thread(search_mutations_by_position, ts, position, range_bp, offset, limit)
+
+        # Convert to PyArrow buffer
+        buffer = await asyncio.to_thread(mutations_to_arrow_buffer, result)
+
+        await sio.emit("mutations-search-result", {
+            "buffer": buffer,
+            "total_count": result['total_count'],
+            "has_more": result['has_more'],
+            "search_start": result['search_start'],
+            "search_end": result['search_end'],
+            "position": position,
+            "range_bp": range_bp,
+            "offset": offset,
+            "limit": limit
+        }, to=sid)
+
+    except Exception as e:
+        print(f"❌ Mutations search error: {e}")
+        await sio.emit("mutations-search-result", {"error": str(e)}, to=sid)
