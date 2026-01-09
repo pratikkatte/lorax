@@ -280,6 +280,9 @@ def get_metadata_schema(
     Extract metadata keys and unique values only, without sample associations.
     Much lighter than flatten_all_metadata_by_sample for large tree sequences.
 
+    Also includes "sample" as the first key, where each sample's name/ID is its
+    own unique value (for coloring samples individually).
+
     Parameters
     ----------
     ts : tskit.TreeSequence
@@ -297,9 +300,19 @@ def get_metadata_schema(
         }
     """
     keys_values = defaultdict(set)
+    sample_names = set()  # Collect sample names for "sample" key
 
     for node_id in ts.samples():
         node = ts.node(node_id)
+
+        # Collect sample name (from node metadata or fallback to node ID)
+        node_meta = node.metadata or {}
+        try:
+            node_meta = ensure_json_dict(node_meta)
+        except (TypeError, json.JSONDecodeError):
+            node_meta = {}
+        sample_name = node_meta.get(sample_name_key, f"{node_id}")
+        sample_names.add(str(sample_name))
 
         for source in sources:
             if source == "individual":
@@ -310,8 +323,7 @@ def get_metadata_schema(
                 meta = ensure_json_dict(meta)
 
             elif source == "node":
-                meta = node.metadata or {}
-                meta = ensure_json_dict(meta)
+                meta = node_meta  # Reuse already parsed node metadata
 
             elif source == "population":
                 if node.population == tskit.NULL:
@@ -333,9 +345,13 @@ def get_metadata_schema(
                 if value is not None:
                     keys_values[key].add(str(value))
 
+    # Prepend "sample" to keys - this makes it the default colorBy option
     return {
-        "metadata_keys": list(keys_values.keys()),
-        "metadata_values": {k: sorted(list(v)) for k, v in keys_values.items()}
+        "metadata_keys": ["sample"] + list(keys_values.keys()),
+        "metadata_values": {
+            "sample": sorted(list(sample_names)),
+            **{k: sorted(list(v)) for k, v in keys_values.items()}
+        }
     }
 
 
@@ -372,6 +388,21 @@ def get_metadata_for_key(
     if cached is not None:
         print(f"✅ Using cached metadata for key: {key}")
         return cached
+
+    # Special handling for "sample" key - each sample's value is its own name
+    if key == "sample":
+        result = {}
+        for node_id in ts.samples():
+            node = ts.node(node_id)
+            node_meta = node.metadata or {}
+            try:
+                node_meta = ensure_json_dict(node_meta)
+            except (TypeError, json.JSONDecodeError):
+                node_meta = {}
+            sample_name = str(node_meta.get(sample_name_key, f"{node_id}"))
+            result[sample_name] = sample_name
+        _metadata_cache.set(cache_key, result)
+        return result
 
     result = {}
 
@@ -587,6 +618,43 @@ def get_metadata_array_for_key(
 
     sample_ids = list(ts.samples())
     n_samples = len(sample_ids)
+
+    # Special handling for "sample" key - each sample's name is its own unique value
+    if key == "sample":
+        unique_values = []
+        value_to_idx = {}
+        indices = np.zeros(n_samples, dtype=np.uint16)
+
+        for i, node_id in enumerate(sample_ids):
+            node = ts.node(node_id)
+            node_meta = node.metadata or {}
+            try:
+                node_meta = ensure_json_dict(node_meta)
+            except (TypeError, json.JSONDecodeError):
+                node_meta = {}
+            sample_name = str(node_meta.get(sample_name_key, f"{node_id}"))
+
+            if sample_name not in value_to_idx:
+                value_to_idx[sample_name] = len(unique_values)
+                unique_values.append(sample_name)
+
+            indices[i] = value_to_idx[sample_name]
+
+        # Serialize to Arrow IPC format
+        table = pa.table({'idx': pa.array(indices, type=pa.uint16())})
+        sink = pa.BufferOutputStream()
+        writer = pa.ipc.new_stream(sink, table.schema)
+        writer.write_table(table)
+        writer.close()
+
+        result = {
+            'unique_values': unique_values,
+            'sample_node_ids': [int(x) for x in sample_ids],
+            'arrow_buffer': sink.getvalue().to_pybytes()
+        }
+        _metadata_cache.set(cache_key, result)
+        print(f"✅ Built sample metadata array ({n_samples} samples, {len(unique_values)} unique values)")
+        return result
 
     unique_values = []
     value_to_idx = {}
