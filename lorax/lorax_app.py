@@ -36,7 +36,7 @@ from fastapi.responses import JSONResponse
 
 from lorax.handlers import (
     handle_upload, handle_edges_query, get_projects, cache_status,
-    handle_details, get_or_load_config, handle_layout_query,
+    handle_details, get_or_load_config,
     get_or_load_ts, get_metadata_for_key, search_samples_by_metadata,
     get_metadata_array_for_key
 )
@@ -480,43 +480,6 @@ async def query_edges(sid, data):
     except Exception as e:
         print(f"❌ Edges query error: {e}")
         await sio.emit("edges-result", {"error": str(e)}, to=sid)
-
-
-@sio.event
-async def process_layout(sid, data):
-    """Socket event to extract edges for trees using tskit tables.
-
-    Returns PyArrow IPC binary data for efficient transfer.
-    Frontend computes layout from raw edge data.
-    """
-    try:
-        lorax_sid = data.get("lorax_sid")
-        session = await require_session(lorax_sid, sid)
-        if not session:
-            return
-
-        if not session.file_path:
-            print(f"⚠️ No file loaded for session {lorax_sid}")
-            await sio.emit("error", {"code": ERROR_NO_FILE_LOADED, "message": "No file loaded. Please load a file first."}, to=sid)
-            return
-
-        display_array = data.get("displayArray", [])
-
-        # handle_layout_query now returns dict with PyArrow buffer
-        result = await handle_layout_query(session.file_path, display_array)
-
-        if "error" in result:
-            await sio.emit("layout-result", {"error": result["error"]}, to=sid)
-        else:
-            # Send binary buffer with node_ids and node_times
-            await sio.emit("layout-result", {
-                "buffer": result["buffer"],  # Binary PyArrow IPC data
-                "node_ids": result["node_ids"],
-                "node_times": result["node_times"]
-            }, to=sid)
-    except Exception as e:
-        print(f"❌ Layout query error: {e}")
-        await sio.emit("layout-result", {"error": str(e)}, to=sid)
 
 
 @sio.event

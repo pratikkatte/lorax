@@ -42,11 +42,10 @@ docker run -it -p 80:80 lorax
 2. Backend loads tree sequence via `tskit`/`tszip` into an LRU cache (`handlers.py`)
 3. Frontend connects via Socket.IO and requests data through events:
    - `load_file`: Load a tree sequence file
-   - `query_edges`: Fetch edges for genomic interval
-   - `process_layout`: Compute tree layout on backend
+   - `process_postorder_layout`: Get post-order traversal arrays for visible trees
    - `details`: Get node/tree metadata
-4. Frontend web worker (`localBackendWorker.js`) processes tree data and caches edges
-5. Deck.gl renders trees using custom layers
+4. Frontend receives post-order node arrays via PyArrow, reconstructs tree layout using stack-based algorithm
+5. Deck.gl renders trees using PostOrderCompositeLayer (PathLayer + ScatterplotLayer)
 
 ### Frontend Structure
 ```
@@ -63,8 +62,8 @@ frontend/src/
 │   ├── useConfig.jsx    # Tree config state
 │   └── useAnimatedBins.jsx  # Smooth tree transitions
 ├── layers/
-│   ├── TreeLayer.jsx    # Main tree visualization (PathLayer + ScatterplotLayer)
-│   ├── EdgeCompositeLayer.jsx  # Edge rendering with backend layout
+│   ├── TreeLayer.jsx    # Sample node visualization
+│   ├── PostOrderCompositeLayer.jsx  # Tree rendering via post-order traversal
 │   ├── GenomeGridLayer.jsx     # Genomic coordinate axis
 │   └── TimeGridLayer.jsx       # Time/coalescent axis
 ├── webworkers/
@@ -78,10 +77,11 @@ frontend/src/
 ### Backend Structure
 ```
 lorax/
-├── lorax_app.py    # FastAPI + Socket.IO server, session management
-├── handlers.py     # Tree loading, LRU cache, layout computation, query handlers
-├── manager.py      # WebSocket client management (unused in current Socket.IO setup)
-├── constants.py    # Session and socket configuration constants
+├── lorax_app.py         # FastAPI + Socket.IO server, session management
+├── handlers.py          # Tree loading, LRU cache, config, metadata handlers
+├── handlers_postorder.py # Post-order traversal handler for tree rendering
+├── manager.py           # WebSocket client management (unused in current Socket.IO setup)
+├── constants.py         # Session and socket configuration constants
 ├── viz/
 │   └── trees_to_taxonium.py  # CSV/Newick tree processing
 └── utils/

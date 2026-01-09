@@ -12,11 +12,6 @@ import {
   findClosestBinIndices,
   new_complete_experiment_map
 } from "./modules/binningUtils.js";
-import {
-  buildTreeFromEdges,
-  filterActiveEdges,
-  processTreeFromEdges
-} from "./modules/edgeTreeBuilder.js";
 
 console.log("[Worker] Initialized");
 
@@ -36,10 +31,6 @@ let lastStart = null;
 let lastEnd = null;
 let globalLocalBins = new Map();
 const pathsData = new Map();
-
-// Edge data cache - stores edges for current viewport
-let cachedEdgesData = null;
-let cachedEdgesRange = { start: null, end: null };
 
 // Maximum number of trees to keep in cache to prevent memory bloat
 const MAX_CACHED_TREES = 30;
@@ -294,89 +285,6 @@ onmessage = async (event) => {
       });
       postMessage({ type: "gettree", data: result });
     }
-
-    // Store edges received from backend
-    if (data.type === "store-edges") {
-      const { edges, start, end } = data.data;
-      cachedEdgesData = edges;
-      cachedEdgesRange = { start, end };
-      console.log(`[Worker] Stored edges for range [${start}, ${end}]`);
-      postMessage({ type: "store-edges-done", data: { start, end } });
-    }
-
-    // Build tree from cached edges for a specific global index
-    // Note: This code path is legacy - new flow uses EdgeCompositeLayer with edgeTreeBuilder
-    if (data.type === "get-tree-from-edges") {
-      const { global_index, precision, showingAllTrees, node_times: providedNodeTimes } = data;
-
-      // node_times can come from data (new flow) or tsconfig (legacy)
-      const nodeTimes = providedNodeTimes || tsconfig?.node_times;
-
-      if (!cachedEdgesData || !nodeTimes) {
-        console.warn(`[Worker] Cannot build tree ${global_index}: missing edges or node_times`);
-        sendStatusMessage({
-          status: "error",
-          message: "Tree data unavailable. Try reloading or selecting a smaller region."
-        });
-        postMessage({ type: "get-tree-from-edges", data: null, global_index });
-        return;
-      }
-
-      try {
-        // Check if tree is already processed
-        if (pathsData.has(global_index)) {
-          const processedTree = pathsData.get(global_index);
-          const segments = [];
-          if (processedTree.roots) {
-            processedTree.roots.forEach(root => {
-              extractSquarePaths(root, segments);
-            });
-          } else if (processedTree.root) {
-            extractSquarePaths(processedTree.root, segments);
-          }
-          const dedupedSegments = dedupeSegments(segments, {
-            precision: precision || 9,
-            showingAllTrees: showingAllTrees || false
-          });
-          postMessage({ type: "get-tree-from-edges", data: dedupedSegments, global_index });
-          return;
-        }
-
-        // Build tree from edges
-        // Pass nodeTimes in tsconfig for buildTreeFromEdges compatibility
-        const configWithNodeTimes = { ...tsconfig, node_times: nodeTimes };
-        const processedTree = buildTreeFromEdges(global_index, cachedEdgesData, configWithNodeTimes);
-
-        if (processedTree) {
-          pathsData.set(global_index, processedTree);
-
-          const segments = [];
-          if (processedTree.roots) {
-            processedTree.roots.forEach(root => {
-              extractSquarePaths(root, segments);
-            });
-          } else if (processedTree.root) {
-            extractSquarePaths(processedTree.root, segments);
-          }
-
-          const dedupedSegments = dedupeSegments(segments, {
-            precision: precision || 9,
-            showingAllTrees: showingAllTrees || false
-          });
-          postMessage({ type: "get-tree-from-edges", data: dedupedSegments, global_index });
-        } else {
-          postMessage({ type: "get-tree-from-edges", data: null, global_index });
-        }
-      } catch (error) {
-        console.error(`[Worker] Failed to build tree ${global_index}`, error);
-        sendStatusMessage({
-          status: "error",
-          message: "Failed to render tree data. Try zooming in or reloading."
-        });
-        postMessage({ type: "get-tree-from-edges", data: null, global_index });
-      }
-    }
-
 
     if (data.type === "search") {
       const { term, terms, id, options } = data;

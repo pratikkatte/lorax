@@ -463,74 +463,6 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
     });
   }, []);
 
-  const queryLayout = useCallback((displayArray) => {
-    return new Promise((resolve, reject) => {
-      if (!socketRef.current) {
-        reject(new Error("Socket not available"));
-        return;
-      }
-
-      const handleResult = (message) => {
-        socketRef.current.off("layout-result", handleResult);
-        if (message.error) {
-          reject(new Error(message.error));
-          return;
-        }
-
-        try {
-          // Parse PyArrow buffer
-          const buffer = new Uint8Array(message.buffer);
-          const table = arrow.tableFromIPC(buffer);
-
-          // Extract columns as arrays - handle empty tables gracefully
-          const numRows = table.numRows;
-          let left, right, parent, child;
-
-          if (numRows === 0) {
-            // Empty table - return empty arrays
-            left = [];
-            right = [];
-            parent = [];
-            child = [];
-          } else {
-            // Use toArray() for non-empty columns
-            const leftCol = table.getChild('left');
-            const rightCol = table.getChild('right');
-            const parentCol = table.getChild('parent');
-            const childCol = table.getChild('child');
-
-            left = leftCol ? Array.from(leftCol.toArray()) : [];
-            right = rightCol ? Array.from(rightCol.toArray()) : [];
-            parent = parentCol ? Array.from(parentCol.toArray()) : [];
-            child = childCol ? Array.from(childCol.toArray()) : [];
-          }
-
-          // Build node_times lookup from parallel arrays
-          const nodeIds = message.node_ids || [];
-          const nodeTimes = message.node_times || [];
-          const nodeTimesMap = {};
-          for (let i = 0; i < nodeIds.length; i++) {
-            nodeTimesMap[nodeIds[i]] = nodeTimes[i];
-          }
-
-          resolve({
-            left,
-            right,
-            parent,
-            child,
-            node_times: nodeTimesMap
-          });
-        } catch (parseError) {
-          console.error("Error parsing PyArrow buffer:", parseError);
-          reject(parseError);
-        }
-      };
-
-      socketRef.current.once("layout-result", handleResult);
-      socketRef.current.emit("process_layout", { displayArray, lorax_sid: sidRef.current });
-    });
-  }, []);
-
   /**
    * Query post-order tree traversal for efficient rendering.
    * Returns flattened post-order arrays with parent pointers.
@@ -660,7 +592,6 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
       queryConfig,
       queryNodes,
       queryEdges,
-      queryLayout,
       queryPostorderLayout,
       queryDetails,
       isConnected,
@@ -689,7 +620,6 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
       getTreeData,
       getTreeFromEdges,
       search,
-      queryLayout,
       queryPostorderLayout,
       loraxSid
     ]
