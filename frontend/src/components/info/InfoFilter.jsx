@@ -2,6 +2,23 @@ import React, { useState, useEffect, useCallback } from "react";
 
 const ITEMS_PER_PAGE = 100;
 
+// Helper to convert RGBA array to hex color
+const rgbaToHex = (rgba) => {
+  if (!Array.isArray(rgba)) return '#969696';
+  const [r, g, b] = rgba;
+  return '#' + [r, g, b].map(x => x.toString(16).padStart(2, '0')).join('');
+};
+
+// Helper to convert hex color to RGB array
+const hexToRgb = (hex) => {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return result ? [
+    parseInt(result[1], 16),
+    parseInt(result[2], 16),
+    parseInt(result[3], 16)
+  ] : [150, 150, 150];
+};
+
 export default function InfoFilter({
   searchTerm,
   setSearchTerm,
@@ -11,6 +28,7 @@ export default function InfoFilter({
   setSelectedColorBy,
   coloryby,
   metadataColors,
+  setMetadataColors,  // NEW: for custom color editing
   enabledValues,
   setEnabledValues,
   visibleTrees,
@@ -172,21 +190,44 @@ export default function InfoFilter({
                     key={val}
                     className="group relative w-full flex items-center hover:bg-gray-50 transition-colors"
                   >
-                    <button
-                      type="button"
-                      className={`flex-1 flex items-center px-2 py-1 text-left ${isEnabled ? '' : 'opacity-40'}`}
-                      onClick={() => {
-                        if (!searchTags.includes(val)) {
-                          setSearchTags(prev => [...prev, val]);
-                        }
-                      }}
-                    >
-                      <span
-                        className="inline-block w-3 h-3 rounded-full mr-2 border border-gray-200 flex-shrink-0"
-                        style={{ backgroundColor: Array.isArray(color) ? `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${color[3] / 255})` : undefined }}
+                    <div className={`flex-1 flex items-center px-2 py-1 ${isEnabled ? '' : 'opacity-40'}`}>
+                      {/* Color picker - clickable swatch */}
+                      <input
+                        type="color"
+                        value={rgbaToHex(color)}
+                        onChange={(e) => {
+                          if (setMetadataColors && selectedColorBy) {
+                            const rgb = hexToRgb(e.target.value);
+                            setMetadataColors(prev => ({
+                              ...prev,
+                              [selectedColorBy]: {
+                                ...prev[selectedColorBy],
+                                [val]: [...rgb, 255]
+                              }
+                            }));
+                          }
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        className="w-5 h-5 rounded-full mr-2 border border-gray-200 cursor-pointer p-0 flex-shrink-0"
+                        style={{
+                          backgroundColor: Array.isArray(color) ? rgbaToHex(color) : undefined,
+                          appearance: 'none',
+                          WebkitAppearance: 'none'
+                        }}
+                        title="Click to change color"
                       />
-                      <span className="text-sm text-gray-800 truncate">{val}</span>
-                    </button>
+                      <button
+                        type="button"
+                        className="flex-1 text-left"
+                        onClick={() => {
+                          if (!searchTags.includes(val)) {
+                            setSearchTags(prev => [...prev, val]);
+                          }
+                        }}
+                      >
+                        <span className="text-sm text-gray-800 truncate">{val}</span>
+                      </button>
+                    </div>
 
                     {/* Hover Actions */}
                     <div className="hidden group-hover:flex items-center gap-1 absolute right-1 top-1/2 -translate-y-1/2 bg-white/90 shadow-sm border border-gray-200 rounded px-1 py-0.5">

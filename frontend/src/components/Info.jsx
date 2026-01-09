@@ -9,7 +9,7 @@ const Info = ({ backend, gettingDetails, setGettingDetails, setShowInfo, config,
 
   const { socketRef, isConnected, queryMutationsWindow, searchMutations } = backend;
 
-  const { tsconfig, populationFilter, sampleNames, setPopulationFilter, sampleDetails, metadataColors, metadataKeys, loadedMetadataKeys, metadataLoading, fetchMetadataForKey, metadataArrays, loadedMetadataArrayKeys, fetchMetadataArrayForKey, treeColors, setTreeColors, searchTerm, setSearchTerm, searchTags, setSearchTags } = config;
+  const { tsconfig, populationFilter, sampleNames, setPopulationFilter, sampleDetails, metadataColors, setMetadataColors, metadataKeys, loadedMetadataKeys, metadataLoading, fetchMetadataForKey, metadataArrays, loadedMetadataArrayKeys, fetchMetadataArrayForKey, treeColors, setTreeColors, searchTerm, setSearchTerm, searchTags, setSearchTags } = config;
 
   const [nodeDetails, setNodeDetails] = useState(null);
   const [individualDetails, setIndividualDetails] = useState(null);
@@ -209,6 +209,7 @@ const Info = ({ backend, gettingDetails, setGettingDetails, setShowInfo, config,
             setSelectedColorBy={setSelectedColorBy}
             coloryby={coloryby}
             metadataColors={metadataColors}
+            setMetadataColors={setMetadataColors}
             enabledValues={enabledValues}
             setEnabledValues={setEnabledValues}
             visibleTrees={visibleTrees}

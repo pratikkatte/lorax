@@ -112,9 +112,13 @@ const useLayers = ({
       maxNodeTime: maxTime,
       globalBpPerUnit: globalBpPerUnit,
       tsconfig: tsconfig,
+      // Metadata-based tip coloring props
+      metadataArrays: metadataArrays,
+      metadataColors: metadataColors,
+      populationFilter: populationFilter,
       viewId: "ortho"
     });
-  }, [bins, postorderData, tsconfig, globalBpPerUnit]);
+  }, [bins, postorderData, tsconfig, globalBpPerUnit, metadataArrays, metadataColors, populationFilter]);
 
   const treeLayers = useMemo(() => {
     if (!bins || bins.size === 0) return [];

@@ -393,6 +393,7 @@ function useConfig({ backend, setStatusMessage, timeRef }) {
     sampleNames,
     sampleDetails,
     metadataColors,
+    setMetadataColors,  // Expose setter for custom color editing
     metadataKeys,
     loadedMetadataKeys,
     metadataLoading,
@@ -409,7 +410,7 @@ function useConfig({ backend, setStatusMessage, timeRef }) {
     searchTags,
     setSearchTags,
     handleConfigUpdate
-  }), [tsconfig, sampleNames, setConfig, globalBpPerUnit, populationFilter, setPopulationFilter, genomeLength, pathArray, filename, sampleDetails, metadataColors, metadataKeys, loadedMetadataKeys, metadataLoading, fetchMetadataForKey, metadataArrays, loadedMetadataArrayKeys, fetchMetadataArrayForKey, searchMetadataValue, treeColors, setTreeColors, searchTerm, setSearchTerm, searchTags, setSearchTags, handleConfigUpdate]);
+  }), [tsconfig, sampleNames, setConfig, globalBpPerUnit, populationFilter, setPopulationFilter, genomeLength, pathArray, filename, sampleDetails, metadataColors, setMetadataColors, metadataKeys, loadedMetadataKeys, metadataLoading, fetchMetadataForKey, metadataArrays, loadedMetadataArrayKeys, fetchMetadataArrayForKey, searchMetadataValue, treeColors, setTreeColors, searchTerm, setSearchTerm, searchTags, setSearchTags, handleConfigUpdate]);
 };
 
 export default useConfig;

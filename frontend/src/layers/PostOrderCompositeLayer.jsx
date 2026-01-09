@@ -27,20 +27,61 @@ export default class PostOrderCompositeLayer extends CompositeLayer {
         maxNodeTime: 1,
         globalBpPerUnit: 1,
         edgeColor: [100, 100, 100, 255],
-        tipColor: [255, 0, 0, 255],
+        tipColor: [150, 150, 150, 255],  // Fallback color
         edgeWidth: 1,
-        tipRadius: 2
+        tipRadius: 2,
+        // Metadata-based coloring props
+        metadataArrays: null,     // {key: {uniqueValues, indices, nodeIdToIdx}}
+        metadataColors: null,     // {key: {value: [r,g,b,a]}}
+        populationFilter: null,   // {colorBy, enabledValues}
     };
 
     updateState({ props, oldProps, changeFlags }) {
+        const filterChanged =
+            props.populationFilter?.colorBy !== oldProps.populationFilter?.colorBy ||
+            JSON.stringify(props.populationFilter?.enabledValues) !==
+                JSON.stringify(oldProps.populationFilter?.enabledValues);
+
+        const colorsChanged = props.metadataColors !== oldProps.metadataColors;
+        const arraysChanged = props.metadataArrays !== oldProps.metadataArrays;
+
         if (changeFlags.dataChanged ||
             props.bins !== oldProps.bins ||
-            props.postorderData !== oldProps.postorderData) {
+            props.postorderData !== oldProps.postorderData ||
+            filterChanged || colorsChanged || arraysChanged) {
 
             this.setState({
                 processedData: this.processPostorderData(props)
             });
         }
+    }
+
+    /**
+     * Get the color for a tip node based on metadata.
+     * Uses O(1) lookup via metadataArrays.
+     */
+    getTipColor(nodeId, props) {
+        const { metadataArrays, metadataColors, populationFilter, tipColor } = props;
+        const colorBy = populationFilter?.colorBy;
+
+        if (!colorBy || !metadataArrays?.[colorBy] || !metadataColors?.[colorBy]) {
+            return tipColor;
+        }
+
+        const { uniqueValues, indices, nodeIdToIdx } = metadataArrays[colorBy];
+        const idx = nodeIdToIdx?.get(nodeId);
+        if (idx === undefined) return tipColor;
+
+        const valueIdx = indices[idx];
+        const value = uniqueValues[valueIdx];
+
+        // Check if value is enabled in filter
+        if (!populationFilter.enabledValues?.includes(value)) {
+            return [150, 150, 150, 100];  // Dimmed for disabled values
+        }
+
+        const color = metadataColors[colorBy][value];
+        return color ? [...color.slice(0, 3), 200] : tipColor;
     }
 
     /**
@@ -175,18 +216,19 @@ export default class PostOrderCompositeLayer extends CompositeLayer {
 
     /**
      * Process post-order data into flat typed arrays for rendering.
+     * Now includes per-tip color arrays for metadata-based coloring.
      */
     processPostorderData(props) {
         const { bins, postorderData, minNodeTime, maxNodeTime } = props;
 
         if (!bins || bins.size === 0 || !postorderData) {
-            return { pathPositions: null, tipPositions: null, edgeCount: 0, tipCount: 0 };
+            return { pathPositions: null, tipPositions: null, tipColors: null, edgeCount: 0, tipCount: 0 };
         }
 
         const { node_id, parent_id, time, is_tip, tree_idx } = postorderData;
 
         if (!node_id || node_id.length === 0) {
-            return { pathPositions: null, tipPositions: null, edgeCount: 0, tipCount: 0 };
+            return { pathPositions: null, tipPositions: null, tipColors: null, edgeCount: 0, tipCount: 0 };
         }
 
         // Group nodes by tree
@@ -197,13 +239,16 @@ export default class PostOrderCompositeLayer extends CompositeLayer {
         const avgNodesPerTree = Math.ceil(node_id.length / Math.max(1, treeNodesMap.size));
         const maxPathPositions = visibleBinCount * avgNodesPerTree * 6;  // 6 floats per L-shape
         const maxTipPositions = visibleBinCount * avgNodesPerTree * 2;   // 2 floats per tip
+        const maxTipColors = visibleBinCount * avgNodesPerTree * 4;      // 4 bytes RGBA per tip
 
         const pathPositions = new Float32Array(maxPathPositions);
         const tipPositions = new Float32Array(maxTipPositions);
+        const tipColors = new Uint8Array(maxTipColors);
         const pathStartIndices = [0];
 
         let pathOffset = 0;
         let tipOffset = 0;
+        let tipColorOffset = 0;
         let edgeCount = 0;
 
         for (const [key, bin] of bins) {
@@ -255,13 +300,22 @@ export default class PostOrderCompositeLayer extends CompositeLayer {
                 }
             }
 
-            // Collect tip positions
+            // Collect tip positions and colors
             for (const node of nodeMap.values()) {
                 if (node.is_tip) {
                     if (tipOffset + 2 > tipPositions.length) continue;
+                    if (tipColorOffset + 4 > tipColors.length) continue;
 
+                    // Position
                     tipPositions[tipOffset++] = node.y * scaleX + translateX;
                     tipPositions[tipOffset++] = node.x;
+
+                    // Color - use metadata-based lookup
+                    const color = this.getTipColor(node.node_id, props);
+                    tipColors[tipColorOffset++] = color[0];
+                    tipColors[tipColorOffset++] = color[1];
+                    tipColors[tipColorOffset++] = color[2];
+                    tipColors[tipColorOffset++] = color[3] ?? 200;
                 }
             }
         }
@@ -270,6 +324,7 @@ export default class PostOrderCompositeLayer extends CompositeLayer {
             pathPositions: pathPositions.subarray(0, pathOffset),
             pathStartIndices,
             tipPositions: tipPositions.subarray(0, tipOffset),
+            tipColors: tipColors.subarray(0, tipColorOffset),
             edgeCount,
             tipCount: tipOffset / 2
         };
@@ -281,8 +336,8 @@ export default class PostOrderCompositeLayer extends CompositeLayer {
             return null;
         }
 
-        const { pathPositions, pathStartIndices, tipPositions, edgeCount, tipCount } = processedData;
-        const { edgeColor, tipColor, edgeWidth, tipRadius } = this.props;
+        const { pathPositions, pathStartIndices, tipPositions, tipColors, edgeCount, tipCount } = processedData;
+        const { edgeColor, edgeWidth, tipRadius } = this.props;
 
         const layers = [];
 
@@ -307,17 +362,17 @@ export default class PostOrderCompositeLayer extends CompositeLayer {
             }));
         }
 
-        // Tip nodes using binary data format
+        // Tip nodes using binary data format with per-tip colors
         if (tipCount > 0) {
             layers.push(new ScatterplotLayer({
                 id: `${this.props.id}-nodes`,
                 data: {
                     length: tipCount,
                     attributes: {
-                        getPosition: { value: tipPositions, size: 2 }
+                        getPosition: { value: tipPositions, size: 2 },
+                        getFillColor: { value: tipColors, size: 4 }  // Binary RGBA per tip
                     }
                 },
-                getFillColor: tipColor,
                 getRadius: tipRadius,
                 radiusUnits: 'pixels',
                 stroked: false,
