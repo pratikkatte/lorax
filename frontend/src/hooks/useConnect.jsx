@@ -515,8 +515,10 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
    * @param {Array} displayArray - Array of tree indices to fetch
    * @param {number|null} sparsityResolution - Optional grid resolution for sparsification (e.g., 100 = 100x100 grid).
    *                                            Lower values = more sparsification. Null = no sparsification.
+   * @param {number|null} sparsityPrecision - Optional decimal precision for sparsification (e.g., 2 = round to 0.01).
+   *                                           Lower values = more aggressive. Takes precedence over resolution.
    */
-  const queryPostorderLayout = useCallback((displayArray, sparsityResolution = null) => {
+  const queryPostorderLayout = useCallback((displayArray, sparsityResolution = null, sparsityPrecision = null) => {
     return new Promise((resolve, reject) => {
       if (!socketRef.current) {
         reject(new Error("Socket not available"));
@@ -536,7 +538,7 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
           const table = arrow.tableFromIPC(buffer);
 
           const numRows = table.numRows;
-          let node_id, parent_id, time, is_tip, tree_idx;
+          let node_id, parent_id, time, is_tip, tree_idx, x, y;
 
           if (numRows === 0) {
             // Empty table - return empty arrays
@@ -545,6 +547,8 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
             time = [];
             is_tip = [];
             tree_idx = [];
+            x = [];
+            y = [];
           } else {
             // Extract columns
             const nodeIdCol = table.getChild('node_id');
@@ -552,12 +556,16 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
             const timeCol = table.getChild('time');
             const isTipCol = table.getChild('is_tip');
             const treeIdxCol = table.getChild('tree_idx');
+            const xCol = table.getChild('x');
+            const yCol = table.getChild('y');
 
             node_id = nodeIdCol ? Array.from(nodeIdCol.toArray()) : [];
             parent_id = parentIdCol ? Array.from(parentIdCol.toArray()) : [];
             time = timeCol ? Array.from(timeCol.toArray()) : [];
             is_tip = isTipCol ? Array.from(isTipCol.toArray()) : [];
             tree_idx = treeIdxCol ? Array.from(treeIdxCol.toArray()) : [];
+            x = xCol ? Array.from(xCol.toArray()) : [];
+            y = yCol ? Array.from(yCol.toArray()) : [];
           }
 
           resolve({
@@ -566,6 +574,8 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
             time,
             is_tip,
             tree_idx,
+            x,
+            y,
             global_min_time: message.global_min_time,
             global_max_time: message.global_max_time,
             tree_indices: message.tree_indices
@@ -580,6 +590,7 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
       socketRef.current.emit("process_postorder_layout", {
         displayArray,
         sparsity_resolution: sparsityResolution,
+        sparsity_precision: sparsityPrecision,
         lorax_sid: sidRef.current
       });
     });

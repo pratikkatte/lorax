@@ -504,9 +504,15 @@ async def process_postorder_layout(sid, data):
 
         display_array = data.get("displayArray", [])
         sparsity_resolution = data.get("sparsity_resolution", None)
+        sparsity_precision = data.get("sparsity_precision", None)
 
         # handle_postorder_query returns dict with PyArrow buffer
-        result = await handle_postorder_query(session.file_path, display_array, sparsity_resolution)
+        result = await handle_postorder_query(
+            session.file_path,
+            display_array,
+            sparsity_resolution=sparsity_resolution,
+            sparsity_precision=sparsity_precision
+        )
 
         if "error" in result:
             await sio.emit("postorder-layout-result", {"error": result["error"]}, to=sid)

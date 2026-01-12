@@ -54,14 +54,37 @@ function getSparsityResolution(numTrees, showingAllTrees, scaleFactor) {
 }
 
 /**
+ * Calculate sparsity precision based on zoom state and display context.
+ * Uses decimal rounding: precision=2 means nodes must differ by ≥0.01 to both appear.
+ * Lower precision = more aggressive sparsification (fewer nodes).
+ * Returns null for no sparsification (full detail).
+ *
+ * @param {number} numTrees - Number of trees being displayed
+ * @param {boolean} showingAllTrees - Whether all trees fit in viewport
+ * @param {number} scaleFactor - Zoom scale factor (>1 = zoomed out)
+ */
+function getSparsityPrecision(numTrees, showingAllTrees, scaleFactor) {
+  // No sparsification when viewing few trees (detailed view)
+  if (numTrees <= 2) return null;
+
+  // Scale precision inversely with zoom-out level
+  // Lower precision = more aggressive (fewer decimal places = larger buckets)
+  if (scaleFactor > 5) return 2;   // Very zoomed out: 10% granularity
+  if (scaleFactor > 2) return 3;   // Moderately zoomed: 1% granularity
+  if (showingAllTrees) return 4;   // Light: 0.1% granularity
+
+  return null;  // Full detail
+}
+
+/**
  * Process post-order data from backend.
- * Backend returns post-order traversal arrays with parent pointers.
- * PostOrderCompositeLayer computes layout using stack-based reconstruction.
+ * Backend returns post-order traversal arrays with parent pointers and pre-computed x,y coordinates.
+ * PostOrderCompositeLayer uses backend coordinates directly (no recomputation).
  */
 function processPostorderData(backendData) {
   if (!backendData || backendData.error) return null;
 
-  const { node_id, parent_id, time, is_tip, tree_idx, global_min_time, global_max_time, tree_indices } = backendData;
+  const { node_id, parent_id, time, is_tip, tree_idx, x, y, global_min_time, global_max_time, tree_indices } = backendData;
 
   // Return data for PostOrderCompositeLayer to process
   return {
@@ -70,6 +93,8 @@ function processPostorderData(backendData) {
     time: Array.from(time),
     is_tip: Array.from(is_tip),
     tree_idx: Array.from(tree_idx),
+    x: x ? Array.from(x) : [],
+    y: y ? Array.from(y) : [],
     global_min_time,
     global_max_time,
     tree_indices
@@ -198,24 +223,31 @@ const useRegions = ({
       let postorderData_backend = null;
       try {
         if (displayArray.length > 0) {
-          // Calculate sparsity resolution based on zoom state
+          // Calculate sparsity based on zoom state
           // scaleFactor > 1 means zoomed out (multiple trees per slot)
           const scaleFactor = new_globalBp / globalBpPerUnit;
-          const sparsityResolution = getSparsityResolution(
+
+          // Use precision-based sparsification (takes precedence)
+          const sparsityPrecision = getSparsityPrecision(
             displayArray.length,
             showing_all_trees,
             scaleFactor
           );
 
+          // Grid-based sparsification (fallback, currently unused)
+          const sparsityResolution = null; // getSparsityResolution(displayArray.length, showing_all_trees, scaleFactor);
+
           console.log('[Sparsification]', {
             scaleFactor: scaleFactor.toFixed(2),
             numTrees: displayArray.length,
             showingAllTrees: showing_all_trees,
-            sparsityResolution: sparsityResolution ?? 'none (full detail)'
+            method: sparsityPrecision !== null ? 'precision' : (sparsityResolution !== null ? 'grid' : 'none'),
+            sparsityPrecision: sparsityPrecision ?? 'none',
+            sparsityResolution: sparsityResolution ?? 'none'
           });
 
           // Fetch post-order traversal for all displayed trees
-          const backendResult = await queryPostorderLayout(displayArray, sparsityResolution);
+          const backendResult = await queryPostorderLayout(displayArray, sparsityResolution, sparsityPrecision);
 
           if (backendResult && !backendResult.error) {
             // Process post-order data

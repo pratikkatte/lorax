@@ -4,8 +4,9 @@ import { PathLayer, ScatterplotLayer } from '@deck.gl/layers';
 /**
  * PostOrderCompositeLayer - Tree rendering using post-order traversal arrays.
  *
- * Receives post-order node data from backend and reconstructs trees using
- * a stack-based algorithm. This is an alternative to EdgeCompositeLayer.
+ * Receives post-order node data from backend with pre-computed x,y coordinates.
+ * Backend handles coordinate computation and sparsification, frontend uses
+ * coordinates directly for rendering.
  *
  * Data format from backend (PyArrow):
  * - node_id: int32
@@ -13,6 +14,8 @@ import { PathLayer, ScatterplotLayer } from '@deck.gl/layers';
  * - time: float64
  * - is_tip: bool
  * - tree_idx: int32 (which tree this node belongs to)
+ * - x: float32 (time-based coordinate [0,1], root=0, tips=1)
+ * - y: float32 (genealogy-based coordinate [0,1])
  *
  * Plus metadata:
  * - global_min_time, global_max_time
@@ -98,15 +101,17 @@ export default class PostOrderCompositeLayer extends CompositeLayer {
 
     /**
      * Group nodes by tree_idx for efficient lookup.
+     * Includes pre-computed x,y coordinates from backend.
      */
     groupNodesByTree(postorderData) {
-        const { node_id, parent_id, time, is_tip, tree_idx } = postorderData;
+        const { node_id, parent_id, time, is_tip, tree_idx, x, y } = postorderData;
 
         if (!node_id || node_id.length === 0) {
             return new Map();
         }
 
         const treeMap = new Map();
+        const hasCoords = x && x.length > 0 && y && y.length > 0;
 
         for (let i = 0; i < node_id.length; i++) {
             const treeIndex = tree_idx[i];
@@ -119,7 +124,9 @@ export default class PostOrderCompositeLayer extends CompositeLayer {
                 node_id: node_id[i],
                 parent_id: parent_id[i],
                 time: time[i],
-                is_tip: is_tip[i]
+                is_tip: is_tip[i],
+                x: hasCoords ? x[i] : null,
+                y: hasCoords ? y[i] : null
             });
         }
 
@@ -278,8 +285,37 @@ export default class PostOrderCompositeLayer extends CompositeLayer {
             const treeNodes = treeNodesMap.get(treeIdx);
             if (!treeNodes || treeNodes.length === 0) continue;
 
-            // Compute layout for this tree
-            const nodeMap = this.computeTreeLayout(treeNodes, minNodeTime, maxNodeTime);
+            // Use backend coordinates if available, otherwise compute locally (fallback)
+            let nodeMap;
+            const hasBackendCoords = treeNodes[0]?.x !== null && treeNodes[0]?.y !== null;
+
+            if (hasBackendCoords) {
+                // Use pre-computed coordinates from backend (no recomputation needed)
+                nodeMap = new Map();
+                for (const n of treeNodes) {
+                    nodeMap.set(n.node_id, {
+                        node_id: n.node_id,
+                        x: n.x,  // Backend x: time-based [0,1], root=0, tips=1
+                        y: n.y,  // Backend y: genealogy-based [0,1]
+                        is_tip: n.is_tip,
+                        parent_id: n.parent_id,
+                        children: []
+                    });
+                }
+                // Build children arrays for edge traversal
+                for (const n of treeNodes) {
+                    if (n.parent_id !== -1) {
+                        const parent = nodeMap.get(n.parent_id);
+                        const child = nodeMap.get(n.node_id);
+                        if (parent && child) {
+                            parent.children.push(child);
+                        }
+                    }
+                }
+            } else {
+                // Fallback: compute layout locally (for backwards compatibility)
+                nodeMap = this.computeTreeLayout(treeNodes, minNodeTime, maxNodeTime);
+            }
 
             if (nodeMap.size === 0) continue;
 

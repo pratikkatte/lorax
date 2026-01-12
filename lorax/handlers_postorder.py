@@ -3,8 +3,9 @@
 Post-order tree traversal handler for efficient tree rendering.
 
 This module provides an alternative to the edge-based approach in handlers.py.
-For each tree index, it returns a post-order traversal array with parent pointers,
-allowing the frontend to reconstruct trees using a simple stack-based algorithm.
+For each tree index, it returns a post-order traversal array with parent pointers
+and pre-computed x,y coordinates, allowing the frontend to render directly without
+recomputing layout.
 """
 import asyncio
 import numpy as np
@@ -13,66 +14,91 @@ import pyarrow as pa
 from lorax.handlers import get_or_load_ts
 
 
-def sparsify_tree(tree, ts, resolution):
+def compute_tree_coordinates(tree, ts):
     """
-    Sparsify a tree based on x,y coordinate proximity using grid-based filtering.
+    Compute x,y coordinates for all nodes in a tree.
 
     Args:
         tree: tskit Tree object
         ts: tskit TreeSequence
-        resolution: Grid resolution (e.g., 100 = 100x100 cells)
 
     Returns:
-        set of node_ids to keep
+        tuple of (x_coords, y_coords) dicts mapping node_id -> coordinate [0,1]
+        - x: time-based, root=0, tips=1
+        - y: genealogy-based, normalized post-order position
     """
     postorder = list(tree.nodes(order="postorder"))
     min_time = ts.min_time
     max_time = ts.max_time
     time_range = max_time - min_time if max_time > min_time else 1.0
 
-    # Compute x (time-based) for all nodes
     x = {}
+    y = {}
+    tip_counter = 0
+
     for node_id in postorder:
+        # X: time-based [0,1], root=0, tips=1
         t = ts.node(node_id).time
         x[node_id] = (max_time - t) / time_range
 
-    # Compute y (post-order based) - same algorithm as frontend
-    y = {}
-    tip_counter = 0
-    for node_id in postorder:
+        # Y: genealogy-based [0,1]
         if tree.is_leaf(node_id):
             y[node_id] = tip_counter
             tip_counter += 1
         else:
             children = list(tree.children(node_id))
-            if children:
-                y[node_id] = sum(y[c] for c in children) / len(children)
-            else:
-                y[node_id] = 0
+            y[node_id] = sum(y[c] for c in children) / len(children) if children else 0
 
     # Normalize y to [0, 1]
     max_y = max(tip_counter - 1, 1)
     for node_id in y:
         y[node_id] /= max_y
 
-    # Grid-based selection: keep one representative per cell
-    grid = {}  # (cell_x, cell_y) -> best_node_id
-    for node_id in postorder:
-        cell_x = min(int(x[node_id] * resolution), resolution - 1)
-        cell_y = min(int(y[node_id] * resolution), resolution - 1)
-        cell = (cell_x, cell_y)
+    return x, y
 
-        if cell not in grid:
-            grid[cell] = node_id
-        else:
-            # Prefer tips over internal nodes for better visual representation
-            existing = grid[cell]
-            if tree.is_leaf(node_id) and not tree.is_leaf(existing):
-                grid[cell] = node_id
 
-    keep = set(grid.values())
+def sparsify_with_coords(tree, x, y, precision=None, resolution=None):
+    """
+    Sparsify a tree using pre-computed coordinates.
 
-    # Ensure connectivity: for each kept node, trace path to root
+    Args:
+        tree: tskit Tree object
+        x: dict mapping node_id -> x coordinate [0,1]
+        y: dict mapping node_id -> y coordinate [0,1]
+        precision: Optional decimal precision for rounding (e.g., 2 = 0.01 granularity)
+        resolution: Optional grid resolution (e.g., 100 = 100x100 grid)
+
+    Returns:
+        set of node_ids to keep, or None if no sparsification
+    """
+    if precision is not None:
+        # Precision-based: round coordinates to N decimal places
+        buckets = {}
+        for node_id in tree.nodes(order="postorder"):
+            key = (round(x[node_id], precision), round(y[node_id], precision))
+            if key not in buckets:
+                buckets[key] = node_id
+            elif tree.is_leaf(node_id) and not tree.is_leaf(buckets[key]):
+                buckets[key] = node_id
+        keep = set(buckets.values())
+
+    elif resolution is not None:
+        # Grid-based: floor coordinates to grid cells
+        grid = {}
+        for node_id in tree.nodes(order="postorder"):
+            cx = min(int(x[node_id] * resolution), resolution - 1)
+            cy = min(int(y[node_id] * resolution), resolution - 1)
+            key = (cx, cy)
+            if key not in grid:
+                grid[key] = node_id
+            elif tree.is_leaf(node_id) and not tree.is_leaf(grid[key]):
+                grid[key] = node_id
+        keep = set(grid.values())
+
+    else:
+        return None
+
+    # Ensure connectivity: trace path to root for each kept node
     for node_id in list(keep):
         current = node_id
         while True:
@@ -85,15 +111,16 @@ def sparsify_tree(tree, ts, resolution):
     return keep
 
 
-async def handle_postorder_query(file_path, tree_indices, sparsity_resolution=None):
+async def handle_postorder_query(file_path, tree_indices, sparsity_resolution=None, sparsity_precision=None):
     """
-    For each tree index, get post-order traversal using tskit's native tree.nodes(order="postorder").
+    For each tree index, get post-order traversal with pre-computed x,y coordinates.
 
     Args:
         file_path: Path to tree sequence file
         tree_indices: List of tree indices to process
         sparsity_resolution: Optional grid resolution for sparsification (e.g., 100 = 100x100 grid).
-                            If None, no sparsification is applied.
+        sparsity_precision: Optional decimal precision for sparsification (e.g., 2 = round to 0.01).
+                           Takes precedence over sparsity_resolution.
 
     Returns:
         dict with:
@@ -103,6 +130,8 @@ async def handle_postorder_query(file_path, tree_indices, sparsity_resolution=No
             - time: float64 (coalescent time)
             - is_tip: bool
             - tree_idx: int32 (which tree this node belongs to)
+            - x: float32 (time-based coordinate [0,1])
+            - y: float32 (genealogy-based coordinate [0,1])
         - global_min_time: float
         - global_max_time: float
         - tree_indices: list[int] (the requested tree indices)
@@ -112,13 +141,15 @@ async def handle_postorder_query(file_path, tree_indices, sparsity_resolution=No
         return {"error": "Tree sequence not loaded. Please load a file first."}
 
     if len(tree_indices) == 0:
-        # Return empty PyArrow buffer
+        # Return empty PyArrow buffer with new schema
         empty_table = pa.table({
             'node_id': pa.array([], type=pa.int32()),
             'parent_id': pa.array([], type=pa.int32()),
             'time': pa.array([], type=pa.float64()),
             'is_tip': pa.array([], type=pa.bool_()),
-            'tree_idx': pa.array([], type=pa.int32())
+            'tree_idx': pa.array([], type=pa.int32()),
+            'x': pa.array([], type=pa.float32()),
+            'y': pa.array([], type=pa.float32())
         })
         sink = pa.BufferOutputStream()
         writer = pa.ipc.new_stream(sink, empty_table.schema)
@@ -137,6 +168,8 @@ async def handle_postorder_query(file_path, tree_indices, sparsity_resolution=No
     all_times = []
     all_is_tip = []
     all_tree_idx = []
+    all_x = []
+    all_y = []
 
     # Process each tree
     def process_trees():
@@ -148,13 +181,18 @@ async def handle_postorder_query(file_path, tree_indices, sparsity_resolution=No
 
             tree = ts.at_index(tree_idx)
 
-            # Get nodes to keep (all nodes if no sparsification)
-            if sparsity_resolution is not None:
-                keep_nodes = sparsify_tree(tree, ts, sparsity_resolution)
+            # Compute coordinates for ALL nodes first (single computation)
+            x_coords, y_coords = compute_tree_coordinates(tree, ts)
+
+            # Apply sparsification using pre-computed coordinates
+            if sparsity_precision is not None:
+                keep_nodes = sparsify_with_coords(tree, x_coords, y_coords, precision=sparsity_precision)
+            elif sparsity_resolution is not None:
+                keep_nodes = sparsify_with_coords(tree, x_coords, y_coords, resolution=sparsity_resolution)
             else:
                 keep_nodes = None  # Keep all
 
-            # Get post-order traversal - this is the key tskit call
+            # Get post-order traversal
             postorder_nodes = list(tree.nodes(order="postorder"))
 
             for node_id in postorder_nodes:
@@ -177,6 +215,10 @@ async def handle_postorder_query(file_path, tree_indices, sparsity_resolution=No
                 # Store which tree this node belongs to
                 all_tree_idx.append(tree_idx)
 
+                # Include pre-computed coordinates
+                all_x.append(float(x_coords[node_id]))
+                all_y.append(float(y_coords[node_id]))
+
     # Run tree processing in thread pool to avoid blocking
     await asyncio.to_thread(process_trees)
 
@@ -187,7 +229,9 @@ async def handle_postorder_query(file_path, tree_indices, sparsity_resolution=No
             'parent_id': pa.array([], type=pa.int32()),
             'time': pa.array([], type=pa.float64()),
             'is_tip': pa.array([], type=pa.bool_()),
-            'tree_idx': pa.array([], type=pa.int32())
+            'tree_idx': pa.array([], type=pa.int32()),
+            'x': pa.array([], type=pa.float32()),
+            'y': pa.array([], type=pa.float32())
         })
         sink = pa.BufferOutputStream()
         writer = pa.ipc.new_stream(sink, empty_table.schema)
@@ -200,13 +244,15 @@ async def handle_postorder_query(file_path, tree_indices, sparsity_resolution=No
             "tree_indices": [int(i) for i in tree_indices]
         }
 
-    # Build PyArrow table
+    # Build PyArrow table with x,y coordinates
     table = pa.table({
         'node_id': pa.array(all_node_ids, type=pa.int32()),
         'parent_id': pa.array(all_parent_ids, type=pa.int32()),
         'time': pa.array(all_times, type=pa.float64()),
         'is_tip': pa.array(all_is_tip, type=pa.bool_()),
-        'tree_idx': pa.array(all_tree_idx, type=pa.int32())
+        'tree_idx': pa.array(all_tree_idx, type=pa.int32()),
+        'x': pa.array(all_x, type=pa.float32()),
+        'y': pa.array(all_y, type=pa.float32())
     })
 
     # Serialize to IPC format
