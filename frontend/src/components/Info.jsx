@@ -14,6 +14,9 @@ const Info = ({ backend, gettingDetails, setGettingDetails, setShowInfo, config,
   const [nodeDetails, setNodeDetails] = useState(null);
   const [individualDetails, setIndividualDetails] = useState(null);
   const [treeDetails, setTreeDetails] = useState(null);
+  const [populationDetails, setPopulationDetails] = useState(null);
+  const [nodeMutations, setNodeMutations] = useState(null);
+  const [nodeEdges, setNodeEdges] = useState(null);
   const [activeTab, setActiveTab] = useState('metadata');
   const [coloryby, setColoryby] = useState({});
   const [selectedColorBy, setSelectedColorBy] = useState(null);
@@ -95,14 +98,18 @@ const Info = ({ backend, gettingDetails, setGettingDetails, setShowInfo, config,
   };
 
   const handleDetails = useCallback((incoming_data) => {
+    console.log("handleDetails received:", incoming_data);
 
     if (incoming_data.role === "details-result") {
-
       var data = safeParse(incoming_data.data)
+      console.log("Parsed details data:", data);
       setShowInfo(true);
-      setTreeDetails(data?.tree ? data.tree : null);
-      setNodeDetails(data?.node ? data.node : null);
-      setIndividualDetails(data?.individual ? data.individual : null);
+      setTreeDetails(data?.tree ?? null);
+      setNodeDetails(data?.node ?? null);
+      setIndividualDetails(data?.individual ?? null);
+      setPopulationDetails(data?.population ?? null);
+      setNodeMutations(data?.mutations ?? null);
+      setNodeEdges(data?.edges ?? null);
       setActiveTab('metadata');
     }
   }, []);
@@ -172,6 +179,9 @@ const Info = ({ backend, gettingDetails, setGettingDetails, setShowInfo, config,
             treeDetails={treeDetails}
             nodeDetails={nodeDetails}
             individualDetails={individualDetails}
+            populationDetails={populationDetails}
+            nodeMutations={nodeMutations}
+            nodeEdges={nodeEdges}
             sampleDetails={sampleDetails}
             tsconfig={tsconfig}
             setHighlightedMutationNode={setHighlightedMutationNode}

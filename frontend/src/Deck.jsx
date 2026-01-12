@@ -137,7 +137,28 @@ function Deck({
       const { bins } = regions;
 
       if (info && isClick) {
-        if (info?.layer?.id?.includes("main")) {
+        // Debug: log all click events
+        console.log("Click info:", info?.layer?.id, info?.sourceLayer?.id, info?.object);
+
+        // Handle PostOrderCompositeLayer tip node clicks
+        // Check both layer.id and sourceLayer.id (for CompositeLayer sub-layers)
+        const layerId = info?.sourceLayer?.id || info?.layer?.id || "";
+        if (layerId.includes("tips-pickable") ||
+            (info?.layer?.id?.includes("postorder") && info?.object?.node_id !== undefined)) {
+          const pickedObject = info.object;
+          if (pickedObject && pickedObject.node_id !== undefined) {
+            const data = {
+              treeIndex: pickedObject.tree_idx,
+              node: pickedObject.node_id,
+              comprehensive: true  // Flag for full tskit table data
+            };
+            console.log("clicked on PostOrder tip node", data);
+            queryDetails(data);
+            return;
+          }
+        }
+        // Handle TreeLayer clicks
+        else if (info?.layer?.id?.includes("main")) {
           const data = { treeIndex: info.layer?.props?.bin?.global_index, node: info.object?.name }
           console.log("clicked on the tree", data)
           queryDetails(data)

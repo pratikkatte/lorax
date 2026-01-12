@@ -1068,6 +1068,115 @@ def make_json_serializable(obj):
     else:
         return obj
 
+def search_nodes_in_trees(
+    ts,
+    sample_names,
+    tree_indices,
+    show_lineages=False,
+    sample_colors=None,
+    sample_name_key="name"
+):
+    """
+    Search for nodes matching sample names in specified trees.
+    Returns highlights and optionally lineage paths.
+
+    Args:
+        ts: tskit.TreeSequence
+        sample_names: List of sample names to search for
+        tree_indices: List of tree indices to search in
+        show_lineages: Whether to compute lineage (ancestry) paths
+        sample_colors: Optional dict {sample_name: [r,g,b,a]} for coloring
+        sample_name_key: Key in node metadata used as sample name
+
+    Returns:
+        dict with:
+        - highlights: {tree_idx: [{node_id, name}]}
+        - lineage: {tree_idx: [{path: [[x,y]...], color}]} if show_lineages
+    """
+    if not sample_names or not tree_indices:
+        return {"highlights": {}, "lineage": {}}
+
+    # Build sample_name -> node_id mapping
+    name_to_node_id = {}
+    for node_id in ts.samples():
+        node = ts.node(node_id)
+        node_meta = node.metadata or {}
+        try:
+            node_meta = ensure_json_dict(node_meta)
+        except (TypeError, json.JSONDecodeError):
+            node_meta = {}
+        name = str(node_meta.get(sample_name_key, f"{node_id}"))
+        name_to_node_id[name.lower()] = node_id
+
+    # Convert sample_names to node_ids
+    target_node_ids = set()
+    name_map = {}  # node_id -> original name
+    for name in sample_names:
+        lower_name = name.lower()
+        if lower_name in name_to_node_id:
+            nid = name_to_node_id[lower_name]
+            target_node_ids.add(nid)
+            name_map[nid] = name
+
+    if not target_node_ids:
+        return {"highlights": {}, "lineage": {}}
+
+    highlights = {}
+    lineage = {}
+
+    for tree_idx in tree_indices:
+        tree_idx = int(tree_idx)
+        if tree_idx < 0 or tree_idx >= ts.num_trees:
+            continue
+
+        tree = ts.at_index(tree_idx)
+
+        # Find matching samples in this tree
+        tree_highlights = []
+        tree_seeds = []  # For lineage computation
+
+        for node_id in target_node_ids:
+            # Check if this sample is in this tree (has edges in this interval)
+            if tree.is_sample(node_id):
+                name = name_map.get(node_id, str(node_id))
+                tree_highlights.append({
+                    "node_id": int(node_id),
+                    "name": name
+                })
+                tree_seeds.append(node_id)
+
+        if tree_highlights:
+            highlights[tree_idx] = tree_highlights
+
+            # Compute lineage paths if requested
+            if show_lineages and tree_seeds:
+                tree_lineages = []
+                for seed_node in tree_seeds:
+                    # Trace ancestry path from sample to root
+                    path_nodes = []
+                    current = seed_node
+                    while current != -1 and current != tskit.NULL:
+                        path_nodes.append(current)
+                        current = tree.parent(current)
+
+                    if len(path_nodes) > 1:
+                        # Get color for this lineage
+                        name = name_map.get(seed_node, str(seed_node))
+                        color = None
+                        if sample_colors:
+                            color = sample_colors.get(name.lower())
+
+                        tree_lineages.append({
+                            "path_node_ids": [int(n) for n in path_nodes],
+                            "color": color
+                        })
+
+                if tree_lineages:
+                    lineage[tree_idx] = tree_lineages
+
+    return {"highlights": highlights, "lineage": lineage}
+
+
 def get_node_details(ts, node_name):
     """Get details for a specific node in the tree sequence."""
     node = ts.node(node_name)
@@ -1114,24 +1223,149 @@ def get_individual_details(ts, individual_id):
     }
 
 
+def get_comprehensive_individual_details(ts, individual_id):
+    """Get comprehensive individual table data including location, parents, flags."""
+    if individual_id is None or individual_id == -1:
+        return None
+
+    individual = ts.individual(individual_id)
+    return {
+        "id": int(individual.id),
+        "flags": int(individual.flags),
+        "location": list(individual.location) if len(individual.location) > 0 else None,
+        "parents": [int(p) for p in individual.parents] if len(individual.parents) > 0 else [],
+        "nodes": [int(n) for n in individual.nodes],
+        "metadata": make_json_serializable(individual.metadata)
+    }
+
+
+def get_population_details(ts, population_id):
+    """Get population table data."""
+    if population_id is None or population_id == -1:
+        return None
+    pop = ts.population(population_id)
+    return {
+        "id": int(pop.id),
+        "metadata": make_json_serializable(pop.metadata)
+    }
+
+
+def get_mutations_for_node(ts, node_id, tree_index=None):
+    """Get all mutations on a specific node, optionally filtered by tree interval."""
+    mutations = []
+
+    # Get tree interval if tree_index is specified
+    tree_interval = None
+    if tree_index is not None:
+        tree = ts.at_index(tree_index)
+        tree_interval = tree.interval
+
+    for mut in ts.mutations():
+        if mut.node == node_id:
+            site = ts.site(mut.site)
+
+            # Filter by tree interval if specified
+            if tree_interval is not None:
+                if not (site.position >= tree_interval.left and site.position < tree_interval.right):
+                    continue
+
+            mutations.append({
+                "id": int(mut.id),
+                "site_id": int(mut.site),
+                "position": float(site.position),
+                "ancestral_state": site.ancestral_state,
+                "derived_state": mut.derived_state,
+                "time": float(mut.time) if mut.time != tskit.UNKNOWN_TIME else None,
+                "parent_mutation": int(mut.parent) if mut.parent != -1 else None,
+                "metadata": make_json_serializable(mut.metadata) if mut.metadata else None
+            })
+
+    return mutations
+
+
+def get_edges_for_node(ts, node_id, tree_index=None):
+    """Get all edges where this node is parent or child."""
+    edges = {
+        "as_parent": [],  # Edges where node is parent
+        "as_child": []    # Edges where node is child
+    }
+
+    # Get tree interval if tree_index is specified
+    tree_interval = None
+    if tree_index is not None:
+        tree = ts.at_index(tree_index)
+        tree_interval = tree.interval
+
+    for edge in ts.edges():
+        # Filter by tree interval if specified (edge must overlap with tree)
+        if tree_interval is not None:
+            if edge.right <= tree_interval.left or edge.left >= tree_interval.right:
+                continue
+
+        edge_data = {
+            "id": int(edge.id),
+            "left": float(edge.left),
+            "right": float(edge.right),
+            "parent": int(edge.parent),
+            "child": int(edge.child)
+        }
+
+        if edge.parent == node_id:
+            edges["as_parent"].append(edge_data)
+        if edge.child == node_id:
+            edges["as_child"].append(edge_data)
+
+    return edges
+
+
 async def handle_details(file_path, data):
     """Handle requests for tree, node, and individual details."""
     try:
         ts = await get_or_load_ts(file_path)
         if ts is None:
             return json.dumps({"error": "Tree sequence (ts) is not set. Please upload a file first."})
-        
+
         return_data = {}
         tree_index = data.get("treeIndex")
-        if tree_index:
-            return_data["tree"] = get_tree_details(ts, tree_index)
-    
+        comprehensive = data.get("comprehensive", False)
+
+        if tree_index is not None:
+            return_data["tree"] = get_tree_details(ts, int(tree_index))
+
         node_name = data.get("node")
-        if node_name:
-            node_details = get_node_details(ts, int(node_name))
+        if node_name is not None:
+            node_id = int(node_name)
+            node_details = get_node_details(ts, node_id)
             return_data["node"] = node_details
+
+            # Auto-fetch individual details
             if node_details.get("individual") != -1:
-                return_data["individual"] = get_individual_details(ts, node_details.get("individual"))
+                if comprehensive:
+                    return_data["individual"] = get_comprehensive_individual_details(
+                        ts, node_details.get("individual")
+                    )
+                else:
+                    return_data["individual"] = get_individual_details(
+                        ts, node_details.get("individual")
+                    )
+
+            # Comprehensive mode: add population, mutations, edges
+            if comprehensive:
+                # Population
+                if node_details.get("population") != -1:
+                    return_data["population"] = get_population_details(
+                        ts, node_details.get("population")
+                    )
+
+                # Mutations on this node
+                return_data["mutations"] = get_mutations_for_node(
+                    ts, node_id, tree_index
+                )
+
+                # Edges for this node
+                return_data["edges"] = get_edges_for_node(
+                    ts, node_id, tree_index
+                )
 
         return json.dumps(return_data)
     except Exception as e:

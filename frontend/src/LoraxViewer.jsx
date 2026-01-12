@@ -55,8 +55,8 @@ export default function LoraxViewer({ backend, config, settings, setSettings, pr
 
       // No search - clear all search-related data
       if (!hasSearchTerm && !hasSearchTags) {
-        setLineagePaths({});
-        setHighlightedNodes({});
+        setLineagePaths(null);
+        setHighlightedNodes(null);
         return;
       }
 
@@ -114,8 +114,15 @@ export default function LoraxViewer({ backend, config, settings, setSettings, pr
 
       resolveSearchTerms().then((sampleNames) => {
         if (sampleNames.length === 0) {
-          setLineagePaths({});
-          setHighlightedNodes({});
+          setLineagePaths(null);
+          setHighlightedNodes(null);
+          return;
+        }
+
+        // Need visible tree indices for backend search
+        if (!visibleTrees || visibleTrees.length === 0) {
+          setLineagePaths(null);
+          setHighlightedNodes(null);
           return;
         }
 
@@ -143,18 +150,21 @@ export default function LoraxViewer({ backend, config, settings, setSettings, pr
           }
         }
 
-        backend.search(config.searchTerm, sampleNames, { showLineages, sampleColors }).then((results) => {
-          if (results) {
+        // Use socket-based searchNodes instead of worker-based search
+        backend.searchNodes(sampleNames, visibleTrees, { showLineages, sampleColors }).then((results) => {
+          if (results && Object.keys(results.highlights || {}).length > 0) {
             if (showLineages) {
-              setLineagePaths(results.lineage || {});
+              setLineagePaths(results.lineage || null);
             }
-            setHighlightedNodes(results.highlights || {});
+            setHighlightedNodes(results.highlights);
           } else {
-            if (showLineages) {
-              setLineagePaths({});
-            }
-            setHighlightedNodes({});
+            setLineagePaths(null);
+            setHighlightedNodes(null);
           }
+        }).catch((err) => {
+          console.error("Search nodes error:", err);
+          setLineagePaths(null);
+          setHighlightedNodes(null);
         });
       });
     }
@@ -168,13 +178,13 @@ export default function LoraxViewer({ backend, config, settings, setSettings, pr
 
     // Immediately clear lineage paths if the feature is disabled
     if (!showLineages) {
-      setLineagePaths({});
+      setLineagePaths(null);
     }
 
     // Clear highlighted nodes if there's no active search
     if (!hasSearchTerm && !hasSearchTags) {
-      setHighlightedNodes({});
-      setLineagePaths({});
+      setHighlightedNodes(null);
+      setLineagePaths(null);
     }
   }, [settings?.display_lineage_paths, config.searchTerm, config.searchTags]);
 

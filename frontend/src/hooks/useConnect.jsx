@@ -192,6 +192,11 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
       websocketEvents.emit("viz", { role: "metadata-array-result", ...message });
     });
 
+    // Handle search-nodes-result for node highlighting
+    socket.on("search-nodes-result", (message) => {
+      websocketEvents.emit("viz", { role: "search-nodes-result", ...message });
+    });
+
     socket.on("pong", (msg) => {
       // console.log("pong", msg);
     });
@@ -330,6 +335,47 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
         terms,
         id,
         options
+      });
+    });
+  }, []);
+
+  /**
+   * Search for nodes matching sample names in specified trees using backend.
+   * This is used for highlighting nodes when searching/filtering by metadata.
+   * @param {Array} sampleNames - Sample names to search for
+   * @param {Array} treeIndices - Tree indices to search in
+   * @param {Object} options - Search options
+   * @param {boolean} options.showLineages - Whether to compute lineage paths
+   * @param {Object} options.sampleColors - Optional {sample_name: [r,g,b,a]}
+   */
+  const searchNodes = useCallback((sampleNames, treeIndices, options = {}) => {
+    return new Promise((resolve, reject) => {
+      if (!socketRef.current) {
+        reject(new Error("Socket not available"));
+        return;
+      }
+
+      const { showLineages = false, sampleColors = {} } = options;
+
+      const handleResult = (message) => {
+        socketRef.current.off("search-nodes-result", handleResult);
+        if (message.error) {
+          reject(new Error(message.error));
+          return;
+        }
+        resolve({
+          highlights: message.highlights || {},
+          lineage: message.lineage || {}
+        });
+      };
+
+      socketRef.current.once("search-nodes-result", handleResult);
+      socketRef.current.emit("search_nodes", {
+        sample_names: sampleNames,
+        tree_indices: treeIndices,
+        show_lineages: showLineages,
+        sample_colors: sampleColors,
+        lorax_sid: sidRef.current
       });
     });
   }, []);
@@ -572,7 +618,7 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
   const queryDetails = useCallback(
     (clickedObject) => {
       setGettingDetails(true);
-      // console.log("queryDetails", clickedObject, sidRef.current);
+      console.log("queryDetails called with:", clickedObject, "sid:", sidRef.current);
       const payload = { lorax_sid: sidRef.current, ...clickedObject };
       socketRef.current?.emit("details", payload);
     },
@@ -759,6 +805,7 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
       getTreeData,
       getTreeFromEdges,
       search,
+      searchNodes,
       loraxSid,
       queryMutationsWindow,
       searchMutations
@@ -778,6 +825,7 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
       getTreeData,
       getTreeFromEdges,
       search,
+      searchNodes,
       queryPostorderLayout,
       loraxSid,
       queryMutationsWindow,

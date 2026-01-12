@@ -12,7 +12,10 @@ export default function InfoMetadata({
   individualDetails,
   sampleDetails,
   tsconfig,
-  setHighlightedMutationNode
+  setHighlightedMutationNode,
+  populationDetails,
+  nodeMutations,
+  nodeEdges
 }) {
   // Get sample name from node metadata if available
   const sampleName = nodeDetails?.metadata?.name || nodeDetails?.id;
@@ -81,10 +84,19 @@ export default function InfoMetadata({
       )}
 
       {/* Individual Details - dynamic display from metadata */}
-      {individualDetails && individualDetails.metadata && (
+      {individualDetails && (
         <DetailCard title="Individual Details">
           <DetailRow label="ID" value={individualDetails.id} />
-          {Object.entries(individualDetails.metadata).map(([key, value]) => {
+          {individualDetails.flags !== undefined && (
+            <DetailRow label="Flags" value={individualDetails.flags} />
+          )}
+          {individualDetails.location && individualDetails.location.length > 0 && (
+            <DetailRow label="Location" value={individualDetails.location.join(', ')} />
+          )}
+          {individualDetails.parents && individualDetails.parents.length > 0 && (
+            <DetailRow label="Parents" value={individualDetails.parents.join(', ')} />
+          )}
+          {individualDetails.metadata && Object.entries(individualDetails.metadata).map(([key, value]) => {
             if (value === null || value === undefined || value === '') return null;
             return (
               <DetailRow
@@ -101,6 +113,59 @@ export default function InfoMetadata({
                 ? individualDetails.nodes.join(', ')
                 : individualDetails.nodes}
             />
+          )}
+        </DetailCard>
+      )}
+
+      {/* Population Details */}
+      {populationDetails && (
+        <DetailCard title="Population">
+          <DetailRow label="ID" value={populationDetails.id} />
+          {populationDetails.metadata && Object.entries(populationDetails.metadata).map(([key, value]) => (
+            <DetailRow
+              key={key}
+              label={formatLabel(key)}
+              value={typeof value === 'object' ? JSON.stringify(value) : String(value)}
+            />
+          ))}
+        </DetailCard>
+      )}
+
+      {/* Mutations on Node */}
+      {nodeMutations && nodeMutations.length > 0 && (
+        <DetailCard title={`Mutations on Node (${nodeMutations.length})`}>
+          {nodeMutations.map((mut) => (
+            <div key={mut.id} className="mb-2 p-2 bg-gray-100 rounded text-sm">
+              <DetailRow label="Position" value={mut.position?.toFixed(0)} />
+              <DetailRow label="Change" value={`${mut.ancestral_state} → ${mut.derived_state}`} />
+              {mut.time !== null && <DetailRow label="Time" value={mut.time} />}
+            </div>
+          ))}
+        </DetailCard>
+      )}
+
+      {/* Edges (Parent/Child relationships) */}
+      {nodeEdges && (nodeEdges.as_parent?.length > 0 || nodeEdges.as_child?.length > 0) && (
+        <DetailCard title="Edges">
+          {nodeEdges.as_child?.length > 0 && (
+            <div className="mb-2">
+              <span className="text-gray-500 text-xs font-medium">Parent edges (node as child):</span>
+              {nodeEdges.as_child.map((edge) => (
+                <div key={edge.id} className="text-sm ml-2 text-gray-700">
+                  Parent: {edge.parent}, Span: [{edge.left.toFixed(0)}-{edge.right.toFixed(0)})
+                </div>
+              ))}
+            </div>
+          )}
+          {nodeEdges.as_parent?.length > 0 && (
+            <div>
+              <span className="text-gray-500 text-xs font-medium">Child edges (node as parent):</span>
+              {nodeEdges.as_parent.map((edge) => (
+                <div key={edge.id} className="text-sm ml-2 text-gray-700">
+                  Child: {edge.child}, Span: [{edge.left.toFixed(0)}-{edge.right.toFixed(0)})
+                </div>
+              ))}
+            </div>
           )}
         </DetailCard>
       )}

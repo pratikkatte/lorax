@@ -116,9 +116,12 @@ const useLayers = ({
       metadataArrays: metadataArrays,
       metadataColors: metadataColors,
       populationFilter: populationFilter,
+      // Search highlighting props
+      highlightedNodes: highlightedNodes,
+      lineagePaths: lineagePaths,
       viewId: "ortho"
     });
-  }, [bins, postorderData, tsconfig, globalBpPerUnit, metadataArrays, metadataColors, populationFilter]);
+  }, [bins, postorderData, tsconfig, globalBpPerUnit, metadataArrays, metadataColors, populationFilter, highlightedNodes, lineagePaths]);
 
   const treeLayers = useMemo(() => {
     if (!bins || bins.size === 0) return [];

@@ -34,6 +34,15 @@ export default class PostOrderCompositeLayer extends CompositeLayer {
         metadataArrays: null,     // {key: {uniqueValues, indices, nodeIdToIdx}}
         metadataColors: null,     // {key: {value: [r,g,b,a]}}
         populationFilter: null,   // {colorBy, enabledValues}
+        // Search highlighting props
+        highlightedNodes: null,   // {tree_idx: [{node_id, name}]}
+        lineagePaths: null,       // {tree_idx: [{path_node_ids: [int], color}]}
+        // Highlight styling
+        highlightStrokeColor: [255, 165, 0, 255],  // Orange outline
+        highlightStrokeWidth: 2,
+        highlightRadius: 5,
+        lineageWidth: 1.5,
+        lineageColor: [255, 0, 0, 200],  // Red lineage paths
     };
 
     updateState({ props, oldProps, changeFlags }) {
@@ -44,11 +53,14 @@ export default class PostOrderCompositeLayer extends CompositeLayer {
 
         const colorsChanged = props.metadataColors !== oldProps.metadataColors;
         const arraysChanged = props.metadataArrays !== oldProps.metadataArrays;
+        const highlightsChanged = props.highlightedNodes !== oldProps.highlightedNodes;
+        const lineagesChanged = props.lineagePaths !== oldProps.lineagePaths;
 
         if (changeFlags.dataChanged ||
             props.bins !== oldProps.bins ||
             props.postorderData !== oldProps.postorderData ||
-            filterChanged || colorsChanged || arraysChanged) {
+            filterChanged || colorsChanged || arraysChanged ||
+            highlightsChanged || lineagesChanged) {
 
             this.setState({
                 processedData: this.processPostorderData(props)
@@ -217,18 +229,19 @@ export default class PostOrderCompositeLayer extends CompositeLayer {
     /**
      * Process post-order data into flat typed arrays for rendering.
      * Now includes per-tip color arrays for metadata-based coloring.
+     * Also computes highlight positions and lineage paths.
      */
     processPostorderData(props) {
-        const { bins, postorderData, minNodeTime, maxNodeTime } = props;
+        const { bins, postorderData, minNodeTime, maxNodeTime, highlightedNodes, lineagePaths } = props;
 
         if (!bins || bins.size === 0 || !postorderData) {
-            return { pathPositions: null, tipPositions: null, tipColors: null, edgeCount: 0, tipCount: 0 };
+            return { pathPositions: null, tipPositions: null, tipColors: null, tipData: [], edgeCount: 0, tipCount: 0, highlightData: [], lineageData: [] };
         }
 
         const { node_id, parent_id, time, is_tip, tree_idx } = postorderData;
 
         if (!node_id || node_id.length === 0) {
-            return { pathPositions: null, tipPositions: null, tipColors: null, edgeCount: 0, tipCount: 0 };
+            return { pathPositions: null, tipPositions: null, tipColors: null, tipData: [], edgeCount: 0, tipCount: 0, highlightData: [], lineageData: [] };
         }
 
         // Group nodes by tree
@@ -244,12 +257,17 @@ export default class PostOrderCompositeLayer extends CompositeLayer {
         const pathPositions = new Float32Array(maxPathPositions);
         const tipPositions = new Float32Array(maxTipPositions);
         const tipColors = new Uint8Array(maxTipColors);
+        const tipData = [];  // Object array for pickable tips
         const pathStartIndices = [0];
 
         let pathOffset = 0;
         let tipOffset = 0;
         let tipColorOffset = 0;
         let edgeCount = 0;
+
+        // Store node positions for highlight and lineage computation
+        // Map: treeIdx -> Map(nodeId -> {worldX, worldY})
+        const nodePositionsByTree = new Map();
 
         for (const [key, bin] of bins) {
             if (!bin.visible) continue;
@@ -268,6 +286,15 @@ export default class PostOrderCompositeLayer extends CompositeLayer {
             const m = bin.modelMatrix;
             const scaleX = m[0];
             const translateX = m[12];
+
+            // Store node positions for this tree (for highlights and lineages)
+            const positionsMap = new Map();
+            for (const node of nodeMap.values()) {
+                const worldX = node.y * scaleX + translateX;
+                const worldY = node.x;
+                positionsMap.set(node.node_id, { worldX, worldY, color: this.getTipColor(node.node_id, props) });
+            }
+            nodePositionsByTree.set(treeIdx, positionsMap);
 
             // Generate L-shaped edges
             for (const node of nodeMap.values()) {
@@ -307,8 +334,10 @@ export default class PostOrderCompositeLayer extends CompositeLayer {
                     if (tipColorOffset + 4 > tipColors.length) continue;
 
                     // Position
-                    tipPositions[tipOffset++] = node.y * scaleX + translateX;
-                    tipPositions[tipOffset++] = node.x;
+                    const tipX = node.y * scaleX + translateX;
+                    const tipY = node.x;
+                    tipPositions[tipOffset++] = tipX;
+                    tipPositions[tipOffset++] = tipY;
 
                     // Color - use metadata-based lookup
                     const color = this.getTipColor(node.node_id, props);
@@ -316,6 +345,78 @@ export default class PostOrderCompositeLayer extends CompositeLayer {
                     tipColors[tipColorOffset++] = color[1];
                     tipColors[tipColorOffset++] = color[2];
                     tipColors[tipColorOffset++] = color[3] ?? 200;
+
+                    // Add object for pickable layer
+                    tipData.push({
+                        node_id: node.node_id,
+                        tree_idx: treeIdx,
+                        position: [tipX, tipY]
+                    });
+                }
+            }
+        }
+
+        // Process highlighted nodes (skip if null/undefined or empty)
+        const highlightData = [];
+        if (highlightedNodes && typeof highlightedNodes === 'object' && Object.keys(highlightedNodes).length > 0) {
+            for (const [treeIdxStr, nodes] of Object.entries(highlightedNodes)) {
+                const treeIdx = parseInt(treeIdxStr, 10);
+                const positionsMap = nodePositionsByTree.get(treeIdx);
+                if (!positionsMap) continue;
+
+                for (const node of nodes) {
+                    const pos = positionsMap.get(node.node_id);
+                    if (pos) {
+                        highlightData.push({
+                            position: [pos.worldX, pos.worldY],
+                            name: node.name,
+                            color: pos.color
+                        });
+                    }
+                }
+            }
+        }
+
+        // Process lineage paths (skip if null/undefined or empty)
+        const lineageData = [];
+        if (lineagePaths && typeof lineagePaths === 'object' && Object.keys(lineagePaths).length > 0) {
+            for (const [treeIdxStr, lineages] of Object.entries(lineagePaths)) {
+                const treeIdx = parseInt(treeIdxStr, 10);
+                const positionsMap = nodePositionsByTree.get(treeIdx);
+                if (!positionsMap) continue;
+
+                for (const lineage of lineages) {
+                    const pathNodeIds = lineage.path_node_ids;
+                    if (!pathNodeIds || pathNodeIds.length < 2) continue;
+
+                    // Get color from the seed node (first node in path, which is the sample)
+                    // This ensures lineage color matches the highlighted node's metadata color
+                    const seedNodeId = pathNodeIds[0];
+                    const seedPos = positionsMap.get(seedNodeId);
+                    const lineageColor = seedPos?.color || lineage.color || props.lineageColor;
+
+                    // Build L-shaped path segments between nodes (like tree edges)
+                    const pathCoords = [];
+                    for (let i = 0; i < pathNodeIds.length - 1; i++) {
+                        const fromPos = positionsMap.get(pathNodeIds[i]);
+                        const toPos = positionsMap.get(pathNodeIds[i + 1]);
+                        if (fromPos && toPos) {
+                            // L-shape: from -> horizontal -> vertical to "to"
+                            if (pathCoords.length === 0) {
+                                pathCoords.push([fromPos.worldX, fromPos.worldY]);
+                            }
+                            // Horizontal segment to parent's X, then vertical
+                            pathCoords.push([fromPos.worldX, toPos.worldY]);
+                            pathCoords.push([toPos.worldX, toPos.worldY]);
+                        }
+                    }
+
+                    if (pathCoords.length >= 2) {
+                        lineageData.push({
+                            path: pathCoords,
+                            color: lineageColor
+                        });
+                    }
                 }
             }
         }
@@ -326,7 +427,10 @@ export default class PostOrderCompositeLayer extends CompositeLayer {
             tipPositions: tipPositions.subarray(0, tipOffset),
             tipColors: tipColors.subarray(0, tipColorOffset),
             edgeCount,
-            tipCount: tipOffset / 2
+            tipCount: tipOffset / 2,
+            tipData,
+            highlightData,
+            lineageData
         };
     }
 
@@ -336,8 +440,8 @@ export default class PostOrderCompositeLayer extends CompositeLayer {
             return null;
         }
 
-        const { pathPositions, pathStartIndices, tipPositions, tipColors, edgeCount, tipCount } = processedData;
-        const { edgeColor, edgeWidth, tipRadius } = this.props;
+        const { pathPositions, pathStartIndices, tipPositions, tipColors, edgeCount, tipCount, tipData, highlightData, lineageData } = processedData;
+        const { edgeColor, edgeWidth, tipRadius, highlightStrokeColor, highlightStrokeWidth, highlightRadius, lineageWidth, lineageColor } = this.props;
 
         const layers = [];
 
@@ -378,6 +482,55 @@ export default class PostOrderCompositeLayer extends CompositeLayer {
                 stroked: false,
                 coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
                 pickable: false  // Disable picking for performance
+            }));
+        }
+
+        // Pickable tip layer (invisible overlay for clicking)
+        if (tipData && tipData.length > 0) {
+            layers.push(new ScatterplotLayer({
+                id: `${this.props.id}-tips-pickable`,
+                data: tipData,
+                getPosition: d => d.position,
+                getFillColor: [0, 0, 0, 0],  // Fully transparent
+                getRadius: tipRadius + 4,    // Slightly larger hit area
+                radiusUnits: 'pixels',
+                coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+                pickable: true
+            }));
+        }
+
+        // Lineage paths (rendered before highlights so highlights appear on top)
+        if (lineageData && lineageData.length > 0) {
+            layers.push(new PathLayer({
+                id: `${this.props.id}-lineage`,
+                data: lineageData,
+                getPath: d => d.path,
+                getColor: d => d.color || lineageColor,
+                getWidth: lineageWidth,
+                widthUnits: 'pixels',
+                coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+                parameters: { depthTest: false },
+                pickable: false
+            }));
+        }
+
+        // Highlighted nodes with outline/stroke style
+        if (highlightData && highlightData.length > 0) {
+            layers.push(new ScatterplotLayer({
+                id: `${this.props.id}-highlights`,
+                data: highlightData,
+                getPosition: d => d.position,
+                getFillColor: d => d.color ? [...d.color.slice(0, 3), 200] : [255, 200, 0, 200],
+                getLineColor: highlightStrokeColor,
+                getRadius: highlightRadius,
+                radiusUnits: 'pixels',
+                filled: true,
+                stroked: true,
+                lineWidthUnits: 'pixels',
+                lineWidthMinPixels: highlightStrokeWidth,
+                coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+                parameters: { depthTest: false },
+                pickable: false
             }));
         }
 
