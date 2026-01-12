@@ -13,13 +13,87 @@ import pyarrow as pa
 from lorax.handlers import get_or_load_ts
 
 
-async def handle_postorder_query(file_path, tree_indices):
+def sparsify_tree(tree, ts, resolution):
+    """
+    Sparsify a tree based on x,y coordinate proximity using grid-based filtering.
+
+    Args:
+        tree: tskit Tree object
+        ts: tskit TreeSequence
+        resolution: Grid resolution (e.g., 100 = 100x100 cells)
+
+    Returns:
+        set of node_ids to keep
+    """
+    postorder = list(tree.nodes(order="postorder"))
+    min_time = ts.min_time
+    max_time = ts.max_time
+    time_range = max_time - min_time if max_time > min_time else 1.0
+
+    # Compute x (time-based) for all nodes
+    x = {}
+    for node_id in postorder:
+        t = ts.node(node_id).time
+        x[node_id] = (max_time - t) / time_range
+
+    # Compute y (post-order based) - same algorithm as frontend
+    y = {}
+    tip_counter = 0
+    for node_id in postorder:
+        if tree.is_leaf(node_id):
+            y[node_id] = tip_counter
+            tip_counter += 1
+        else:
+            children = list(tree.children(node_id))
+            if children:
+                y[node_id] = sum(y[c] for c in children) / len(children)
+            else:
+                y[node_id] = 0
+
+    # Normalize y to [0, 1]
+    max_y = max(tip_counter - 1, 1)
+    for node_id in y:
+        y[node_id] /= max_y
+
+    # Grid-based selection: keep one representative per cell
+    grid = {}  # (cell_x, cell_y) -> best_node_id
+    for node_id in postorder:
+        cell_x = min(int(x[node_id] * resolution), resolution - 1)
+        cell_y = min(int(y[node_id] * resolution), resolution - 1)
+        cell = (cell_x, cell_y)
+
+        if cell not in grid:
+            grid[cell] = node_id
+        else:
+            # Prefer tips over internal nodes for better visual representation
+            existing = grid[cell]
+            if tree.is_leaf(node_id) and not tree.is_leaf(existing):
+                grid[cell] = node_id
+
+    keep = set(grid.values())
+
+    # Ensure connectivity: for each kept node, trace path to root
+    for node_id in list(keep):
+        current = node_id
+        while True:
+            parent = tree.parent(current)
+            if parent == -1:
+                break
+            keep.add(parent)
+            current = parent
+
+    return keep
+
+
+async def handle_postorder_query(file_path, tree_indices, sparsity_resolution=None):
     """
     For each tree index, get post-order traversal using tskit's native tree.nodes(order="postorder").
 
     Args:
         file_path: Path to tree sequence file
         tree_indices: List of tree indices to process
+        sparsity_resolution: Optional grid resolution for sparsification (e.g., 100 = 100x100 grid).
+                            If None, no sparsification is applied.
 
     Returns:
         dict with:
@@ -74,10 +148,20 @@ async def handle_postorder_query(file_path, tree_indices):
 
             tree = ts.at_index(tree_idx)
 
+            # Get nodes to keep (all nodes if no sparsification)
+            if sparsity_resolution is not None:
+                keep_nodes = sparsify_tree(tree, ts, sparsity_resolution)
+            else:
+                keep_nodes = None  # Keep all
+
             # Get post-order traversal - this is the key tskit call
             postorder_nodes = list(tree.nodes(order="postorder"))
 
             for node_id in postorder_nodes:
+                # Skip nodes not in keep set (if sparsification is enabled)
+                if keep_nodes is not None and node_id not in keep_nodes:
+                    continue
+
                 all_node_ids.append(node_id)
 
                 # Get parent (-1 for roots)

@@ -32,6 +32,28 @@ function getDynamicBpPerUnit(globalBpPerUnit, zoom, baseZoom = 8) {
 }
 
 /**
+ * Calculate sparsity resolution based on zoom state and display context.
+ * Lower resolution = more aggressive sparsification (fewer nodes).
+ * Returns null for no sparsification (full detail).
+ *
+ * @param {number} numTrees - Number of trees being displayed
+ * @param {boolean} showingAllTrees - Whether all trees fit in viewport
+ * @param {number} scaleFactor - Zoom scale factor (>1 = zoomed out)
+ */
+function getSparsityResolution(numTrees, showingAllTrees, scaleFactor) {
+  // No sparsification when viewing few trees (detailed view)
+  if (numTrees <= 2) return null;
+
+  // Scale resolution inversely with zoom-out level
+  // scaleFactor > 1 means multiple trees per slot (zoomed out)
+  if (scaleFactor > 5) return 50;   // Very zoomed out
+  if (scaleFactor > 2) return 100;   // Moderately zoomed out
+  if (showingAllTrees) return 200;  // All trees visible but not heavily zoomed
+
+  return null;  // Full detail
+}
+
+/**
  * Process post-order data from backend.
  * Backend returns post-order traversal arrays with parent pointers.
  * PostOrderCompositeLayer computes layout using stack-based reconstruction.
@@ -176,8 +198,24 @@ const useRegions = ({
       let postorderData_backend = null;
       try {
         if (displayArray.length > 0) {
+          // Calculate sparsity resolution based on zoom state
+          // scaleFactor > 1 means zoomed out (multiple trees per slot)
+          const scaleFactor = new_globalBp / globalBpPerUnit;
+          const sparsityResolution = getSparsityResolution(
+            displayArray.length,
+            showing_all_trees,
+            scaleFactor
+          );
+
+          console.log('[Sparsification]', {
+            scaleFactor: scaleFactor.toFixed(2),
+            numTrees: displayArray.length,
+            showingAllTrees: showing_all_trees,
+            sparsityResolution: sparsityResolution ?? 'none (full detail)'
+          });
+
           // Fetch post-order traversal for all displayed trees
-          const backendResult = await queryPostorderLayout(displayArray);
+          const backendResult = await queryPostorderLayout(displayArray, sparsityResolution);
 
           if (backendResult && !backendResult.error) {
             // Process post-order data

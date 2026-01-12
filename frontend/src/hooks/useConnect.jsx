@@ -513,8 +513,10 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
    * Query post-order tree traversal for efficient rendering.
    * Returns flattened post-order arrays with parent pointers.
    * @param {Array} displayArray - Array of tree indices to fetch
+   * @param {number|null} sparsityResolution - Optional grid resolution for sparsification (e.g., 100 = 100x100 grid).
+   *                                            Lower values = more sparsification. Null = no sparsification.
    */
-  const queryPostorderLayout = useCallback((displayArray) => {
+  const queryPostorderLayout = useCallback((displayArray, sparsityResolution = null) => {
     return new Promise((resolve, reject) => {
       if (!socketRef.current) {
         reject(new Error("Socket not available"));
@@ -575,7 +577,11 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
       };
 
       socketRef.current.once("postorder-layout-result", handleResult);
-      socketRef.current.emit("process_postorder_layout", { displayArray, lorax_sid: sidRef.current });
+      socketRef.current.emit("process_postorder_layout", {
+        displayArray,
+        sparsity_resolution: sparsityResolution,
+        lorax_sid: sidRef.current
+      });
     });
   }, []);
 
