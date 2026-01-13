@@ -122,9 +122,13 @@ const useRegions = ({
   xzoom,
   yzoom,
   genomicValues,
-  displayOptions = {}
+  displayOptions = {},
+  // Props for worker-based rendering
+  metadataArrays,
+  metadataColors,
+  populationFilter
 }) => {
-  const { queryEdges, queryLocalBins, getTreeFromEdges, queryPostorderLayout } = backend;
+  const { queryEdges, queryLocalBins, getTreeFromEdges, queryPostorderLayout, queryPostorderLayoutWithRender } = backend;
 
   const [localBins, setLocalBins] = useState(null);
 
@@ -133,6 +137,7 @@ const useRegions = ({
   const region = useRef(null);
   const [edgesData, setEdgesData] = useState(null);
   const [postorderData, setPostorderData] = useState(null);
+  const [renderData, setRenderData] = useState(null);  // Pre-computed typed arrays from worker
 
   const [times, setTimes] = useState([]);
   const showingAllTrees = useRef(false);
@@ -224,10 +229,10 @@ const useRegions = ({
       showingAllTrees.current = showing_all_trees;
 
 
-      // Step 3: Fetch post-order data from backend
-      // Backend returns post-order traversal arrays with parent pointers
-      // PostOrderCompositeLayer computes layout using stack-based reconstruction
+      // Step 3: Fetch post-order data and compute render arrays in worker
+      // Worker handles PyArrow parsing + typed array computation off main thread
       let postorderData_backend = null;
+      let workerRenderData = null;
       try {
         if (displayArray.length > 0) {
           // Calculate sparsity based on zoom state
@@ -240,10 +245,8 @@ const useRegions = ({
             showing_all_trees,
             scaleFactor
           );
-          // const sparsityPrecision = null;
 
           // Grid-based sparsification
-          // const sparsityResolution = getSparsityResolution(displayArray.length, showing_all_trees, scaleFactor);
           const sparsityResolution = null;
 
           console.log('[Sparsification]', {
@@ -255,12 +258,33 @@ const useRegions = ({
             sparsityResolution: sparsityResolution ?? 'none'
           });
 
-          // Fetch post-order traversal for all displayed trees
-          const backendResult = await queryPostorderLayout(displayArray, sparsityResolution, sparsityPrecision);
+          // Use worker-based render computation if available (fast path)
+          if (queryPostorderLayoutWithRender) {
+            const workerResult = await queryPostorderLayoutWithRender(
+              displayArray,
+              local_bins,           // bins with modelMatrix
+              metadataArrays,
+              metadataColors,
+              populationFilter,
+              sparsityResolution,
+              sparsityPrecision
+            );
 
-          if (backendResult && !backendResult.error) {
-            // Process post-order data
-            postorderData_backend = processPostorderData(backendResult);
+            if (workerResult && !workerResult.error) {
+              workerRenderData = workerResult;
+              // Keep postorderData for backwards compatibility (metadata)
+              postorderData_backend = {
+                global_min_time: workerResult.global_min_time,
+                global_max_time: workerResult.global_max_time,
+                tree_indices: workerResult.tree_indices
+              };
+            }
+          } else {
+            // Fallback: use old queryPostorderLayout (legacy path)
+            const backendResult = await queryPostorderLayout(displayArray, sparsityResolution, sparsityPrecision);
+            if (backendResult && !backendResult.error) {
+              postorderData_backend = processPostorderData(backendResult);
+            }
           }
         }
       } catch (err) {
@@ -273,13 +297,14 @@ const useRegions = ({
 
       setLocalBins(local_bins);
       setPostorderData(postorderData_backend);
+      setRenderData(workerRenderData);
 
       if (!postorderData_backend?.error) {
         setStatusMessage(null);
       }
       isFetching.current = false;
     }, 400, { leading: false, trailing: true }),
-    [isFetching.current, valueRef.current, xzoom, selectionStrategy, tsconfig?.intervals, queryLocalBins, queryEdges, globalBpPerUnit, getTreeFromEdges, queryPostorderLayout]
+    [isFetching.current, valueRef.current, xzoom, selectionStrategy, tsconfig?.intervals, queryLocalBins, queryEdges, globalBpPerUnit, getTreeFromEdges, queryPostorderLayout, queryPostorderLayoutWithRender, metadataArrays, metadataColors, populationFilter]
   );
 
   useEffect(() => {
@@ -350,8 +375,9 @@ const useRegions = ({
     localCoordinates,
     times,
     edgesData,
-    postorderData
-  }), [localBins, localCoordinates, times, edgesData, postorderData]);
+    postorderData,
+    renderData  // Pre-computed typed arrays from worker (fast path)
+  }), [localBins, localCoordinates, times, edgesData, postorderData, renderData]);
 };
 
 export default useRegions;

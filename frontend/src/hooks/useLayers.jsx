@@ -31,7 +31,7 @@ const useLayers = ({
   tsconfig // Ensure tsconfig is destructured
 }) => {
 
-  const { bins: rawBins = new Map(), localCoordinates = [], times = [], edgesData, layoutData, postorderData } = regions;
+  const { bins: rawBins = new Map(), localCoordinates = [], times = [], edgesData, layoutData, postorderData, renderData } = regions;
 
   // Apply smooth transitions to tree positions
   const bins = useAnimatedBins(rawBins, {
@@ -98,16 +98,18 @@ const useLayers = ({
   }, [rawBins, globalBpPerUnit, hoveredGenomeInfo]);
 
   const postOrderCompositeLayer = useMemo(() => {
-    if (!bins || bins.size === 0 || !postorderData) return null;
+    // Need either renderData (fast path) or postorderData (legacy path)
+    if (!bins || bins.size === 0 || (!renderData && !postorderData)) return null;
 
-    // Use global time from postorderData (from backend) or fallback to tsconfig
-    const minTime = postorderData.global_min_time ?? tsconfig?.times?.values?.[0] ?? 0;
-    const maxTime = postorderData.global_max_time ?? tsconfig?.times?.values?.[1] ?? 1;
+    // Use global time from renderData or postorderData, fallback to tsconfig
+    const minTime = renderData?.global_min_time ?? postorderData?.global_min_time ?? tsconfig?.times?.values?.[0] ?? 0;
+    const maxTime = renderData?.global_max_time ?? postorderData?.global_max_time ?? tsconfig?.times?.values?.[1] ?? 1;
 
     return new PostOrderCompositeLayer({
       id: 'postorder-composite-layer',
       bins: bins,
-      postorderData: postorderData,  // Contains {node_id, parent_id, is_tip, tree_idx, x, y}
+      postorderData: postorderData,  // Legacy: {node_id, parent_id, is_tip, tree_idx, x, y}
+      renderData: renderData,        // Fast path: pre-computed typed arrays from worker
       minNodeTime: minTime,
       maxNodeTime: maxTime,
       globalBpPerUnit: globalBpPerUnit,
@@ -121,7 +123,7 @@ const useLayers = ({
       lineagePaths: lineagePaths,
       viewId: "ortho"
     });
-  }, [bins, postorderData, tsconfig, globalBpPerUnit, metadataArrays, metadataColors, populationFilter, highlightedNodes, lineagePaths]);
+  }, [bins, postorderData, renderData, tsconfig, globalBpPerUnit, metadataArrays, metadataColors, populationFilter, highlightedNodes, lineagePaths]);
 
   const treeLayers = useMemo(() => {
     if (!bins || bins.size === 0) return [];

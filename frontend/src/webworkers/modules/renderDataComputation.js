@@ -6,7 +6,7 @@
  *
  * Key optimizations:
  * - Reuses pre-allocated buffers to avoid per-call allocation
- * - Uses Float32Array with relative coordinates for memory efficiency
+ * - Uses Float64Array to preserve precision for large coordinates
  * - Computes L-shaped paths and tip positions for all visible trees
  */
 
@@ -110,9 +110,9 @@ export function computeRenderArrays(data) {
   // Handle empty data
   if (!node_id || node_id.length === 0 || !bins || bins.size === 0) {
     return {
-      pathPositions: new Float32Array(0),
+      pathPositions: new Float64Array(0),
       pathStartIndices: [0],
-      tipPositions: new Float32Array(0),
+      tipPositions: new Float64Array(0),
       tipColors: new Uint8Array(0),
       tipData: [],
       edgeCount: 0,
@@ -136,8 +136,10 @@ export function computeRenderArrays(data) {
   const tipSize = totalVisibleNodes * 2;   // 2 floats per tip
   const colorSize = totalVisibleNodes * 4; // 4 bytes RGBA per tip
 
-  pathBuffer = ensureBuffer(pathBuffer, pathSize, Float32Array);
-  tipBuffer = ensureBuffer(tipBuffer, tipSize, Float32Array);
+  // Use Float64Array to preserve precision for large coordinates
+  // (Float32 loses precision when translateX is large, causing boxy edges)
+  pathBuffer = ensureBuffer(pathBuffer, pathSize, Float64Array);
+  tipBuffer = ensureBuffer(tipBuffer, tipSize, Float64Array);
   colorBuffer = ensureBuffer(colorBuffer, colorSize, Uint8Array);
   pathStartIndicesBuffer = ensureBuffer(pathStartIndicesBuffer, totalVisibleNodes + 1, Uint32Array);
 

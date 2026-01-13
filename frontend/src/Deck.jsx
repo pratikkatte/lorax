@@ -117,17 +117,21 @@ function Deck({
     selectionStrategy: 'largestSpan',
   }), []);
 
-  const regions = useRegions({ 
-    backend, 
-    valueRef, 
-    saveViewports: saveViewports.current, 
-    globalBpPerUnit, 
-    tsconfig, 
-    setStatusMessage, 
-    xzoom, 
-    yzoom, 
+  const regions = useRegions({
+    backend,
+    valueRef,
+    saveViewports: saveViewports.current,
+    globalBpPerUnit,
+    tsconfig,
+    setStatusMessage,
+    xzoom,
+    yzoom,
     genomicValues,
-    displayOptions
+    displayOptions,
+    // Pass metadata for worker-based rendering
+    metadataArrays,
+    metadataColors,
+    populationFilter
   });
 
   const onClickOrMouseMove = useCallback(

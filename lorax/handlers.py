@@ -623,7 +623,7 @@ def get_metadata_array_for_key(
     if key == "sample":
         unique_values = []
         value_to_idx = {}
-        indices = np.zeros(n_samples, dtype=np.uint16)
+        indices = np.zeros(n_samples, dtype=np.uint32)
 
         for i, node_id in enumerate(sample_ids):
             node = ts.node(node_id)
@@ -641,7 +641,7 @@ def get_metadata_array_for_key(
             indices[i] = value_to_idx[sample_name]
 
         # Serialize to Arrow IPC format
-        table = pa.table({'idx': pa.array(indices, type=pa.uint16())})
+        table = pa.table({'idx': pa.array(indices, type=pa.uint32())})
         sink = pa.BufferOutputStream()
         writer = pa.ipc.new_stream(sink, table.schema)
         writer.write_table(table)
@@ -658,7 +658,7 @@ def get_metadata_array_for_key(
 
     unique_values = []
     value_to_idx = {}
-    indices = np.zeros(n_samples, dtype=np.uint16)
+    indices = np.zeros(n_samples, dtype=np.uint32)
 
     for i, node_id in enumerate(sample_ids):
         sample_name, value = _get_sample_metadata_value(ts, node_id, key, sources, sample_name_key)
@@ -675,7 +675,7 @@ def get_metadata_array_for_key(
         indices[i] = value_to_idx[value_str]
 
     # Serialize to Arrow IPC format
-    table = pa.table({'idx': pa.array(indices, type=pa.uint16())})
+    table = pa.table({'idx': pa.array(indices, type=pa.uint32())})
     sink = pa.BufferOutputStream()
     writer = pa.ipc.new_stream(sink, table.schema)
     writer.write_table(table)
