@@ -8,14 +8,15 @@ import { PathLayer, ScatterplotLayer } from '@deck.gl/layers';
  * Backend handles coordinate computation and sparsification, frontend uses
  * coordinates directly for rendering.
  *
- * Data format from backend (PyArrow):
+ * Optimized data format from backend (PyArrow):
  * - node_id: int32
  * - parent_id: int32 (-1 for roots)
- * - time: float64
  * - is_tip: bool
  * - tree_idx: int32 (which tree this node belongs to)
  * - x: float32 (time-based coordinate [0,1], root=0, tips=1)
  * - y: float32 (genealogy-based coordinate [0,1])
+ *
+ * Note: 'time' field removed - derivable from x coordinate and global_min/max_time
  *
  * Plus metadata:
  * - global_min_time, global_max_time
@@ -24,7 +25,7 @@ export default class PostOrderCompositeLayer extends CompositeLayer {
     static layerName = 'PostOrderCompositeLayer';
     static defaultProps = {
         bins: null,
-        postorderData: null,  // {node_id, parent_id, time, is_tip, tree_idx} arrays + metadata
+        postorderData: null,  // {node_id, parent_id, is_tip, tree_idx, x, y} arrays + metadata
         tsconfig: null,
         minNodeTime: 0,
         maxNodeTime: 1,
@@ -104,7 +105,7 @@ export default class PostOrderCompositeLayer extends CompositeLayer {
      * Includes pre-computed x,y coordinates from backend.
      */
     groupNodesByTree(postorderData) {
-        const { node_id, parent_id, time, is_tip, tree_idx, x, y } = postorderData;
+        const { node_id, parent_id, is_tip, tree_idx, x, y } = postorderData;
 
         if (!node_id || node_id.length === 0) {
             return new Map();
@@ -123,7 +124,6 @@ export default class PostOrderCompositeLayer extends CompositeLayer {
             treeMap.get(treeIndex).push({
                 node_id: node_id[i],
                 parent_id: parent_id[i],
-                time: time[i],
                 is_tip: is_tip[i],
                 x: hasCoords ? x[i] : null,
                 y: hasCoords ? y[i] : null
@@ -245,7 +245,7 @@ export default class PostOrderCompositeLayer extends CompositeLayer {
             return { pathPositions: null, tipPositions: null, tipColors: null, tipData: [], edgeCount: 0, tipCount: 0, highlightData: [], lineageData: [] };
         }
 
-        const { node_id, parent_id, time, is_tip, tree_idx } = postorderData;
+        const { node_id, parent_id, is_tip, tree_idx } = postorderData;
 
         if (!node_id || node_id.length === 0) {
             return { pathPositions: null, tipPositions: null, tipColors: null, tipData: [], edgeCount: 0, tipCount: 0, highlightData: [], lineageData: [] };

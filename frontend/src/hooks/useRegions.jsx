@@ -80,17 +80,21 @@ function getSparsityPrecision(numTrees, showingAllTrees, scaleFactor) {
  * Process post-order data from backend.
  * Backend returns post-order traversal arrays with parent pointers and pre-computed x,y coordinates.
  * PostOrderCompositeLayer uses backend coordinates directly (no recomputation).
+ *
+ * Optimized schema (v2):
+ * - Removed 'time' field (derivable from x coordinate and global_min/max_time)
+ * - tree_idx is int32 (supports large tree sequences)
  */
 function processPostorderData(backendData) {
   if (!backendData || backendData.error) return null;
 
-  const { node_id, parent_id, time, is_tip, tree_idx, x, y, global_min_time, global_max_time, tree_indices } = backendData;
+  const { node_id, parent_id, is_tip, tree_idx, x, y, global_min_time, global_max_time, tree_indices } = backendData;
 
   // Return data for PostOrderCompositeLayer to process
+  // Note: 'time' field removed in optimized backend - use x coordinate for time-based calculations
   return {
     node_id: Array.from(node_id),
     parent_id: Array.from(parent_id),
-    time: Array.from(time),
     is_tip: Array.from(is_tip),
     tree_idx: Array.from(tree_idx),
     x: x ? Array.from(x) : [],

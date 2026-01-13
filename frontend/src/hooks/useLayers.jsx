@@ -107,7 +107,7 @@ const useLayers = ({
     return new PostOrderCompositeLayer({
       id: 'postorder-composite-layer',
       bins: bins,
-      postorderData: postorderData,  // Contains {node_id, parent_id, time, is_tip, tree_idx}
+      postorderData: postorderData,  // Contains {node_id, parent_id, is_tip, tree_idx, x, y}
       minNodeTime: minTime,
       maxNodeTime: maxTime,
       globalBpPerUnit: globalBpPerUnit,
