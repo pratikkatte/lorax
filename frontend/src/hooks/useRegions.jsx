@@ -228,16 +228,16 @@ const useRegions = ({
           const scaleFactor = new_globalBp / globalBpPerUnit;
 
           // Use precision-based sparsification (takes precedence)
-          // const sparsityPrecision = getSparsityPrecision(
-          //   displayArray.length,
-          //   showing_all_trees,
-          //   scaleFactor
-          // );
-          const sparsityPrecision = null;
+          const sparsityPrecision = getSparsityPrecision(
+            displayArray.length,
+            showing_all_trees,
+            scaleFactor
+          );
+          // const sparsityPrecision = null;
 
-          // Grid-based sparsification (disabled for debugging)
-          const sparsityResolution = null;
+          // Grid-based sparsification
           // const sparsityResolution = getSparsityResolution(displayArray.length, showing_all_trees, scaleFactor);
+          const sparsityResolution = null;
 
           console.log('[Sparsification]', {
             scaleFactor: scaleFactor.toFixed(2),

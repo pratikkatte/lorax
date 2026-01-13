@@ -257,28 +257,16 @@ export default class PostOrderCompositeLayer extends CompositeLayer {
         // Calculate exact buffer size for visible trees only
         // (Using average was causing buffer overflow for large trees, silently dropping edges)
         let totalVisibleNodes = 0;
-        const visibleTreeInfo = [];
         for (const [key, bin] of bins) {
             if (!bin.visible) continue;
             const treeNodes = treeNodesMap.get(bin.global_index);
-            if (treeNodes) {
-                totalVisibleNodes += treeNodes.length;
-                visibleTreeInfo.push({ treeIdx: bin.global_index, nodeCount: treeNodes.length });
-            }
+            if (treeNodes) totalVisibleNodes += treeNodes.length;
         }
         // Add 10% buffer for safety
         const bufferMultiplier = 1.1;
         const maxPathPositions = Math.ceil(totalVisibleNodes * 6 * bufferMultiplier);  // 6 floats per L-shape
         const maxTipPositions = Math.ceil(totalVisibleNodes * 2 * bufferMultiplier);   // 2 floats per tip
         const maxTipColors = Math.ceil(totalVisibleNodes * 4 * bufferMultiplier);      // 4 bytes RGBA per tip
-
-        console.log('[PostOrderCompositeLayer] Buffer allocation:', {
-            totalVisibleNodes,
-            visibleTrees: visibleTreeInfo.length,
-            maxPathPositions,
-            maxTipPositions,
-            treeDetails: visibleTreeInfo.slice(0, 5)  // First 5 trees
-        });
 
         // Use Float64Array to preserve precision for large coordinates
         // (Float32 loses precision when translateX is ~274727 and differences are ~0.001)
@@ -324,41 +312,14 @@ export default class PostOrderCompositeLayer extends CompositeLayer {
                     });
                 }
                 // Build children arrays for edge traversal
-                let childrenBuilt = 0;
-                let parentNotFound = 0;
                 for (const n of treeNodes) {
                     if (n.parent_id !== -1) {
                         const parent = nodeMap.get(n.parent_id);
                         const child = nodeMap.get(n.node_id);
                         if (parent && child) {
                             parent.children.push(child);
-                            childrenBuilt++;
-                        } else {
-                            parentNotFound++;
                         }
                     }
-                }
-                // Debug: log children building stats for first tree only
-                if (visibleTreeInfo.length > 0 && treeIdx === visibleTreeInfo[0].treeIdx) {
-                    const nodesWithChildren = [...nodeMap.values()].filter(n => n.children.length > 0).length;
-                    // Check coordinate ranges
-                    const nodes = [...nodeMap.values()];
-                    const xValues = nodes.map(n => n.x);
-                    const yValues = nodes.map(n => n.y);
-                    const xMin = Math.min(...xValues);
-                    const xMax = Math.max(...xValues);
-                    const yMin = Math.min(...yValues);
-                    const yMax = Math.max(...yValues);
-                    console.log(`[PostOrderCompositeLayer] Tree ${treeIdx} children stats:`, {
-                        totalNodes: treeNodes.length,
-                        childrenBuilt,
-                        parentNotFound,
-                        nodesWithChildren,
-                        coordRanges: { xMin, xMax, yMin, yMax },
-                        sampleNodes: nodes.slice(0, 3).map(n => ({
-                            id: n.node_id, x: n.x, y: n.y, is_tip: n.is_tip, children: n.children.length
-                        }))
-                    });
                 }
             } else {
                 // Fallback: compute layout locally (for backwards compatibility)
@@ -370,15 +331,6 @@ export default class PostOrderCompositeLayer extends CompositeLayer {
             const m = bin.modelMatrix;
             const scaleX = m[0];
             const translateX = m[12];
-
-            // Debug: log modelMatrix for first tree
-            if (visibleTreeInfo.length > 0 && treeIdx === visibleTreeInfo[0].treeIdx) {
-                console.log(`[PostOrderCompositeLayer] Tree ${treeIdx} modelMatrix:`, {
-                    scaleX,
-                    translateX,
-                    fullMatrix: Array.from(m)
-                });
-            }
 
             // Store node positions for this tree (for highlights and lineages)
             const positionsMap = new Map();
@@ -513,26 +465,6 @@ export default class PostOrderCompositeLayer extends CompositeLayer {
                 }
             }
         }
-
-        // Sample some edge positions to check coordinate ranges (show full precision)
-        const sampleEdges = [];
-        for (let i = 0; i < Math.min(5, pathStartIndices.length - 1); i++) {
-            const start = pathStartIndices[i] * 2;
-            sampleEdges.push({
-                p1: [pathPositions[start].toFixed(10), pathPositions[start + 1].toFixed(10)],
-                p2: [pathPositions[start + 2].toFixed(10), pathPositions[start + 3].toFixed(10)],
-                p3: [pathPositions[start + 4].toFixed(10), pathPositions[start + 5].toFixed(10)]
-            });
-        }
-
-        console.log('[PostOrderCompositeLayer] Final stats:', {
-            edgeCount,
-            tipCount: tipOffset / 2,
-            pathOffset,
-            maxPathPositions,
-            bufferUsage: `${((pathOffset / maxPathPositions) * 100).toFixed(1)}%`,
-            sampleEdges
-        });
 
         return {
             pathPositions: pathPositions.subarray(0, pathOffset),
