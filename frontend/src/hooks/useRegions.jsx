@@ -84,21 +84,24 @@ function getSparsityPrecision(numTrees, showingAllTrees, scaleFactor) {
  * Optimized schema (v2):
  * - Removed 'time' field (derivable from x coordinate and global_min/max_time)
  * - tree_idx is int32 (supports large tree sequences)
+ *
+ * MEMORY OPTIMIZATION: No longer uses Array.from() which doubled memory.
+ * Typed arrays from Arrow are passed through directly.
  */
 function processPostorderData(backendData) {
   if (!backendData || backendData.error) return null;
 
   const { node_id, parent_id, is_tip, tree_idx, x, y, global_min_time, global_max_time, tree_indices } = backendData;
 
-  // Return data for PostOrderCompositeLayer to process
-  // Note: 'time' field removed in optimized backend - use x coordinate for time-based calculations
+  // Pass through typed arrays directly - NO Array.from() to avoid doubling memory
+  // PostOrderCompositeLayer works with both typed arrays and regular arrays
   return {
-    node_id: Array.from(node_id),
-    parent_id: Array.from(parent_id),
-    is_tip: Array.from(is_tip),
-    tree_idx: Array.from(tree_idx),
-    x: x ? Array.from(x) : [],
-    y: y ? Array.from(y) : [],
+    node_id: node_id || [],
+    parent_id: parent_id || [],
+    is_tip: is_tip || [],
+    tree_idx: tree_idx || [],
+    x: x || [],
+    y: y || [],
     global_min_time,
     global_max_time,
     tree_indices

@@ -596,6 +596,107 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
     });
   }, []);
 
+  /**
+   * Query post-order layout and compute render data in worker.
+   * This offloads both PyArrow parsing and render array computation to the worker.
+   *
+   * @param {Array} displayArray - Array of tree indices to fetch
+   * @param {Map|Object} bins - Bin data with modelMatrix and visibility
+   * @param {Object} metadataArrays - Metadata arrays for coloring
+   * @param {Object} metadataColors - Color mapping
+   * @param {Object} populationFilter - Active filter settings
+   * @param {number|null} sparsityResolution - Grid resolution for sparsification
+   * @param {number|null} sparsityPrecision - Decimal precision for sparsification
+   * @returns {Promise} Resolves with ready-to-render typed arrays
+   */
+  const queryPostorderLayoutWithRender = useCallback((
+    displayArray,
+    bins,
+    metadataArrays,
+    metadataColors,
+    populationFilter,
+    sparsityResolution = null,
+    sparsityPrecision = null
+  ) => {
+    return new Promise((resolve, reject) => {
+      if (!socketRef.current) {
+        reject(new Error("Socket not available"));
+        return;
+      }
+
+      if (!workerRef.current) {
+        reject(new Error("Worker not available"));
+        return;
+      }
+
+      const handleSocketResult = (message) => {
+        socketRef.current.off("postorder-layout-result", handleSocketResult);
+
+        if (message.error) {
+          reject(new Error(message.error));
+          return;
+        }
+
+        // Serialize bins Map to array for transfer to worker
+        let serializedBins;
+        if (bins instanceof Map) {
+          serializedBins = Array.from(bins.entries());
+        } else if (bins && typeof bins === 'object') {
+          serializedBins = Object.entries(bins).map(([k, v]) => [Number(k), v]);
+        } else {
+          serializedBins = [];
+        }
+
+        // Send raw buffer to worker for parsing and render computation
+        // Transfer the buffer for zero-copy
+        const bufferCopy = message.buffer.slice(0); // Make a copy since we transfer it
+        workerRef.current.postMessage({
+          type: "compute-render-data",
+          buffer: bufferCopy,
+          bins: serializedBins,
+          metadataArrays: metadataArrays || {},
+          metadataColors: metadataColors || {},
+          populationFilter: populationFilter || {},
+          global_min_time: message.global_min_time,
+          global_max_time: message.global_max_time,
+          tree_indices: message.tree_indices
+        }, [bufferCopy]);
+      };
+
+      // Listen for worker response
+      const handleWorkerResult = (event) => {
+        if (event.data.type === "render-data") {
+          workerRef.current.removeEventListener('message', handleWorkerResult);
+
+          if (event.data.error) {
+            console.error("Worker error:", event.data.error);
+          }
+
+          resolve(event.data.data);
+        }
+      };
+
+      workerRef.current.addEventListener('message', handleWorkerResult);
+
+      // Request data from backend
+      socketRef.current.once("postorder-layout-result", handleSocketResult);
+      socketRef.current.emit("process_postorder_layout", {
+        displayArray,
+        sparsity_resolution: sparsityResolution,
+        sparsity_precision: sparsityPrecision,
+        lorax_sid: sidRef.current
+      });
+    });
+  }, []);
+
+  /**
+   * Clear worker buffers to free memory.
+   * Call when switching files or when memory pressure is high.
+   */
+  const clearWorkerBuffers = useCallback(() => {
+    workerRef.current?.postMessage({ type: "clear-buffers" });
+  }, []);
+
 
 
   const queryFile = useCallback((payload) => {
@@ -812,6 +913,8 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
       queryNodes,
       queryEdges,
       queryPostorderLayout,
+      queryPostorderLayoutWithRender,  // NEW: Worker-based render computation
+      clearWorkerBuffers,              // NEW: Clear worker buffers
       queryDetails,
       isConnected,
       checkConnection,
@@ -844,6 +947,8 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
       search,
       searchNodes,
       queryPostorderLayout,
+      queryPostorderLayoutWithRender,
+      clearWorkerBuffers,
       loraxSid,
       queryMutationsWindow,
       searchMutations

@@ -1,10 +1,15 @@
 import { Matrix4 } from "@math.gl/core";
+import * as arrow from "apache-arrow";
 import { computeLineageSegments } from "./modules/lineageUtils.js";
 import {
   extractSquarePaths,
   globalCleanup,
   dedupeSegments
 } from "./modules/treeProcessing.js";
+import {
+  computeRenderArrays,
+  clearBuffers as clearRenderBuffers
+} from "./modules/renderDataComputation.js";
 
 import {
   nearestIndex,
@@ -13,7 +18,7 @@ import {
   new_complete_experiment_map
 } from "./modules/binningUtils.js";
 
-console.log("[Worker] Initialized");
+console.log("[Worker] Initialized with PyArrow support");
 
 postMessage({ data: "Worker starting" });
 
@@ -35,25 +40,106 @@ const pathsData = new Map();
 // Maximum number of trees to keep in cache to prevent memory bloat
 const MAX_CACHED_TREES = 30;
 
+// Memory-based cache limit (50MB)
+const MAX_CACHE_BYTES = 50 * 1024 * 1024;
+let currentCacheBytes = 0;
+
+// Track last access time for LRU eviction
+const pathsDataAccess = new Map();
+
+/**
+ * Estimate memory size of a tree object
+ */
+function estimateTreeSize(tree) {
+  if (!tree) return 0;
+  // Rough estimate: nodes * 100 bytes per node (accounting for object overhead)
+  const nodeCount = tree.node?.length || 0;
+  return nodeCount * 100;
+}
+
+/**
+ * Evict trees until cache is under target bytes using LRU
+ */
+function evictUntilUnder(targetBytes) {
+  if (currentCacheBytes <= targetBytes) return;
+
+  // Sort entries by last access time (oldest first)
+  const entries = [...pathsData.entries()].sort((a, b) => {
+    return (pathsDataAccess.get(a[0]) || 0) - (pathsDataAccess.get(b[0]) || 0);
+  });
+
+  for (const [key, tree] of entries) {
+    if (currentCacheBytes <= targetBytes) break;
+    const size = estimateTreeSize(tree);
+    pathsData.delete(key);
+    pathsDataAccess.delete(key);
+    currentCacheBytes -= size;
+    console.log(`[Cache] Evicted tree ${key}, freed ${size} bytes, cache now ${currentCacheBytes} bytes`);
+  }
+}
+
+/**
+ * Add tree to cache with memory tracking
+ */
+function cacheTree(key, tree) {
+  const size = estimateTreeSize(tree);
+
+  // Evict if adding would exceed limit
+  if (currentCacheBytes + size > MAX_CACHE_BYTES) {
+    evictUntilUnder(MAX_CACHE_BYTES - size);
+  }
+
+  // Remove old entry if exists
+  if (pathsData.has(key)) {
+    const oldSize = estimateTreeSize(pathsData.get(key));
+    currentCacheBytes -= oldSize;
+  }
+
+  pathsData.set(key, tree);
+  pathsDataAccess.set(key, Date.now());
+  currentCacheBytes += size;
+}
+
+/**
+ * Get tree from cache, updating access time
+ */
+function getCachedTree(key) {
+  const tree = pathsData.get(key);
+  if (tree) {
+    pathsDataAccess.set(key, Date.now());
+  }
+  return tree;
+}
 
 // Helper to delete from pathsData for trees outside current range
 function deleteRangeByValue(min, max) {
-  // const keysToDelete = [];
   for (const key of pathsData.keys()) {
     if (key < min || key > max) {
-      // keysToDelete.push(key);
+      const size = estimateTreeSize(pathsData.get(key));
       pathsData.delete(key);
+      pathsDataAccess.delete(key);
+      currentCacheBytes -= size;
     }
   }
 }
 
 // Aggressive cleanup when cache gets too large
 function enforcePathsCacheLimit(invisibleKeys = new Set()) {
+  // First try count-based limit
   if (pathsData.size > MAX_CACHED_TREES) {
     invisibleKeys.forEach(key => {
-      pathsData.delete(key);
+      if (pathsData.has(key)) {
+        const size = estimateTreeSize(pathsData.get(key));
+        pathsData.delete(key);
+        pathsDataAccess.delete(key);
+        currentCacheBytes -= size;
+      }
     });
+  }
 
+  // Then enforce memory limit
+  if (currentCacheBytes > MAX_CACHE_BYTES) {
+    evictUntilUnder(MAX_CACHE_BYTES * 0.8); // Free 20% extra headroom
   }
 }
 
@@ -353,6 +439,106 @@ onmessage = async (event) => {
 
     if (data.type === "details") {
       console.log("data details value: TO IMPLEMENT")
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // NEW: Compute render data from PyArrow buffer (off main thread)
+    // ─────────────────────────────────────────────────────────────────
+    if (data.type === "compute-render-data") {
+      try {
+        const {
+          buffer,
+          bins,
+          metadataArrays,
+          metadataColors,
+          populationFilter,
+          global_min_time,
+          global_max_time,
+          tree_indices
+        } = data;
+
+        // Parse PyArrow buffer in worker (off main thread)
+        const uint8 = new Uint8Array(buffer);
+        const table = arrow.tableFromIPC(uint8);
+
+        // Extract columns as typed arrays (no Array.from - keeps as typed arrays)
+        const node_id = table.getChild('node_id')?.toArray();
+        const parent_id = table.getChild('parent_id')?.toArray();
+        const is_tip = table.getChild('is_tip')?.toArray();
+        const tree_idx = table.getChild('tree_idx')?.toArray();
+        const x = table.getChild('x')?.toArray();
+        const y = table.getChild('y')?.toArray();
+
+        // Reconstruct bins Map from serialized format
+        const binsMap = new Map();
+        if (bins && typeof bins === 'object') {
+          // If bins is an array of [key, value] pairs
+          if (Array.isArray(bins)) {
+            for (const [key, value] of bins) {
+              binsMap.set(key, value);
+            }
+          } else {
+            // If bins is a plain object
+            for (const [key, value] of Object.entries(bins)) {
+              binsMap.set(Number(key), value);
+            }
+          }
+        }
+
+        // Compute render arrays in worker
+        const result = computeRenderArrays({
+          node_id,
+          parent_id,
+          is_tip,
+          tree_idx,
+          x,
+          y,
+          bins: binsMap,
+          metadataArrays,
+          metadataColors,
+          populationFilter
+        });
+
+        // Add metadata to result
+        result.global_min_time = global_min_time;
+        result.global_max_time = global_max_time;
+        result.tree_indices = tree_indices;
+
+        // Transfer typed array buffers back (zero-copy)
+        const transferables = [];
+        if (result.pathPositions?.buffer) transferables.push(result.pathPositions.buffer);
+        if (result.tipPositions?.buffer) transferables.push(result.tipPositions.buffer);
+        if (result.tipColors?.buffer) transferables.push(result.tipColors.buffer);
+
+        postMessage({ type: "render-data", data: result }, transferables);
+
+      } catch (error) {
+        console.error("[Worker] Error computing render data:", error);
+        postMessage({
+          type: "render-data",
+          error: error.message,
+          data: {
+            pathPositions: new Float32Array(0),
+            tipPositions: new Float32Array(0),
+            tipColors: new Uint8Array(0),
+            tipData: [],
+            edgeCount: 0,
+            tipCount: 0
+          }
+        });
+      }
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // NEW: Clear buffers to free memory
+    // ─────────────────────────────────────────────────────────────────
+    if (data.type === "clear-buffers") {
+      clearRenderBuffers();
+      // Also clear tree cache
+      pathsData.clear();
+      pathsDataAccess.clear();
+      currentCacheBytes = 0;
+      postMessage({ type: "buffers-cleared" });
     }
   }
 }

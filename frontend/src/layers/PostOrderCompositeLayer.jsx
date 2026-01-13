@@ -4,9 +4,14 @@ import { PathLayer, ScatterplotLayer } from '@deck.gl/layers';
 /**
  * PostOrderCompositeLayer - Tree rendering using post-order traversal arrays.
  *
- * Receives post-order node data from backend with pre-computed x,y coordinates.
- * Backend handles coordinate computation and sparsification, frontend uses
- * coordinates directly for rendering.
+ * OPTIMIZED VERSION: Can receive either:
+ * 1. Pre-computed render data from worker (renderData prop) - FAST PATH
+ * 2. Raw postorderData for local computation - LEGACY FALLBACK
+ *
+ * When using renderData (worker path):
+ * - Worker has already parsed PyArrow and computed typed arrays
+ * - Layer just passes arrays to deck.gl sublayers
+ * - No computation on main thread
  *
  * Optimized data format from backend (PyArrow):
  * - node_id: int32
@@ -26,6 +31,7 @@ export default class PostOrderCompositeLayer extends CompositeLayer {
     static defaultProps = {
         bins: null,
         postorderData: null,  // {node_id, parent_id, is_tip, tree_idx, x, y} arrays + metadata
+        renderData: null,     // NEW: Pre-computed render data from worker {pathPositions, tipPositions, tipColors, ...}
         tsconfig: null,
         minNodeTime: 0,
         maxNodeTime: 1,
@@ -50,6 +56,16 @@ export default class PostOrderCompositeLayer extends CompositeLayer {
     };
 
     updateState({ props, oldProps, changeFlags }) {
+        // FAST PATH: Use pre-computed render data from worker
+        // This skips all main-thread computation
+        if (props.renderData !== oldProps.renderData && props.renderData) {
+            this.setState({
+                processedData: props.renderData
+            });
+            return;
+        }
+
+        // LEGACY FALLBACK: Compute locally if no renderData provided
         const filterChanged =
             props.populationFilter?.colorBy !== oldProps.populationFilter?.colorBy ||
             JSON.stringify(props.populationFilter?.enabledValues) !==

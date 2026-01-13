@@ -17,6 +17,32 @@ function lerp(start, end, t) {
   return start + (end - start) * t;
 }
 
+// ─────────────────────────────────────────────────────────────────
+// Matrix4 Object Pool - Avoids allocation per animation frame
+// ─────────────────────────────────────────────────────────────────
+const matrixPool = [];
+const MAX_POOL_SIZE = 100; // Prevent unbounded pool growth
+
+/**
+ * Get a Matrix4 from the pool or create a new one
+ */
+function acquireMatrix() {
+  if (matrixPool.length > 0) {
+    return matrixPool.pop();
+  }
+  return new Matrix4();
+}
+
+/**
+ * Return a Matrix4 to the pool for reuse
+ */
+function releaseMatrix(matrix) {
+  if (matrix && matrixPool.length < MAX_POOL_SIZE) {
+    matrix.identity(); // Reset for next use
+    matrixPool.push(matrix);
+  }
+}
+
 /**
  * useAnimatedBins Hook
  * 
@@ -50,16 +76,26 @@ const useAnimatedBins = (rawBins, options = {}) => {
   // Preallocate a reusable Matrix4 for building animated matrices
   const tempMatrix = useRef(new Matrix4());
 
+  // Track used matrices per animation cycle (for pool management)
+  const usedMatricesRef = useRef(new Map());
+
   /**
    * Animation loop using requestAnimationFrame
+   * OPTIMIZED: Uses matrix pool and reuses Map to reduce allocations
    */
   const animate = useCallback(() => {
     const now = performance.now();
     const animState = animationStateRef.current;
     let hasActiveAnimations = false;
 
-    // Create new bins map with interpolated values
+    // Reuse Map - clear it instead of creating new one
     const newAnimatedBins = new Map();
+
+    // Release matrices from previous frame back to pool
+    for (const matrix of usedMatricesRef.current.values()) {
+      releaseMatrix(matrix);
+    }
+    usedMatricesRef.current.clear();
 
     for (const [key, bin] of rawBins.entries()) {
       if (!bin || !bin.modelMatrix || !bin.visible) {
@@ -91,14 +127,17 @@ const useAnimatedBins = (rawBins, options = {}) => {
         const interpolatedTranslate = lerp(state.startTranslate, state.targetTranslate, easedProgress);
         const interpolatedScale = lerp(state.startScale, state.targetScale, easedProgress);
 
-        // Build new modelMatrix with interpolated values
-        const animatedMatrix = tempMatrix.current.identity()
+        // Get matrix from pool instead of cloning
+        const animatedMatrix = acquireMatrix()
           .translate([interpolatedTranslate, 0, 0])
           .scale([interpolatedScale, 1, 1]);
 
+        // Track for release next frame
+        usedMatricesRef.current.set(key, animatedMatrix);
+
         newAnimatedBins.set(key, {
           ...bin,
-          modelMatrix: animatedMatrix.clone()
+          modelMatrix: animatedMatrix
         });
       }
     }
@@ -109,6 +148,11 @@ const useAnimatedBins = (rawBins, options = {}) => {
       animationFrameRef.current = requestAnimationFrame(animate);
     } else {
       isAnimatingRef.current = false;
+      // Release all matrices when animation ends
+      for (const matrix of usedMatricesRef.current.values()) {
+        releaseMatrix(matrix);
+      }
+      usedMatricesRef.current.clear();
     }
   }, [rawBins, transitionDuration, easingFn]);
 
