@@ -298,33 +298,44 @@ const useRegions = ({
   useEffect(() => {
     if (tsconfig && tsconfig?.times?.values) {
 
-      setTimes((prev) => {
-        let newTime = [];
-        let maxTime, minTime;
-        maxTime = tsconfig?.times.values[1].toFixed(0);
-        minTime = tsconfig?.times.values[0].toFixed(0);
+      setTimes(() => {
+        const maxTime = Number(tsconfig.times.values[1]);
+        const minTime = Number(tsconfig.times.values[0]);
+        const totalRange = maxTime - minTime;
 
-        const range = maxTime - minTime;
+        if (totalRange <= 0) return [];
 
-        // Calculate step size based on xzoom value
-        // Finer steps for higher zoom (smaller intervals)
-        let step;
+        // Target ~8-12 ticks regardless of zoom level
+        // This prevents clutter at any zoom
+        const targetTicks = 10;
 
-        if (yzoom >= 18) step = 1;
-        else if (yzoom >= 16) step = range / 1000;
-        else if (yzoom >= 14) step = range / 500;
-        else if (yzoom >= 12) step = range / 100;
-        else if (yzoom >= 10) step = range / 50;
-        else if (yzoom >= 8) step = range / 10;
-        else if (yzoom >= 5) step = range / 5;
-        else step = 1000;
+        // Calculate raw step and snap to nice number
+        const rawStep = totalRange / targetTicks;
+        const step = niceStep(rawStep);
 
-        for (let i = Number(maxTime); i >= Number(minTime); i -= step) {
-          // For decimal steps, ensure correct floating point logic
-          let roundedI = Math.abs(step) < 1 ? Number(i.toFixed(3)) : Math.round(i);
-          let position = (maxTime - roundedI) / (maxTime - minTime);
-          newTime.push({ position, text: roundedI });
+        // Generate ticks at nice intervals
+        const newTime = [];
+        const start = Math.ceil(minTime / step) * step;
+        const end = Math.floor(maxTime / step) * step;
+
+        for (let value = start; value <= end; value += step) {
+          // Avoid floating point errors
+          const roundedValue = Math.round(value * 1e10) / 1e10;
+          const position = (maxTime - roundedValue) / totalRange;
+
+          // Format the label based on magnitude
+          let text;
+          if (step >= 1) {
+            text = Math.round(roundedValue);
+          } else {
+            // Determine decimal places needed
+            const decimals = Math.max(0, -Math.floor(Math.log10(step)));
+            text = roundedValue.toFixed(decimals);
+          }
+
+          newTime.push({ position, text });
         }
+
         return newTime;
       });
     }
