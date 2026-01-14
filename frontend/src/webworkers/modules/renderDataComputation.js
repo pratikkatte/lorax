@@ -86,7 +86,10 @@ function getTipColor(nodeId, metadataArrays, metadataColors, populationFilter, d
 }
 
 /**
- * Main computation function - generates render arrays for all visible trees
+ * Main computation function - generates render arrays for all trees in input
+ *
+ * SIMPLIFIED VERSION: No bins.visible checks - caller must filter data before calling.
+ * Uses modelMatrices Map directly instead of bins.
  *
  * @param {Object} data - Input data
  * @param {TypedArray} data.node_id - Node IDs
@@ -95,7 +98,7 @@ function getTipColor(nodeId, metadataArrays, metadataColors, populationFilter, d
  * @param {TypedArray} data.tree_idx - Tree index for each node
  * @param {TypedArray} data.x - X coordinates (time-based [0,1])
  * @param {TypedArray} data.y - Y coordinates (genealogy-based [0,1])
- * @param {Map} data.bins - Bin data with modelMatrix and visibility
+ * @param {Map} data.modelMatrices - Map<tree_idx, modelMatrix> for transforms
  * @param {Object} data.metadataArrays - Metadata for coloring
  * @param {Object} data.metadataColors - Color mapping
  * @param {Object} data.populationFilter - Active filter settings
@@ -104,11 +107,12 @@ function getTipColor(nodeId, metadataArrays, metadataColors, populationFilter, d
 export function computeRenderArrays(data) {
   const {
     node_id, parent_id, is_tip, tree_idx, x, y,
-    bins, metadataArrays, metadataColors, populationFilter
+    modelMatrices, metadataArrays, metadataColors, populationFilter
   } = data;
 
   // Handle empty data
-  if (!node_id || node_id.length === 0 || !bins || bins.size === 0) {
+  if (!node_id || node_id.length === 0 || !modelMatrices || modelMatrices.size === 0) {
+    console.log('[RenderComp] Empty data - node_id:', node_id?.length, 'modelMatrices:', modelMatrices?.size);
     return {
       pathPositions: new Float64Array(0),
       pathStartIndices: [0],
@@ -123,25 +127,28 @@ export function computeRenderArrays(data) {
   // Group nodes by tree
   const treeNodesMap = groupNodesByTree(node_id, parent_id, is_tip, tree_idx, x, y);
 
-  // Calculate total visible nodes for buffer sizing
-  let totalVisibleNodes = 0;
-  for (const [key, bin] of bins) {
-    if (!bin.visible) continue;
-    const treeNodes = treeNodesMap.get(bin.global_index);
-    if (treeNodes) totalVisibleNodes += treeNodes.length;
+  // Calculate total nodes for buffer sizing (all trees in modelMatrices)
+  let totalNodes = 0;
+  for (const [treeIdx, _] of modelMatrices) {
+    const treeNodes = treeNodesMap.get(treeIdx);
+    if (treeNodes) totalNodes += treeNodes.length;
   }
 
+  console.log('[RenderComp] treeNodesMap keys:', [...treeNodesMap.keys()]);
+  console.log('[RenderComp] modelMatrices keys:', [...modelMatrices.keys()]);
+  console.log('[RenderComp] totalNodes:', totalNodes);
+
   // Ensure buffers are large enough
-  const pathSize = totalVisibleNodes * 6;  // 6 floats per L-shape (3 points * 2 coords)
-  const tipSize = totalVisibleNodes * 2;   // 2 floats per tip
-  const colorSize = totalVisibleNodes * 4; // 4 bytes RGBA per tip
+  const pathSize = totalNodes * 6;  // 6 floats per L-shape (3 points * 2 coords)
+  const tipSize = totalNodes * 2;   // 2 floats per tip
+  const colorSize = totalNodes * 4; // 4 bytes RGBA per tip
 
   // Use Float64Array to preserve precision for large coordinates
   // (Float32 loses precision when translateX is large, causing boxy edges)
   pathBuffer = ensureBuffer(pathBuffer, pathSize, Float64Array);
   tipBuffer = ensureBuffer(tipBuffer, tipSize, Float64Array);
   colorBuffer = ensureBuffer(colorBuffer, colorSize, Uint8Array);
-  pathStartIndicesBuffer = ensureBuffer(pathStartIndicesBuffer, totalVisibleNodes + 1, Uint32Array);
+  pathStartIndicesBuffer = ensureBuffer(pathStartIndicesBuffer, totalNodes + 1, Uint32Array);
 
   const defaultTipColor = [150, 150, 150, 200];
 
@@ -155,11 +162,8 @@ export function computeRenderArrays(data) {
 
   const tipData = [];
 
-  // Process each visible tree
-  for (const [key, bin] of bins) {
-    if (!bin.visible) continue;
-
-    const treeIdx = bin.global_index;
+  // Process each tree that has a modelMatrix
+  for (const [treeIdx, modelMatrix] of modelMatrices) {
     const treeNodes = treeNodesMap.get(treeIdx);
 
     if (!treeNodes || treeNodes.length === 0) continue;
@@ -188,8 +192,8 @@ export function computeRenderArrays(data) {
       }
     }
 
-    // Get transform from bin's modelMatrix
-    const m = bin.modelMatrix;
+    // Get transform from modelMatrix
+    const m = modelMatrix;
     const scaleX = m[0];
     const translateX = m[12];
 

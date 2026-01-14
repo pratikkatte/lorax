@@ -98,32 +98,15 @@ const useLayers = ({
   }, [rawBins, globalBpPerUnit, hoveredGenomeInfo]);
 
   const postOrderCompositeLayer = useMemo(() => {
-    // Need either renderData (fast path) or postorderData (legacy path)
-    if (!bins || bins.size === 0 || (!renderData && !postorderData)) return null;
-
-    // Use global time from renderData or postorderData, fallback to tsconfig
-    const minTime = renderData?.global_min_time ?? postorderData?.global_min_time ?? tsconfig?.times?.values?.[0] ?? 0;
-    const maxTime = renderData?.global_max_time ?? postorderData?.global_max_time ?? tsconfig?.times?.values?.[1] ?? 1;
+    // Only use renderData - all computation happens in worker
+    if (!renderData) return null;
 
     return new PostOrderCompositeLayer({
       id: 'postorder-composite-layer',
-      bins: bins,
-      postorderData: postorderData,  // Legacy: {node_id, parent_id, is_tip, tree_idx, x, y}
-      renderData: renderData,        // Fast path: pre-computed typed arrays from worker
-      minNodeTime: minTime,
-      maxNodeTime: maxTime,
-      globalBpPerUnit: globalBpPerUnit,
-      tsconfig: tsconfig,
-      // Metadata-based tip coloring props
-      metadataArrays: metadataArrays,
-      metadataColors: metadataColors,
-      populationFilter: populationFilter,
-      // Search highlighting props
-      highlightedNodes: highlightedNodes,
-      lineagePaths: lineagePaths,
+      renderData: renderData,  // Pre-computed typed arrays from worker
       viewId: "ortho"
     });
-  }, [bins, postorderData, renderData, tsconfig, globalBpPerUnit, metadataArrays, metadataColors, populationFilter, highlightedNodes, lineagePaths]);
+  }, [renderData]);
 
   const treeLayers = useMemo(() => {
     if (!bins || bins.size === 0) return [];

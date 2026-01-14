@@ -47,6 +47,87 @@ let currentCacheBytes = 0;
 // Track last access time for LRU eviction
 const pathsDataAccess = new Map();
 
+// ─────────────────────────────────────────────────────────────────
+// Tree Data Cache: Stores parsed tree data from backend PyArrow
+// Key: global_index (tree index)
+// Value: { node_id, parent_id, is_tip, x, y, nodeCount }
+// ─────────────────────────────────────────────────────────────────
+const treeDataCache = new Map();
+const treeDataCacheAccess = new Map();
+const MAX_TREE_DATA_CACHE_BYTES = 100 * 1024 * 1024; // 100MB
+let treeDataCacheBytes = 0;
+
+/**
+ * Estimate memory size of cached tree data
+ */
+function estimateTreeDataSize(treeData) {
+  if (!treeData) return 0;
+  const nodeCount = treeData.nodeCount || 0;
+  // Each node: node_id(4) + parent_id(4) + is_tip(1) + x(4) + y(4) = ~17 bytes
+  // Plus typed array overhead
+  return nodeCount * 20;
+}
+
+/**
+ * Evict tree data until cache is under target bytes using LRU
+ */
+function evictTreeDataUntilUnder(targetBytes) {
+  if (treeDataCacheBytes <= targetBytes) return;
+
+  const entries = [...treeDataCache.entries()].sort((a, b) => {
+    return (treeDataCacheAccess.get(a[0]) || 0) - (treeDataCacheAccess.get(b[0]) || 0);
+  });
+
+  for (const [key, data] of entries) {
+    if (treeDataCacheBytes <= targetBytes) break;
+    const size = estimateTreeDataSize(data);
+    treeDataCache.delete(key);
+    treeDataCacheAccess.delete(key);
+    treeDataCacheBytes -= size;
+    console.log(`[TreeCache] Evicted tree ${key}, freed ${size} bytes`);
+  }
+}
+
+/**
+ * Store tree data in cache with memory tracking
+ */
+function cacheTreeData(global_index, data) {
+  const size = estimateTreeDataSize(data);
+
+  // Evict if adding would exceed limit
+  if (treeDataCacheBytes + size > MAX_TREE_DATA_CACHE_BYTES) {
+    evictTreeDataUntilUnder(MAX_TREE_DATA_CACHE_BYTES - size);
+  }
+
+  // Remove old entry if exists
+  if (treeDataCache.has(global_index)) {
+    const oldSize = estimateTreeDataSize(treeDataCache.get(global_index));
+    treeDataCacheBytes -= oldSize;
+  }
+
+  treeDataCache.set(global_index, data);
+  treeDataCacheAccess.set(global_index, Date.now());
+  treeDataCacheBytes += size;
+}
+
+/**
+ * Get tree data from cache, updating access time
+ */
+function getCachedTreeData(global_index) {
+  const data = treeDataCache.get(global_index);
+  if (data) {
+    treeDataCacheAccess.set(global_index, Date.now());
+  }
+  return data;
+}
+
+/**
+ * Check if tree data is cached
+ */
+function hasTreeDataCached(global_index) {
+  return treeDataCache.has(global_index);
+}
+
 /**
  * Estimate memory size of a tree object
  */
@@ -257,7 +338,25 @@ async function getLocalData(start, end, globalBpPerUnit, nTrees, new_globalBp, r
 
   enforcePathsCacheLimit(invisibleKeys);
 
-  return { local_bins: return_local_bins, lower_bound, upper_bound, displayArray, showing_all_trees: showingAllTrees };
+  // ─────────────────────────────────────────────────────────────────
+  // Filter displayArray by tree data cache
+  // Only fetch trees that are NOT already cached
+  // ─────────────────────────────────────────────────────────────────
+  const uncachedDisplayArray = displayArray.filter(idx => !hasTreeDataCached(idx));
+  const cachedCount = displayArray.length - uncachedDisplayArray.length;
+
+  if (displayArray.length > 0) {
+    console.log(`[TreeCache] Cache hit: ${cachedCount}/${displayArray.length} trees, fetching ${uncachedDisplayArray.length} from backend`);
+  }
+
+  return {
+    local_bins: return_local_bins,
+    lower_bound,
+    upper_bound,
+    displayArray: uncachedDisplayArray,  // Only trees needing backend fetch
+    allDisplayIndices: displayArray,      // Full list for rendering (cached + uncached)
+    showing_all_trees: showingAllTrees
+  };
 }
 
 export const queryConfig = async (data) => {
@@ -442,7 +541,7 @@ onmessage = async (event) => {
     }
 
     // ─────────────────────────────────────────────────────────────────
-    // NEW: Compute render data from PyArrow buffer (off main thread)
+    // Compute render data from PyArrow buffer + cached tree data
     // ─────────────────────────────────────────────────────────────────
     if (data.type === "compute-render-data") {
       try {
@@ -454,55 +553,163 @@ onmessage = async (event) => {
           populationFilter,
           global_min_time,
           global_max_time,
-          tree_indices
+          tree_indices,
+          allDisplayIndices  // Full list of trees to render (cached + uncached)
         } = data;
-
-        // Parse PyArrow buffer in worker (off main thread)
-        const uint8 = new Uint8Array(buffer);
-        const table = arrow.tableFromIPC(uint8);
-
-        // Extract columns as typed arrays (no Array.from - keeps as typed arrays)
-        const node_id = table.getChild('node_id')?.toArray();
-        const parent_id = table.getChild('parent_id')?.toArray();
-        const is_tip = table.getChild('is_tip')?.toArray();
-        const tree_idx = table.getChild('tree_idx')?.toArray();
-        const x = table.getChild('x')?.toArray();
-        const y = table.getChild('y')?.toArray();
 
         // Reconstruct bins Map from serialized format
         const binsMap = new Map();
         if (bins && typeof bins === 'object') {
-          // If bins is an array of [key, value] pairs
           if (Array.isArray(bins)) {
             for (const [key, value] of bins) {
               binsMap.set(key, value);
             }
           } else {
-            // If bins is a plain object
             for (const [key, value] of Object.entries(bins)) {
               binsMap.set(Number(key), value);
             }
           }
         }
 
-        // Compute render arrays in worker
+        // Parse PyArrow buffer if present (may be empty if all trees cached)
+        let newNode_id, newParent_id, newIs_tip, newTree_idx, newX, newY;
+        if (buffer && buffer.byteLength > 0) {
+          const uint8 = new Uint8Array(buffer);
+          const table = arrow.tableFromIPC(uint8);
+
+          newNode_id = table.getChild('node_id')?.toArray();
+          newParent_id = table.getChild('parent_id')?.toArray();
+          newIs_tip = table.getChild('is_tip')?.toArray();
+          newTree_idx = table.getChild('tree_idx')?.toArray();
+          newX = table.getChild('x')?.toArray();
+          newY = table.getChild('y')?.toArray();
+
+          // ─────────────────────────────────────────────────────────────────
+          // Cache newly fetched tree data (grouped by tree_idx)
+          // ─────────────────────────────────────────────────────────────────
+          if (newTree_idx && newNode_id && newTree_idx.length > 0) {
+            // Group nodes by tree_idx
+            const treeGroups = new Map();
+            for (let i = 0; i < newTree_idx.length; i++) {
+              const treeIdx = newTree_idx[i];
+              if (!treeGroups.has(treeIdx)) {
+                treeGroups.set(treeIdx, []);
+              }
+              treeGroups.get(treeIdx).push(i);
+            }
+
+            // Cache each tree's data
+            for (const [treeIdx, indices] of treeGroups) {
+              const nodeCount = indices.length;
+              const cachedData = {
+                node_id: new Int32Array(nodeCount),
+                parent_id: new Int32Array(nodeCount),
+                is_tip: new Uint8Array(nodeCount),
+                x: new Float32Array(nodeCount),
+                y: new Float32Array(nodeCount),
+                nodeCount
+              };
+
+              for (let j = 0; j < nodeCount; j++) {
+                const srcIdx = indices[j];
+                cachedData.node_id[j] = newNode_id[srcIdx];
+                cachedData.parent_id[j] = newParent_id[srcIdx];
+                cachedData.is_tip[j] = newIs_tip[srcIdx] ? 1 : 0;
+                cachedData.x[j] = newX[srcIdx];
+                cachedData.y[j] = newY[srcIdx];
+              }
+
+              cacheTreeData(treeIdx, cachedData);
+              console.log(`[TreeCache] Cached tree ${treeIdx} with ${nodeCount} nodes`);
+            }
+            console.log(`[TreeCache] Cache now has ${treeDataCache.size} trees: [${[...treeDataCache.keys()].join(', ')}]`);
+          }
+        }
+
+        // ─────────────────────────────────────────────────────────────────
+        // Extract modelMatrices from bins for visible trees only
+        // ─────────────────────────────────────────────────────────────────
+        const modelMatrices = new Map();
+        for (const [key, bin] of binsMap) {
+          if (bin.visible && bin.modelMatrix) {
+            modelMatrices.set(bin.global_index, bin.modelMatrix);
+          }
+        }
+
+        const renderIndices = allDisplayIndices || tree_indices || [];
+
+        console.log(`[TreeCache] Render indices: ${renderIndices.length}, cache size: ${treeDataCache.size}, visible bins: ${modelMatrices.size}`);
+
+        // ─────────────────────────────────────────────────────────────────
+        // Combine cached data for trees that have BOTH cache AND modelMatrix
+        // ─────────────────────────────────────────────────────────────────
+        let totalNodes = 0;
+        const treesToRender = [];
+
+        for (const treeIdx of renderIndices) {
+          const cached = getCachedTreeData(treeIdx);
+          const hasMatrix = modelMatrices.has(treeIdx);
+          if (cached && hasMatrix) {
+            totalNodes += cached.nodeCount;
+            treesToRender.push(treeIdx);
+          } else if (!cached) {
+            console.warn(`[TreeCache] Missing cache for tree ${treeIdx}`);
+          } else if (!hasMatrix) {
+            console.warn(`[TreeCache] Missing modelMatrix for tree ${treeIdx}`);
+          }
+        }
+
+        console.log(`[TreeCache] Trees to render: ${treesToRender.length}, total nodes: ${totalNodes}`);
+
+        // Allocate combined arrays
+        const combined_node_id = new Int32Array(totalNodes);
+        const combined_parent_id = new Int32Array(totalNodes);
+        const combined_is_tip = new Uint8Array(totalNodes);
+        const combined_tree_idx = new Int32Array(totalNodes);
+        const combined_x = new Float32Array(totalNodes);
+        const combined_y = new Float32Array(totalNodes);
+
+        // Copy data from cache for trees that will be rendered
+        let offset = 0;
+        for (const treeIdx of treesToRender) {
+          const cached = getCachedTreeData(treeIdx);
+          if (cached) {
+            const n = cached.nodeCount;
+            combined_node_id.set(cached.node_id, offset);
+            combined_parent_id.set(cached.parent_id, offset);
+            combined_is_tip.set(cached.is_tip, offset);
+            combined_x.set(cached.x, offset);
+            combined_y.set(cached.y, offset);
+            // Fill tree_idx for this range
+            for (let i = 0; i < n; i++) {
+              combined_tree_idx[offset + i] = treeIdx;
+            }
+            offset += n;
+          }
+        }
+
+        console.log(`[TreeCache] Combined arrays - node_id: ${combined_node_id.length}, modelMatrices: ${modelMatrices.size}`);
+
+        // Compute render arrays using combined data and modelMatrices
         const result = computeRenderArrays({
-          node_id,
-          parent_id,
-          is_tip,
-          tree_idx,
-          x,
-          y,
-          bins: binsMap,
+          node_id: combined_node_id,
+          parent_id: combined_parent_id,
+          is_tip: combined_is_tip,
+          tree_idx: combined_tree_idx,
+          x: combined_x,
+          y: combined_y,
+          modelMatrices,  // Pass modelMatrices instead of bins
           metadataArrays,
           metadataColors,
           populationFilter
         });
 
+        console.log(`[TreeCache] Render result - paths: ${result.pathPositions?.length || 0}, tips: ${result.tipPositions?.length || 0}`);
+
         // Add metadata to result
         result.global_min_time = global_min_time;
         result.global_max_time = global_max_time;
-        result.tree_indices = tree_indices;
+        result.tree_indices = renderIndices;
 
         // Transfer typed array buffers back (zero-copy)
         const transferables = [];
@@ -530,14 +737,19 @@ onmessage = async (event) => {
     }
 
     // ─────────────────────────────────────────────────────────────────
-    // NEW: Clear buffers to free memory
+    // Clear buffers to free memory
     // ─────────────────────────────────────────────────────────────────
     if (data.type === "clear-buffers") {
       clearRenderBuffers();
-      // Also clear tree cache
+      // Clear tree caches
       pathsData.clear();
       pathsDataAccess.clear();
       currentCacheBytes = 0;
+      // Clear tree data cache
+      treeDataCache.clear();
+      treeDataCacheAccess.clear();
+      treeDataCacheBytes = 0;
+      console.log("[TreeCache] All caches cleared");
       postMessage({ type: "buffers-cleared" });
     }
   }

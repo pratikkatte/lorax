@@ -222,7 +222,8 @@ const useRegions = ({
 
       const {
         local_bins = new Map(),
-        displayArray = [],
+        displayArray = [],           // Trees to fetch from backend (uncached)
+        allDisplayIndices = [],      // All trees to render (cached + uncached)
         showing_all_trees = false
       } = binsResult || {};
 
@@ -234,14 +235,15 @@ const useRegions = ({
       let postorderData_backend = null;
       let workerRenderData = null;
       try {
-        if (displayArray.length > 0) {
+        // Proceed if there are any trees to render (cached or uncached)
+        if (allDisplayIndices.length > 0) {
           // Calculate sparsity based on zoom state
           // scaleFactor > 1 means zoomed out (multiple trees per slot)
           const scaleFactor = new_globalBp / globalBpPerUnit;
 
           // Use precision-based sparsification (takes precedence)
           const sparsityPrecision = getSparsityPrecision(
-            displayArray.length,
+            allDisplayIndices.length,
             showing_all_trees,
             scaleFactor
           );
@@ -251,7 +253,8 @@ const useRegions = ({
 
           console.log('[Sparsification]', {
             scaleFactor: scaleFactor.toFixed(2),
-            numTrees: displayArray.length,
+            numTrees: allDisplayIndices.length,
+            fetchingFromBackend: displayArray.length,
             showingAllTrees: showing_all_trees,
             method: sparsityPrecision !== null ? 'precision' : (sparsityResolution !== null ? 'grid' : 'none'),
             sparsityPrecision: sparsityPrecision ?? 'none',
@@ -261,15 +264,17 @@ const useRegions = ({
           // Use worker-based render computation if available (fast path)
           if (queryPostorderLayoutWithRender) {
             const workerResult = await queryPostorderLayoutWithRender(
-              displayArray,
-              local_bins,           // bins with modelMatrix
+              displayArray,          // Trees to fetch from backend (may be empty if all cached)
+              local_bins,            // bins with modelMatrix
               metadataArrays,
               metadataColors,
               populationFilter,
               sparsityResolution,
-              sparsityPrecision
+              sparsityPrecision,
+              allDisplayIndices      // All trees to render (cached + uncached)
             );
 
+            console.log("[useRegions] Worker result:", workerResult ? `paths: ${workerResult.pathPositions?.length}, tips: ${workerResult.tipPositions?.length}` : 'null');
             if (workerResult && !workerResult.error) {
               workerRenderData = workerResult;
               // Keep postorderData for backwards compatibility (metadata)
@@ -297,6 +302,7 @@ const useRegions = ({
 
       setLocalBins(local_bins);
       setPostorderData(postorderData_backend);
+      console.log("[useRegions] Setting renderData:", workerRenderData ? `paths: ${workerRenderData.pathPositions?.length}` : 'null');
       setRenderData(workerRenderData);
 
       if (!postorderData_backend?.error) {

@@ -600,13 +600,14 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
    * Query post-order layout and compute render data in worker.
    * This offloads both PyArrow parsing and render array computation to the worker.
    *
-   * @param {Array} displayArray - Array of tree indices to fetch
+   * @param {Array} displayArray - Array of tree indices to fetch from backend (uncached)
    * @param {Map|Object} bins - Bin data with modelMatrix and visibility
    * @param {Object} metadataArrays - Metadata arrays for coloring
    * @param {Object} metadataColors - Color mapping
    * @param {Object} populationFilter - Active filter settings
    * @param {number|null} sparsityResolution - Grid resolution for sparsification
    * @param {number|null} sparsityPrecision - Decimal precision for sparsification
+   * @param {Array} allDisplayIndices - Full list of trees to render (cached + uncached)
    * @returns {Promise} Resolves with ready-to-render typed arrays
    */
   const queryPostorderLayoutWithRender = useCallback((
@@ -616,16 +617,70 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
     metadataColors,
     populationFilter,
     sparsityResolution = null,
-    sparsityPrecision = null
+    sparsityPrecision = null,
+    allDisplayIndices = null
   ) => {
     return new Promise((resolve, reject) => {
-      if (!socketRef.current) {
-        reject(new Error("Socket not available"));
+      if (!workerRef.current) {
+        reject(new Error("Worker not available"));
         return;
       }
 
-      if (!workerRef.current) {
-        reject(new Error("Worker not available"));
+      // Serialize bins Map to array for transfer to worker
+      let serializedBins;
+      if (bins instanceof Map) {
+        serializedBins = Array.from(bins.entries());
+      } else if (bins && typeof bins === 'object') {
+        serializedBins = Object.entries(bins).map(([k, v]) => [Number(k), v]);
+      } else {
+        serializedBins = [];
+      }
+
+      // Use allDisplayIndices if provided, otherwise fall back to displayArray
+      const renderIndices = allDisplayIndices || displayArray;
+
+      // Listen for worker response
+      const handleWorkerResult = (event) => {
+        if (event.data.type === "render-data") {
+          workerRef.current.removeEventListener('message', handleWorkerResult);
+
+          if (event.data.error) {
+            console.error("Worker error:", event.data.error);
+          }
+
+          console.log("[TreeCache] Worker result received, paths:", event.data.data?.pathPositions?.length, "tips:", event.data.data?.tipPositions?.length);
+          resolve(event.data.data);
+        }
+      };
+
+      workerRef.current.addEventListener('message', handleWorkerResult);
+
+      // ─────────────────────────────────────────────────────────────────
+      // If all trees are cached (displayArray empty), skip backend fetch
+      // Send directly to worker with empty buffer - worker will use cached data
+      // ─────────────────────────────────────────────────────────────────
+      if (!displayArray || displayArray.length === 0) {
+        console.log("[TreeCache] All trees cached, skipping backend fetch, renderIndices:", renderIndices);
+        // Send directly to worker with empty buffer
+        workerRef.current.postMessage({
+          type: "compute-render-data",
+          buffer: new ArrayBuffer(0),
+          bins: serializedBins,
+          metadataArrays: metadataArrays || {},
+          metadataColors: metadataColors || {},
+          populationFilter: populationFilter || {},
+          global_min_time: null,
+          global_max_time: null,
+          tree_indices: [],
+          allDisplayIndices: renderIndices
+        });
+        // Don't return here - let the handleWorkerResult listener resolve the promise
+        return;
+      }
+
+      // Socket is required for fetching from backend
+      if (!socketRef.current) {
+        reject(new Error("Socket not available"));
         return;
       }
 
@@ -635,16 +690,6 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
         if (message.error) {
           reject(new Error(message.error));
           return;
-        }
-
-        // Serialize bins Map to array for transfer to worker
-        let serializedBins;
-        if (bins instanceof Map) {
-          serializedBins = Array.from(bins.entries());
-        } else if (bins && typeof bins === 'object') {
-          serializedBins = Object.entries(bins).map(([k, v]) => [Number(k), v]);
-        } else {
-          serializedBins = [];
         }
 
         // Send raw buffer to worker for parsing and render computation
@@ -659,24 +704,10 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
           populationFilter: populationFilter || {},
           global_min_time: message.global_min_time,
           global_max_time: message.global_max_time,
-          tree_indices: message.tree_indices
+          tree_indices: message.tree_indices,
+          allDisplayIndices: renderIndices
         }, [bufferCopy]);
       };
-
-      // Listen for worker response
-      const handleWorkerResult = (event) => {
-        if (event.data.type === "render-data") {
-          workerRef.current.removeEventListener('message', handleWorkerResult);
-
-          if (event.data.error) {
-            console.error("Worker error:", event.data.error);
-          }
-
-          resolve(event.data.data);
-        }
-      };
-
-      workerRef.current.addEventListener('message', handleWorkerResult);
 
       // Request data from backend
       socketRef.current.once("postorder-layout-result", handleSocketResult);
