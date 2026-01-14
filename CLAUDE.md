@@ -16,11 +16,19 @@ yarn install          # Install dependencies
 yarn dev              # Start dev server on http://localhost:5173
 yarn build            # Production build to dist/
 yarn lint             # ESLint check
-yarn test             # Run Vitest unit tests
+yarn test             # Run Vitest unit tests (watch mode)
 yarn test:run         # Run tests once (no watch)
 yarn test:coverage    # Run tests with coverage
-yarn test:e2e         # Run Playwright E2E tests (requires backend running)
+yarn test:ui          # Run tests with Vitest UI
+yarn test:e2e         # Run Playwright E2E tests (backend must be running on :8080)
 yarn test:e2e:headed  # E2E tests in headed mode
+yarn test:e2e:debug   # E2E tests with debugger
+```
+
+To run a single test file:
+```bash
+yarn test src/components/Info.test.jsx       # Unit test
+yarn test:e2e e2e/landing-page.spec.js       # E2E test
 ```
 
 ### Backend Development (from root directory)
@@ -109,6 +117,7 @@ lorax/
 ## Testing Notes
 
 - Unit tests use Vitest with React Testing Library
-- E2E tests require both frontend (`yarn dev`) and backend running
+- E2E tests use Playwright and require backend running on port 8080 (frontend auto-starts)
 - E2E tests use `VITE_API_BASE=http://localhost:8080`
 - Test files are colocated with source (`.test.jsx` alongside `.jsx`)
+- E2E test specs are in `frontend/e2e/`
