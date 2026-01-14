@@ -13,8 +13,8 @@ import tskit
 import tszip
 
 from lorax.viz.trees_to_taxonium import process_csv
-
 from lorax.utils.gcs_utils import get_public_gcs_dict
+from lorax.tree_graph import construct_trees_batch
 
 _cache_lock = asyncio.Lock()
 
@@ -1370,3 +1370,52 @@ async def handle_details(file_path, data):
         return json.dumps(return_data)
     except Exception as e:
         return json.dumps({"error": f"Error getting details: {str(e)}"})
+
+
+async def handle_tree_graph_query(file_path, tree_indices, sparsity_resolution=None, sparsity_precision=None):
+    """
+    Construct trees using Numba-optimized tree_graph module.
+
+    This is an alternative to handle_postorder_query that uses the faster
+    Numba-compiled tree construction for large tree sequences.
+
+    Args:
+        file_path: Path to tree sequence file
+        tree_indices: List of tree indices to process
+        sparsity_resolution: Optional grid resolution for sparsification
+        sparsity_precision: Optional decimal precision for sparsification
+
+    Returns:
+        dict with:
+        - buffer: PyArrow IPC binary data containing:
+            - node_id: int32 (tskit node ID)
+            - parent_id: int32 (-1 for roots)
+            - is_tip: bool
+            - tree_idx: int32 (which tree this node belongs to)
+            - x: float32 (time-based coordinate [0,1])
+            - y: float32 (layout-based coordinate [0,1])
+        - global_min_time: float
+        - global_max_time: float
+        - tree_indices: list[int]
+    """
+    ts = await get_or_load_ts(file_path)
+    if ts is None:
+        return {"error": "Tree sequence not loaded. Please load a file first."}
+
+    # Run in thread pool to avoid blocking
+    def process_trees():
+        return construct_trees_batch(
+            ts,
+            tree_indices,
+            sparsity_resolution=sparsity_resolution,
+            sparsity_precision=sparsity_precision
+        )
+
+    buffer, min_time, max_time, processed_indices = await asyncio.to_thread(process_trees)
+
+    return {
+        "buffer": buffer,
+        "global_min_time": min_time,
+        "global_max_time": max_time,
+        "tree_indices": processed_indices
+    }

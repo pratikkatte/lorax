@@ -198,6 +198,10 @@ const useRegions = ({
 
       // Step 2: Compute local bins and select visible trees in the worker
       let binsResult;
+
+      // rewriting here. 
+      region.current = [lo, hi];
+
       try {
         binsResult = await queryLocalBins(
           region.current[0],

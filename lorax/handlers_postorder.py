@@ -176,13 +176,7 @@ def sparsify_vectorized(node_ids, x, y, is_tip, parent_ids, resolution=None, pre
 async def handle_postorder_query(file_path, tree_indices, sparsity_resolution=None, sparsity_precision=None):
     """
     For each tree index, get post-order traversal with pre-computed x,y coordinates.
-
-    Optimized version:
-    - Uses NumPy vectorized operations
-    - Removes redundant 'time' field (derivable from x)
-    - Uses int16 for tree_idx
-    - Pre-allocates arrays for efficiency
-
+    
     Args:
         file_path: Path to tree sequence file
         tree_indices: List of tree indices to process

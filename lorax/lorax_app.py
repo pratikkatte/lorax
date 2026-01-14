@@ -40,16 +40,15 @@ from lorax.handlers import (
     get_or_load_ts, get_metadata_for_key, search_samples_by_metadata,
     get_metadata_array_for_key,
     get_mutations_in_window, search_mutations_by_position, mutations_to_arrow_buffer,
-    search_nodes_in_trees
+    search_nodes_in_trees,
+    handle_tree_graph_query
 )
-from lorax.handlers_postorder import handle_postorder_query
+# from lorax.handlers_postorder import handle_postorder_query  # Replaced with tree_graph module
 from lorax.constants import (
     SESSION_COOKIE, COOKIE_MAX_AGE, UPLOADS_DIR,
     SOCKET_PING_TIMEOUT, SOCKET_PING_INTERVAL, MAX_HTTP_BUFFER_SIZE,
     ERROR_SESSION_NOT_FOUND, ERROR_MISSING_SESSION, ERROR_NO_FILE_LOADED
 )
-
-
 
 # Setup
 
@@ -67,8 +66,9 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 BUCKET_NAME = os.getenv("BUCKET_NAME", 'lorax_projects')
 
 ALLOWED_ORIGINS = [
-    o.strip() for o in os.getenv("ALLOWED_ORIGINS", "http://localhost:5173").split(",")
+    o.strip() for o in os.getenv("ALLOWED_ORIGINS", "http://localhost:5173, http://localhost:3000").split(",")
 ]
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
@@ -506,10 +506,12 @@ async def process_postorder_layout(sid, data):
         sparsity_resolution = data.get("sparsity_resolution", None)
         sparsity_precision = data.get("sparsity_precision", None)
 
-        # handle_postorder_query returns dict with PyArrow buffer
-        result = await handle_postorder_query(
+        # handle_tree_graph_query returns dict with PyArrow buffer (Numba-optimized)
+        result = await handle_tree_graph_query(
             session.file_path,
             display_array,
+            # sparsity_resolution=None,  
+            # sparsity_precision=None  
             sparsity_resolution=sparsity_resolution,
             sparsity_precision=sparsity_precision
         )
