@@ -460,31 +460,6 @@ async def query(sid, data):
         print(f"❌ Query error: {e}")
         await sio.emit("query-result", {"error": str(e)}, to=sid)
 
-
-@sio.event
-async def query_edges(sid, data):
-    """Socket event to fetch edges for a genomic interval."""
-    try:
-        lorax_sid = data.get("lorax_sid")
-        session = await require_session(lorax_sid, sid)
-        if not session:
-            return
-
-        if not session.file_path:
-            print(f"⚠️ No file loaded for session {lorax_sid}")
-            await sio.emit("error", {"code": ERROR_NO_FILE_LOADED, "message": "No file loaded. Please load a file first."}, to=sid)
-            return
-
-        start = data.get("start", 0)
-        end = data.get("end", 0)
-
-        result = await handle_edges_query(session.file_path, start, end)
-        await sio.emit("edges-result", {"data": json.loads(result)}, to=sid)
-    except Exception as e:
-        print(f"❌ Edges query error: {e}")
-        await sio.emit("edges-result", {"error": str(e)}, to=sid)
-
-
 @sio.event
 async def process_postorder_layout(sid, data):
     """Socket event to get post-order tree traversal for efficient rendering.

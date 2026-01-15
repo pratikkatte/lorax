@@ -451,63 +451,6 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
       });
     }, []);
 
-  /**
-   * Fetch edges for a genomic interval from the backend and cache them in the worker.
-   * Resolves once the worker has stored the edges; no data is returned.
-   * @param {number} start - Start genomic position (bp)
-   * @param {number} end - End genomic position (bp)
-   */
-  const queryEdges = useCallback((start, end) => {
-    return new Promise((resolve, reject) => {
-      if (!socketRef.current) {
-        reject(new Error("Socket not available"));
-        return;
-      }
-
-      const waitForStore = () => {
-        return new Promise((res) => {
-          const handler = (event) => {
-            if (event.data?.type === "store-edges-done") {
-              workerRef.current?.removeEventListener("message", handler);
-              res();
-            }
-          };
-
-          workerRef.current?.addEventListener("message", handler);
-          setTimeout(() => {
-            workerRef.current?.removeEventListener("message", handler);
-            res();
-          }, 50);
-        });
-      };
-
-      const handleResult = (message) => {
-        socketRef.current.off("edges-result", handleResult);
-        if (message.error) {
-          reject(new Error(message.error));
-          return;
-        }
-
-        const data = message.data;
-        if (data?.edges) {
-          workerRef.current?.postMessage({
-            type: "store-edges",
-            data: {
-              edges: data.edges,
-              start: data.start,
-              end: data.end
-            }
-          });
-          waitForStore().then(() => resolve(data)).catch(() => resolve(data));
-        } else {
-          resolve(data);
-        }
-      };
-
-      socketRef.current.once("edges-result", handleResult);
-      socketRef.current.emit("query_edges", { start, end, lorax_sid: sidRef.current });
-    });
-  }, []);
 
   /**
    * Query post-order tree traversal for efficient rendering.
@@ -942,7 +885,7 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
       workerRef,
       queryConfig,
       queryNodes,
-      queryEdges,
+
       queryPostorderLayout,
       queryPostorderLayoutWithRender,  // NEW: Worker-based render computation
       clearWorkerBuffers,              // NEW: Clear worker buffers
@@ -965,7 +908,6 @@ function useConnect({ setGettingDetails, settings, statusMessage: providedStatus
       connect,
       statusMessage,
       queryNodes,
-      queryEdges,
       queryDetails,
       isConnected,
       checkConnection,

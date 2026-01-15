@@ -128,7 +128,7 @@ const useRegions = ({
   metadataColors,
   populationFilter
 }) => {
-  const { queryEdges, queryLocalBins, getTreeFromEdges, queryPostorderLayout, queryPostorderLayoutWithRender } = backend;
+  const { queryLocalBins, getTreeFromEdges, queryPostorderLayout, queryPostorderLayoutWithRender } = backend;
 
   const [localBins, setLocalBins] = useState(null);
 
@@ -182,7 +182,6 @@ const useRegions = ({
 
       let edgesResult;
       try {
-        // edgesResult = await queryEdges(region.current[0], region.current[1]);
         if (edgesResult?.edges) {
           // setEdgesData(edgesResult.edges);
         }
@@ -315,7 +314,7 @@ const useRegions = ({
       }
       isFetching.current = false;
     }, 400, { leading: false, trailing: true }),
-    [isFetching.current, valueRef.current, xzoom, selectionStrategy, tsconfig?.intervals, queryLocalBins, queryEdges, globalBpPerUnit, getTreeFromEdges, queryPostorderLayout, queryPostorderLayoutWithRender, metadataArrays, metadataColors, populationFilter]
+    [isFetching.current, valueRef.current, xzoom, selectionStrategy, tsconfig?.intervals, queryLocalBins, globalBpPerUnit, getTreeFromEdges, queryPostorderLayout, queryPostorderLayoutWithRender, metadataArrays, metadataColors, populationFilter]
   );
 
   useEffect(() => {
