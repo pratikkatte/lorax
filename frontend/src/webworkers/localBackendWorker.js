@@ -243,6 +243,15 @@ async function getLocalData(start, end, globalBpPerUnit, nTrees, new_globalBp, r
     selectionStrategy = 'largestSpan',
   } = displayOptions;
 
+  // ─────────────────────────────────────────────────────────────────
+  // Handle intervals format - could be flat array of starts or array of [start, end] pairs
+  // ─────────────────────────────────────────────────────────────────
+  let intervalStarts = tsconfig.intervals;
+  if (tsconfig.intervals?.length > 0 && Array.isArray(tsconfig.intervals[0])) {
+    // Intervals are [start, end] pairs - extract start positions
+    intervalStarts = tsconfig.intervals.map(interval => interval[0]);
+  }
+
   let scaleFactor = new_globalBp / globalBpPerUnit;
 
   // Lower precision range for better sparsification (will be overridden by binning logic)
@@ -261,8 +270,9 @@ async function getLocalData(start, end, globalBpPerUnit, nTrees, new_globalBp, r
   const bufferStart = Math.max(0, start - buffer);
   const bufferEnd = end + (buffer);
 
-  const lower_bound = nearestIndex(tsconfig.intervals, bufferStart);
-  const upper_bound = upperBound(tsconfig.intervals, bufferEnd);
+  const lower_bound = nearestIndex(intervalStarts, bufferStart);
+  const upper_bound = upperBound(intervalStarts, bufferEnd);
+
   deleteRangeByValue(lower_bound, upper_bound);
 
   const local_bins = new Map();
@@ -272,9 +282,9 @@ async function getLocalData(start, end, globalBpPerUnit, nTrees, new_globalBp, r
   // ────────────────────────────────
   const addBins = (lo, hi) => {
     for (let i = lo; i <= hi; i++) {
-      const temp_bin = tsconfig.intervals[i];
-      const next_bin_start = tsconfig.intervals[i + 1] ? tsconfig.intervals[i + 1] : tsconfig.genome_length;
-      if (!temp_bin) continue;
+      const temp_bin = intervalStarts[i];
+      const next_bin_start = intervalStarts[i + 1] !== undefined ? intervalStarts[i + 1] : tsconfig.genome_length;
+      if (temp_bin === undefined) continue;
       local_bins.set(i, {
         s: temp_bin,
         e: next_bin_start,
@@ -300,9 +310,9 @@ async function getLocalData(start, end, globalBpPerUnit, nTrees, new_globalBp, r
     // Overlapping → reuse bins where possible
     for (let i = lower_bound; i <= upper_bound; i++) {
       if (!globalLocalBins.has(i)) {
-        const temp_bin = tsconfig.intervals[i];
-        const next_bin_start = tsconfig.intervals[i + 1] ? tsconfig.intervals[i + 1] : tsconfig.genome_length;
-        if (temp_bin != null) {
+        const temp_bin = intervalStarts[i];
+        const next_bin_start = intervalStarts[i + 1] !== undefined ? intervalStarts[i + 1] : tsconfig.genome_length;
+        if (temp_bin !== undefined) {
           local_bins.set(i, {
             s: temp_bin,
             e: next_bin_start,
@@ -637,8 +647,6 @@ onmessage = async (event) => {
         }
 
         const renderIndices = allDisplayIndices || tree_indices || [];
-
-        console.log(`[TreeCache] Render indices: ${renderIndices.length}, cache size: ${treeDataCache.size}, visible bins: ${modelMatrices.size}`);
 
         // ─────────────────────────────────────────────────────────────────
         // Combine cached data for trees that have BOTH cache AND modelMatrix

@@ -25,9 +25,9 @@ echo "Lorax will be available at http://localhost:80 or to your forwarded port"
 echo "Press Ctrl+C to stop."
 echo "--------------------------------"
 
-# Start backend (Gunicorn)
+# Start backend using lorax CLI
 # echo "[INFO] Starting Gunicorn (FastAPI backend)..."
-gunicorn -c /app/gunicorn_config.py lorax.lorax_app:sio_app &
+lorax serve --gunicorn --workers 1 --host 0.0.0.0 --port 8080 &
 BACKEND_PID=$!
 
 # Start Nginx (frontend proxy)

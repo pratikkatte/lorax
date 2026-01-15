@@ -47,7 +47,7 @@ docker run -it -p 80:80 lorax
 
 ### Data Flow
 1. User selects a `.trees`, `.tsz` (tskit format), or `.csv` file
-2. Backend loads tree sequence via `tskit`/`tszip` into an LRU cache (`handlers.py`)
+2. Backend loads tree sequence via `tskit`/`tszip` into an LRU cache
 3. Frontend connects via Socket.IO and requests data through events:
    - `load_file`: Load a tree sequence file
    - `process_postorder_layout`: Get post-order traversal arrays for visible trees
@@ -85,22 +85,36 @@ frontend/src/
 ### Backend Structure
 ```
 lorax/
-├── lorax_app.py         # FastAPI + Socket.IO server, session management
-├── handlers.py          # Tree loading, LRU cache, config, metadata handlers
+├── lorax_app.py         # FastAPI + Socket.IO app setup
+├── routes.py            # HTTP routes (file upload, health checks)
+├── sockets.py           # Socket.IO event handlers
+├── session_manager.py   # Session management (in-memory or Redis)
+├── context.py           # Global state initialization (session manager, env vars)
+├── handlers.py          # Tree loading and caching logic
 ├── handlers_postorder.py # Post-order traversal handler for tree rendering
-├── manager.py           # WebSocket client management (unused in current Socket.IO setup)
-├── constants.py         # Session and socket configuration constants
+├── buffer.py            # PyArrow buffer utilities
+├── utils.py             # Helper functions (LRU cache, JSON utils)
+├── config/
+│   ├── constants.py     # Session, cache, socket configuration
+│   ├── loader.py        # Config cache and loading
+│   ├── tskit_loader.py  # Tskit/tszip format handling
+│   └── csv_loader.py    # CSV format handling
+├── metadata/
+│   ├── loader.py        # Metadata cache and queries
+│   └── mutations.py     # Mutation data handling
+├── tree_graph/
+│   └── tree_graph.py    # Batch tree construction
 ├── viz/
 │   └── trees_to_taxonium.py  # CSV/Newick tree processing
-└── utils/
-    └── gcs_utils.py  # Google Cloud Storage helpers (production)
+└── cloud/
+    └── gcs_utils.py     # Google Cloud Storage helpers
 ```
 
 ### Key Patterns
 
 **Session Management**: HTTP cookie (`lorax_sid`) identifies user sessions. Sessions track loaded file path. Supports Redis for multi-process deployments or in-memory for single-process.
 
-**Tree Caching**: `_ts_cache` (LRU, max=1) holds loaded tskit tree sequences. `_config_cache` (LRU, max=2) holds computed configurations.
+**Tree Caching**: LRU caches hold loaded tskit tree sequences (max 5) and computed configurations (max 2). Cache sizes configured in `config/constants.py`.
 
 **Coordinate System**: Frontend uses `globalBpPerUnit` to convert genomic base pairs to world coordinates. Trees are positioned via 4x4 model matrices encoding scale and translation.
 
