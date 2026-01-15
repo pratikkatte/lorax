@@ -246,12 +246,13 @@ const useRegions = ({
           const scaleFactor = new_globalBp / globalBpPerUnit;
 
           // Use precision-based sparsification (takes precedence)
-          const sparsityPrecision = getSparsityPrecision(
-            allDisplayIndices.length,
-            showing_all_trees,
-            scaleFactor
-          );
+          // const sparsityPrecision = getSparsityPrecision(
+          //   allDisplayIndices.length,
+          //   showing_all_trees,
+          //   scaleFactor
+          // );
 
+          const sparsityPrecision = 2;
           // Grid-based sparsification
           const sparsityResolution = null;
 

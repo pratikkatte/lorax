@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Optional
 from datetime import datetime
 from dotenv import load_dotenv
-from lorax.utils.gcs_utils import download_gcs_file, BUCKET_NAME, get_public_gcs_dict, upload_to_gcs
+from lorax.cloud.gcs_utils import download_gcs_file, BUCKET_NAME, get_public_gcs_dict, upload_to_gcs
 import time
 load_dotenv()
 
@@ -36,7 +36,7 @@ from fastapi.responses import JSONResponse
 
 from lorax.handlers import (
     handle_upload, handle_edges_query, get_projects, cache_status,
-    handle_details, get_or_load_config,
+    handle_details, 
     get_or_load_ts, get_metadata_for_key, search_samples_by_metadata,
     get_metadata_array_for_key,
     get_mutations_in_window, search_mutations_by_position, mutations_to_arrow_buffer,
@@ -44,7 +44,8 @@ from lorax.handlers import (
     handle_tree_graph_query
 )
 # from lorax.handlers_postorder import handle_postorder_query  # Replaced with tree_graph module
-from lorax.constants import (
+from lorax.config.loader import get_or_load_config
+from lorax.config.constants import (
     SESSION_COOKIE, COOKIE_MAX_AGE, UPLOADS_DIR,
     SOCKET_PING_TIMEOUT, SOCKET_PING_INTERVAL, MAX_HTTP_BUFFER_SIZE,
     ERROR_SESSION_NOT_FOUND, ERROR_MISSING_SESSION, ERROR_NO_FILE_LOADED
@@ -259,7 +260,7 @@ async def get_file(
 async def upload(request: Request, response: Response, file: UploadFile = File(...)):
     """
     Upload a file to the server. 
-
+    
     ## TODO for local uploads, we need to upload the file to the local directory and not upload it to GCS. 
     """
     sid, session = await get_or_create_session(request, response)
@@ -799,7 +800,6 @@ async def search_nodes(sid, data):
         )
 
         await sio.emit("search-nodes-result", result, to=sid)
-
     except Exception as e:
         print(f"❌ Search nodes error: {e}")
         await sio.emit("search-nodes-result", {"error": str(e)}, to=sid)

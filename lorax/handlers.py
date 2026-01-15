@@ -13,52 +13,23 @@ import tskit
 import tszip
 
 from lorax.viz.trees_to_taxonium import process_csv
-from lorax.utils.gcs_utils import get_public_gcs_dict
+from lorax.cloud.gcs_utils import get_public_gcs_dict
 from lorax.tree_graph import construct_trees_batch
+from lorax.utils import (
+    LRUCache, 
+    make_json_safe, 
+    ensure_json_dict, 
+    list_project_files, 
+    make_json_serializable,
+    get_metadata_schema # Imported if used, though get_config was the main user
+)
+from lorax.config.loader import get_or_load_config
 
 _cache_lock = asyncio.Lock()
 
-
-def make_json_safe(obj):
-    if isinstance(obj, dict):
-        return {k: make_json_safe(v) for k, v in obj.items()}
-    if isinstance(obj, set):
-        return sorted(obj)   # or list(obj)
-    if isinstance(obj, list):
-        return [make_json_safe(v) for v in obj]
-    return obj
-
-
-# Global cache for loaded tree sequences
-
-class LRUCache:
-    """Simple LRU cache with eviction for large in-memory tskit/tszip objects."""
-    def __init__(self, max_size=5):
-        self.max_size = max_size
-        self.cache = OrderedDict()
-
-    def get(self, key):
-        if key in self.cache:
-            # Move to the end to mark as recently used
-            self.cache.move_to_end(key)
-            return self.cache[key]
-        return None
-
-    def set(self, key, value):
-        if key in self.cache:
-            # Update existing and mark as recently used
-            self.cache.move_to_end(key)
-        self.cache[key] = value
-        # Evict if too big
-        if len(self.cache) > self.max_size:
-            old_key, old_val = self.cache.popitem(last=False)
-            print(f"🧹 Evicted {old_key} from LRU cache to free memory")
-
-    def clear(self):
-        self.cache.clear()
-
+# Global cache for loaded tree sequences (kept here as it deals with Data)
 _ts_cache = LRUCache(max_size=1)
-_config_cache = LRUCache(max_size=2)
+# _config_cache moved to loader.py
 _metadata_cache = LRUCache(max_size=10)  # Per-key metadata cache
 
 async def get_or_load_ts(file_path):
@@ -89,30 +60,21 @@ async def get_or_load_ts(file_path):
             print(f"❌ Failed to load {file_path}: {e}")
             return None
 
-def get_or_load_config(ts, file_path, root_dir):
-    config = _config_cache.get(file_path)
-    if config is not None:
-        print(f"✅ Using cached config: {file_path}")
-        return config
-
-    if file_path.endswith('.tsz') or file_path.endswith('.trees'):
-        config = get_config(ts, file_path, root_dir)
-    else:
-        config = get_config_csv(ts, file_path, root_dir)
-    _config_cache.set(file_path, config)
-    return config
-
 async def cache_status():
     """Return current memory usage and cache statistics."""
     process = psutil.Process(os.getpid())
     mem_info = process.memory_info()
     rss_mb = mem_info.rss / (1024 * 1024)
     vms_mb = mem_info.vms / (1024 * 1024)
+    
+    # helper to check cache size if it exists in imported module or here
+    # We only have _ts_cache here now
+    
     return {
         "rss_MB": round(rss_mb, 2),
         "vms_MB": round(vms_mb, 2),
-        "ts_cache_size": len(_ts_cache.cache) if "_ts_cache" in globals() else "n/a",
-        "config_cache_size": len(_config_cache.cache) if "_config_cache" in globals() else "n/a",
+        "ts_cache_size": len(_ts_cache.cache),
+        "config_cache_size": "n/a", # Managed in loader.py, could expose if needed
         "pid": os.getpid(),
     }
 
@@ -138,65 +100,6 @@ async def handle_edges_query(file_path, start, end):
         print("Error in handle_edges_query", e)
         return json.dumps({"error": f"Error fetching edges: {str(e)}"})
 
-
-def extract_sample_names(newick_str):
-    tokens = re.findall(r'([^(),:]+):', newick_str)
-
-    samples = []
-    for t in tokens:
-        # Skip pure numbers (branch lengths)
-        if re.fullmatch(r'[0-9.+Ee-]+', t):
-            continue
-        samples.append(t)
-
-    # Remove duplicates while preserving order
-    return list(dict.fromkeys(samples))
-
-def max_branch_length_from_newick(nwk):
-    values = re.findall(r":([0-9.eE+-]+)", nwk)
-    if not values:
-        return 0.0
-    return max(map(float, values))
-
-def get_config_csv(df, file_path, root_dir, window_size=50000):
-    """Extract configuration from a CSV file with newick trees."""
-    genome_length = int(df['genomic_positions'].max())
-    intervals = []
-    max_branch_length_all = 0
-    samples_set = set()
-
-    for _, row in df.iterrows():
-        current_pos = int(row['genomic_positions'])
-        max_br = max_branch_length_from_newick(row['newick'])
-        sample_names = extract_sample_names(row['newick'])
-        samples_set.update(sample_names)
-
-        if max_br > max_branch_length_all:
-            max_branch_length_all = max_br
-        next_row = row.name + 1  # rely on DataFrame index (assumes default integer)
-        if next_row < len(df):
-            next_pos = int(df.iloc[next_row]['genomic_positions'])
-        else:
-            next_pos = current_pos + window_size
-        intervals.append(current_pos)
-
-
-    populations = {}
-    nodes_population = []
-    times = [0, max_branch_length_all]
-    sample_names = {}
-    for s in samples_set:
-        sample_names[str(s)] = {"sample_name": s}
-    config = {
-        'genome_length': genome_length,
-        'times': {'type': 'branch length', 'values': times},
-        'intervals': intervals,
-        'filename': str(file_path).split('/')[-1],
-        'populations': populations,
-        'nodes_population': nodes_population,
-        'sample_names': sample_names,
-    }
-    return config
 
 def flatten_all_metadata_by_sample(
     ts,
@@ -269,91 +172,6 @@ def flatten_all_metadata_by_sample(
         k: dict(v)
         for k, v in result.items()
     }
-
-
-def get_metadata_schema(
-    ts,
-    sources=("individual", "node", "population"),
-    sample_name_key="name"
-):
-    """
-    Extract metadata keys and unique values only, without sample associations.
-    Much lighter than flatten_all_metadata_by_sample for large tree sequences.
-
-    Also includes "sample" as the first key, where each sample's name/ID is its
-    own unique value (for coloring samples individually).
-
-    Parameters
-    ----------
-    ts : tskit.TreeSequence
-    sources : tuple
-        Any of ("individual", "node", "population")
-    sample_name_key : str
-        Key in node metadata used as sample name
-
-    Returns
-    -------
-    dict
-        {
-            "metadata_keys": [key1, key2, ...],
-            "metadata_values": {key1: [val1, val2, ...], ...}
-        }
-    """
-    keys_values = defaultdict(set)
-    sample_names = set()  # Collect sample names for "sample" key
-
-    for node_id in ts.samples():
-        node = ts.node(node_id)
-
-        # Collect sample name (from node metadata or fallback to node ID)
-        node_meta = node.metadata or {}
-        try:
-            node_meta = ensure_json_dict(node_meta)
-        except (TypeError, json.JSONDecodeError):
-            node_meta = {}
-        sample_name = node_meta.get(sample_name_key, f"{node_id}")
-        sample_names.add(str(sample_name))
-
-        for source in sources:
-            if source == "individual":
-                if node.individual == tskit.NULL:
-                    continue
-                meta = ts.individual(node.individual).metadata
-                meta = meta or {}
-                meta = ensure_json_dict(meta)
-
-            elif source == "node":
-                meta = node_meta  # Reuse already parsed node metadata
-
-            elif source == "population":
-                if node.population == tskit.NULL:
-                    continue
-                meta = ts.population(node.population).metadata
-                meta = meta or {}
-                meta = ensure_json_dict(meta)
-
-            else:
-                raise ValueError(f"Unknown source: {source}")
-
-            if not meta:
-                continue
-
-            for key, value in meta.items():
-                if isinstance(value, (list, dict)):
-                    value = repr(value)
-                # Skip None values
-                if value is not None:
-                    keys_values[key].add(str(value))
-
-    # Prepend "sample" to keys - this makes it the default colorBy option
-    return {
-        "metadata_keys": ["sample"] + list(keys_values.keys()),
-        "metadata_values": {
-            "sample": sorted(list(sample_names)),
-            **{k: sorted(list(v)) for k, v in keys_values.items()}
-        }
-    }
-
 
 def get_metadata_for_key(
     ts,
@@ -692,74 +510,6 @@ def get_metadata_array_for_key(
     return result
 
 
-def ensure_json_dict(data):
-    # If already a dict, return as-is
-    if isinstance(data, dict):
-        return data
-
-    # If bytes, decode to string
-    if isinstance(data, (bytes, bytearray)):
-        data = data.decode("utf-8")
-    # If string, parse JSON
-    if isinstance(data, str):
-        return json.loads(data)
-
-    raise TypeError(f"Unsupported data type: {type(data)}")
-
-def extract_node_mutations_tables(ts):
-    """Extract mutations keyed by position for UI display."""
-    t = ts.tables
-    s, m = t.sites, t.mutations
-
-    pos = s.position[m.site]
-    anc = ts.sites_ancestral_state
-    der = ts.mutations_derived_state
-    nodes = m.node  # Node IDs for each mutation
-
-    out = {}
-
-    for p, a, d, node_id in zip(pos, anc, der, nodes):
-        if a == d:
-            continue
-
-        out[str(int(p))] = {
-            "mutation": f"{a}->{d}",
-            "node": int(node_id)
-        }
-
-    return out
-
-
-def extract_mutations_by_node(ts):
-    """Extract mutations grouped by node ID for tree building.
-    
-    Returns:
-        dict: {node_id (int): [{position, mutation_str}, ...]}
-    """
-    t = ts.tables
-    s, m = t.sites, t.mutations
-
-    pos = s.position[m.site]
-    anc = ts.sites_ancestral_state
-    der = ts.mutations_derived_state
-    nodes = m.node
-
-    out = {}
-
-    for p, a, d, node_id in zip(pos, anc, der, nodes):
-        if a == d:
-            continue
-        node_id = int(node_id)
-        if node_id not in out:
-            out[node_id] = []
-        out[node_id].append({
-            "position": int(p),
-            "mutation": f"{a}{int(p)}{d}"
-        })
-
-    return out
-
-
 def get_mutations_in_window(ts, start, end, offset=0, limit=1000):
     """
     Get mutations within a genomic interval [start, end) with pagination.
@@ -962,72 +712,11 @@ def get_edges_for_interval(ts, start, end):
     ))
 
 
-def get_config(ts, file_path, root_dir):
-    """Extract configuration and metadata from a tree sequence file.
-
-    Note: Uses get_metadata_schema() for lightweight initial load.
-    Full metadata mappings are fetched on-demand via fetch_metadata_for_key.
-    """
-    try:
-        intervals = [tree.interval[0] for tree in ts.trees()]
-        times = [ts.min_time, ts.max_time]
-
-        sample_names = {}
-        # Use schema-only extraction for lightweight initial load
-        metadata_schema = get_metadata_schema(ts, sources=("individual", "node", "population"))
-
-        filename = os.path.basename(file_path)
-        config = {
-            'genome_length': ts.sequence_length,
-            'times': {'type': 'coalescent time', 'values': times},
-            'intervals': intervals,
-            'filename': str(filename),
-            # node_times removed - now sent per-query from handle_layout_query for efficiency
-            # 'mutations': extract_node_mutations_tables(ts),
-            # 'mutations_by_node': extract_mutations_by_node(ts),
-            'sample_names': sample_names,
-            # Send schema only - full mappings fetched on-demand
-            'metadata_schema': metadata_schema
-        }
-        return config
-    except Exception as e:
-        print("Error in get_config", e)
-        return None
-    
 async def handle_upload(file_path, root_dir):
     """Load a tree sequence file and return its configuration."""
     ts = await get_or_load_ts(file_path)
     print("File loading complete")
     return ts
-
-def list_project_files(directory, projects, root):
-        """
-        Recursively list files and folders for the given directory.
-        If subdirectories are found, they are added as keys and populated similarly.
-        """
-        for item in os.listdir(directory):
-            item_path = os.path.join(directory, item)
-            if os.path.isdir(item_path):
-                # Recursive call for subdirectory
-                directory_name = os.path.relpath(item_path, root)
-                directory_basename = os.path.basename(item_path)
-                if directory_basename not in projects:
-                    projects[str(directory_basename)] = {
-                        "folder": str(directory_name),
-                        "files": [],
-                        "description": "",
-                    }     
-                    projects = list_project_files(item_path, projects, root=root)
-            else:
-                # Get the relative path from root to directory
-                directory_name = os.path.relpath(directory, root)
-                directory_basename = os.path.basename(directory)
-                if os.path.isfile(item_path) and (
-                    item.endswith(".trees") or item.endswith(".trees.tsz") or item.endswith(".csv")
-                ):
-                    if item not in projects[str(directory_basename)]["files"]:
-                        projects[str(directory_basename)]["files"].append(item)
-        return projects
 
 async def get_projects(upload_dir, BUCKET_NAME):
     """List all projects and their files from local uploads and GCS bucket."""
@@ -1041,32 +730,6 @@ async def get_projects(upload_dir, BUCKET_NAME):
     projects = list_project_files(upload_dir, projects, root=upload_dir)
     projects = get_public_gcs_dict(BUCKET_NAME, sid=None, projects=projects)
     return projects
-
-def make_json_serializable(obj):
-    """Convert to JSON-safe Python structures and decode nested JSON strings."""
-    if isinstance(obj, bytes):
-        try:
-            text = obj.decode('utf-8')
-            return make_json_serializable(json.loads(text))
-        except Exception:
-            return text
-    elif isinstance(obj, str):
-        # Try to parse JSON strings like '{"family_id": "ST082"}'
-        try:
-            parsed = json.loads(obj)
-            return make_json_serializable(parsed)
-        except Exception:
-            return obj
-    elif isinstance(obj, dict):
-        return {k: make_json_serializable(v) for k, v in obj.items()}
-    elif isinstance(obj, list):
-        return [make_json_serializable(i) for i in obj]
-    elif hasattr(obj, '__dict__'):
-        return make_json_serializable(obj.__dict__)
-    elif isinstance(obj, np.ndarray):
-        return obj.tolist()
-    else:
-        return obj
 
 def search_nodes_in_trees(
     ts,
