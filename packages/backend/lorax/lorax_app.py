@@ -12,7 +12,7 @@ from starlette.middleware.gzip import GZipMiddleware
 from dotenv import load_dotenv
 
 from lorax.context import REDIS_URL, IS_VM
-from lorax.config.constants import (
+from lorax.constants import (
     SOCKET_PING_TIMEOUT, SOCKET_PING_INTERVAL, MAX_HTTP_BUFFER_SIZE
 )
 from lorax.routes import router

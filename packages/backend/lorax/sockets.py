@@ -1,17 +1,18 @@
 import os
 import json
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from http.cookies import SimpleCookie
 
 from fastapi.responses import JSONResponse
 
-from lorax.context import session_manager, IS_VM, BUCKET_NAME
-from lorax.config.constants import (
-    UPLOADS_DIR, ERROR_SESSION_NOT_FOUND, ERROR_MISSING_SESSION, ERROR_NO_FILE_LOADED
+from lorax.context import session_manager, IS_VM, BUCKET_NAME, disk_cache_manager
+from lorax.constants import (
+    UPLOADS_DIR, ERROR_SESSION_NOT_FOUND, ERROR_MISSING_SESSION, ERROR_NO_FILE_LOADED,
+    ERROR_CONNECTION_REPLACED, ENFORCE_CONNECTION_LIMITS,
 )
-from lorax.cloud.gcs_utils import download_gcs_file
+from lorax.cloud.gcs_utils import download_gcs_file, download_gcs_file_cached
 
 # Handlers
 from lorax.handlers import (
@@ -22,7 +23,7 @@ from lorax.handlers import (
     get_mutations_in_window, search_mutations_by_position, mutations_to_arrow_buffer,
     search_nodes_in_trees
 )
-from lorax.config.loader import get_or_load_config
+from lorax.loaders.loader import get_or_load_config
 
 UPLOAD_DIR = Path(UPLOADS_DIR)
 UPLOAD_DIR.mkdir(exist_ok=True)
@@ -40,6 +41,9 @@ def register_socket_events(sio):
             return None
         return session
 
+    # Mapping from socket_sid to lorax_sid for disconnect handling
+    _socket_to_session: dict = {}
+
     @sio.event
     async def connect(sid, environ, auth=None):
         print(f"🔌 Socket.IO connected: {sid}")
@@ -56,9 +60,35 @@ def register_socket_events(sio):
             await sio.emit("error", {"code": ERROR_SESSION_NOT_FOUND, "message": "Session not found. Please refresh the page."}, to=sid)
             return
 
-        # Validate session exists and send appropriate event
+        # Validate session exists
         session = await session_manager.get_session(session_id)
-        if session and session.file_path:
+        if not session:
+            print(f"⚠️ Session not found: {session_id}")
+            await sio.emit("error", {"code": ERROR_SESSION_NOT_FOUND, "message": "Session expired. Please refresh the page."}, to=sid)
+            return
+
+        # Track this socket connection
+        replaced_socket_sid = session.add_socket(sid)
+        await session_manager.save_session(session)
+
+        # Store mapping for disconnect handling
+        _socket_to_session[sid] = session_id
+
+        # If we replaced an old connection, notify it
+        if replaced_socket_sid:
+            print(f"🔄 Replacing old socket {replaced_socket_sid} with new socket {sid}")
+            await sio.emit("connection-replaced", {
+                "code": ERROR_CONNECTION_REPLACED,
+                "message": "This connection was replaced by a newer tab. Please use the new tab.",
+            }, to=replaced_socket_sid)
+            # Disconnect the old socket
+            try:
+                await sio.disconnect(replaced_socket_sid)
+            except Exception as e:
+                print(f"Warning: Failed to disconnect old socket: {e}")
+
+        # Send session state
+        if session.file_path:
             await sio.emit("session-restored", {
                 "lorax_sid": session_id,
                 "file_path": session.file_path
@@ -69,6 +99,14 @@ def register_socket_events(sio):
     @sio.event
     async def disconnect(sid):
         print(f"🔌 Socket.IO disconnected: {sid}")
+
+        # Remove socket from session tracking
+        session_id = _socket_to_session.pop(sid, None)
+        if session_id:
+            session = await session_manager.get_session(session_id)
+            if session:
+                session.remove_socket(sid)
+                await session_manager.save_session(session)
 
     @sio.event
     async def ping(sid, data):

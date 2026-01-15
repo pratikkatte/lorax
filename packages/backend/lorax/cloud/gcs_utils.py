@@ -1,6 +1,7 @@
 from google.cloud import storage
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Optional
 import zoneinfo
 import aiofiles
 import asyncio
@@ -13,9 +14,10 @@ BUCKET_NAME = os.getenv("GCS_BUCKET_NAME")
 def get_gcs_client():
     return storage.Client()
 
-async def download_gcs_file(bucket_name: str, blob_path: str, local_path: str):
+
+async def _download_gcs_file_direct(bucket_name: str, blob_path: str, local_path: str):
     """
-    Asynchronously download a public GCS blob to a local file.
+    Internal: Download a public GCS blob to a local file.
 
     Args:
         bucket_name (str): Name of the public GCS bucket (e.g. "lorax_projects")
@@ -35,6 +37,89 @@ async def download_gcs_file(bucket_name: str, blob_path: str, local_path: str):
                     await f.write(chunk)
 
     return Path(local_path)
+
+
+async def download_gcs_file(bucket_name: str, blob_path: str, local_path: str):
+    """
+    Asynchronously download a public GCS blob to a local file.
+    Uses disk cache if available for automatic caching and eviction.
+
+    Args:
+        bucket_name (str): Name of the public GCS bucket (e.g. "lorax_projects")
+        blob_path (str): Path inside the bucket (e.g. "1000Genomes/1kg_chr20.trees.tsz")
+        local_path (str): Local destination path (e.g. "uploads/1kg_chr20.trees.tsz")
+
+    Returns:
+        Path to the downloaded file
+    """
+    # Import here to avoid circular imports
+    from lorax.context import disk_cache_manager
+
+    if disk_cache_manager.enabled:
+        # Use disk cache for managed downloads
+        async def download_func(path: str):
+            await _download_gcs_file_direct(bucket_name, blob_path, path)
+
+        cached_path = await disk_cache_manager.get_or_download(
+            bucket_name, blob_path, download_func
+        )
+
+        # If local_path differs from cached path, create a symlink or copy
+        local_path_obj = Path(local_path)
+        if cached_path != local_path_obj:
+            local_path_obj.parent.mkdir(parents=True, exist_ok=True)
+            # Symlink to cached file (avoid duplicate storage)
+            if local_path_obj.exists() or local_path_obj.is_symlink():
+                local_path_obj.unlink()
+            try:
+                local_path_obj.symlink_to(cached_path)
+            except OSError:
+                # Fallback: just return cached path if symlink fails
+                return cached_path
+
+        return local_path_obj
+    else:
+        # Direct download without caching
+        return await _download_gcs_file_direct(bucket_name, blob_path, local_path)
+
+
+async def download_gcs_file_cached(
+    bucket_name: str,
+    blob_path: str,
+    disk_cache_manager=None
+) -> Optional[Path]:
+    """
+    Download a GCS file using the disk cache manager.
+
+    This is the preferred method for production use - it handles:
+    - Distributed locking (prevents duplicate downloads across workers)
+    - LRU eviction (manages disk space)
+    - Access time tracking
+
+    Args:
+        bucket_name: GCS bucket name
+        blob_path: Path within bucket
+        disk_cache_manager: Optional cache manager (uses global if not provided)
+
+    Returns:
+        Path to cached file, or None if download failed
+    """
+    if disk_cache_manager is None:
+        from lorax.context import disk_cache_manager
+
+    if not disk_cache_manager.enabled:
+        return None
+
+    async def download_func(local_path: str):
+        await _download_gcs_file_direct(bucket_name, blob_path, local_path)
+
+    try:
+        return await disk_cache_manager.get_or_download(
+            bucket_name, blob_path, download_func
+        )
+    except Exception as e:
+        print(f"Failed to download {blob_path} from GCS: {e}")
+        return None
 
 def get_public_gcs_dict(bucket_name: str, sid: str, prefix: str = "", projects={}):
     api_url = f"https://storage.googleapis.com/storage/v1/b/{bucket_name}/o"

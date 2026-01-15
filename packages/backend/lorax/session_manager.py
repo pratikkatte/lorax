@@ -2,37 +2,96 @@
 import os
 import json
 from uuid import uuid4
-from datetime import datetime
-from typing import Optional, Dict
+from datetime import datetime, timezone
+from typing import Optional, Dict, Tuple
 
 import redis.asyncio as aioredis
 from fastapi import Request, Response
 
-from lorax.config.constants import (
-    SESSION_COOKIE, 
+from lorax.constants import (
+    SESSION_COOKIE,
     COOKIE_MAX_AGE,
+    MAX_SOCKETS_PER_SESSION,
+    ENFORCE_CONNECTION_LIMITS,
 )
 
+
 class Session:
-    """Per-user session."""
-    def __init__(self, sid, file_path=None):
+    """Per-user session with socket connection tracking."""
+
+    def __init__(self, sid, file_path=None, socket_connections=None, last_activity=None):
         self.sid = sid
         self.file_path = file_path
-        self.created_at = datetime.utcnow().isoformat()
+        self.created_at = datetime.now(timezone.utc).isoformat()
+        self.last_activity = last_activity or self.created_at
+        # socket_connections: {socket_sid: connected_at_iso_string}
+        self.socket_connections: Dict[str, str] = socket_connections or {}
 
     def to_dict(self):
         return {
             "sid": self.sid,
             "file_path": self.file_path,
             "created_at": self.created_at,
+            "last_activity": self.last_activity,
+            "socket_connections": self.socket_connections,
         }
 
     @staticmethod
     def from_dict(data):
-        return Session(
+        session = Session(
             sid=data["sid"],
             file_path=data.get("file_path"),
+            socket_connections=data.get("socket_connections", {}),
+            last_activity=data.get("last_activity"),
         )
+        session.created_at = data.get("created_at", session.created_at)
+        return session
+
+    def update_activity(self):
+        """Update last activity timestamp."""
+        self.last_activity = datetime.now(timezone.utc).isoformat()
+
+    def add_socket(self, socket_sid: str) -> Optional[str]:
+        """
+        Add a socket connection.
+
+        Returns:
+            socket_sid of oldest connection to replace, or None if under limit
+        """
+        self.update_activity()
+
+        # Check if we need to replace an existing connection
+        if ENFORCE_CONNECTION_LIMITS and len(self.socket_connections) >= MAX_SOCKETS_PER_SESSION:
+            # Find oldest connection by connected_at timestamp
+            oldest_socket = min(
+                self.socket_connections.items(),
+                key=lambda x: x[1]  # Sort by timestamp
+            )
+            oldest_socket_sid = oldest_socket[0]
+            # Remove oldest
+            del self.socket_connections[oldest_socket_sid]
+            # Add new
+            self.socket_connections[socket_sid] = datetime.now(timezone.utc).isoformat()
+            return oldest_socket_sid
+
+        # Under limit, just add
+        self.socket_connections[socket_sid] = datetime.now(timezone.utc).isoformat()
+        return None
+
+    def remove_socket(self, socket_sid: str):
+        """Remove a socket connection."""
+        self.socket_connections.pop(socket_sid, None)
+        self.update_activity()
+
+    def get_socket_count(self) -> int:
+        """Get current socket connection count."""
+        return len(self.socket_connections)
+
+    def is_at_connection_limit(self) -> bool:
+        """Check if session is at connection limit."""
+        if not ENFORCE_CONNECTION_LIMITS:
+            return False
+        return len(self.socket_connections) >= MAX_SOCKETS_PER_SESSION
 
 class SessionManager:
     def __init__(self, redis_url: Optional[str] = None):

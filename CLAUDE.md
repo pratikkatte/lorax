@@ -31,10 +31,22 @@ yarn test src/components/Info.test.jsx       # Unit test
 yarn test:e2e e2e/landing-page.spec.js       # E2E test
 ```
 
-### Backend Development (from root directory)
+### Backend Development (from `packages/backend/` directory)
 ```bash
-pip install -r requirements.txt
+pip install -e .             # Install package in editable mode
+lorax serve --reload         # Start dev server on http://localhost:8080
+lorax serve --open-browser   # Local mode with browser auto-open
+
+# Alternative: direct uvicorn
 uvicorn lorax.lorax_app:sio_app --host 0.0.0.0 --port 8080 --reload
+
+# Production with gunicorn
+lorax serve --gunicorn --workers 4
+
+# Configuration and cache management
+lorax config show            # Display current mode and settings
+lorax cache-status           # Show disk cache statistics
+lorax cache-clear            # Clear disk cache
 ```
 
 ### Docker
@@ -84,37 +96,49 @@ frontend/src/
 
 ### Backend Structure
 ```
-lorax/
+packages/backend/lorax/
 ├── lorax_app.py         # FastAPI + Socket.IO app setup
 ├── routes.py            # HTTP routes (file upload, health checks)
 ├── sockets.py           # Socket.IO event handlers
-├── session_manager.py   # Session management (in-memory or Redis)
-├── context.py           # Global state initialization (session manager, env vars)
-├── handlers.py          # Tree loading and caching logic
-├── handlers_postorder.py # Post-order traversal handler for tree rendering
-├── buffer.py            # PyArrow buffer utilities
-├── utils.py             # Helper functions (LRU cache, JSON utils)
-├── config/
-│   ├── constants.py     # Session, cache, socket configuration
+├── session_manager.py   # Session management with socket tracking
+├── disk_cache.py        # LRU disk cache for GCS downloads
+├── context.py           # Global singletons (session_manager, disk_cache_manager)
+├── handlers.py          # Tree loading with mtime-validated caching
+├── cli.py               # CLI commands (serve, config, cache)
+├── modes.py             # Deployment mode detection (local/development/production)
+├── constants.py         # Mode-aware app configuration
+├── utils.py             # LRUCache, LRUCacheWithMeta
+├── loaders/             # Tree data loading
 │   ├── loader.py        # Config cache and loading
 │   ├── tskit_loader.py  # Tskit/tszip format handling
 │   └── csv_loader.py    # CSV format handling
 ├── metadata/
-│   ├── loader.py        # Metadata cache and queries
-│   └── mutations.py     # Mutation data handling
+│   └── loader.py        # Metadata cache and queries
 ├── tree_graph/
 │   └── tree_graph.py    # Batch tree construction
-├── viz/
-│   └── trees_to_taxonium.py  # CSV/Newick tree processing
 └── cloud/
-    └── gcs_utils.py     # Google Cloud Storage helpers
+    └── gcs_utils.py     # GCS download with disk cache integration
 ```
+
+### Deployment Modes
+
+Backend auto-detects mode based on environment:
+- **local**: Conda/desktop use. In-memory sessions, no GCS, 5 TS cache slots.
+- **development**: Optional GCS, relaxed limits, 5 TS cache slots.
+- **production**: Redis + GCS required, 50GB disk cache, 2 TS cache slots per worker, 5 socket limit per session.
+
+Set explicitly with `LORAX_MODE=production|development|local`.
 
 ### Key Patterns
 
-**Session Management**: HTTP cookie (`lorax_sid`) identifies user sessions. Sessions track loaded file path. Supports Redis for multi-process deployments or in-memory for single-process.
+**Session Management**: HTTP cookie (`lorax_sid`) identifies user sessions. Sessions track loaded file path and socket connections. In production, oldest socket is replaced (not rejected) when limit reached.
 
-**Tree Caching**: LRU caches hold loaded tskit tree sequences (max 5) and computed configurations (max 2). Cache sizes configured in `config/constants.py`.
+**Multi-Layer Caching**:
+1. **Disk cache** (`disk_cache.py`): 50GB LRU for GCS downloads, shared across workers
+2. **Memory cache** (`handlers.py`): Per-worker LRU with mtime validation for tree sequences
+3. **Config/metadata caches**: Per-worker LRU for computed data
+
+**Multi-Worker Coordination**: Redis for distributed session storage and download locks. File-based locks as fallback for single-process mode.
 
 **Coordinate System**: Frontend uses `globalBpPerUnit` to convert genomic base pairs to world coordinates. Trees are positioned via 4x4 model matrices encoding scale and translation.
 
@@ -122,11 +146,19 @@ lorax/
 
 ## Environment Variables
 
-- `VITE_API_BASE`: Backend URL for frontend (default: `http://localhost:8080`)
-- `REDIS_URL`: Redis connection for distributed sessions (optional)
-- `BUCKET_NAME`: GCS bucket for production file storage
-- `IS_VM`: Set to enable GCS integration
+### Frontend
+- `VITE_API_BASE`: Backend URL (default: `http://localhost:8080`)
+
+### Backend
+- `LORAX_MODE`: Deployment mode (`local`/`development`/`production`, auto-detected if not set)
+- `REDIS_URL`: Redis connection for distributed sessions (required in production)
+- `GCS_BUCKET_NAME` or `BUCKET_NAME`: GCS bucket for file storage
+- `IS_VM`: Set to `true` to enable GCS integration
 - `ALLOWED_ORIGINS`: CORS allowed origins (comma-separated)
+- `TS_CACHE_SIZE`: Tree sequences per worker (default: 2 prod, 5 local)
+- `DISK_CACHE_DIR`: Disk cache directory (default: `/tmp/lorax_cache`)
+- `DISK_CACHE_MAX_GB`: Max disk cache size (default: 50)
+- `MAX_SOCKETS_PER_SESSION`: Connection limit per session (default: 5, enforced in production only)
 
 ## Testing Notes
 

@@ -4,6 +4,7 @@ import json
 import asyncio
 import re
 from collections import OrderedDict, defaultdict
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -16,10 +17,10 @@ from lorax.viz.trees_to_taxonium import process_csv
 from lorax.cloud.gcs_utils import get_public_gcs_dict
 from lorax.tree_graph import construct_trees_batch
 from lorax.utils import (
-    LRUCache, 
-    make_json_safe, 
-    ensure_json_dict, 
-    list_project_files, 
+    LRUCacheWithMeta,
+    make_json_safe,
+    ensure_json_dict,
+    list_project_files,
     make_json_serializable,
 )
 from lorax.metadata.loader import (
@@ -32,33 +33,61 @@ from lorax.metadata.mutations import (
     search_mutations_by_position
 )
 from lorax.buffer import mutations_to_arrow_buffer
-from lorax.config.constants import TS_CACHE_SIZE
+from lorax.constants import TS_CACHE_SIZE
 
-from lorax.config.loader import get_or_load_config
+from lorax.loaders.loader import get_or_load_config
 
 _cache_lock = asyncio.Lock()
 
 # Global cache for loaded tree sequences (kept here as it deals with Data)
-_ts_cache = LRUCache(max_size=TS_CACHE_SIZE)
+# Uses LRUCacheWithMeta to track file mtime for cache validation
+_ts_cache = LRUCacheWithMeta(max_size=TS_CACHE_SIZE)
 # _config_cache moved to loader.py
 # _metadata_cache moved to metadata/loader.py
 
+
+def _get_file_mtime(file_path: str) -> float:
+    """Get file modification time, or 0 if file doesn't exist."""
+    try:
+        return Path(file_path).stat().st_mtime
+    except (OSError, FileNotFoundError):
+        return 0.0
+
+
 async def get_or_load_ts(file_path):
     """
-    Load a tree sequence from file_path.
+    Load a tree sequence from file_path with mtime validation.
+
+    Validates that cached tree sequence matches current file on disk.
+    This prevents serving stale data if the file was updated.
     """
+
+    # Check if file exists
+    file_path_obj = Path(file_path)
+    if not file_path_obj.exists():
+        # If file was cached but no longer exists, remove from cache
+        _ts_cache.remove(file_path)
+        print(f"❌ File not found: {file_path}")
+        return None
+
+    current_mtime = _get_file_mtime(file_path)
 
     # Double-checked locking optimization
     # 1. Optimistic check (lock-free read)
-    ts = _ts_cache.get(file_path)
+    ts, cached_mtime = _ts_cache.get_with_meta(file_path)
     if ts is not None:
-        print(f"✅ Using cached tree sequence: {file_path}")
-        return ts
+        # Validate mtime hasn't changed
+        if cached_mtime == current_mtime:
+            print(f"✅ Using cached tree sequence: {file_path}")
+            return ts
+        else:
+            print(f"🔄 File changed, reloading: {file_path}")
+            _ts_cache.remove(file_path)
 
     async with _cache_lock:
         # 2. Check again under lock (in case another task loaded it while we waited)
-        ts = _ts_cache.get(file_path)
-        if ts is not None:
+        ts, cached_mtime = _ts_cache.get_with_meta(file_path)
+        if ts is not None and cached_mtime == current_mtime:
             print(f"✅ Using cached tree sequence (after lock): {file_path}")
             return ts
 
@@ -73,7 +102,8 @@ async def get_or_load_ts(file_path):
                     return pd.read_csv(fp)
 
             ts = await asyncio.to_thread(choose_file_loader, file_path)
-            _ts_cache.set(file_path, ts)
+            # Store with current mtime for validation
+            _ts_cache.set(file_path, ts, meta=current_mtime)
             return ts
         except Exception as e:
             print(f"❌ Failed to load {file_path}: {e}")

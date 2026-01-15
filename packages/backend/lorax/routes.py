@@ -9,14 +9,14 @@ from fastapi import APIRouter, Request, Response, UploadFile, File, Query
 from fastapi.responses import JSONResponse
 
 from lorax.context import session_manager, IS_VM, BUCKET_NAME
-from lorax.config.constants import UPLOADS_DIR
+from lorax.constants import UPLOADS_DIR
 from lorax.cloud.gcs_utils import download_gcs_file, get_public_gcs_dict, upload_to_gcs
 from lorax.handlers import (
     handle_upload,
     get_projects,
     cache_status,
 )
-from lorax.config.loader import get_or_load_config
+from lorax.loaders.loader import get_or_load_config
 
 router = APIRouter()
 UPLOAD_DIR = Path(UPLOADS_DIR)
