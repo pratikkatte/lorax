@@ -3,6 +3,7 @@ import { useParams, useSearchParams } from 'react-router-dom';
 import { useLorax } from '@lorax/core';
 import PositionSlider from './PositionSlider';
 import ViewportOverlay from './ViewportOverlay';
+import Info from './Info';
 
 /**
  * FileView component - displays loaded file with viewport and position controls.
@@ -25,6 +26,7 @@ function FileView() {
   const [error, setError] = useState(null);
   const [position, setPosition] = useState(null); // [start, end]
   const [statusMessage, setStatusMessage] = useState(null);
+  const [showInfo, setShowInfo] = useState(false);
 
   // Get project and genomic coordinates from URL params
   const project = searchParams.get('project');
@@ -97,6 +99,8 @@ function FileView() {
         value={position}
         onChange={handlePositionChange}
         project={project}
+        showInfo={showInfo}
+        setShowInfo={setShowInfo}
       />
 
       {/* Main viewport area */}
@@ -152,6 +156,15 @@ function FileView() {
             <p className="text-lg">Tree visualization will render here</p>
           </div>
         )}
+
+        {/* Info Panel - Right sidebar */}
+        <div
+          className={`fixed top-0 right-0 w-[25%] min-w-[320px] h-full z-40 shadow-xl transition-transform duration-300 ease-in-out ${
+            showInfo ? 'translate-x-0' : 'translate-x-full'
+          }`}
+        >
+          <Info setShowInfo={setShowInfo} />
+        </div>
       </div>
     </div>
   );

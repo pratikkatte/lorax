@@ -10,7 +10,9 @@ export default function PositionSlider({
   genomeLength,
   value,
   onChange,
-  project
+  project,
+  showInfo,
+  setShowInfo
 }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const [start, setStart] = useState(value?.[0] || 0);
@@ -183,6 +185,24 @@ export default function PositionSlider({
         <span className="text-xs text-slate-400 ml-2">
           / {genomeLength.toLocaleString()} bp
         </span>
+      )}
+
+      {/* Info panel toggle button */}
+      {setShowInfo && (
+        <button
+          onClick={() => setShowInfo(!showInfo)}
+          className={`absolute right-4 p-2 rounded-lg transition-colors ${
+            showInfo
+              ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
+              : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+          }`}
+          title={showInfo ? 'Close info panel' : 'Open info panel'}
+        >
+          {/* Kanban/list icon similar to frontend */}
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
+          </svg>
+        </button>
       )}
     </div>
   );
