@@ -32,13 +32,14 @@ from lorax.metadata.mutations import (
     search_mutations_by_position
 )
 from lorax.buffer import mutations_to_arrow_buffer
+from lorax.config.constants import TS_CACHE_SIZE
 
 from lorax.config.loader import get_or_load_config
 
 _cache_lock = asyncio.Lock()
 
 # Global cache for loaded tree sequences (kept here as it deals with Data)
-_ts_cache = LRUCache(max_size=1)
+_ts_cache = LRUCache(max_size=TS_CACHE_SIZE)
 # _config_cache moved to loader.py
 # _metadata_cache moved to metadata/loader.py
 
@@ -47,12 +48,20 @@ async def get_or_load_ts(file_path):
     Load a tree sequence from file_path.
     """
 
-    async with _cache_lock:
+    # Double-checked locking optimization
+    # 1. Optimistic check (lock-free read)
+    ts = _ts_cache.get(file_path)
+    if ts is not None:
+        print(f"✅ Using cached tree sequence: {file_path}")
+        return ts
 
+    async with _cache_lock:
+        # 2. Check again under lock (in case another task loaded it while we waited)
         ts = _ts_cache.get(file_path)
         if ts is not None:
-            print(f"✅ Using cached tree sequence: {file_path}")
+            print(f"✅ Using cached tree sequence (after lock): {file_path}")
             return ts
+
         print(f"📂 Loading tree sequence from: {file_path}")
         try:
             def choose_file_loader(fp):

@@ -51,12 +51,15 @@ from lorax.config.constants import (
     ERROR_SESSION_NOT_FOUND, ERROR_MISSING_SESSION, ERROR_NO_FILE_LOADED
 )
 
+
+from lorax.session_manager import SessionManager
+
 # Setup
 
 app = FastAPI(title="Lorax Backend", version="1.0.0")
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
-UPLOAD_DIR = Path("UPLOADS")
+UPLOAD_DIR = Path(UPLOADS_DIR)
 
 IS_VM = os.getenv("IS_VM", False)
 
@@ -78,82 +81,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-USE_REDIS = False
 REDIS_URL = os.getenv("REDIS_URL", None)
-redis_client = None
+session_manager = SessionManager(REDIS_URL)
+
+
+
 
 if REDIS_URL:
-    import redis.asyncio as aioredis
-    USE_REDIS = True
-    redis_client = aioredis.from_url(REDIS_URL, decode_responses=True)
-    print(f"Using Redis at {REDIS_URL}")
-else:
-    print("Running without Redis (in-memory mode)")
-
-
-# Session constants imported from lorax.constants
-
-class Session:
-    """Per-user session."""
-    def __init__(self, sid, file_path=None):
-        self.sid = sid
-        self.file_path = file_path
-        self.created_at = datetime.utcnow().isoformat()
-
-    def to_dict(self):
-        return {
-            "sid": self.sid,
-            "file_path": self.file_path,
-            "created_at": self.created_at,
-        }
-
-    @staticmethod
-    def from_dict(data):
-        return Session(
-            sid=data["sid"],
-            file_path=data.get("file_path"),
-        )
-
-sessions = {}  # sid → Session
-
-
-async def get_or_create_session(request: Request, response: Response):
-    sid = request.cookies.get(SESSION_COOKIE)
-    secure = request.url.scheme == "https"
-        
-    if USE_REDIS:
-        if not sid:
-            sid = str(uuid4())
-            session = Session(sid)
-            await redis_client.setex(f"sessions:{sid}", COOKIE_MAX_AGE, json.dumps(session.to_dict()))
-
-            response.set_cookie(key=SESSION_COOKIE, value=sid, httponly=True, samesite="Lax", max_age=COOKIE_MAX_AGE, secure=secure) 
-            return sid, session
-
-        data = await redis_client.get(f"sessions:{sid}")
-        if data:
-            session = Session.from_dict(json.loads(data))
-        else:
-            session = Session(sid)
-            await redis_client.setex(f"sessions:{sid}", COOKIE_MAX_AGE, json.dumps(session.to_dict()))
-        return sid, session
-
-    # ── In-memory mode ────────────────────────
-    if not sid or sid not in sessions:
-        sid = str(uuid4())
-        sessions[sid] = Session(sid)
-        response.set_cookie(key=SESSION_COOKIE, value=sid, httponly=True, samesite="Lax", max_age=COOKIE_MAX_AGE, secure=secure)
-    return sid, sessions[sid]
-
-async def save_session(session: Session):
-    """Persist session (no-op in in-memory mode)."""
-    if USE_REDIS:
-        await redis_client.setex(f"sessions:{session.sid}", COOKIE_MAX_AGE, json.dumps(session.to_dict()))
-    else:
-        sessions[session.sid] = session
-
-
-if USE_REDIS:
     sio = socketio.AsyncServer(
         async_mode="asgi",
         cors_allowed_origins="*",
@@ -179,10 +113,8 @@ sio_app = socketio.ASGIApp(sio, other_asgi_app=app)
 
 @app.get("/health")
 async def healthz():
-    if USE_REDIS:
-        redis_ok = await redis_client.ping()
-        return {"ok": True, "redis": redis_ok}
-    return {"ok": True, "sessions": len(sessions)}
+    redis_ok = await session_manager.health_check()
+    return {"ok": True, "redis": redis_ok}
 
 @app.get("/fevicon.ico")
 async def favicon():
@@ -194,7 +126,7 @@ async def root():
 
 @app.post("/init-session")
 async def init_session(request: Request, response: Response):
-    sid, session = await get_or_create_session(request, response)
+    sid, session = await session_manager.get_or_create_session(request, response)
     print("init-session:", sid)
     return {"sid": sid}
 
@@ -202,7 +134,7 @@ async def init_session(request: Request, response: Response):
 @app.get("/projects")
 async def projects(request: Request, response: Response):
     
-    sid, session = await get_or_create_session(request, response)
+    sid, session = await session_manager.get_or_create_session(request, response)
     projects = {}
     if IS_VM:
         projects = get_public_gcs_dict(BUCKET_NAME, sid=sid, projects=projects)
@@ -225,7 +157,7 @@ async def get_file(
     genomiccoordend: Optional[int] = Query(None),
     share_sid: Optional[str] = Query(None),
 ):
-    sid, session = await get_or_create_session(request, response)
+    sid, session = await session_manager.get_or_create_session(request, response)
     if file and file != "" and file != "ucgb":
         if project == 'Uploads' and IS_VM:
             target_sid = share_sid if share_sid else sid
@@ -241,7 +173,7 @@ async def get_file(
 
         # Update session with loaded file path
         session.file_path = str(file_path)
-        await save_session(session)
+        await session_manager.save_session(session)
 
     except Exception as e:
         print(f"❌ Error loading file: {e}")
@@ -263,7 +195,7 @@ async def upload(request: Request, response: Response, file: UploadFile = File(.
     
     ## TODO for local uploads, we need to upload the file to the local directory and not upload it to GCS. 
     """
-    sid, session = await get_or_create_session(request, response)
+    sid, session = await session_manager.get_or_create_session(request, response)
 
     user_dir = UPLOAD_DIR /"Uploads"/sid if IS_VM else UPLOAD_DIR /"Uploads"
     user_dir.mkdir(parents=True, exist_ok=True)
@@ -287,23 +219,9 @@ async def upload(request: Request, response: Response, file: UploadFile = File(.
         print("❌ Upload error:", e)
         return JSONResponse(status_code=500, content={"error": "Upload error"})
 
-async def get_session(lorax_sid: str):
-    """Get session from Redis or memory, with proper error handling."""
-    if not lorax_sid:
-        return None
-
-    if USE_REDIS:
-        raw = await redis_client.get(f"sessions:{lorax_sid}")
-        if not raw:
-            return None
-        return Session.from_dict(json.loads(raw))
-    else:
-        return sessions.get(lorax_sid)
-
-
 async def require_session(lorax_sid: str, socket_sid: str):
     """Get session or emit error to client. Returns None if session not found."""
-    session = await get_session(lorax_sid)
+    session = await session_manager.get_session(lorax_sid)
     if not session:
         await sio.emit("error", {
             "code": ERROR_SESSION_NOT_FOUND,
@@ -330,7 +248,7 @@ async def connect(sid, environ, auth=None):
         return
 
     # Validate session exists and send appropriate event
-    session = await get_session(session_id)
+    session = await session_manager.get_session(session_id)
     if session and session.file_path:
         await sio.emit("session-restored", {
             "lorax_sid": session_id,
@@ -357,7 +275,7 @@ async def background_load_file(sid, data):
             await sio.emit("error", {"code": ERROR_MISSING_SESSION, "message": "Session ID is missing."}, to=sid)
             return
 
-        session = await get_session(lorax_sid)
+        session = await session_manager.get_session(lorax_sid)
         if not session:
             print(f"⚠️ Unknown sid {lorax_sid}")
             await sio.emit("error", {"code": ERROR_SESSION_NOT_FOUND, "message": "Session expired. Please refresh the page."}, to=sid)
@@ -393,7 +311,7 @@ async def background_load_file(sid, data):
             return JSONResponse(status_code=404, content={"error": "File not found."})
 
         session.file_path = str(file_path)
-        await save_session(session)
+        await session_manager.save_session(session)
     
         print("loading file", file_path, os.getpid())
         ts = await handle_upload(str(file_path), UPLOAD_DIR)

@@ -4,12 +4,15 @@ Lorax Backend Constants
 Centralized configuration values to avoid hardcoding throughout the codebase.
 """
 
+import os
+
 # Session Configuration
 SESSION_COOKIE = "lorax_sid"
 COOKIE_MAX_AGE = 7 * 24 * 60 * 60  # 7 days in seconds
 
 # Cache Configuration
-TS_CACHE_SIZE = 1  # Number of tree sequences to keep in memory
+# Cache Configuration
+TS_CACHE_SIZE = int(os.getenv("TS_CACHE_SIZE", 5))  # Number of tree sequences to keep in memory. Configurable via env.
 CONFIG_CACHE_SIZE = 2  # Number of configs to keep in memory
 
 # File Types
