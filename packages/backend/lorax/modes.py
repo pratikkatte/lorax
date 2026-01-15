@@ -134,13 +134,16 @@ def get_data_dir(mode_config: Optional[ModeConfig] = None) -> Path:
     """Get the data directory for the current mode."""
     if mode_config is None:
         mode_config = get_mode_config()
+    mode_config.data_dir.mkdir(parents=True, exist_ok=True)
     return mode_config.data_dir
 
 
 def get_uploads_dir(mode_config: Optional[ModeConfig] = None) -> Path:
     """Get the uploads directory for the current mode."""
     data_dir = get_data_dir(mode_config)
-    return data_dir / "uploads" if mode_config and mode_config.mode == "local" else data_dir
+    uploads_dir = data_dir / "uploads" if mode_config and mode_config.mode == "local" else data_dir
+    uploads_dir.mkdir(parents=True, exist_ok=True)
+    return uploads_dir
 
 
 def get_cache_dir(mode_config: Optional[ModeConfig] = None) -> Path:
@@ -150,14 +153,16 @@ def get_cache_dir(mode_config: Optional[ModeConfig] = None) -> Path:
 
     cache_dir_env = os.getenv("DISK_CACHE_DIR")
     if cache_dir_env:
-        return Path(cache_dir_env)
-
-    if mode_config.mode == "local":
-        return mode_config.data_dir / "cache"
+        cache_dir = Path(cache_dir_env)
+    elif mode_config.mode == "local":
+        cache_dir = mode_config.data_dir / "cache"
     elif mode_config.mode == "development":
-        return Path("/tmp/lorax_cache")
+        cache_dir = Path("/tmp/lorax_cache")
     else:
-        return Path("/var/lorax/cache")
+        cache_dir = Path("/var/lorax/cache")
+
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    return cache_dir
 
 
 def validate_mode_requirements(mode_config: ModeConfig) -> list:

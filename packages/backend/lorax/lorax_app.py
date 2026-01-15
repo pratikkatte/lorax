@@ -28,7 +28,7 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 print("Running in VM:", IS_VM)
 
 ALLOWED_ORIGINS = [
-    o.strip() for o in os.getenv("ALLOWED_ORIGINS", "http://localhost:5173, http://localhost:3000").split(",")
+    o.strip() for o in os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:3001").split(",")
 ]
 
 app.add_middleware(
