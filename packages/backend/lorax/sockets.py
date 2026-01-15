@@ -130,6 +130,10 @@ def register_socket_events(sio):
 
             project = str(data.get("project"))
             filename = str(data.get("file"))
+
+            # Extract genomic coordinates from client if provided
+            genomiccoordstart = data.get("genomiccoordstart")
+            genomiccoordend = data.get("genomiccoordend")
             print("lorax_sid", lorax_sid, project, filename)
             if not filename:
                 # Note: returning JSONResponse in a background task doesn't send it to HTTP client.
@@ -170,7 +174,19 @@ def register_socket_events(sio):
             await sio.emit("status", {"status": "processing-file", "message": "Processing file...", "filename": filename, "project": project}, to=sid)
 
             config = await asyncio.to_thread(get_or_load_config, ts, str(file_path), UPLOAD_DIR)
-        
+
+            if config is None:
+                await sio.emit("error", {"message": "Failed to load file configuration"}, to=sid)
+                return
+
+            # Override initial_position if client provided genomic coordinates
+            if genomiccoordstart is not None and genomiccoordend is not None:
+                try:
+                    config['initial_position'] = [int(genomiccoordstart), int(genomiccoordend)]
+                    print(f"Using client-provided coordinates: [{genomiccoordstart}, {genomiccoordend}]")
+                except (ValueError, TypeError) as e:
+                    print(f"Invalid coordinates, using computed: {e}")
+
             owner_sid = share_sid if share_sid else lorax_sid
             await sio.emit("load-file-result", {"message": "File loaded", "sid": sid, "filename": filename, "config": config, "owner_sid": owner_sid}, to=sid)
 

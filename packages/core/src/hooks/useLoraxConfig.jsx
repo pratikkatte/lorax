@@ -53,10 +53,22 @@ function useLoraxConfig({ backend, enabled = true, onConfigLoaded, setStatusMess
 
     console.log("Config data received:", data);
 
+    // Resolve value priority: explicit param > backend initial_position > null
+    let resolvedValue = value;
+    if (!resolvedValue && data.initial_position) {
+      resolvedValue = data.initial_position;
+      console.log("Using backend-computed initial_position:", resolvedValue);
+    }
+
+    // Parse to integers if present
+    if (resolvedValue) {
+      resolvedValue = [parseInt(resolvedValue[0], 10), parseInt(resolvedValue[1], 10)];
+    }
+
     // Build the new config object
     const newConfig = {
       ...data,
-      value: value ? [parseInt(value[0], 10), parseInt(value[1], 10)] : null,
+      value: resolvedValue,
       project,
       sid
     };

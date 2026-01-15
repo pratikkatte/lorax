@@ -77,8 +77,12 @@ async def get_file(
         file = "1kg_chr20.trees.tsz"
         file_path = UPLOAD_DIR / (project or "1000Genomes") / file
     try:
- 
+
         viz_config, chat_config = await handle_upload(str(file_path), UPLOAD_DIR)
+
+        # Override initial_position if client provided genomic coordinates
+        if genomiccoordstart is not None and genomiccoordend is not None:
+            viz_config['initial_position'] = [genomiccoordstart, genomiccoordend]
 
         # Update session with loaded file path
         session.file_path = str(file_path)

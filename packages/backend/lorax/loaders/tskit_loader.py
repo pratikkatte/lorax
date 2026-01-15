@@ -11,6 +11,13 @@ def get_config_tskit(ts, file_path, root_dir):
     try:
         intervals = list(ts.breakpoints())
         times = [ts.min_time, ts.max_time]
+        genome_length = ts.sequence_length
+
+        # Compute centered initial position (10% of genome, minimum 1kb)
+        window_size = max(genome_length * 0.1, 1000)
+        midpoint = genome_length / 2.0
+        start = max(0, midpoint - window_size / 2.0)
+        end = min(genome_length, midpoint + window_size / 2.0)
 
         sample_names = {}
         # Use schema-only extraction for lightweight initial load
@@ -18,7 +25,8 @@ def get_config_tskit(ts, file_path, root_dir):
 
         filename = os.path.basename(file_path)
         config = {
-            'genome_length': ts.sequence_length,
+            'genome_length': genome_length,
+            'initial_position': [int(start), int(end)],
             'times': {'type': 'coalescent time', 'values': times},
             'intervals': intervals,
             'filename': str(filename),

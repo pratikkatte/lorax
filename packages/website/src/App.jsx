@@ -16,7 +16,7 @@ function App() {
   return (
     <Routes>
       <Route path="/" element={<LandingPage upload={upload} />} />
-      <Route path="/:file" element={<FileView upload={upload} />} />
+      <Route path="/:file" element={<FileView />} />
     </Routes>
   );
 }

@@ -15,10 +15,7 @@ export default function useFileUpload({
         loraxSid,
         isConnected,
         getProjects,
-        uploadFileToBackend,
-        queryFile,
-        handleConfigUpdate,
-        configEnabled
+        uploadFileToBackend
     } = useLorax();
 
     const [projects, setProjects] = useState([]);
@@ -58,46 +55,17 @@ export default function useFileUpload({
     }, []);
 
     const _finishSuccess = useCallback(
-        async (resp, file) => {
+        (resp, file) => {
             const filename = resp.filename || file.name;
             const project = file.project || "Uploads";
 
-            // If config is enabled, use the config flow (queryFile → handleConfigUpdate)
-            if (configEnabled && queryFile && handleConfigUpdate) {
-                try {
-                    console.log("Loading file config via queryFile:", filename, project);
-                    setUploadStatus("loading config...");
-
-                    const loadResult = await queryFile({
-                        project: project,
-                        file: filename,
-                        share_sid: file.share_sid
-                    });
-
-                    if (loadResult && loadResult.config) {
-                        // Process config - updates state in useLoraxConfig
-                        const value = file.genomiccoordstart && file.genomiccoordend
-                            ? [file.genomiccoordstart, file.genomiccoordend]
-                            : null;
-                        handleConfigUpdate(loadResult.config, value, project, file.share_sid);
-                        setUploadStatus("config loaded");
-                        console.log("Config loaded successfully:", loadResult.config.filename);
-
-                        // Navigate to file view
-                        const params = new URLSearchParams();
-                        params.set('project', project);
-                        if (file.share_sid) params.set('sid', file.share_sid);
-                        navigate(`/${encodeURIComponent(filename)}?${params.toString()}`);
-                    }
-                } catch (err) {
-                    console.error("Error loading file config:", err);
-                    setUploadStatus("error loading config");
-                }
-            } else {
-                console.warn("Config not enabled or missing dependencies");
-            }
+            // Navigate immediately to FileView - it will handle loading the config
+            const params = new URLSearchParams();
+            params.set('project', project);
+            if (file.share_sid) params.set('sid', file.share_sid);
+            navigate(`/${encodeURIComponent(filename)}?${params.toString()}`);
         },
-        [configEnabled, queryFile, handleConfigUpdate, navigate]
+        [navigate]
     );
 
     const _finishError = useCallback(
@@ -119,46 +87,23 @@ export default function useFileUpload({
     );
 
     const loadFile = useCallback(
-        async (project) => {
+        (project) => {
             if (!project) return;
             console.log("Loading project/file:", project);
 
             const filename = project.file;
             const projName = project.project;
 
-            // If config is enabled, use the config flow
-            if (configEnabled && queryFile && handleConfigUpdate) {
-                try {
-                    setLoadingFile(filename);
-                    console.log("Loading file config via queryFile:", filename, projName);
+            // Set loading state for UI feedback
+            setLoadingFile(filename);
 
-                    const loadResult = await queryFile({
-                        project: projName,
-                        file: filename,
-                        share_sid: project.share_sid
-                    });
-
-                    if (loadResult && loadResult.config) {
-                        // Process config - updates state in useLoraxConfig
-                        handleConfigUpdate(loadResult.config, null, projName, project.share_sid);
-                        console.log("Config loaded successfully:", loadResult.config.filename);
-
-                        // Navigate to file view
-                        const params = new URLSearchParams();
-                        params.set('project', projName);
-                        if (project.share_sid) params.set('sid', project.share_sid);
-                        navigate(`/${encodeURIComponent(filename)}?${params.toString()}`);
-                    }
-                } catch (err) {
-                    console.error("Error loading file config:", err);
-                } finally {
-                    setLoadingFile(null);
-                }
-            } else {
-                console.warn("Config not enabled or missing dependencies");
-            }
+            // Navigate immediately to FileView - it will handle loading the config
+            const params = new URLSearchParams();
+            params.set('project', projName);
+            if (project.share_sid) params.set('sid', project.share_sid);
+            navigate(`/${encodeURIComponent(filename)}?${params.toString()}`);
         },
-        [configEnabled, queryFile, handleConfigUpdate, navigate]
+        [navigate]
     );
 
     const uploadFile = useCallback(
