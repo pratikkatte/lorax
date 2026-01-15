@@ -1,11 +1,7 @@
-import argparse
 import uvicorn
 import os
 
-def args_parser():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--openai-api-key", help="OpenAI API Key")
-    args = parser.parse_args()
+
 
 def main():
     # Get environment variables for Cloud Run

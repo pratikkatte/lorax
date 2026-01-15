@@ -1,6 +1,6 @@
 import os
 import tskit
-from lorax.utils import get_metadata_schema
+from lorax.metadata.loader import get_metadata_schema
 
 def get_config_tskit(ts, file_path, root_dir):
     """Extract configuration and metadata from a tree sequence file.
