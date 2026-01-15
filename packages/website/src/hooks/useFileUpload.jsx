@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useRef, useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { useLorax } from "@lorax/core";
 
 export default function useFileUpload({
@@ -8,7 +9,17 @@ export default function useFileUpload({
     statusMessage,
     setStatusMessage
 } = {}) {
-    const { loraxSid, isConnected, getProjects, uploadFileToBackend } = useLorax();
+    const navigate = useNavigate();
+
+    const {
+        loraxSid,
+        isConnected,
+        getProjects,
+        uploadFileToBackend,
+        queryFile,
+        handleConfigUpdate,
+        configEnabled
+    } = useLorax();
 
     const [projects, setProjects] = useState([]);
     const [fileUploaded, setFileUploaded] = useState(false);
@@ -47,24 +58,46 @@ export default function useFileUpload({
     }, []);
 
     const _finishSuccess = useCallback(
-        (resp, file) => {
-            // Redirect to Viewer
-            const VIEWER_URL = import.meta.env.VITE_VIEWER_URL || "http://localhost:5173";
-
+        async (resp, file) => {
             const filename = resp.filename || file.name;
             const project = file.project || "Uploads";
 
-            let url = `${VIEWER_URL}/${filename}?project=${project}`;
+            // If config is enabled, use the config flow (queryFile → handleConfigUpdate)
+            if (configEnabled && queryFile && handleConfigUpdate) {
+                try {
+                    console.log("Loading file config via queryFile:", filename, project);
+                    setUploadStatus("loading config...");
 
-            // Add other params if needed
-            if (file.share_sid) url += `&sid=${file.share_sid}`;
-            if (file.genomiccoordstart) url += `&start=${file.genomiccoordstart}`;
-            if (file.genomiccoordend) url += `&end=${file.genomiccoordend}`;
+                    const loadResult = await queryFile({
+                        project: project,
+                        file: filename,
+                        share_sid: file.share_sid
+                    });
 
-            console.log("Redirecting to:", url);
-            window.location.href = url;
+                    if (loadResult && loadResult.config) {
+                        // Process config - updates state in useLoraxConfig
+                        const value = file.genomiccoordstart && file.genomiccoordend
+                            ? [file.genomiccoordstart, file.genomiccoordend]
+                            : null;
+                        handleConfigUpdate(loadResult.config, value, project, file.share_sid);
+                        setUploadStatus("config loaded");
+                        console.log("Config loaded successfully:", loadResult.config.filename);
+
+                        // Navigate to file view
+                        const params = new URLSearchParams();
+                        params.set('project', project);
+                        if (file.share_sid) params.set('sid', file.share_sid);
+                        navigate(`/${encodeURIComponent(filename)}?${params.toString()}`);
+                    }
+                } catch (err) {
+                    console.error("Error loading file config:", err);
+                    setUploadStatus("error loading config");
+                }
+            } else {
+                console.warn("Config not enabled or missing dependencies");
+            }
         },
-        []
+        [configEnabled, queryFile, handleConfigUpdate, navigate]
     );
 
     const _finishError = useCallback(
@@ -88,19 +121,44 @@ export default function useFileUpload({
     const loadFile = useCallback(
         async (project) => {
             if (!project) return;
-            // Redirect to viewer which will load the file
             console.log("Loading project/file:", project);
 
-            const VIEWER_URL = import.meta.env.VITE_VIEWER_URL || "http://localhost:5173";
             const filename = project.file;
             const projName = project.project;
 
-            let url = `${VIEWER_URL}/${filename}?project=${projName}`;
-            if (project.share_sid) url += `&sid=${project.share_sid}`;
+            // If config is enabled, use the config flow
+            if (configEnabled && queryFile && handleConfigUpdate) {
+                try {
+                    setLoadingFile(filename);
+                    console.log("Loading file config via queryFile:", filename, projName);
 
-            window.location.href = url;
+                    const loadResult = await queryFile({
+                        project: projName,
+                        file: filename,
+                        share_sid: project.share_sid
+                    });
+
+                    if (loadResult && loadResult.config) {
+                        // Process config - updates state in useLoraxConfig
+                        handleConfigUpdate(loadResult.config, null, projName, project.share_sid);
+                        console.log("Config loaded successfully:", loadResult.config.filename);
+
+                        // Navigate to file view
+                        const params = new URLSearchParams();
+                        params.set('project', projName);
+                        if (project.share_sid) params.set('sid', project.share_sid);
+                        navigate(`/${encodeURIComponent(filename)}?${params.toString()}`);
+                    }
+                } catch (err) {
+                    console.error("Error loading file config:", err);
+                } finally {
+                    setLoadingFile(null);
+                }
+            } else {
+                console.warn("Config not enabled or missing dependencies");
+            }
         },
-        []
+        [configEnabled, queryFile, handleConfigUpdate, navigate]
     );
 
     const uploadFile = useCallback(

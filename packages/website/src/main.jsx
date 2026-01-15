@@ -1,5 +1,6 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
+import { BrowserRouter } from 'react-router-dom'
 import { LoraxProvider } from '@lorax/core'
 import App from './App.jsx'
 import './index.css'
@@ -9,8 +10,14 @@ const isProd = import.meta.env.PROD;
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <LoraxProvider apiBase={apiBase} isProd={isProd}>
-      <App />
-    </LoraxProvider>
+    <BrowserRouter>
+      <LoraxProvider
+        apiBase={apiBase}
+        isProd={isProd}
+        enableConfig={true}
+      >
+        <App />
+      </LoraxProvider>
+    </BrowserRouter>
   </React.StrictMode>,
 )

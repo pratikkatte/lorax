@@ -5,6 +5,7 @@ export { LoraxProvider, useLorax, LoraxContext } from './context/LoraxProvider.j
 export { useSession } from './hooks/useSession.jsx';
 export { useSocket } from './hooks/useSocket.jsx';
 export { useLoraxConnection } from './hooks/useLoraxConnection.jsx';
+export { useLoraxConfig } from './hooks/useLoraxConfig.jsx';
 
 // Services
 export { initSession, getProjects, uploadFileToBackend } from './services/api.js';
@@ -12,3 +13,4 @@ export { initSession, getProjects, uploadFileToBackend } from './services/api.js
 // Utilities
 export { default as websocketEvents } from './utils/websocketEvents.js';
 export { getApiBase, getLoraxConfig } from './utils/config.js';
+export { getColor, assignUniqueColors } from './utils/colorUtils.js';
