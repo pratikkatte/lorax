@@ -5,11 +5,11 @@ import websocketEvents from "../utils/websocketEvents.js";
 export function useSocket({
   apiBase,
   isProd = false,
-  onSessionError,
-  setStatusMessage
+  onSessionError
 }) {
   const socketRef = useRef(null);
   const [isConnected, setIsConnected] = useState(false);
+  const [statusMessage, setStatusMessage] = useState({ message: null });
 
   const connect = useCallback(() => {
     if (socketRef.current) {
@@ -47,25 +47,26 @@ export function useSocket({
 
     socket.on("status", (msg) => {
       console.log("status", msg);
-      setStatusMessage?.(msg);
+      setStatusMessage(msg);
       websocketEvents.emit("status", msg);
     });
 
     socket.on("error", (data) => {
       console.error("Socket error:", data);
       if (data.code === "SESSION_NOT_FOUND" || data.code === "MISSING_SESSION") {
+        setStatusMessage({ type: 'error', message: data.message || 'Session expired. Reconnecting...' });
         onSessionError?.(data);
       } else if (data.code === "NO_FILE_LOADED") {
-        setStatusMessage?.({ type: 'warning', message: data.message || 'No file loaded.' });
+        setStatusMessage({ type: 'warning', message: data.message || 'No file loaded.' });
       } else {
-        setStatusMessage?.({ type: 'error', message: data.message || 'An error occurred.' });
+        setStatusMessage({ type: 'error', message: data.message || 'An error occurred.' });
       }
       websocketEvents.emit("error", data);
     });
 
     socket.on("session-restored", (data) => {
       console.log("Session restored:", data);
-      setStatusMessage?.({ message: `Session restored. File: ${data.file_path?.split('/').pop() || 'unknown'}` });
+      setStatusMessage({ message: `Session restored. File: ${data.file_path?.split('/').pop() || 'unknown'}` });
       websocketEvents.emit("session-restored", data);
     });
 
@@ -120,6 +121,8 @@ export function useSocket({
     on,
     off,
     once,
-    checkConnection
+    checkConnection,
+    statusMessage,
+    setStatusMessage
   };
 }

@@ -5,7 +5,8 @@ import { useLorax } from '../context/LoraxProvider.jsx';
 import { useDeckViews } from '../hooks/useDeckViews.jsx';
 import { useDeckLayers } from '../hooks/useDeckLayers.jsx';
 import { useDeckController } from '../hooks/useDeckController.jsx';
-import { useWorker } from '../hooks/useWorker.jsx';
+import { useInterval } from '../hooks/useInterval.jsx';
+import { useGenomePositions } from '../hooks/useGenomePositions.jsx';
 import { mergeWithDefaults, validateViewConfig, getEnabledViews } from '../utils/deckViewConfig.js';
 
 /**
@@ -44,7 +45,7 @@ const LoraxDeckGL = forwardRef(({
   const { zoomAxis, panDirection } = useDeckController();
 
   // 3. Get config values from context for genomic coordinate conversion
-  const { globalBpPerUnit, genomeLength, tsconfig } = useLorax();
+  const { globalBpPerUnit, genomeLength, tsconfig, worker, workerConfigReady } = useLorax();
 
   // 4. Views and view state management (with genomic coordinates)
   const {
@@ -77,19 +78,24 @@ const LoraxDeckGL = forwardRef(({
   }, [genomicCoords, externalOnGenomicCoordsChange]);
 
   // 6. Worker-based interval computation
-  const { visibleIntervals } = useWorker({
-    tsconfig,
+  const { visibleIntervals } = useInterval({
+    worker,
+    workerConfigReady,
     genomicCoords
   });
 
-  // 7. Layers for enabled views
+  // 7. Compute genome position tick marks
+  const genomePositions = useGenomePositions(genomicCoords);
+
+  // 8. Layers for enabled views
   const { layers, layerFilter } = useDeckLayers({
     enabledViews,
     globalBpPerUnit,
-    visibleIntervals
+    visibleIntervals,
+    genomePositions
   });
 
-  // 8. Event handlers - run internal logic first, then call external handlers
+  // 9. Event handlers - run internal logic first, then call external handlers
   const handleResize = useCallback(({ width, height }) => {
     setDecksize({ width, height });
     externalOnResize?.({ width, height });
@@ -100,7 +106,7 @@ const LoraxDeckGL = forwardRef(({
     externalOnViewStateChange?.(params);
   }, [internalHandleViewStateChange, externalOnViewStateChange]);
 
-  // 9. Ref forwarding - expose deck instance, viewState, and genomic coordinates
+  // 10. Ref forwarding - expose deck instance, viewState, and genomic coordinates
   useImperativeHandle(ref, () => ({
     getDeck: () => deckRef.current?.deck,
     getViewState: () => viewState,

@@ -38,7 +38,9 @@ export { useDeckViews } from './hooks/useDeckViews.jsx';
 export { useDeckLayers } from './hooks/useDeckLayers.jsx';
 export { useDeckController } from './hooks/useDeckController.jsx';
 export { useGenomicCoordinates } from './hooks/useGenomicCoordinates.jsx';
+export { useGenomePositions } from './hooks/useGenomePositions.jsx';
 export { useWorker } from './hooks/useWorker.jsx';
+export { useInterval } from './hooks/useInterval.jsx';
 
 // DeckGL Layers
 export { GenomeGridLayer, GenomeInfoLayer, TimeGridLayer } from './layers/index.js';

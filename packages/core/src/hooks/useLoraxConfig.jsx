@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { tableFromIPC } from "apache-arrow";
 import websocketEvents from "../utils/websocketEvents.js";
 import { getColor, assignUniqueColors } from "../utils/colorUtils.js";
+import { useWorker } from './useWorker.jsx';
 
 /**
  * Hook for managing Lorax config state and metadata operations.
@@ -39,6 +40,32 @@ function useLoraxConfig({ backend, enabled = true, onConfigLoaded, setStatusMess
     if (!tsconfig?.intervals?.length || !tsconfig?.genome_length) return null;
     return tsconfig.genome_length / tsconfig.intervals.length;
   }, [tsconfig]);
+
+  // Worker for interval computations
+  const worker = useWorker();
+  const [workerConfigReady, setWorkerConfigReady] = useState(false);
+  const configSentRef = useRef(false);
+
+  // Send config to worker when tsconfig changes
+  useEffect(() => {
+    if (!tsconfig || !worker.isReady) {
+      configSentRef.current = false;
+      setWorkerConfigReady(false);
+      return;
+    }
+
+    configSentRef.current = false;
+    setWorkerConfigReady(false);
+
+    worker.sendConfig(tsconfig)
+      .then(() => {
+        configSentRef.current = true;
+        setWorkerConfigReady(true);
+      })
+      .catch((error) => {
+        console.error('Failed to send config to worker:', error);
+      });
+  }, [tsconfig, worker]);
 
   /**
    * Process incoming config data from backend.
@@ -370,6 +397,10 @@ function useLoraxConfig({ backend, enabled = true, onConfigLoaded, setStatusMess
     metadataArrays,
     loadedMetadataArrayKeys,
 
+    // Worker for interval computations
+    worker,
+    workerConfigReady,
+
     // Methods
     handleConfigUpdate,
     fetchMetadataForKey,
@@ -388,6 +419,8 @@ function useLoraxConfig({ backend, enabled = true, onConfigLoaded, setStatusMess
     metadataLoading,
     metadataArrays,
     loadedMetadataArrayKeys,
+    worker,
+    workerConfigReady,
     handleConfigUpdate,
     fetchMetadataForKey,
     fetchMetadataArrayForKey,

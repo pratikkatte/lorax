@@ -1,21 +1,17 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import workerSpec from '../workers/localBackendWorker.js?worker&inline';
 
+let requestIdCounter = 0;
+
 /**
- * Hook to manage web worker communication for interval visualization
- * - Creates worker instance
- * - Sends config when tsconfig changes
- * - Queries intervals when viewport changes
- * - Returns visibleIntervals for layer rendering
+ * Hook providing Promise-based communication with the web worker.
+ * Pure communication layer - no state management for intervals.
  *
- * @param {Object} params
- * @param {Object} params.tsconfig - Tree sequence configuration (contains intervals array)
- * @param {[number, number]} params.genomicCoords - Current viewport [startBp, endBp]
- * @returns {Object} { visibleIntervals, isReady }
+ * @returns {Object} Worker API with Promise-based methods
  */
-export function useWorker({ tsconfig, genomicCoords }) {
+export function useWorker() {
   const workerRef = useRef(null);
-  const [visibleIntervals, setVisibleIntervals] = useState([]);
+  const pendingRequestsRef = useRef(new Map());
   const [isReady, setIsReady] = useState(false);
 
   // Initialize worker once
@@ -24,43 +20,95 @@ export function useWorker({ tsconfig, genomicCoords }) {
     workerRef.current = worker;
 
     worker.onmessage = (event) => {
-      const { type, data } = event.data;
+      const { type, id, data } = event.data;
 
-      if (type === 'config') {
-        setIsReady(true);
-      }
-
-      if (type === 'intervals') {
-        setVisibleIntervals(data?.visibleIntervals || []);
+      // Resolve pending promise if this is a response with an id
+      if (id !== undefined && pendingRequestsRef.current.has(id)) {
+        const { resolve } = pendingRequestsRef.current.get(id);
+        pendingRequestsRef.current.delete(id);
+        resolve(data);
       }
     };
 
+    setIsReady(true);
+
     return () => {
+      // Reject all pending requests on cleanup
+      for (const { reject } of pendingRequestsRef.current.values()) {
+        reject(new Error('Worker terminated'));
+      }
+      pendingRequestsRef.current.clear();
       worker?.terminate();
       workerRef.current = null;
+      setIsReady(false);
     };
   }, []);
 
-  // Send config to worker when tsconfig changes
-  useEffect(() => {
-    if (!tsconfig || !workerRef.current) return;
+  /**
+   * Send a request to the worker and return a Promise for the response
+   * @param {string} type - Message type
+   * @param {any} data - Message data
+   * @param {number} timeout - Timeout in ms (default: 30000)
+   * @returns {Promise<any>}
+   */
+  const request = useCallback((type, data, timeout = 30000) => {
+    return new Promise((resolve, reject) => {
+      if (!workerRef.current) {
+        reject(new Error('Worker not initialized'));
+        return;
+      }
 
-    workerRef.current.postMessage({
-      type: 'config',
-      data: tsconfig
+      const id = ++requestIdCounter;
+
+      // Set up timeout
+      const timeoutId = setTimeout(() => {
+        if (pendingRequestsRef.current.has(id)) {
+          pendingRequestsRef.current.delete(id);
+          reject(new Error(`Worker request timed out: ${type}`));
+        }
+      }, timeout);
+
+      // Store promise handlers with timeout cleanup
+      pendingRequestsRef.current.set(id, {
+        resolve: (result) => {
+          clearTimeout(timeoutId);
+          resolve(result);
+        },
+        reject: (error) => {
+          clearTimeout(timeoutId);
+          reject(error);
+        }
+      });
+
+      // Send message to worker
+      workerRef.current.postMessage({ type, id, data });
     });
-  }, [tsconfig]);
+  }, []);
 
-  // Query intervals when viewport changes
-  useEffect(() => {
-    if (!isReady || !genomicCoords || !workerRef.current) return;
+  /**
+   * Send configuration to the worker
+   * @param {Object} tsconfig - Tree sequence configuration
+   * @returns {Promise<void>}
+   */
+  const sendConfig = useCallback((tsconfig) => {
+    return request('config', tsconfig);
+  }, [request]);
 
-    const [start, end] = genomicCoords;
-    workerRef.current.postMessage({
-      type: 'intervals',
-      data: { start, end }
-    });
-  }, [isReady, genomicCoords]);
+  /**
+   * Query intervals for a given viewport range
+   * @param {number} start - Start position (bp)
+   * @param {number} end - End position (bp)
+   * @returns {Promise<{visibleIntervals: number[]}>}
+   */
+  const queryIntervals = useCallback((start, end) => {
+    return request('intervals', { start, end });
+  }, [request]);
 
-  return { visibleIntervals, isReady };
+  // Memoize return object to prevent re-renders
+  return useMemo(() => ({
+    isReady,
+    request,
+    sendConfig,
+    queryIntervals
+  }), [isReady, request, sendConfig, queryIntervals]);
 }
