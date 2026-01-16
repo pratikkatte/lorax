@@ -47,7 +47,6 @@ export function useDeckViews({ viewConfig, enabledViews, zoomAxis, panDirection 
    * Create OrthographicView instances for enabled views
    */
   const views = useMemo(() => {
-    console.log('useDeckViews: Creating views with config:', viewConfig);
     const viewInstances = [];
 
     enabledViews.forEach(viewId => {
@@ -64,7 +63,6 @@ export function useDeckViews({ viewConfig, enabledViews, zoomAxis, panDirection 
         height: config.height,
         initialViewState: INITIAL_VIEW_STATE[viewId]
       };
-      console.log(`Creating view ${viewId}:`, viewOptions);
 
       // Only ortho view gets the controller
       if (viewId === 'ortho') {

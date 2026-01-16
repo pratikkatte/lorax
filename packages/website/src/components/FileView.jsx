@@ -38,10 +38,6 @@ function FileView() {
     updateView
   } = useViewportDimensions();
 
-
-  console.log('FileView viewport', viewport);
-  console.log('FileView views', views);
-
   // Get project and genomic coordinates from URL params
   const project = searchParams.get('project');
   const sid = searchParams.get('sid');
@@ -55,8 +51,6 @@ function FileView() {
       setLoading(true);
       setError(null);
       setStatusMessage({ status: 'loading', message: 'Loading config...' });
-
-      console.log('FileView: Loading config from URL params:', { file, project, sid, genomiccoordstart, genomiccoordend });
 
       // Build payload with genomic coords if present
       const payload = {
@@ -75,7 +69,6 @@ function FileView() {
           if (result && result.config) {
             // Pass null for value - backend initial_position takes precedence
             handleConfigUpdate(result.config, null, project, sid);
-            console.log('FileView: Config loaded successfully');
           }
         })
         .catch(err => {
@@ -101,7 +94,6 @@ function FileView() {
   const handlePositionChange = (newPosition) => {
     setPosition(newPosition);
     // Future: trigger view update in visualization
-    console.log('Position changed:', newPosition);
   };
 
   return (
@@ -182,18 +174,11 @@ function FileView() {
           >
             <LoraxDeckGL
               ref={deckRef}
-              debugOverlay={true}
               viewConfig={{
                 ortho: { enabled: true, ...views?.ortho },
                 genomeInfo: { enabled: true, ...views?.genomeInfo },
                 genomePositions: { enabled: true, ...views?.genomePositions },
                 treeTime: { enabled: true, ...views?.treeTime }
-              }}
-              onViewStateChange={(params) => {
-                console.log('View state changed:', params);
-              }}
-              onResize={({ width, height }) => {
-                console.log('Deck resized:', width, height);
               }}
             />
           </div>

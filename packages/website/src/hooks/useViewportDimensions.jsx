@@ -17,9 +17,16 @@ const DEFAULT_VIEWPORT = {
  */
 export function useViewportDimensions() {
   const [dimensions, setDimensions] = useState(() => {
-    // TEMP: Force clear localStorage to use new defaults
+    // Load from localStorage if available
     if (typeof window !== 'undefined') {
-      localStorage.removeItem(STORAGE_KEY);
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        try {
+          return JSON.parse(saved);
+        } catch (e) {
+          // Fall through to defaults
+        }
+      }
     }
 
     return {
@@ -51,18 +58,13 @@ export function useViewportDimensions() {
    * @param {Object} newDimensions - Partial dimensions to update
    */
   const updateView = useCallback((viewKey, newDimensions) => {
-    console.log('updateView called:', viewKey, newDimensions);
-    setDimensions(prev => {
-      const updated = {
-        ...prev,
-        views: {
-          ...prev.views,
-          [viewKey]: { ...prev.views[viewKey], ...newDimensions }
-        }
-      };
-      console.log('Updated dimensions:', updated.views);
-      return updated;
-    });
+    setDimensions(prev => ({
+      ...prev,
+      views: {
+        ...prev.views,
+        [viewKey]: { ...prev.views[viewKey], ...newDimensions }
+      }
+    }));
   }, []);
 
   /**
