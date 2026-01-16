@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
-import { useLorax } from '@lorax/core';
+import { useLorax, LoraxDeckGL } from '@lorax/core';
 import PositionSlider from './PositionSlider';
 import ViewportOverlay from './ViewportOverlay';
 import Info from './Info';
+import { useViewportDimensions } from '../hooks/useViewportDimensions';
 
 /**
  * FileView component - displays loaded file with viewport and position controls.
@@ -12,6 +13,7 @@ import Info from './Info';
 function FileView() {
   const { file } = useParams();
   const [searchParams] = useSearchParams();
+  const deckRef = useRef(null);
 
   const {
     queryFile,
@@ -27,6 +29,18 @@ function FileView() {
   const [position, setPosition] = useState(null); // [start, end]
   const [statusMessage, setStatusMessage] = useState(null);
   const [showInfo, setShowInfo] = useState(false);
+
+  // Viewport and view dimensions with localStorage persistence
+  const {
+    viewport,
+    views,
+    updateViewport,
+    updateView
+  } = useViewportDimensions();
+
+
+  console.log('FileView viewport', viewport);
+  console.log('FileView views', views);
 
   // Get project and genomic coordinates from URL params
   const project = searchParams.get('project');
@@ -109,6 +123,11 @@ function FileView() {
         <ViewportOverlay
           statusMessage={loading ? { status: 'loading', message: 'Loading config...' } : statusMessage}
           filename={filename || file}
+          viewport={viewport}
+          onViewportChange={updateViewport}
+          views={views}
+          onViewChange={updateView}
+          resizable={!loading && !error && tsconfig}
         />
 
         {/* Error display */}
@@ -150,18 +169,40 @@ function FileView() {
           </div>
         )}
 
-        {/* Placeholder for future deck.gl canvas */}
+        {/* LoraxDeckGL canvas - renders when config is loaded */}
         {!loading && !error && tsconfig && (
-          <div className="absolute inset-0 flex items-center justify-center text-slate-300 pointer-events-none">
-            <p className="text-lg">Tree visualization will render here</p>
+          <div
+            style={{
+              position: 'absolute',
+              top: viewport.top,
+              left: viewport.left,
+              width: viewport.width,
+              height: viewport.height
+            }}
+          >
+            <LoraxDeckGL
+              ref={deckRef}
+              debugOverlay={true}
+              viewConfig={{
+                ortho: { enabled: true, ...views?.ortho },
+                genomeInfo: { enabled: true, ...views?.genomeInfo },
+                genomePositions: { enabled: true, ...views?.genomePositions },
+                treeTime: { enabled: true, ...views?.treeTime }
+              }}
+              onViewStateChange={(params) => {
+                console.log('View state changed:', params);
+              }}
+              onResize={({ width, height }) => {
+                console.log('Deck resized:', width, height);
+              }}
+            />
           </div>
         )}
 
         {/* Info Panel - Right sidebar */}
         <div
-          className={`fixed top-0 right-0 w-[25%] min-w-[320px] h-full z-40 shadow-xl transition-transform duration-300 ease-in-out ${
-            showInfo ? 'translate-x-0' : 'translate-x-full'
-          }`}
+          className={`fixed top-0 right-0 w-[25%] min-w-[320px] h-full z-40 shadow-xl transition-transform duration-300 ease-in-out ${showInfo ? 'translate-x-0' : 'translate-x-full'
+            }`}
         >
           <Info setShowInfo={setShowInfo} />
         </div>

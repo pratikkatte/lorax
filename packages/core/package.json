@@ -4,7 +4,12 @@
   "type": "module",
   "main": "src/index.js",
   "peerDependencies": {
-    "react": "^18.2.0 || ^19.0.0"
+    "react": "^18.2.0 || ^19.0.0",
+    "@deck.gl/core": "^9.0.0",
+    "@deck.gl/react": "^9.0.0",
+    "@deck.gl/layers": "^9.0.0",
+    "@deck.gl/extensions": "^9.0.0",
+    "@math.gl/core": "^4.0.0"
   },
   "dependencies": {
     "socket.io-client": "^4.8.1",
