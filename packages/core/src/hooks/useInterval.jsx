@@ -1,66 +1,152 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 
 /**
- * Hook to manage interval state for visualization.
- * Uses worker passed from context for interval queries.
- * Config sending is handled by useLoraxConfig.
+ * Hook to manage interval state for visualization with incremental fetching.
+ *
+ * Instead of fetching all intervals on every viewport change, this hook:
+ * 1. Tracks previous viewport bounds
+ * 2. Only fetches intervals for newly visible regions (deltas)
+ * 3. Accumulates intervals in a Set to avoid duplicates
+ * 4. Applies LOD decimation when too many intervals are visible
  *
  * @param {Object} params
  * @param {Object} params.worker - Worker instance from useLoraxConfig
  * @param {boolean} params.workerConfigReady - Whether worker has received config
  * @param {[number, number]} params.genomicCoords - Current viewport [startBp, endBp]
- * @returns {Object} { visibleIntervals, isReady, refresh }
+ * @param {number} params.debounceMs - Debounce delay in ms (default: 16)
+ * @param {number} params.maxIntervals - Max intervals to render (LOD threshold, default: 2000)
+ * @returns {Object} { visibleIntervals, isReady, reset }
  */
-export function useInterval({ worker, workerConfigReady, genomicCoords }) {
+export function useInterval({
+  worker,
+  workerConfigReady,
+  genomicCoords,
+  debounceMs = 16,
+  maxIntervals = 2000
+}) {
   const [visibleIntervals, setVisibleIntervals] = useState([]);
-  const latestRequestIdRef = useRef(0);
 
-  // Query intervals when viewport changes (config sending handled by useLoraxConfig)
+  // Accumulated intervals from all fetches
+  const allIntervalsRef = useRef(new Set());
+
+  // Previous viewport bounds [lo, hi]
+  const prevBoundsRef = useRef(null);
+
+  // For request cancellation
+  const latestRequestIdRef = useRef(0);
+  const debounceTimerRef = useRef(null);
+
+  // Main effect: incremental fetching with debounce
   useEffect(() => {
     if (!workerConfigReady || !genomicCoords || !worker) return;
 
-    const [start, end] = genomicCoords;
-    const requestId = ++latestRequestIdRef.current;
+    // Clear pending debounce timer
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
 
-    worker.queryIntervals(start, end)
-      .then((result) => {
-        // Only update if this is still the latest request
-        if (requestId === latestRequestIdRef.current) {
-          setVisibleIntervals(result?.visibleIntervals || []);
+    debounceTimerRef.current = setTimeout(async () => {
+      const [newLo, newHi] = genomicCoords;
+      const prev = prevBoundsRef.current;
+      const requestId = ++latestRequestIdRef.current;
+
+      // Determine which regions need fetching
+      const regionsToFetch = [];
+
+      if (!prev) {
+        // Initial load - fetch entire range
+        regionsToFetch.push([newLo, newHi]);
+      } else {
+        const [prevLo, prevHi] = prev;
+
+        // Check if completely disjoint (big jump) - reset and fetch all
+        if (newHi < prevLo || newLo > prevHi) {
+          allIntervalsRef.current.clear();
+          regionsToFetch.push([newLo, newHi]);
+        } else {
+          // Left expansion: new viewport extends left of previous
+          if (newLo < prevLo) {
+            regionsToFetch.push([newLo, prevLo]);
+          }
+          // Right expansion: new viewport extends right of previous
+          if (newHi > prevHi) {
+            regionsToFetch.push([prevHi, newHi]);
+          }
+          // Zoom in case: no new regions needed, just filter existing
         }
-      })
-      .catch((error) => {
-        // Only log if this is still the latest request
-        if (requestId === latestRequestIdRef.current) {
-          console.error('Failed to query intervals:', error);
+      }
+
+      // Fetch new regions and merge into accumulated set
+      for (const [start, end] of regionsToFetch) {
+        try {
+          const result = await worker.queryIntervals(start, end);
+
+          // Check if this request is still current
+          if (requestId !== latestRequestIdRef.current) return;
+
+          // Add new intervals to the accumulated set
+          for (const interval of (result?.visibleIntervals || [])) {
+            allIntervalsRef.current.add(interval);
+          }
+        } catch (error) {
+          if (requestId === latestRequestIdRef.current) {
+            console.error('Failed to query intervals:', error);
+          }
+          return;
         }
-      });
-  }, [workerConfigReady, genomicCoords, worker]);
+      }
 
-  // Manual refresh method
-  const refresh = useCallback(() => {
-    if (!workerConfigReady || !genomicCoords || !worker) return;
+      // Update previous bounds
+      prevBoundsRef.current = [newLo, newHi];
 
-    const [start, end] = genomicCoords;
-    const requestId = ++latestRequestIdRef.current;
-
-    worker.queryIntervals(start, end)
-      .then((result) => {
-        if (requestId === latestRequestIdRef.current) {
-          setVisibleIntervals(result?.visibleIntervals || []);
+      // Memory cleanup: trim intervals far outside current view
+      // Keep 2x viewport width to handle small pans without refetch
+      const range = newHi - newLo;
+      const trimThreshold = range * 2;
+      const trimmedSet = new Set();
+      for (const pos of allIntervalsRef.current) {
+        if (pos >= newLo - trimThreshold && pos <= newHi + trimThreshold) {
+          trimmedSet.add(pos);
         }
-      })
-      .catch((error) => {
-        if (requestId === latestRequestIdRef.current) {
-          console.error('Failed to refresh intervals:', error);
-        }
-      });
-  }, [workerConfigReady, genomicCoords, worker]);
+      }
+      allIntervalsRef.current = trimmedSet;
 
-  // Memoize return object to prevent re-renders
+      // Filter to current viewport and sort
+      const inView = [...allIntervalsRef.current]
+        .filter(pos => pos >= newLo && pos <= newHi)
+        .sort((a, b) => a - b);
+
+      // Apply LOD decimation if too many intervals
+      if (inView.length > maxIntervals) {
+        const step = Math.ceil(inView.length / maxIntervals);
+        const decimated = [];
+        for (let i = 0; i < inView.length; i += step) {
+          decimated.push(inView[i]);
+        }
+        setVisibleIntervals(decimated);
+      } else {
+        setVisibleIntervals(inView);
+      }
+    }, debounceMs);
+
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
+  }, [workerConfigReady, genomicCoords, worker, debounceMs, maxIntervals]);
+
+  // Reset method - call when underlying data changes
+  const reset = useCallback(() => {
+    allIntervalsRef.current.clear();
+    prevBoundsRef.current = null;
+    setVisibleIntervals([]);
+  }, []);
+
+  // Memoize return object to prevent unnecessary re-renders
   return useMemo(() => ({
     visibleIntervals,
     isReady: workerConfigReady,
-    refresh
-  }), [visibleIntervals, workerConfigReady, refresh]);
+    reset
+  }), [visibleIntervals, workerConfigReady, reset]);
 }

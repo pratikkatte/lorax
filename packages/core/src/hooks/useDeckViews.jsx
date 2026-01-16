@@ -223,6 +223,7 @@ export function useDeckViews({
   const handleViewStateChange = useCallback(({ viewState: newViewState, viewId, oldViewState }) => {
     if (!viewId || !newViewState || !oldViewState) return;
 
+
     setViewState((prev) => {
       let zoom = [...(oldViewState?.zoom || [0, 0])];
       let target = [...(oldViewState?.target || [0, 0])];

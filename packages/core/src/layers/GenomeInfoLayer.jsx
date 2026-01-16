@@ -32,6 +32,12 @@ export class GenomeInfoLayer extends CompositeLayer {
         viewId,
         pickable: false,
         zOffset: -1,
+        // Tell deck.gl when to recompute positions
+        updateTriggers: {
+          data: data,
+          getSourcePosition: [globalBpPerUnit, y0],
+          getTargetPosition: [globalBpPerUnit, y1],
+        }
       })
     ];
   }

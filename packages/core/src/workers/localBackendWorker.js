@@ -1,9 +1,22 @@
 import { nearestIndex, upperBound } from "./modules/binningUtils.js";
 
 let tsconfig = null;
+let normalizedIntervals = null;  // Cached normalized array - computed once when config is set
 
 export const queryConfig = async (data) => {
   tsconfig = data.data;
+
+  // Normalize intervals ONCE when config is set (not on every query)
+  if (tsconfig?.intervals) {
+    let intervals = tsconfig.intervals;
+    if (intervals.length > 0 && Array.isArray(intervals[0])) {
+      normalizedIntervals = intervals.map(interval => interval[0]);
+    } else {
+      normalizedIntervals = intervals;
+    }
+  } else {
+    normalizedIntervals = [];
+  }
 };
 
 /**
@@ -13,17 +26,13 @@ export const queryConfig = async (data) => {
  * @returns {number[]} Array of interval positions in range
  */
 function getIntervals(start, end) {
-  if (!tsconfig?.intervals) return [];
+  if (!normalizedIntervals || normalizedIntervals.length === 0) return [];
 
-  let intervalStarts = tsconfig.intervals;
-  if (intervalStarts.length > 0 && Array.isArray(intervalStarts[0])) {
-    intervalStarts = intervalStarts.map(interval => interval[0]);
-  }
+  // Use cached normalized array - no more .map() per query
+  const lower = nearestIndex(normalizedIntervals, start);
+  const upper = upperBound(normalizedIntervals, end);
 
-  const lower = nearestIndex(intervalStarts, start);
-  const upper = upperBound(intervalStarts, end);
-
-  return intervalStarts.slice(lower, upper + 1);
+  return normalizedIntervals.slice(lower, upper + 1);
 }
 
 onmessage = async (event) => {

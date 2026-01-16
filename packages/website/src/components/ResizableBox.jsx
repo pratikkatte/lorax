@@ -147,6 +147,7 @@ export function ResizableBox({
         width: dimensions.width,
         height: dimensions.height,
         boxSizing: 'border-box',
+        pointerEvents: 'none',
         ...style
       }}
     >
