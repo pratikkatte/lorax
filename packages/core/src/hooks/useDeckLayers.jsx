@@ -10,9 +10,10 @@ import { TimeGridLayer } from '../layers/TimeGridLayer.jsx';
  * @param {Object} params
  * @param {string[]} params.enabledViews - Array of enabled view IDs
  * @param {number} params.globalBpPerUnit - Base pairs per coordinate unit (optional)
+ * @param {number[]} params.visibleIntervals - Array of visible interval positions in bp
  * @returns {Object} { layers, layerFilter }
  */
-export function useDeckLayers({ enabledViews, globalBpPerUnit = null }) {
+export function useDeckLayers({ enabledViews, globalBpPerUnit = null, visibleIntervals = [] }) {
   /**
    * Layer filter function - maps layer IDs to view IDs
    * Ensures only relevant layers render in each viewport
@@ -45,11 +46,11 @@ export function useDeckLayers({ enabledViews, globalBpPerUnit = null }) {
       }));
     }
 
-    // Genome info layer
+    // Genome info layer - renders interval markers as vertical lines
     if (enabledViews.includes('genome-info')) {
       result.push(new GenomeInfoLayer({
         id: 'genome-info-grid',
-        data: new Map(), // Empty initially
+        data: visibleIntervals, // Array of interval positions in bp
         globalBpPerUnit,
         viewId: 'genome-info',
       }));
@@ -65,7 +66,7 @@ export function useDeckLayers({ enabledViews, globalBpPerUnit = null }) {
     }
 
     return result;
-  }, [enabledViews, globalBpPerUnit]);
+  }, [enabledViews, globalBpPerUnit, visibleIntervals]);
 
   return { layers, layerFilter };
 }

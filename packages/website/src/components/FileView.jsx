@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { useLorax, LoraxDeckGL } from '@lorax/core';
 import PositionSlider from './PositionSlider';
@@ -26,7 +26,7 @@ function FileView() {
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [position, setPosition] = useState(null); // [start, end]
+  const [genomicPosition, setGenomicPosition] = useState(null); // [start, end] - synced with deck
   const [statusMessage, setStatusMessage] = useState(null);
   const [showInfo, setShowInfo] = useState(false);
 
@@ -82,19 +82,30 @@ function FileView() {
     }
   }, [file, project, sid, genomiccoordstart, genomiccoordend, isConnected, tsconfig?.filename, queryFile, handleConfigUpdate]);
 
-  // Initialize position when config loads
+  // Initialize position when config loads (only if deck hasn't set it yet)
   useEffect(() => {
-    if (tsconfig && genomeLength && !position) {
+    if (tsconfig && genomeLength && !genomicPosition) {
       // Use value from config if available, otherwise full genome range
       const initialValue = tsconfig.value || [0, genomeLength];
-      setPosition(initialValue);
+      setGenomicPosition(initialValue);
     }
-  }, [tsconfig, genomeLength, position]);
+  }, [tsconfig, genomeLength, genomicPosition]);
 
-  const handlePositionChange = (newPosition) => {
-    setPosition(newPosition);
-    // Future: trigger view update in visualization
-  };
+  // Callback when deck.gl view changes (pan/zoom) - syncs deck → slider
+  const handleGenomicCoordsChange = useCallback((coords) => {
+    if (coords) {
+      setGenomicPosition(coords);
+    }
+  }, []);
+
+  // Handle slider position change - syncs slider → deck
+  const handlePositionChange = useCallback((newPosition) => {
+    setGenomicPosition(newPosition);
+    // Update deck view via ref
+    if (deckRef.current?.setGenomicCoords) {
+      deckRef.current.setGenomicCoords(newPosition);
+    }
+  }, []);
 
   return (
     <div className="h-screen flex flex-col bg-slate-50">
@@ -102,7 +113,7 @@ function FileView() {
       <PositionSlider
         filename={filename || file}
         genomeLength={genomeLength}
-        value={position}
+        value={genomicPosition}
         onChange={handlePositionChange}
         project={project}
         showInfo={showInfo}
@@ -180,6 +191,7 @@ function FileView() {
                 genomePositions: { enabled: true, ...views?.genomePositions },
                 treeTime: { enabled: true, ...views?.treeTime }
               }}
+              onGenomicCoordsChange={handleGenomicCoordsChange}
             />
           </div>
         )}

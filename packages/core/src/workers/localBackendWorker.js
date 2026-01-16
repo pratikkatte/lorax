@@ -1,11 +1,7 @@
 import { Matrix4 } from "@math.gl/core";
 import * as arrow from "apache-arrow";
 import { computeLineageSegments } from "./modules/lineageUtils.js";
-import {
-  extractSquarePaths,
-  globalCleanup,
-  dedupeSegments
-} from "./modules/treeProcessing.js";
+
 import {
   computeRenderArrays,
   clearBuffers as clearRenderBuffers
@@ -392,373 +388,320 @@ export const queryValueChanged = async (value) => {
 }
 
 /**
- * Get processed tree data with adaptive sparsification.
- * 
- * @param {number} global_index - Global tree index
- * @param {Object} options - Sparsification options
- * @param {number} options.precision - Precision parameter for coordinate quantization
- * @param {boolean} options.showingAllTrees - Whether all trees are being shown (skip sparsification)
- * @returns {Array|null} Array of segments or null if tree not found
+ * Get visible intervals for a given viewport range
+ * @param {number} start - Start position (bp)
+ * @param {number} end - End position (bp)
+ * @returns {number[]} Array of interval positions in range
  */
-export function getTreeData(global_index, options = {}) {
-  // Support legacy call signature: getTreeData(global_index, precision)
-  if (typeof options === 'number') {
-    options = { precision: options };
+function getIntervals(start, end) {
+  if (!tsconfig?.intervals) return [];
+
+  let intervalStarts = tsconfig.intervals;
+  if (intervalStarts.length > 0 && Array.isArray(intervalStarts[0])) {
+    intervalStarts = intervalStarts.map(interval => interval[0]);
   }
 
-  const {
-    precision = 9,
-    showingAllTrees = false
-  } = options;
+  const lower = nearestIndex(intervalStarts, start);
+  const upper = upperBound(intervalStarts, end);
 
-  if (pathsData.has(global_index)) {
-    const processedTree = pathsData.get(global_index);
-    const segments = [];
-    if (processedTree.roots) {
-      processedTree.roots.forEach(root => {
-        extractSquarePaths(root, segments);
-      });
-    } else if (processedTree.root) {
-      extractSquarePaths(processedTree.root, segments);
-    }
-    const dedupedSegments = dedupeSegments(segments, {
-      precision,
-      showingAllTrees
-    });
-    return dedupedSegments;
-  }
-  return null;
+  return intervalStarts.slice(lower, upper + 1);
 }
 
 
-// Helper: Find highlights and lineage seeds in a single pass
-function findHighlights(tree, uniqueTerms, collectSeeds = true, sampleColors = {}) {
-  const highlights = [];
-  const seeds = new Set();
-  const seedColors = new Map();
 
-  if (tree.node && Array.isArray(tree.node)) {
-    for (let i = 0; i < tree.node.length; i++) {
-      const node = tree.node[i];
-      if (node.is_tip && node.name && uniqueTerms.has(node.name.toLowerCase())) {
-        // Add to highlights
-        highlights.push({
-          position: [node.y, node.x ?? node.x_dist],
-          name: node.name
-        });
 
-        // Add to seeds (if needed)
-        if (collectSeeds) {
-          seeds.add(node);
-          const color = sampleColors[node.name.toLowerCase()];
-          if (color) {
-            seedColors.set(node.node_id, color);
-          }
-        }
-      }
-    }
-  }
-  return { highlights, seeds, seedColors };
-}
 
 
 
 onmessage = async (event) => {
-  //Process uploaded data:
   const { data } = event;
-  // console.log("Worker onmessage", data.type);
 
-  if (data.type === "upload") {
-    console.log("upload value: TO IMPLEMENT")
+  if (data.type === "gettree") {
+    const result = await getTreeData(data.global_index, {
+      precision: data.precision,
+      showingAllTrees: data.showingAllTrees ?? false
+    });
+    postMessage({ type: "gettree", data: result });
+  }
 
-  } else {
+  if (data.type === "search") {
+    const { term, terms, id, options } = data;
+    const { showLineages = true, sampleColors = {} } = options || {};
+    const lineageResults = {}; // global_index -> segments
+    const highlightResults = {}; // global_index -> points
 
-    if (data.type === "gettree") {
-      const result = await getTreeData(data.global_index, {
-        precision: data.precision,
-        showingAllTrees: data.showingAllTrees ?? false
+    const activeTerms = [];
+    if (terms && Array.isArray(terms)) {
+      activeTerms.push(...terms);
+    }
+    if (term) {
+      activeTerms.push(term);
+    }
+    // Deduplicate and filter empty
+    const uniqueTerms = new Set([...activeTerms.map(t => t.trim().toLowerCase()).filter(t => t !== "")]);
+
+    if (uniqueTerms.size > 0) {
+      for (const [global_index, tree] of pathsData.entries()) {
+        // 1. Find matches
+        const { highlights, seeds, seedColors } = findHighlights(tree, uniqueTerms, showLineages, sampleColors);
+
+        if (highlights.length > 0) {
+          highlightResults[global_index] = highlights;
+        }
+
+        // 2. Compute Lineages
+        if (seeds.size > 0 && showLineages) {
+          const segments = computeLineageSegments(tree, seeds, seedColors);
+          lineageResults[global_index] = segments
+          // const deduped = dedupeSegments(segments);
+          // if (deduped.length > 0) {
+          //   lineageResults[global_index] = deduped;
+          // }
+        }
+      }
+    }
+    postMessage({ type: "search-result", data: { lineage: lineageResults, highlights: highlightResults }, id });
+  }
+  if (data.type === "config") {
+    const result = await queryConfig(data);
+    postMessage({ type: "config", data: result });
+  }
+
+  if (data.type === "local-bins") {
+    // Extract display options from the message data (fallback to defaults inside getLocalData)
+    const displayOptions = data.data.displayOptions || {};
+
+    let result = await getLocalData(
+      data.data.start,
+      data.data.end,
+      data.data.globalBpPerUnit,
+      data.data.nTrees,
+      data.data.new_globalBp,
+      data.data.regionWidth,
+      displayOptions
+    );
+    postMessage({ type: "local-bins", data: result });
+  }
+
+  if (data.type === "value-changed") {
+    const result = await queryValueChanged(data.data);
+    postMessage({ type: "value-changed", data: result });
+  }
+
+  if (data.type === "intervals") {
+    const { start, end } = data.data;
+    const visibleIntervals = getIntervals(start, end);
+    postMessage({ type: "intervals", data: { visibleIntervals } });
+  }
+
+  // ─────────────────────────────────────────────────────────────────
+  // Compute render data from PyArrow buffer + cached tree data
+  // ─────────────────────────────────────────────────────────────────
+  if (data.type === "compute-render-data") {
+    try {
+      const {
+        buffer,
+        bins,
+        metadataArrays,
+        metadataColors,
+        populationFilter,
+        global_min_time,
+        global_max_time,
+        tree_indices,
+        allDisplayIndices  // Full list of trees to render (cached + uncached)
+      } = data;
+
+      // Reconstruct bins Map from serialized format
+      const binsMap = new Map();
+      if (bins && typeof bins === 'object') {
+        if (Array.isArray(bins)) {
+          for (const [key, value] of bins) {
+            binsMap.set(key, value);
+          }
+        } else {
+          for (const [key, value] of Object.entries(bins)) {
+            binsMap.set(Number(key), value);
+          }
+        }
+      }
+
+      // Parse PyArrow buffer if present (may be empty if all trees cached)
+      let newNode_id, newParent_id, newIs_tip, newTree_idx, newX, newY;
+      if (buffer && buffer.byteLength > 0) {
+        const uint8 = new Uint8Array(buffer);
+        const table = arrow.tableFromIPC(uint8);
+
+        newNode_id = table.getChild('node_id')?.toArray();
+        newParent_id = table.getChild('parent_id')?.toArray();
+        newIs_tip = table.getChild('is_tip')?.toArray();
+        newTree_idx = table.getChild('tree_idx')?.toArray();
+        newX = table.getChild('x')?.toArray();
+        newY = table.getChild('y')?.toArray();
+
+        // ─────────────────────────────────────────────────────────────────
+        // Cache newly fetched tree data (grouped by tree_idx)
+        // ─────────────────────────────────────────────────────────────────
+        if (newTree_idx && newNode_id && newTree_idx.length > 0) {
+          // Group nodes by tree_idx
+          const treeGroups = new Map();
+          for (let i = 0; i < newTree_idx.length; i++) {
+            const treeIdx = newTree_idx[i];
+            if (!treeGroups.has(treeIdx)) {
+              treeGroups.set(treeIdx, []);
+            }
+            treeGroups.get(treeIdx).push(i);
+          }
+
+          // Cache each tree's data
+          for (const [treeIdx, indices] of treeGroups) {
+            const nodeCount = indices.length;
+            const cachedData = {
+              node_id: new Int32Array(nodeCount),
+              parent_id: new Int32Array(nodeCount),
+              is_tip: new Uint8Array(nodeCount),
+              x: new Float32Array(nodeCount),
+              y: new Float32Array(nodeCount),
+              nodeCount
+            };
+
+            for (let j = 0; j < nodeCount; j++) {
+              const srcIdx = indices[j];
+              cachedData.node_id[j] = newNode_id[srcIdx];
+              cachedData.parent_id[j] = newParent_id[srcIdx];
+              cachedData.is_tip[j] = newIs_tip[srcIdx] ? 1 : 0;
+              cachedData.x[j] = newX[srcIdx];
+              cachedData.y[j] = newY[srcIdx];
+            }
+
+            cacheTreeData(treeIdx, cachedData);
+            console.log(`[TreeCache] Cached tree ${treeIdx} with ${nodeCount} nodes`);
+          }
+          console.log(`[TreeCache] Cache now has ${treeDataCache.size} trees: [${[...treeDataCache.keys()].join(', ')}]`);
+        }
+      }
+
+      // ─────────────────────────────────────────────────────────────────
+      // Extract modelMatrices from bins for visible trees only
+      // ─────────────────────────────────────────────────────────────────
+      const modelMatrices = new Map();
+      for (const [key, bin] of binsMap) {
+        if (bin.visible && bin.modelMatrix) {
+          modelMatrices.set(bin.global_index, bin.modelMatrix);
+        }
+      }
+
+      const renderIndices = allDisplayIndices || tree_indices || [];
+
+      // ─────────────────────────────────────────────────────────────────
+      // Combine cached data for trees that have BOTH cache AND modelMatrix
+      // ─────────────────────────────────────────────────────────────────
+      let totalNodes = 0;
+      const treesToRender = [];
+
+      for (const treeIdx of renderIndices) {
+        const cached = getCachedTreeData(treeIdx);
+        const hasMatrix = modelMatrices.has(treeIdx);
+        if (cached && hasMatrix) {
+          totalNodes += cached.nodeCount;
+          treesToRender.push(treeIdx);
+        } else if (!cached) {
+          console.warn(`[TreeCache] Missing cache for tree ${treeIdx}`);
+        } else if (!hasMatrix) {
+          console.warn(`[TreeCache] Missing modelMatrix for tree ${treeIdx}`);
+        }
+      }
+
+      console.log(`[TreeCache] Trees to render: ${treesToRender.length}, total nodes: ${totalNodes}`);
+
+      // Allocate combined arrays
+      const combined_node_id = new Int32Array(totalNodes);
+      const combined_parent_id = new Int32Array(totalNodes);
+      const combined_is_tip = new Uint8Array(totalNodes);
+      const combined_tree_idx = new Int32Array(totalNodes);
+      const combined_x = new Float32Array(totalNodes);
+      const combined_y = new Float32Array(totalNodes);
+
+      // Copy data from cache for trees that will be rendered
+      let offset = 0;
+      for (const treeIdx of treesToRender) {
+        const cached = getCachedTreeData(treeIdx);
+        if (cached) {
+          const n = cached.nodeCount;
+          combined_node_id.set(cached.node_id, offset);
+          combined_parent_id.set(cached.parent_id, offset);
+          combined_is_tip.set(cached.is_tip, offset);
+          combined_x.set(cached.x, offset);
+          combined_y.set(cached.y, offset);
+          // Fill tree_idx for this range
+          for (let i = 0; i < n; i++) {
+            combined_tree_idx[offset + i] = treeIdx;
+          }
+          offset += n;
+        }
+      }
+
+      console.log(`[TreeCache] Combined arrays - node_id: ${combined_node_id.length}, modelMatrices: ${modelMatrices.size}`);
+
+      // Compute render arrays using combined data and modelMatrices
+      const result = computeRenderArrays({
+        node_id: combined_node_id,
+        parent_id: combined_parent_id,
+        is_tip: combined_is_tip,
+        tree_idx: combined_tree_idx,
+        x: combined_x,
+        y: combined_y,
+        modelMatrices,  // Pass modelMatrices instead of bins
+        metadataArrays,
+        metadataColors,
+        populationFilter
       });
-      postMessage({ type: "gettree", data: result });
-    }
 
-    if (data.type === "search") {
-      const { term, terms, id, options } = data;
-      const { showLineages = true, sampleColors = {} } = options || {};
-      const lineageResults = {}; // global_index -> segments
-      const highlightResults = {}; // global_index -> points
+      console.log(`[TreeCache] Render result - paths: ${result.pathPositions?.length || 0}, tips: ${result.tipPositions?.length || 0}`);
 
-      const activeTerms = [];
-      if (terms && Array.isArray(terms)) {
-        activeTerms.push(...terms);
-      }
-      if (term) {
-        activeTerms.push(term);
-      }
-      // Deduplicate and filter empty
-      const uniqueTerms = new Set([...activeTerms.map(t => t.trim().toLowerCase()).filter(t => t !== "")]);
+      // Add metadata to result
+      result.global_min_time = global_min_time;
+      result.global_max_time = global_max_time;
+      result.tree_indices = renderIndices;
 
-      if (uniqueTerms.size > 0) {
-        for (const [global_index, tree] of pathsData.entries()) {
-          // 1. Find matches
-          const { highlights, seeds, seedColors } = findHighlights(tree, uniqueTerms, showLineages, sampleColors);
+      // Transfer typed array buffers back (zero-copy)
+      const transferables = [];
+      if (result.pathPositions?.buffer) transferables.push(result.pathPositions.buffer);
+      if (result.tipPositions?.buffer) transferables.push(result.tipPositions.buffer);
+      if (result.tipColors?.buffer) transferables.push(result.tipColors.buffer);
 
-          if (highlights.length > 0) {
-            highlightResults[global_index] = highlights;
-          }
+      postMessage({ type: "render-data", data: result }, transferables);
 
-          // 2. Compute Lineages
-          if (seeds.size > 0 && showLineages) {
-            const segments = computeLineageSegments(tree, seeds, seedColors);
-            lineageResults[global_index] = segments
-            // const deduped = dedupeSegments(segments);
-            // if (deduped.length > 0) {
-            //   lineageResults[global_index] = deduped;
-            // }
-          }
+    } catch (error) {
+      console.error("[Worker] Error computing render data:", error);
+      postMessage({
+        type: "render-data",
+        error: error.message,
+        data: {
+          pathPositions: new Float32Array(0),
+          tipPositions: new Float32Array(0),
+          tipColors: new Uint8Array(0),
+          tipData: [],
+          edgeCount: 0,
+          tipCount: 0
         }
-      }
-      postMessage({ type: "search-result", data: { lineage: lineageResults, highlights: highlightResults }, id });
+      });
     }
-    if (data.type === "config") {
-      const result = await queryConfig(data);
-      // console.log("config result", result);
-      postMessage({ type: "config", data: result });
-    }
+  }
 
-    if (data.type === "local-bins") {
-      // Extract display options from the message data (fallback to defaults inside getLocalData)
-      const displayOptions = data.data.displayOptions || {};
-
-      let result = await getLocalData(
-        data.data.start,
-        data.data.end,
-        data.data.globalBpPerUnit,
-        data.data.nTrees,
-        data.data.new_globalBp,
-        data.data.regionWidth,
-        displayOptions
-      );
-      postMessage({ type: "local-bins", data: result });
-    }
-
-    if (data.type === "value-changed") {
-      const result = await queryValueChanged(data.data);
-      postMessage({ type: "value-changed", data: result });
-    }
-
-    if (data.type === "details") {
-      console.log("data details value: TO IMPLEMENT")
-    }
-
-    // ─────────────────────────────────────────────────────────────────
-    // Compute render data from PyArrow buffer + cached tree data
-    // ─────────────────────────────────────────────────────────────────
-    if (data.type === "compute-render-data") {
-      try {
-        const {
-          buffer,
-          bins,
-          metadataArrays,
-          metadataColors,
-          populationFilter,
-          global_min_time,
-          global_max_time,
-          tree_indices,
-          allDisplayIndices  // Full list of trees to render (cached + uncached)
-        } = data;
-
-        // Reconstruct bins Map from serialized format
-        const binsMap = new Map();
-        if (bins && typeof bins === 'object') {
-          if (Array.isArray(bins)) {
-            for (const [key, value] of bins) {
-              binsMap.set(key, value);
-            }
-          } else {
-            for (const [key, value] of Object.entries(bins)) {
-              binsMap.set(Number(key), value);
-            }
-          }
-        }
-
-        // Parse PyArrow buffer if present (may be empty if all trees cached)
-        let newNode_id, newParent_id, newIs_tip, newTree_idx, newX, newY;
-        if (buffer && buffer.byteLength > 0) {
-          const uint8 = new Uint8Array(buffer);
-          const table = arrow.tableFromIPC(uint8);
-
-          newNode_id = table.getChild('node_id')?.toArray();
-          newParent_id = table.getChild('parent_id')?.toArray();
-          newIs_tip = table.getChild('is_tip')?.toArray();
-          newTree_idx = table.getChild('tree_idx')?.toArray();
-          newX = table.getChild('x')?.toArray();
-          newY = table.getChild('y')?.toArray();
-
-          // ─────────────────────────────────────────────────────────────────
-          // Cache newly fetched tree data (grouped by tree_idx)
-          // ─────────────────────────────────────────────────────────────────
-          if (newTree_idx && newNode_id && newTree_idx.length > 0) {
-            // Group nodes by tree_idx
-            const treeGroups = new Map();
-            for (let i = 0; i < newTree_idx.length; i++) {
-              const treeIdx = newTree_idx[i];
-              if (!treeGroups.has(treeIdx)) {
-                treeGroups.set(treeIdx, []);
-              }
-              treeGroups.get(treeIdx).push(i);
-            }
-
-            // Cache each tree's data
-            for (const [treeIdx, indices] of treeGroups) {
-              const nodeCount = indices.length;
-              const cachedData = {
-                node_id: new Int32Array(nodeCount),
-                parent_id: new Int32Array(nodeCount),
-                is_tip: new Uint8Array(nodeCount),
-                x: new Float32Array(nodeCount),
-                y: new Float32Array(nodeCount),
-                nodeCount
-              };
-
-              for (let j = 0; j < nodeCount; j++) {
-                const srcIdx = indices[j];
-                cachedData.node_id[j] = newNode_id[srcIdx];
-                cachedData.parent_id[j] = newParent_id[srcIdx];
-                cachedData.is_tip[j] = newIs_tip[srcIdx] ? 1 : 0;
-                cachedData.x[j] = newX[srcIdx];
-                cachedData.y[j] = newY[srcIdx];
-              }
-
-              cacheTreeData(treeIdx, cachedData);
-              console.log(`[TreeCache] Cached tree ${treeIdx} with ${nodeCount} nodes`);
-            }
-            console.log(`[TreeCache] Cache now has ${treeDataCache.size} trees: [${[...treeDataCache.keys()].join(', ')}]`);
-          }
-        }
-
-        // ─────────────────────────────────────────────────────────────────
-        // Extract modelMatrices from bins for visible trees only
-        // ─────────────────────────────────────────────────────────────────
-        const modelMatrices = new Map();
-        for (const [key, bin] of binsMap) {
-          if (bin.visible && bin.modelMatrix) {
-            modelMatrices.set(bin.global_index, bin.modelMatrix);
-          }
-        }
-
-        const renderIndices = allDisplayIndices || tree_indices || [];
-
-        // ─────────────────────────────────────────────────────────────────
-        // Combine cached data for trees that have BOTH cache AND modelMatrix
-        // ─────────────────────────────────────────────────────────────────
-        let totalNodes = 0;
-        const treesToRender = [];
-
-        for (const treeIdx of renderIndices) {
-          const cached = getCachedTreeData(treeIdx);
-          const hasMatrix = modelMatrices.has(treeIdx);
-          if (cached && hasMatrix) {
-            totalNodes += cached.nodeCount;
-            treesToRender.push(treeIdx);
-          } else if (!cached) {
-            console.warn(`[TreeCache] Missing cache for tree ${treeIdx}`);
-          } else if (!hasMatrix) {
-            console.warn(`[TreeCache] Missing modelMatrix for tree ${treeIdx}`);
-          }
-        }
-
-        console.log(`[TreeCache] Trees to render: ${treesToRender.length}, total nodes: ${totalNodes}`);
-
-        // Allocate combined arrays
-        const combined_node_id = new Int32Array(totalNodes);
-        const combined_parent_id = new Int32Array(totalNodes);
-        const combined_is_tip = new Uint8Array(totalNodes);
-        const combined_tree_idx = new Int32Array(totalNodes);
-        const combined_x = new Float32Array(totalNodes);
-        const combined_y = new Float32Array(totalNodes);
-
-        // Copy data from cache for trees that will be rendered
-        let offset = 0;
-        for (const treeIdx of treesToRender) {
-          const cached = getCachedTreeData(treeIdx);
-          if (cached) {
-            const n = cached.nodeCount;
-            combined_node_id.set(cached.node_id, offset);
-            combined_parent_id.set(cached.parent_id, offset);
-            combined_is_tip.set(cached.is_tip, offset);
-            combined_x.set(cached.x, offset);
-            combined_y.set(cached.y, offset);
-            // Fill tree_idx for this range
-            for (let i = 0; i < n; i++) {
-              combined_tree_idx[offset + i] = treeIdx;
-            }
-            offset += n;
-          }
-        }
-
-        console.log(`[TreeCache] Combined arrays - node_id: ${combined_node_id.length}, modelMatrices: ${modelMatrices.size}`);
-
-        // Compute render arrays using combined data and modelMatrices
-        const result = computeRenderArrays({
-          node_id: combined_node_id,
-          parent_id: combined_parent_id,
-          is_tip: combined_is_tip,
-          tree_idx: combined_tree_idx,
-          x: combined_x,
-          y: combined_y,
-          modelMatrices,  // Pass modelMatrices instead of bins
-          metadataArrays,
-          metadataColors,
-          populationFilter
-        });
-
-        console.log(`[TreeCache] Render result - paths: ${result.pathPositions?.length || 0}, tips: ${result.tipPositions?.length || 0}`);
-
-        // Add metadata to result
-        result.global_min_time = global_min_time;
-        result.global_max_time = global_max_time;
-        result.tree_indices = renderIndices;
-
-        // Transfer typed array buffers back (zero-copy)
-        const transferables = [];
-        if (result.pathPositions?.buffer) transferables.push(result.pathPositions.buffer);
-        if (result.tipPositions?.buffer) transferables.push(result.tipPositions.buffer);
-        if (result.tipColors?.buffer) transferables.push(result.tipColors.buffer);
-
-        postMessage({ type: "render-data", data: result }, transferables);
-
-      } catch (error) {
-        console.error("[Worker] Error computing render data:", error);
-        postMessage({
-          type: "render-data",
-          error: error.message,
-          data: {
-            pathPositions: new Float32Array(0),
-            tipPositions: new Float32Array(0),
-            tipColors: new Uint8Array(0),
-            tipData: [],
-            edgeCount: 0,
-            tipCount: 0
-          }
-        });
-      }
-    }
-
-    // ─────────────────────────────────────────────────────────────────
-    // Clear buffers to free memory
-    // ─────────────────────────────────────────────────────────────────
-    if (data.type === "clear-buffers") {
-      clearRenderBuffers();
-      // Clear tree caches
-      pathsData.clear();
-      pathsDataAccess.clear();
-      currentCacheBytes = 0;
-      // Clear tree data cache
-      treeDataCache.clear();
-      treeDataCacheAccess.clear();
-      treeDataCacheBytes = 0;
-      console.log("[TreeCache] All caches cleared");
-      postMessage({ type: "buffers-cleared" });
-    }
+  // ─────────────────────────────────────────────────────────────────
+  // Clear buffers to free memory
+  // ─────────────────────────────────────────────────────────────────
+  if (data.type === "clear-buffers") {
+    clearRenderBuffers();
+    // Clear tree caches
+    pathsData.clear();
+    pathsDataAccess.clear();
+    currentCacheBytes = 0;
+    // Clear tree data cache
+    treeDataCache.clear();
+    treeDataCacheAccess.clear();
+    treeDataCacheBytes = 0;
+    console.log("[TreeCache] All caches cleared");
+    postMessage({ type: "buffers-cleared" });
   }
 }

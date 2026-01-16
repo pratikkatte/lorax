@@ -15,6 +15,21 @@ export { default as websocketEvents } from './utils/websocketEvents.js';
 export { getApiBase, getLoraxConfig } from './utils/config.js';
 export { getColor, assignUniqueColors } from './utils/colorUtils.js';
 
+// Genomic Coordinate Utilities
+export {
+  genomicToWorld,
+  worldToGenomic,
+  clampGenomicCoords,
+  getGenomePositionLabels,
+  getLocalCoordinates,
+  niceStep
+} from './utils/genomeCoordinates.js';
+export {
+  getGenomicCoordsFromURL,
+  setGenomicCoordsInURL,
+  clearGenomicCoordsFromURL
+} from './utils/urlSync.js';
+
 // DeckGL Component
 export { default as LoraxDeckGL } from './components/LoraxDeckGL.jsx';
 
@@ -22,6 +37,8 @@ export { default as LoraxDeckGL } from './components/LoraxDeckGL.jsx';
 export { useDeckViews } from './hooks/useDeckViews.jsx';
 export { useDeckLayers } from './hooks/useDeckLayers.jsx';
 export { useDeckController } from './hooks/useDeckController.jsx';
+export { useGenomicCoordinates } from './hooks/useGenomicCoordinates.jsx';
+export { useWorker } from './hooks/useWorker.jsx';
 
 // DeckGL Layers
 export { GenomeGridLayer, GenomeInfoLayer, TimeGridLayer } from './layers/index.js';
