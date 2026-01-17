@@ -53,6 +53,9 @@ export function useLocalData({
   const debounceTimer = useRef(null);
   const latestRequestId = useRef(0);
 
+  // Serialize displayOptions to avoid object reference comparison issues
+  const displayOptionsKey = JSON.stringify(displayOptions);
+
   // Compute scale factors from viewState
   const globalBpPerUnit = useMemo(() => {
     if (!tsconfig?.genome_length || !tsconfig?.intervals?.length) return null;
@@ -106,7 +109,7 @@ export function useLocalData({
     return () => {
       if (debounceTimer.current) clearTimeout(debounceTimer.current);
     };
-  }, [workerConfigReady, genomicCoords, worker, globalBpPerUnit, new_globalBp, allIntervalsInView, intervalBounds, displayOptions, debounceMs, tsconfig]);
+  }, [workerConfigReady, genomicCoords, worker, globalBpPerUnit, new_globalBp, allIntervalsInView, intervalBounds, displayOptionsKey, debounceMs, tsconfig]);
 
   const reset = useCallback(() => {
     setLocalBins(null);
