@@ -6,6 +6,7 @@ export { useSession } from './hooks/useSession.jsx';
 export { useSocket } from './hooks/useSocket.jsx';
 export { useLoraxConnection } from './hooks/useLoraxConnection.jsx';
 export { useLoraxConfig } from './hooks/useLoraxConfig.jsx';
+export { useMetadataFilter } from './hooks/useMetadataFilter.jsx';
 
 // Services
 export { initSession, getProjects, uploadFileToBackend } from './services/api.js';
@@ -14,6 +15,14 @@ export { initSession, getProjects, uploadFileToBackend } from './services/api.js
 export { default as websocketEvents } from './utils/websocketEvents.js';
 export { getApiBase, getLoraxConfig } from './utils/config.js';
 export { getColor, assignUniqueColors } from './utils/colorUtils.js';
+export {
+  filterMetadataValues,
+  getVisibleValues,
+  rgbaToHex,
+  hexToRgb,
+  matchesSearchTags,
+  getMetadataValueColor
+} from './utils/metadataUtils.js';
 
 // Genomic Coordinate Utilities
 export {
@@ -42,6 +51,7 @@ export { useGenomePositions } from './hooks/useGenomePositions.jsx';
 export { useWorker } from './hooks/useWorker.jsx';
 export { useInterval } from './hooks/useInterval.jsx';
 export { useLocalData } from './hooks/useLocalData.jsx';
+export { useTreeData } from './hooks/useTreeData.jsx';
 
 // DeckGL Layers
 export { GenomeGridLayer, GenomeInfoLayer, TimeGridLayer } from './layers/index.js';

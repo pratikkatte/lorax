@@ -7,6 +7,7 @@ import { useDeckLayers } from '../hooks/useDeckLayers.jsx';
 import { useDeckController } from '../hooks/useDeckController.jsx';
 import { useInterval } from '../hooks/useInterval.jsx';
 import { useLocalData } from '../hooks/useLocalData.jsx';
+import { useTreeData } from '../hooks/useTreeData.jsx';
 import { useGenomePositions } from '../hooks/useGenomePositions.jsx';
 import { mergeWithDefaults, validateViewConfig, getEnabledViews } from '../utils/deckViewConfig.js';
 
@@ -46,7 +47,7 @@ const LoraxDeckGL = forwardRef(({
   const { zoomAxis, panDirection } = useDeckController();
 
   // 3. Get config values from context for genomic coordinate conversion
-  const { globalBpPerUnit, genomeLength, tsconfig, worker, workerConfigReady } = useLorax();
+  const { globalBpPerUnit, genomeLength, tsconfig, worker, workerConfigReady, queryTreeLayout, isConnected } = useLorax();
 
   // 4. Views and view state management (with genomic coordinates)
   const {
@@ -97,6 +98,14 @@ const LoraxDeckGL = forwardRef(({
     displayOptions: { selectionStrategy: 'largestSpan' }
   });
 
+  // 6c. Fetch tree data from backend (auto-triggers on displayArray change)
+  const { treeData, isLoading: treeDataLoading, error: treeDataError } = useTreeData({
+    displayArray,
+    queryTreeLayout,
+    isConnected,
+    sparsityOptions: { precision: 2 }
+  });
+
   // 7. Compute genome position tick marks
   const genomePositions = useGenomePositions(genomicCoords);
 
@@ -134,8 +143,12 @@ const LoraxDeckGL = forwardRef(({
     // Local data for tree visualization
     localBins,
     displayArray,
-    showingAllTrees
-  }), [viewState, views, viewReset, xzoom, yzoom, genomicCoords, setGenomicCoords, coordsReady, localBins, displayArray, showingAllTrees]);
+    showingAllTrees,
+    // Tree data from backend
+    treeData,
+    treeDataLoading,
+    treeDataError
+  }), [viewState, views, viewReset, xzoom, yzoom, genomicCoords, setGenomicCoords, coordsReady, localBins, displayArray, showingAllTrees, treeData, treeDataLoading, treeDataError]);
 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative' }}>

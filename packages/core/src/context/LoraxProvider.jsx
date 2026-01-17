@@ -1,6 +1,7 @@
 import React, { createContext, useContext } from 'react';
 import { useLoraxConnection } from '../hooks/useLoraxConnection.jsx';
 import { useLoraxConfig } from '../hooks/useLoraxConfig.jsx';
+import { useMetadataFilter } from '../hooks/useMetadataFilter.jsx';
 
 export const LoraxContext = createContext(null);
 
@@ -14,6 +15,7 @@ export const LoraxContext = createContext(null);
  * @param {Function} props.setGettingDetails - Callback for details loading state
  * @param {boolean} props.enableConfig - Enable config management (default: false)
  * @param {Function} props.onConfigLoaded - Callback when config is loaded
+ * @param {boolean} props.enableMetadataFilter - Enable metadata filter management (default: false)
  */
 export function LoraxProvider({
   children,
@@ -21,7 +23,8 @@ export function LoraxProvider({
   isProd = false,
   setGettingDetails,
   enableConfig = false,
-  onConfigLoaded = null
+  onConfigLoaded = null,
+  enableMetadataFilter = false
 }) {
   const connection = useLoraxConnection({ apiBase, isProd, setGettingDetails });
 
@@ -33,11 +36,22 @@ export function LoraxProvider({
     setStatusMessage: connection.setStatusMessage
   });
 
-  // Merge connection and config state
+  // Metadata filter state (always call hook to follow React rules)
+  const filterState = useMetadataFilter({
+    enabled: enableMetadataFilter && enableConfig,
+    config: {
+      ...configState,
+      isConnected: connection.isConnected
+    }
+  });
+
+  // Merge connection, config, and filter state
   const value = {
     ...connection,
     ...configState,
-    configEnabled: enableConfig
+    configEnabled: enableConfig,
+    // Conditionally include filter state
+    ...(enableMetadataFilter && enableConfig ? filterState : {})
   };
 
   return (

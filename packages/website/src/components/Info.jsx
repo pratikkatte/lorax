@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useLorax } from "@lorax/core";
 import InfoMetadata from "./info/InfoMetadata";
 import InfoFilter from "./info/InfoFilter";
 import InfoMutations from "./info/InfoMutations";
@@ -6,23 +7,38 @@ import InfoMutations from "./info/InfoMutations";
 const Info = ({ setShowInfo }) => {
   const [activeTab, setActiveTab] = useState('metadata');
 
-  // Placeholder state for InfoMetadata
+  // Get filter state from context (via useMetadataFilter in LoraxProvider)
+  const {
+    // Filter state from useMetadataFilter
+    selectedColorBy,
+    setSelectedColorBy,
+    enabledValues,
+    setEnabledValues,
+    searchTags,
+    setSearchTags,
+    searchTerm,
+    setSearchTerm,
+    coloryby,
+    metadataColors,
+    setMetadataColors,
+    // Config state from useLoraxConfig
+    sampleDetails: contextSampleDetails,
+    tsconfig: contextTsconfig
+  } = useLorax();
+
+  // Placeholder state for InfoMetadata (not yet wired to context)
   const [treeDetails, setTreeDetails] = useState(null);
   const [nodeDetails, setNodeDetails] = useState(null);
   const [individualDetails, setIndividualDetails] = useState(null);
   const [populationDetails, setPopulationDetails] = useState(null);
   const [nodeMutations, setNodeMutations] = useState(null);
   const [nodeEdges, setNodeEdges] = useState(null);
-  const [sampleDetails, setSampleDetails] = useState(null);
-  const [tsconfig, setTsconfig] = useState({});
 
-  // Placeholder state for InfoFilter
-  const [searchTerm, setSearchTerm] = useState("");
-  const [searchTags, setSearchTags] = useState([]);
-  const [selectedColorBy, setSelectedColorBy] = useState(null);
-  const [coloryby, setColoryby] = useState({});
-  const [metadataColors, setMetadataColors] = useState({});
-  const [enabledValues, setEnabledValues] = useState(new Set());
+  // Use context values or fall back to empty defaults for InfoMetadata
+  const sampleDetails = contextSampleDetails || null;
+  const tsconfig = contextTsconfig || {};
+
+  // Placeholder state for Trees section in InfoFilter (not yet wired)
   const [visibleTrees, setVisibleTrees] = useState([]);
   const [treeColors, setTreeColors] = useState({});
   const [settings, setSettings] = useState({ display_lineage_paths: false });

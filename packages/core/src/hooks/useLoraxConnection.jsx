@@ -121,6 +121,42 @@ export function useLoraxConnection({ apiBase, isProd = false }) {
     });
   }, [initializeSession, emit, once, off, socketRef, sidRef]);
 
+  /**
+   * Query tree layout from backend via socket.
+   * Returns raw socket response - parsing done by caller.
+   * @param {number[]} displayArray - Tree indices to fetch
+   * @param {Object} sparsityOptions - { resolution, precision }
+   * @returns {Promise<{buffer, global_min_time, global_max_time, tree_indices}>}
+   */
+  const queryTreeLayout = useCallback((displayArray, sparsityOptions = {}) => {
+    return new Promise((resolve, reject) => {
+      if (!socketRef.current) {
+        reject(new Error("Socket not available"));
+        return;
+      }
+
+      const handleResult = (message) => {
+        off("postorder-layout-result", handleResult);
+
+        if (message.error) {
+          reject(new Error(message.error));
+          return;
+        }
+
+        // Return raw response - let caller parse the buffer
+        resolve(message);
+      };
+
+      once("postorder-layout-result", handleResult);
+      emit("process_postorder_layout", {
+        displayArray,
+        sparsity_resolution: sparsityOptions.resolution || null,
+        sparsity_precision: sparsityOptions.precision || null,
+        lorax_sid: sidRef.current
+      });
+    });
+  }, [emit, once, off, socketRef, sidRef]);
+
   // Fetch projects - uses apiBase internally
   const getProjects = useCallback(() => {
     return getProjectsApi(apiBase);
@@ -138,6 +174,7 @@ export function useLoraxConnection({ apiBase, isProd = false }) {
       socketRef,
       isConnected,
       queryFile,
+      queryTreeLayout,
       loraxSid,
       getProjects,
       uploadFileToBackend
@@ -147,6 +184,7 @@ export function useLoraxConnection({ apiBase, isProd = false }) {
       setStatusMessage,
       isConnected,
       queryFile,
+      queryTreeLayout,
       loraxSid,
       getProjects,
       uploadFileToBackend

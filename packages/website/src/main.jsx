@@ -15,6 +15,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
         apiBase={apiBase}
         isProd={isProd}
         enableConfig={true}
+        enableMetadataFilter={true}
       >
         <App />
       </LoraxProvider>
