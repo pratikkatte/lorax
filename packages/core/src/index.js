@@ -7,6 +7,7 @@ export { useSocket } from './hooks/useSocket.jsx';
 export { useLoraxConnection } from './hooks/useLoraxConnection.jsx';
 export { useLoraxConfig } from './hooks/useLoraxConfig.jsx';
 export { useMetadataFilter } from './hooks/useMetadataFilter.jsx';
+export { useMutations } from './hooks/useMutations.jsx';
 
 // Services
 export { initSession, getProjects, uploadFileToBackend } from './services/api.js';
@@ -52,9 +53,10 @@ export { useWorker } from './hooks/useWorker.jsx';
 export { useInterval } from './hooks/useInterval.jsx';
 export { useLocalData } from './hooks/useLocalData.jsx';
 export { useTreeData } from './hooks/useTreeData.jsx';
+export { useRenderData } from './hooks/useRenderData.jsx';
 
 // DeckGL Layers
-export { GenomeGridLayer, GenomeInfoLayer, TimeGridLayer } from './layers/index.js';
+export { GenomeGridLayer, GenomeInfoLayer, TimeGridLayer, TreeCompositeLayer } from './layers/index.js';
 
 // DeckGL Constants
 export { INITIAL_VIEW_STATE, DEFAULT_VIEW_CONFIG, VIEW_ID_MAP, CONFIG_KEY_MAP } from './constants/deckViews.js';

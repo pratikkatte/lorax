@@ -30,6 +30,10 @@ function FileView() {
   const [statusMessage, setStatusMessage] = useState(null);
   const [showInfo, setShowInfo] = useState(false);
 
+  // Navigation state for mutation tab
+  const [clickedGenomeInfo, setClickedGenomeInfo] = useState(null);
+  const [highlightedMutationNode, setHighlightedMutationNode] = useState(null);
+
   // Viewport and view dimensions with localStorage persistence
   const {
     viewport,
@@ -90,6 +94,16 @@ function FileView() {
       setGenomicPosition(initialValue);
     }
   }, [tsconfig, genomeLength, genomicPosition]);
+
+  // Handle navigation from mutation click - zoom to tree
+  useEffect(() => {
+    if (clickedGenomeInfo && deckRef.current?.setGenomicCoords) {
+      const newPosition = [clickedGenomeInfo.s, clickedGenomeInfo.e];
+      deckRef.current.setGenomicCoords(newPosition);
+      // Clear after navigation to allow clicking same mutation again
+      setClickedGenomeInfo(null);
+    }
+  }, [clickedGenomeInfo]);
 
   // Callback when deck.gl view changes (pan/zoom) - syncs deck → slider
   const handleGenomicCoordsChange = useCallback((coords) => {
@@ -201,7 +215,12 @@ function FileView() {
           className={`fixed top-0 right-0 w-[25%] min-w-[320px] h-full z-40 shadow-xl transition-transform duration-300 ease-in-out ${showInfo ? 'translate-x-0' : 'translate-x-full'
             }`}
         >
-          <Info setShowInfo={setShowInfo} />
+          <Info
+            setShowInfo={setShowInfo}
+            genomicCoords={genomicPosition}
+            setClickedGenomeInfo={setClickedGenomeInfo}
+            setHighlightedMutationNode={setHighlightedMutationNode}
+          />
         </div>
       </div>
     </div>

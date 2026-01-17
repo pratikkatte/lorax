@@ -1,4 +1,27 @@
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
+
+/**
+ * Find the tree index that contains the given position using binary search.
+ * intervals is a sorted array of tree start positions.
+ * Returns the index of the interval that contains the position.
+ */
+function findTreeIndex(intervals, position) {
+  if (!intervals || intervals.length === 0) return -1;
+
+  let low = 0;
+  let high = intervals.length - 1;
+
+  while (low < high) {
+    const mid = Math.floor((low + high + 1) / 2);
+    if (intervals[mid] <= position) {
+      low = mid;
+    } else {
+      high = mid - 1;
+    }
+  }
+
+  return low;
+}
 
 /**
  * Format search range for display
@@ -13,7 +36,7 @@ function formatRange(range) {
 }
 
 export default function InfoMutations({
-  // Props that will be wired up later
+  // Data props from useMutations hook
   mutations = [],
   totalCount = 0,
   hasMore = false,
@@ -25,9 +48,39 @@ export default function InfoMutations({
   loadMore,
   triggerSearch,
   clearSearch,
-  setSearchRange
+  setSearchRange,
+  // Navigation props
+  intervals,
+  genomeLength,
+  setClickedGenomeInfo,
+  setHighlightedMutationNode
 }) {
   const [searchInput, setSearchInput] = useState("");
+
+  // Handle click on a mutation - navigate to the tree containing this position
+  const handleMutationClick = useCallback((mutation) => {
+    if (!intervals || !setClickedGenomeInfo) return;
+
+    const position = mutation.position;
+
+    // Find the tree index for this position
+    const treeIndex = findTreeIndex(intervals, position);
+    if (treeIndex < 0) return;
+
+    // Get the start and end positions for this tree
+    const start = intervals[treeIndex];
+    const end = intervals[treeIndex + 1] !== undefined
+      ? intervals[treeIndex + 1]
+      : (genomeLength || start + 1000);
+
+    // Trigger the zoom to this tree
+    setClickedGenomeInfo({ s: start, e: end });
+
+    // Set the highlighted mutation node
+    if (setHighlightedMutationNode && mutation.node_id !== undefined) {
+      setHighlightedMutationNode(String(mutation.node_id));
+    }
+  }, [intervals, genomeLength, setClickedGenomeInfo, setHighlightedMutationNode]);
 
   // Search range options (in bp)
   const rangeOptions = [
@@ -171,6 +224,7 @@ export default function InfoMutations({
             <div
               key={`${mutation.position}-${mutation.node_id}-${index}`}
               className="border-b border-slate-100 last:border-0 py-2 cursor-pointer hover:bg-emerald-50 transition-colors rounded px-2 -mx-2"
+              onClick={() => handleMutationClick(mutation)}
             >
               <div className="flex items-center justify-between text-sm">
                 <div className="flex flex-col">

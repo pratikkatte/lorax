@@ -2,6 +2,7 @@ import { useMemo, useCallback } from 'react';
 import { GenomeGridLayer } from '../layers/GenomeGridLayer.jsx';
 import { GenomeInfoLayer } from '../layers/GenomeInfoLayer.jsx';
 import { TimeGridLayer } from '../layers/TimeGridLayer.jsx';
+import { TreeCompositeLayer } from '../layers/TreeCompositeLayer.jsx';
 
 /**
  * Hook for creating deck.gl layers for enabled views
@@ -12,9 +13,10 @@ import { TimeGridLayer } from '../layers/TimeGridLayer.jsx';
  * @param {number} params.globalBpPerUnit - Base pairs per coordinate unit (optional)
  * @param {number[]} params.visibleIntervals - Array of visible interval positions in bp
  * @param {number[]} params.genomePositions - Array of genome position tick marks in bp
+ * @param {Object} params.renderData - Pre-computed render data for tree visualization
  * @returns {Object} { layers, layerFilter }
  */
-export function useDeckLayers({ enabledViews, globalBpPerUnit = null, visibleIntervals = [], genomePositions = [] }) {
+export function useDeckLayers({ enabledViews, globalBpPerUnit = null, visibleIntervals = [], genomePositions = [], renderData = null }) {
   /**
    * Layer filter function - maps layer IDs to view IDs
    * Ensures only relevant layers render in each viewport
@@ -66,8 +68,20 @@ export function useDeckLayers({ enabledViews, globalBpPerUnit = null, visibleInt
       }));
     }
 
+    // Tree visualization layer (ortho view)
+    if (enabledViews.includes('ortho') && renderData) {
+      result.push(new TreeCompositeLayer({
+        id: 'main-trees',
+        renderData,
+        edgeColor: [100, 100, 100, 255],
+        edgeWidth: 1,
+        tipRadius: 2,
+        pickable: false
+      }));
+    }
+
     return result;
-  }, [enabledViews, globalBpPerUnit, visibleIntervals, genomePositions]);
+  }, [enabledViews, globalBpPerUnit, visibleIntervals, genomePositions, renderData]);
 
   return { layers, layerFilter };
 }

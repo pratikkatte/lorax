@@ -1,10 +1,15 @@
 import React, { useState } from "react";
-import { useLorax } from "@lorax/core";
+import { useLorax, useMutations } from "@lorax/core";
 import InfoMetadata from "./info/InfoMetadata";
 import InfoFilter from "./info/InfoFilter";
 import InfoMutations from "./info/InfoMutations";
 
-const Info = ({ setShowInfo }) => {
+const Info = ({
+  setShowInfo,
+  genomicCoords,
+  setClickedGenomeInfo,
+  setHighlightedMutationNode
+}) => {
   const [activeTab, setActiveTab] = useState('metadata');
 
   // Get filter state from context (via useMetadataFilter in LoraxProvider)
@@ -23,7 +28,12 @@ const Info = ({ setShowInfo }) => {
     setMetadataColors,
     // Config state from useLoraxConfig
     sampleDetails: contextSampleDetails,
-    tsconfig: contextTsconfig
+    tsconfig: contextTsconfig,
+    // Connection and mutation query functions
+    isConnected,
+    queryMutationsWindow,
+    searchMutations: searchMutationsQuery,
+    genomeLength
   } = useLorax();
 
   // Placeholder state for InfoMetadata (not yet wired to context)
@@ -44,15 +54,13 @@ const Info = ({ setShowInfo }) => {
   const [settings, setSettings] = useState({ display_lineage_paths: false });
   const [hoveredTreeIndex, setHoveredTreeIndex] = useState(null);
 
-  // Placeholder state for InfoMutations
-  const [mutations, setMutations] = useState([]);
-  const [totalCount, setTotalCount] = useState(0);
-  const [hasMore, setHasMore] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [searchPosition, setSearchPosition] = useState(null);
-  const [searchRange, setSearchRange] = useState(10000);
-  const [isSearchMode, setIsSearchMode] = useState(false);
+  // Use mutations hook from core
+  const mutationsHook = useMutations({
+    genomicValues: genomicCoords,
+    queryMutationsWindow,
+    searchMutations: searchMutationsQuery,
+    isConnected
+  });
 
   return (
     <div className="w-full h-full bg-slate-50 flex flex-col font-sans">
@@ -118,18 +126,22 @@ const Info = ({ setShowInfo }) => {
         )}
         {activeTab === 'mutations' && (
           <InfoMutations
-            mutations={mutations}
-            totalCount={totalCount}
-            hasMore={hasMore}
-            isLoading={isLoading}
-            error={error}
-            searchPosition={searchPosition}
-            searchRange={searchRange}
-            isSearchMode={isSearchMode}
-            loadMore={() => {}}
-            triggerSearch={() => {}}
-            clearSearch={() => {}}
-            setSearchRange={setSearchRange}
+            mutations={mutationsHook.mutations}
+            totalCount={mutationsHook.totalCount}
+            hasMore={mutationsHook.hasMore}
+            isLoading={mutationsHook.isLoading}
+            error={mutationsHook.error}
+            searchPosition={mutationsHook.searchPosition}
+            searchRange={mutationsHook.searchRange}
+            isSearchMode={mutationsHook.isSearchMode}
+            loadMore={mutationsHook.loadMore}
+            triggerSearch={mutationsHook.triggerSearch}
+            clearSearch={mutationsHook.clearSearch}
+            setSearchRange={mutationsHook.setSearchRange}
+            intervals={tsconfig?.intervals}
+            genomeLength={genomeLength}
+            setClickedGenomeInfo={setClickedGenomeInfo}
+            setHighlightedMutationNode={setHighlightedMutationNode}
           />
         )}
         {activeTab === 'filter' && (

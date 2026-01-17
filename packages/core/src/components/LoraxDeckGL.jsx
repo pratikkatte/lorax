@@ -8,6 +8,7 @@ import { useDeckController } from '../hooks/useDeckController.jsx';
 import { useInterval } from '../hooks/useInterval.jsx';
 import { useLocalData } from '../hooks/useLocalData.jsx';
 import { useTreeData } from '../hooks/useTreeData.jsx';
+import { useRenderData } from '../hooks/useRenderData.jsx';
 import { useGenomePositions } from '../hooks/useGenomePositions.jsx';
 import { mergeWithDefaults, validateViewConfig, getEnabledViews } from '../utils/deckViewConfig.js';
 
@@ -106,6 +107,12 @@ const LoraxDeckGL = forwardRef(({
     sparsityOptions: { precision: 2 }
   });
 
+  // 6d. Compute render data (typed arrays) for tree visualization
+  const { renderData, isLoading: renderDataLoading } = useRenderData({
+    localBins,
+    treeData
+  });
+
   // 7. Compute genome position tick marks
   const genomePositions = useGenomePositions(genomicCoords);
 
@@ -114,7 +121,8 @@ const LoraxDeckGL = forwardRef(({
     enabledViews,
     globalBpPerUnit,
     visibleIntervals,
-    genomePositions
+    genomePositions,
+    renderData
   });
 
   // 9. Event handlers - run internal logic first, then call external handlers

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useMemo, useCallback } from "react";
+import * as arrow from "apache-arrow";
 import websocketEvents from "../utils/websocketEvents.js";
 import { getProjects as getProjectsApi, uploadFileToBackend as uploadFileApi } from "../services/api.js";
 import { useSession } from "./useSession.jsx";
@@ -157,6 +158,164 @@ export function useLoraxConnection({ apiBase, isProd = false }) {
     });
   }, [emit, once, off, socketRef, sidRef]);
 
+  /**
+   * Query mutations in a genomic window.
+   * Returns mutations with position, mutation string, node_id, etc.
+   * @param {number} start - Start genomic position (bp)
+   * @param {number} end - End genomic position (bp)
+   * @param {number} offset - Pagination offset (default 0)
+   * @param {number} limit - Maximum mutations to return (default 1000)
+   * @returns {Promise<{mutations, total_count, has_more, start, end, offset, limit}>}
+   */
+  const queryMutationsWindow = useCallback((start, end, offset = 0, limit = 1000) => {
+    return new Promise((resolve, reject) => {
+      if (!socketRef.current) {
+        reject(new Error("Socket not available"));
+        return;
+      }
+
+      const handleResult = (message) => {
+        off("mutations-window-result", handleResult);
+        if (message.error) {
+          reject(new Error(message.error));
+          return;
+        }
+
+        try {
+          // Parse PyArrow buffer
+          const buffer = new Uint8Array(message.buffer);
+          const table = arrow.tableFromIPC(buffer);
+
+          const numRows = table.numRows;
+          let mutations = [];
+
+          if (numRows > 0) {
+            const positionCol = table.getChild('position');
+            const mutationCol = table.getChild('mutation');
+            const nodeIdCol = table.getChild('node_id');
+            const siteIdCol = table.getChild('site_id');
+            const ancestralStateCol = table.getChild('ancestral_state');
+            const derivedStateCol = table.getChild('derived_state');
+
+            for (let i = 0; i < numRows; i++) {
+              mutations.push({
+                position: Number(positionCol.get(i)),
+                mutation: mutationCol.get(i),
+                node_id: nodeIdCol.get(i),
+                site_id: siteIdCol.get(i),
+                ancestral_state: ancestralStateCol.get(i),
+                derived_state: derivedStateCol.get(i),
+              });
+            }
+          }
+
+          resolve({
+            mutations,
+            total_count: message.total_count,
+            has_more: message.has_more,
+            start: message.start,
+            end: message.end,
+            offset: message.offset,
+            limit: message.limit
+          });
+        } catch (parseError) {
+          console.error("Error parsing mutations PyArrow buffer:", parseError);
+          reject(parseError);
+        }
+      };
+
+      once("mutations-window-result", handleResult);
+      emit("query_mutations_window", {
+        start,
+        end,
+        offset,
+        limit,
+        lorax_sid: sidRef.current
+      });
+    });
+  }, [emit, once, off, socketRef, sidRef]);
+
+  /**
+   * Search mutations by position with configurable range.
+   * Returns mutations sorted by distance from the searched position.
+   * @param {number} position - Center position to search around (bp)
+   * @param {number} rangeBp - Total range to search (default 5000)
+   * @param {number} offset - Pagination offset (default 0)
+   * @param {number} limit - Maximum mutations to return (default 1000)
+   * @returns {Promise<{mutations, total_count, has_more, search_start, search_end, position, range_bp, offset, limit}>}
+   */
+  const searchMutations = useCallback((position, rangeBp = 5000, offset = 0, limit = 1000) => {
+    return new Promise((resolve, reject) => {
+      if (!socketRef.current) {
+        reject(new Error("Socket not available"));
+        return;
+      }
+
+      const handleResult = (message) => {
+        off("mutations-search-result", handleResult);
+        if (message.error) {
+          reject(new Error(message.error));
+          return;
+        }
+
+        try {
+          // Parse PyArrow buffer
+          const buffer = new Uint8Array(message.buffer);
+          const table = arrow.tableFromIPC(buffer);
+
+          const numRows = table.numRows;
+          let mutations = [];
+
+          if (numRows > 0) {
+            const positionCol = table.getChild('position');
+            const mutationCol = table.getChild('mutation');
+            const nodeIdCol = table.getChild('node_id');
+            const siteIdCol = table.getChild('site_id');
+            const ancestralStateCol = table.getChild('ancestral_state');
+            const derivedStateCol = table.getChild('derived_state');
+            const distanceCol = table.getChild('distance');
+
+            for (let i = 0; i < numRows; i++) {
+              mutations.push({
+                position: Number(positionCol.get(i)),
+                mutation: mutationCol.get(i),
+                node_id: nodeIdCol.get(i),
+                site_id: siteIdCol.get(i),
+                ancestral_state: ancestralStateCol.get(i),
+                derived_state: derivedStateCol.get(i),
+                distance: Number(distanceCol.get(i)),
+              });
+            }
+          }
+
+          resolve({
+            mutations,
+            total_count: message.total_count,
+            has_more: message.has_more,
+            search_start: message.search_start,
+            search_end: message.search_end,
+            position: message.position,
+            range_bp: message.range_bp,
+            offset: message.offset,
+            limit: message.limit
+          });
+        } catch (parseError) {
+          console.error("Error parsing mutations search PyArrow buffer:", parseError);
+          reject(parseError);
+        }
+      };
+
+      once("mutations-search-result", handleResult);
+      emit("search_mutations", {
+        position,
+        range_bp: rangeBp,
+        offset,
+        limit,
+        lorax_sid: sidRef.current
+      });
+    });
+  }, [emit, once, off, socketRef, sidRef]);
+
   // Fetch projects - uses apiBase internally
   const getProjects = useCallback(() => {
     return getProjectsApi(apiBase);
@@ -175,6 +334,8 @@ export function useLoraxConnection({ apiBase, isProd = false }) {
       isConnected,
       queryFile,
       queryTreeLayout,
+      queryMutationsWindow,
+      searchMutations,
       loraxSid,
       getProjects,
       uploadFileToBackend
@@ -185,6 +346,8 @@ export function useLoraxConnection({ apiBase, isProd = false }) {
       isConnected,
       queryFile,
       queryTreeLayout,
+      queryMutationsWindow,
+      searchMutations,
       loraxSid,
       getProjects,
       uploadFileToBackend
