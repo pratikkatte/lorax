@@ -52,21 +52,15 @@ export function useTreeData({
       const requestId = ++latestRequestId.current;
 
       try {
-        console.log('[useTreeData] Fetching trees:', displayArray.length, 'trees, indices:', displayArray.slice(0, 5), displayArray.length > 5 ? '...' : '');
-
-        // Get raw socket response
         const response = await queryTreeLayout(displayArray, sparsityOptions);
 
         // Ignore stale responses
         if (requestId !== latestRequestId.current) {
-          console.log('[useTreeData] Ignoring stale response for request', requestId);
           return;
         }
 
         // Parse PyArrow buffer using utility
         const parsed = parseTreeLayoutBuffer(response.buffer);
-
-        console.log('[useTreeData] Received:', parsed.node_id.length, 'nodes across', response.tree_indices?.length || 0, 'trees');
 
         setTreeData({
           ...parsed,

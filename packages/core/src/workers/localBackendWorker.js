@@ -115,16 +115,6 @@ function getLocalData(data) {
     { selectionStrategy, viewportStart: start, viewportEnd: end }
   );
 
-  console.log('[Worker] getLocalData result:', {
-    intervalsCount: intervals.length,
-    localBinsCount: return_local_bins.size,
-    displayArrayLength: displayArray.length,
-    displayArray,
-    showingAllTrees,
-    scaleFactor: new_globalBp / globalBpPerUnit,
-    inputs: { start, end, globalBpPerUnit, new_globalBp, genome_length }
-  });
-
   return {
     local_bins: serializeBinsForTransfer(return_local_bins),
     displayArray,

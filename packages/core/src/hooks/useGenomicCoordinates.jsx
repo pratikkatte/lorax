@@ -64,11 +64,9 @@ export function useGenomicCoordinates({
     if (urlCoords) {
       // URL params take precedence
       initialCoords = clampGenomicCoords(urlCoords, genomeLength);
-      console.log('[useGenomicCoordinates] Initialized from URL:', initialCoords);
     } else if (tsconfigValue && Array.isArray(tsconfigValue) && tsconfigValue.length === 2) {
       // Fall back to backend's initial_position
       initialCoords = clampGenomicCoords(tsconfigValue, genomeLength);
-      console.log('[useGenomicCoordinates] Initialized from tsconfig.value:', initialCoords);
     }
 
     if (initialCoords) {

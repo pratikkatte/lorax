@@ -63,7 +63,6 @@ function groupNodesByTree(node_id, parent_id, is_tip, tree_idx, x, y, displayArr
       displayArray.length === uniqueTreeIdx.length;
 
     if (isZeroIndexed) {
-      console.log('[RenderWorker] Detected 0-indexed tree_idx, mapping to global indices');
       displayArray.forEach((globalIdx, localIdx) => {
         indexMapping.set(localIdx, globalIdx);
       });
@@ -154,7 +153,6 @@ function computeRenderArrays(data) {
 
   // Handle empty data
   if (!node_id || node_id.length === 0 || modelMatricesMap.size === 0) {
-    console.log('[RenderWorker] Empty data - node_id:', node_id?.length, 'modelMatrices:', modelMatricesMap.size);
     return {
       pathPositions: new Float64Array(0),
       pathStartIndices: [0],
@@ -175,10 +173,6 @@ function computeRenderArrays(data) {
     const treeNodes = treeNodesMap.get(treeIdx);
     if (treeNodes) totalNodes += treeNodes.length;
   }
-
-  console.log('[RenderWorker] treeNodesMap keys:', [...treeNodesMap.keys()]);
-  console.log('[RenderWorker] modelMatrices keys:', [...modelMatricesMap.keys()]);
-  console.log('[RenderWorker] totalNodes:', totalNodes);
 
   // Ensure buffers are large enough
   const pathSize = totalNodes * 6;  // 6 floats per L-shape (3 points * 2 coords)

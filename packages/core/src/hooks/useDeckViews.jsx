@@ -89,8 +89,6 @@ export function useDeckViews({
     if (!genomicInitialViewState || urlInitialized.current) return;
     if (!decksize) return; // Wait for deck to be sized
 
-    console.log('[useDeckViews] Applying initial viewState from URL/tsconfig:', genomicInitialViewState);
-
     setViewState(prev => {
       const { target, zoom } = genomicInitialViewState;
 

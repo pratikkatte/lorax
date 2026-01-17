@@ -163,8 +163,6 @@ export function useRenderData({
       const requestId = ++latestRequestId.current;
 
       try {
-        console.log('[useRenderData] Computing render data for', visibleCount, 'trees,', treeData.node_id.length, 'nodes');
-
         const result = await request('compute-render-data', {
           node_id: treeData.node_id,
           parent_id: treeData.parent_id,
@@ -181,11 +179,8 @@ export function useRenderData({
 
         // Ignore stale responses
         if (requestId !== latestRequestId.current) {
-          console.log('[useRenderData] Ignoring stale response');
           return;
         }
-
-        console.log('[useRenderData] Received:', result.edgeCount, 'edges,', result.tipCount, 'tips');
 
         setRenderData(result);
         setIsLoading(false);

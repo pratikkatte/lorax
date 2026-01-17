@@ -117,25 +117,6 @@ export function useLocalData({
     setShowingAllTrees(false);
   }, []);
 
-  console.log('useLocalData', {
-    localBins,
-    displayArray,
-    showingAllTrees,
-    isReady: workerConfigReady && !!globalBpPerUnit,
-    // Debug: show what's missing
-    debug: {
-      workerConfigReady,
-      hasWorker: !!worker,
-      hasGenomicCoords: !!genomicCoords,
-      genomicCoords,
-      globalBpPerUnit,
-      new_globalBp,
-      allIntervalsInViewLength: allIntervalsInView?.length ?? 0,
-      viewState,
-      viewStateZoom: viewState?.zoom,
-    }
-  });
-
   return useMemo(() => ({
     localBins,
     displayArray,

@@ -247,20 +247,6 @@ export function new_complete_experiment_map(localBins, globalBpPerUnit, new_glob
 
   const showingAllTrees = approxEqual;
 
-  console.log('[binningUtils] new_complete_experiment_map:', {
-    allTreesLength: allTrees.length,
-    scaleFactor,
-    approxEqual,
-    effectiveMaxTrees,
-    numSlots,
-    viewportSpan,
-    slotWidth,
-    minStart,
-    maxEnd,
-    viewportStart,
-    viewportEnd
-  });
-
   // ────────────────────────────────────────────────────────────────────────
   // STEP 3: When scaleFactor ≈ 1, show ALL trees with uniform width
   // ────────────────────────────────────────────────────────────────────────
