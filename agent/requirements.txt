@@ -1,0 +1,11 @@
+python-dotenv
+langchain
+langchain-community
+langchain-openai
+langchain-core
+langgraph
+openai
+faiss-cpu
+pydantic
+ipython
+pyfiglet

@@ -1,0 +1,19 @@
+name: tskit-rag
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+    - python-dotenv
+    - langchain
+    - langchain-community
+    - langchain-openai
+    - langchain-core
+    - langgraph
+    - openai
+    - faiss-cpu
+    - pydantic
+    - ipython
+    - pyfiglet
