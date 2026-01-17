@@ -10,6 +10,8 @@ import { useLocalData } from '../hooks/useLocalData.jsx';
 import { useTreeData } from '../hooks/useTreeData.jsx';
 import { useRenderData } from '../hooks/useRenderData.jsx';
 import { useGenomePositions } from '../hooks/useGenomePositions.jsx';
+import { useTreePolygons } from '../hooks/useTreePolygons.jsx';
+import TreePolygonOverlay from './TreePolygonOverlay.jsx';
 import { mergeWithDefaults, validateViewConfig, getEnabledViews } from '../utils/deckViewConfig.js';
 
 /**
@@ -35,6 +37,11 @@ const LoraxDeckGL = forwardRef(({
   onGenomicCoordsChange: externalOnGenomicCoordsChange,
   pickingRadius = 10,
   glOptions = { preserveDrawingBuffer: true },
+  // Polygon overlay props
+  showPolygons = true,
+  polygonOptions = {},
+  onPolygonHover,
+  onPolygonClick,
   ...otherProps
 }, ref) => {
   const deckRef = useRef(null);
@@ -126,7 +133,26 @@ const LoraxDeckGL = forwardRef(({
     renderData
   });
 
-  // 9. Event handlers - run internal logic first, then call external handlers
+  // 9. Tree polygon overlay computation and animation
+  const {
+    polygons,
+    hoveredPolygon,
+    setHoveredPolygon,
+    isReady: polygonsReady,
+    _cacheViewports
+  } = useTreePolygons({
+    localBins,
+    globalBpPerUnit,
+    viewState,
+    enabled: showPolygons,
+    animate: polygonOptions?.animate ?? true,
+    animationDuration: polygonOptions?.animationDuration ?? 300,
+    easing: polygonOptions?.easing ?? 'easeOut',
+    onPolygonHover,
+    onPolygonClick
+  });
+
+  // 10. Event handlers - run internal logic first, then call external handlers
   const handleResize = useCallback(({ width, height }) => {
     setDecksize({ width, height });
     externalOnResize?.({ width, height });
@@ -137,7 +163,13 @@ const LoraxDeckGL = forwardRef(({
     externalOnViewStateChange?.(params);
   }, [internalHandleViewStateChange, externalOnViewStateChange]);
 
-  // 10. Ref forwarding - expose deck instance, viewState, and genomic coordinates
+  const handleAfterRender = useCallback(() => {
+    if (showPolygons && _cacheViewports && deckRef.current?.deck) {
+      _cacheViewports(deckRef.current.deck);
+    }
+  }, [showPolygons, _cacheViewports]);
+
+  // 11. Ref forwarding - expose deck instance, viewState, and genomic coordinates
   useImperativeHandle(ref, () => ({
     getDeck: () => deckRef.current?.deck,
     getViewState: () => viewState,
@@ -156,8 +188,13 @@ const LoraxDeckGL = forwardRef(({
     // Tree data from backend
     treeData,
     treeDataLoading,
-    treeDataError
-  }), [viewState, views, viewReset, xzoom, yzoom, genomicCoords, setGenomicCoords, coordsReady, localBins, displayArray, showingAllTrees, treeData, treeDataLoading, treeDataError]);
+    treeDataError,
+    // Polygon overlay state
+    polygons,
+    hoveredPolygon,
+    setHoveredPolygon,
+    polygonsReady
+  }), [viewState, views, viewReset, xzoom, yzoom, genomicCoords, setGenomicCoords, coordsReady, localBins, displayArray, showingAllTrees, treeData, treeDataLoading, treeDataError, polygons, hoveredPolygon, setHoveredPolygon, polygonsReady]);
 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative' }}>
@@ -171,10 +208,24 @@ const LoraxDeckGL = forwardRef(({
         onViewStateChange={handleViewStateChange}
         views={views}
         onResize={handleResize}
+        onAfterRender={handleAfterRender}
         {...otherProps}
       >
         {enabledViews.map(viewId => (
-          <View key={viewId} id={viewId} />
+          <View key={viewId} id={viewId}>
+            {viewId === 'ortho' && showPolygons && (
+              <TreePolygonOverlay
+                polygons={polygons}
+                fillColor={polygonOptions?.fillColor}
+                hoverFillColor={polygonOptions?.hoverFillColor}
+                strokeColor={polygonOptions?.strokeColor}
+                strokeWidth={polygonOptions?.strokeWidth}
+                enableTransitions={polygonOptions?.enableTransitions}
+                onHover={setHoveredPolygon}
+                onClick={onPolygonClick}
+              />
+            )}
+          </View>
         ))}
       </DeckGL>
     </div>

@@ -42,6 +42,7 @@ export {
 
 // DeckGL Component
 export { default as LoraxDeckGL } from './components/LoraxDeckGL.jsx';
+export { default as TreePolygonOverlay } from './components/TreePolygonOverlay.jsx';
 
 // DeckGL Hooks
 export { useDeckViews } from './hooks/useDeckViews.jsx';
@@ -54,6 +55,7 @@ export { useInterval } from './hooks/useInterval.jsx';
 export { useLocalData } from './hooks/useLocalData.jsx';
 export { useTreeData } from './hooks/useTreeData.jsx';
 export { useRenderData } from './hooks/useRenderData.jsx';
+export { useTreePolygons } from './hooks/useTreePolygons.jsx';
 
 // DeckGL Layers
 export { GenomeGridLayer, GenomeInfoLayer, TimeGridLayer, TreeCompositeLayer } from './layers/index.js';
@@ -64,6 +66,15 @@ export { INITIAL_VIEW_STATE, DEFAULT_VIEW_CONFIG, VIEW_ID_MAP, CONFIG_KEY_MAP } 
 // DeckGL Utilities
 export { validateViewConfig, mergeWithDefaults, getEnabledViews, getViewDimensions } from './utils/deckViewConfig.js';
 export { getPanStep, panLimit } from './utils/viewStateUtils.js';
+
+// Polygon Projection Utilities
+export {
+  computePolygonVertices,
+  isPolygonVisible,
+  interpolateVertices,
+  computeAllPolygons,
+  easingFunctions
+} from './utils/polygonProjection.js';
 
 // DeckGL Controller
 export { MyOrthographicController, setGlobalControllers } from './controllers/MyOrthographicController.js';
