@@ -256,7 +256,9 @@ export function new_complete_experiment_map(localBins, globalBpPerUnit, new_glob
     viewportSpan,
     slotWidth,
     minStart,
-    maxEnd
+    maxEnd,
+    viewportStart,
+    viewportEnd
   });
 
   // ────────────────────────────────────────────────────────────────────────
@@ -301,13 +303,20 @@ export function new_complete_experiment_map(localBins, globalBpPerUnit, new_glob
 
   // ────────────────────────────────────────────────────────────────────────
   // STEP 3b: Assign trees to slots based on their midpoint (zoomed out)
+  // Use viewport bounds for positioning so trees fill the visible area
   // ────────────────────────────────────────────────────────────────────────
+  const effectiveStart = viewportStart ?? minStart;
+  const effectiveEnd = viewportEnd ?? maxEnd;
+  const effectiveSpan = effectiveEnd - effectiveStart;
+  const effectiveSlotWidth = effectiveSpan / numSlots;
+
   const slots = new Map();
 
   for (const tree of allTrees) {
+    // Assign slot based on tree position relative to viewport
     const slotIndex = Math.min(
       numSlots - 1,
-      Math.max(0, Math.floor((tree.midpoint - minStart) / slotWidth))
+      Math.max(0, Math.floor((tree.midpoint - effectiveStart) / effectiveSlotWidth))
     );
 
     if (!slots.has(slotIndex)) {
@@ -321,12 +330,12 @@ export function new_complete_experiment_map(localBins, globalBpPerUnit, new_glob
   // ────────────────────────────────────────────────────────────────────────
   const selectedTrees = new Set();
 
-  const slotVisualWidth = slotWidth / globalBpPerUnit;
+  const slotVisualWidth = effectiveSlotWidth / globalBpPerUnit;
   const treeVisualWidth = slotVisualWidth / spacing;
 
   for (const [slotIndex, treesInSlot] of slots.entries()) {
-    const slotStart = minStart + slotIndex * slotWidth;
-    const slotMidpoint = slotStart + slotWidth / 2;
+    const slotStart = effectiveStart + slotIndex * effectiveSlotWidth;
+    const slotMidpoint = slotStart + effectiveSlotWidth / 2;
 
     let selectedTree;
     if (selectionStrategy === 'centerWeighted') {

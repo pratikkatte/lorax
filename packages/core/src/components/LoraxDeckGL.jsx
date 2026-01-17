@@ -110,8 +110,27 @@ const LoraxDeckGL = forwardRef(({
   // 6d. Compute render data (typed arrays) for tree visualization
   const { renderData, isLoading: renderDataLoading } = useRenderData({
     localBins,
-    treeData
+    treeData,
+    displayArray
   });
+
+  // Debug: Log viewport position vs tree coordinates
+  useEffect(() => {
+    if (renderData && viewState?.ortho) {
+      const target = viewState.ortho.target;
+      const zoom = viewState.ortho.zoom;
+      console.log('[LoraxDeckGL] Viewport info:',
+        'target:', target?.[0], target?.[1],
+        'zoom:', zoom?.[0], zoom?.[1],
+        'genomicCoords:', genomicCoords?.[0], '-', genomicCoords?.[1],
+        'globalBpPerUnit:', globalBpPerUnit
+      );
+      // Trees are at X ~326741-458541 in world coords
+      // Viewport target X should be in this range to see trees
+      console.log('[LoraxDeckGL] Tree X range in world coords: ~326741 to 458541');
+      console.log('[LoraxDeckGL] Viewport X center:', target?.[0], '- should be between 326741 and 458541');
+    }
+  }, [renderData, viewState, genomicCoords, globalBpPerUnit]);
 
   // 7. Compute genome position tick marks
   const genomePositions = useGenomePositions(genomicCoords);

@@ -10,6 +10,7 @@ let requestIdCounter = 0;
  * @param {Object} params
  * @param {Map|null} params.localBins - Map of tree_idx -> { modelMatrix, ... } from useLocalData
  * @param {Object|null} params.treeData - { node_id[], parent_id[], is_tip[], tree_idx[], x[], y[] } from useTreeData
+ * @param {Array|null} params.displayArray - Global tree indices that were requested from backend
  * @param {Object} params.metadataArrays - Optional metadata for tip coloring
  * @param {Object} params.metadataColors - Optional color mapping for metadata values
  * @param {Object} params.populationFilter - Optional { colorBy, enabledValues }
@@ -19,6 +20,7 @@ let requestIdCounter = 0;
 export function useRenderData({
   localBins,
   treeData,
+  displayArray = null,
   metadataArrays = null,
   metadataColors = null,
   populationFilter = null,
@@ -171,6 +173,7 @@ export function useRenderData({
           x: treeData.x,
           y: treeData.y,
           modelMatrices: serializeModelMatrices(localBins),
+          displayArray: displayArray || [],
           metadataArrays,
           metadataColors,
           populationFilter
@@ -200,7 +203,7 @@ export function useRenderData({
         clearTimeout(debounceTimer.current);
       }
     };
-  }, [localBins, treeData, metadataArrays, metadataColors, populationFilter, debounceMs, request, serializeModelMatrices]);
+  }, [localBins, treeData, displayArray, metadataArrays, metadataColors, populationFilter, debounceMs, request, serializeModelMatrices]);
 
   /**
    * Clear worker buffers to free memory

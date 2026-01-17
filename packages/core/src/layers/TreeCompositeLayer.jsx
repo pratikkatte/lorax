@@ -37,6 +37,12 @@ export class TreeCompositeLayer extends CompositeLayer {
   updateState({ props, oldProps }) {
     // Only update when renderData changes
     if (props.renderData !== oldProps.renderData) {
+      console.log('[TreeCompositeLayer] updateState - renderData changed:', {
+        hasRenderData: !!props.renderData,
+        edgeCount: props.renderData?.edgeCount,
+        tipCount: props.renderData?.tipCount,
+        pathPositionsLength: props.renderData?.pathPositions?.length
+      });
       this.setState({
         processedData: props.renderData
       });
@@ -45,7 +51,15 @@ export class TreeCompositeLayer extends CompositeLayer {
 
   renderLayers() {
     const { processedData } = this.state;
-    if (!processedData || !processedData.pathPositions || processedData.edgeCount === 0) {
+    console.log('[TreeCompositeLayer] renderLayers called:', {
+      hasProcessedData: !!processedData,
+      pathPositionsLength: processedData?.pathPositions?.length,
+      edgeCount: processedData?.edgeCount,
+      tipCount: processedData?.tipCount
+    });
+
+    if (!processedData || !processedData.pathPositions || processedData.pathPositions.length === 0) {
+      console.log('[TreeCompositeLayer] No data to render - returning null');
       return null;
     }
 
@@ -60,6 +74,25 @@ export class TreeCompositeLayer extends CompositeLayer {
       highlightData,
       lineageData
     } = processedData;
+
+    // Log coordinate ranges for debugging - sample from entire array
+    if (pathPositions.length > 0) {
+      const xCoords = [];
+      const yCoords = [];
+      const step = Math.max(2, Math.floor(pathPositions.length / 200)); // Sample ~100 points
+      for (let i = 0; i < pathPositions.length; i += step * 2) {
+        xCoords.push(pathPositions[i]);
+        yCoords.push(pathPositions[i + 1]);
+      }
+      console.log('[TreeCompositeLayer] Coordinate ranges (sampled from full array):', {
+        xMin: Math.min(...xCoords),
+        xMax: Math.max(...xCoords),
+        yMin: Math.min(...yCoords),
+        yMax: Math.max(...yCoords),
+        sampleSize: xCoords.length,
+        totalPoints: pathPositions.length / 2
+      });
+    }
 
     const {
       edgeColor,
@@ -88,9 +121,6 @@ export class TreeCompositeLayer extends CompositeLayer {
             getPath: { value: pathPositions, size: 2 }
           }
         },
-        modelMatrix: null,
-        viewId: "ortho",
-        zOffset: 1,
         getColor: edgeColor,
         getWidth: edgeWidth,
         fp64: true,
@@ -173,6 +203,7 @@ export class TreeCompositeLayer extends CompositeLayer {
       }));
     }
 
+    console.log('[TreeCompositeLayer] Returning', layers.length, 'sublayers:', layers.map(l => l.id));
     return layers;
   }
 }

@@ -68,11 +68,16 @@ export function useDeckLayers({ enabledViews, globalBpPerUnit = null, visibleInt
       }));
     }
 
-    // Tree visualization layer (ortho view)
-    if (enabledViews.includes('ortho') && renderData) {
+    // Tree visualization layer (ortho view) - always create, renderData may be null initially
+    if (enabledViews.includes('ortho')) {
+      console.log('[useDeckLayers] Creating TreeCompositeLayer with renderData:', {
+        hasRenderData: !!renderData,
+        edgeCount: renderData?.edgeCount,
+        globalBpPerUnit
+      });
       result.push(new TreeCompositeLayer({
         id: 'main-trees',
-        renderData,
+        renderData: renderData || null,
         edgeColor: [100, 100, 100, 255],
         edgeWidth: 1,
         tipRadius: 2,

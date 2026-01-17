@@ -33,13 +33,47 @@ function ensureBuffer(currentBuffer, requiredSize, ArrayType) {
 
 /**
  * Group nodes by tree index for efficient per-tree processing
+ *
+ * @param {Array} node_id - Node IDs
+ * @param {Array} parent_id - Parent node IDs
+ * @param {Array} is_tip - Tip flags
+ * @param {Array} tree_idx - Tree indices from backend (may be 0-indexed or global)
+ * @param {Array} x - X coordinates
+ * @param {Array} y - Y coordinates
+ * @param {Array} displayArray - Global tree indices that were requested (for mapping)
+ * @returns {Map} Map of global tree index -> nodes
  */
-function groupNodesByTree(node_id, parent_id, is_tip, tree_idx, x, y) {
+function groupNodesByTree(node_id, parent_id, is_tip, tree_idx, x, y, displayArray) {
   const treeMap = new Map();
   const length = node_id.length;
 
+  // Create mapping from backend's tree_idx to global indices
+  // The backend may return tree_idx as 0-indexed positions within the response
+  // displayArray contains the actual global indices that were requested
+  const indexMapping = new Map();
+  if (displayArray && Array.isArray(displayArray)) {
+    // Get unique tree_idx values to check if they're 0-indexed or global
+    const uniqueTreeIdx = [...new Set(tree_idx)].sort((a, b) => a - b);
+
+    // If tree_idx values are 0, 1, 2, ... they're likely 0-indexed
+    // If they match displayArray values, they're global indices
+    const isZeroIndexed = uniqueTreeIdx.length > 0 &&
+      uniqueTreeIdx[0] === 0 &&
+      !displayArray.includes(0) &&
+      displayArray.length === uniqueTreeIdx.length;
+
+    if (isZeroIndexed) {
+      console.log('[RenderWorker] Detected 0-indexed tree_idx, mapping to global indices');
+      displayArray.forEach((globalIdx, localIdx) => {
+        indexMapping.set(localIdx, globalIdx);
+      });
+    }
+  }
+
   for (let i = 0; i < length; i++) {
-    const tIdx = tree_idx[i];
+    // Map tree_idx to global index if needed
+    const rawTreeIdx = tree_idx[i];
+    const tIdx = indexMapping.has(rawTreeIdx) ? indexMapping.get(rawTreeIdx) : rawTreeIdx;
 
     if (!treeMap.has(tIdx)) {
       treeMap.set(tIdx, []);
@@ -95,7 +129,8 @@ function getTipColor(nodeId, metadataArrays, metadataColors, populationFilter, d
  * @param {Array} data.tree_idx - Tree index for each node
  * @param {Array} data.x - X coordinates (time-based [0,1])
  * @param {Array} data.y - Y coordinates (genealogy-based [0,1])
- * @param {Array} data.modelMatrices - Array of {tree_idx, modelMatrix} objects
+ * @param {Array} data.modelMatrices - Array of {key, modelMatrix} objects
+ * @param {Array} data.displayArray - Global tree indices that were requested
  * @param {Object} data.metadataArrays - Metadata for coloring
  * @param {Object} data.metadataColors - Color mapping
  * @param {Object} data.populationFilter - Active filter settings
@@ -104,7 +139,7 @@ function getTipColor(nodeId, metadataArrays, metadataColors, populationFilter, d
 function computeRenderArrays(data) {
   const {
     node_id, parent_id, is_tip, tree_idx, x, y,
-    modelMatrices, metadataArrays, metadataColors, populationFilter
+    modelMatrices, displayArray, metadataArrays, metadataColors, populationFilter
   } = data;
 
   // Convert modelMatrices array to Map for efficient lookup
@@ -131,8 +166,8 @@ function computeRenderArrays(data) {
     };
   }
 
-  // Group nodes by tree
-  const treeNodesMap = groupNodesByTree(node_id, parent_id, is_tip, tree_idx, x, y);
+  // Group nodes by tree (with mapping from backend's tree_idx to global indices)
+  const treeNodesMap = groupNodesByTree(node_id, parent_id, is_tip, tree_idx, x, y, displayArray);
 
   // Calculate total nodes for buffer sizing
   let totalNodes = 0;
