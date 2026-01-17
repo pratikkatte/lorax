@@ -6,6 +6,7 @@ import { useDeckViews } from '../hooks/useDeckViews.jsx';
 import { useDeckLayers } from '../hooks/useDeckLayers.jsx';
 import { useDeckController } from '../hooks/useDeckController.jsx';
 import { useInterval } from '../hooks/useInterval.jsx';
+import { useLocalData } from '../hooks/useLocalData.jsx';
 import { useGenomePositions } from '../hooks/useGenomePositions.jsx';
 import { mergeWithDefaults, validateViewConfig, getEnabledViews } from '../utils/deckViewConfig.js';
 
@@ -78,10 +79,22 @@ const LoraxDeckGL = forwardRef(({
   }, [genomicCoords, externalOnGenomicCoordsChange]);
 
   // 6. Worker-based interval computation
-  const { visibleIntervals } = useInterval({
+  const { visibleIntervals, allIntervalsInView, intervalBounds } = useInterval({
     worker,
     workerConfigReady,
     genomicCoords
+  });
+
+  // 6b. Worker-based local data computation (tree positioning)
+  const { localBins, displayArray, showingAllTrees } = useLocalData({
+    worker,
+    workerConfigReady,
+    allIntervalsInView,
+    intervalBounds,  // { lo, hi } global index bounds
+    genomicCoords,
+    viewState,
+    tsconfig,  // Pass full tsconfig (has genome_length, intervals)
+    displayOptions: { selectionStrategy: 'largestSpan' }
   });
 
   // 7. Compute genome position tick marks
@@ -117,8 +130,12 @@ const LoraxDeckGL = forwardRef(({
     // Genomic coordinates
     genomicCoords,
     setGenomicCoords,
-    coordsReady
-  }), [viewState, views, viewReset, xzoom, yzoom, genomicCoords, setGenomicCoords, coordsReady]);
+    coordsReady,
+    // Local data for tree visualization
+    localBins,
+    displayArray,
+    showingAllTrees
+  }), [viewState, views, viewReset, xzoom, yzoom, genomicCoords, setGenomicCoords, coordsReady, localBins, displayArray, showingAllTrees]);
 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative' }}>

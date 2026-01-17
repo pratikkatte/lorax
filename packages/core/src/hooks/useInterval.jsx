@@ -15,7 +15,9 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
  * @param {[number, number]} params.genomicCoords - Current viewport [startBp, endBp]
  * @param {number} params.debounceMs - Debounce delay in ms (default: 16)
  * @param {number} params.maxIntervals - Max intervals to render (LOD threshold, default: 2000)
- * @returns {Object} { visibleIntervals, isReady, reset }
+ * @returns {Object} { visibleIntervals, allIntervalsInView, isReady, reset }
+ *   - visibleIntervals: Decimated intervals for display (max maxIntervals)
+ *   - allIntervalsInView: Pre-decimation intervals for useLocalData
  */
 export function useInterval({
   worker,
@@ -25,12 +27,8 @@ export function useInterval({
   maxIntervals = 2000
 }) {
   const [visibleIntervals, setVisibleIntervals] = useState([]);
-
-  // Accumulated intervals from all fetches
-  const allIntervalsRef = useRef(new Set());
-
-  // Previous viewport bounds [lo, hi]
-  const prevBoundsRef = useRef(null);
+  const [allIntervalsInView, setAllIntervalsInView] = useState([]); // Pre-decimation intervals for useLocalData
+  const [intervalBounds, setIntervalBounds] = useState({ lo: 0, hi: 0 }); // Global index bounds
 
   // For request cancellation
   const latestRequestIdRef = useRef(0);
@@ -47,85 +45,40 @@ export function useInterval({
 
     debounceTimerRef.current = setTimeout(async () => {
       const [newLo, newHi] = genomicCoords;
-      const prev = prevBoundsRef.current;
       const requestId = ++latestRequestIdRef.current;
 
-      // Determine which regions need fetching
-      const regionsToFetch = [];
+      try {
+        // Query full viewport to get intervals AND global index bounds (lo, hi)
+        const result = await worker.queryIntervals(newLo, newHi);
 
-      if (!prev) {
-        // Initial load - fetch entire range
-        regionsToFetch.push([newLo, newHi]);
-      } else {
-        const [prevLo, prevHi] = prev;
+        // Check if this request is still current
+        if (requestId !== latestRequestIdRef.current) return;
 
-        // Check if completely disjoint (big jump) - reset and fetch all
-        if (newHi < prevLo || newLo > prevHi) {
-          allIntervalsRef.current.clear();
-          regionsToFetch.push([newLo, newHi]);
+        const intervals = result?.visibleIntervals || [];
+        const lo = result?.lo ?? 0;
+        const hi = result?.hi ?? 0;
+
+        // Store global index bounds for useLocalData
+        setIntervalBounds({ lo, hi });
+
+        // Store pre-decimation intervals for useLocalData
+        setAllIntervalsInView(intervals);
+
+        // Apply LOD decimation if too many intervals (for display only)
+        if (intervals.length > maxIntervals) {
+          const step = Math.ceil(intervals.length / maxIntervals);
+          const decimated = [];
+          for (let i = 0; i < intervals.length; i += step) {
+            decimated.push(intervals[i]);
+          }
+          setVisibleIntervals(decimated);
         } else {
-          // Left expansion: new viewport extends left of previous
-          if (newLo < prevLo) {
-            regionsToFetch.push([newLo, prevLo]);
-          }
-          // Right expansion: new viewport extends right of previous
-          if (newHi > prevHi) {
-            regionsToFetch.push([prevHi, newHi]);
-          }
-          // Zoom in case: no new regions needed, just filter existing
+          setVisibleIntervals(intervals);
         }
-      }
-
-      // Fetch new regions and merge into accumulated set
-      for (const [start, end] of regionsToFetch) {
-        try {
-          const result = await worker.queryIntervals(start, end);
-
-          // Check if this request is still current
-          if (requestId !== latestRequestIdRef.current) return;
-
-          // Add new intervals to the accumulated set
-          for (const interval of (result?.visibleIntervals || [])) {
-            allIntervalsRef.current.add(interval);
-          }
-        } catch (error) {
-          if (requestId === latestRequestIdRef.current) {
-            console.error('Failed to query intervals:', error);
-          }
-          return;
+      } catch (error) {
+        if (requestId === latestRequestIdRef.current) {
+          console.error('Failed to query intervals:', error);
         }
-      }
-
-      // Update previous bounds
-      prevBoundsRef.current = [newLo, newHi];
-
-      // Memory cleanup: trim intervals far outside current view
-      // Keep 2x viewport width to handle small pans without refetch
-      const range = newHi - newLo;
-      const trimThreshold = range * 2;
-      const trimmedSet = new Set();
-      for (const pos of allIntervalsRef.current) {
-        if (pos >= newLo - trimThreshold && pos <= newHi + trimThreshold) {
-          trimmedSet.add(pos);
-        }
-      }
-      allIntervalsRef.current = trimmedSet;
-
-      // Filter to current viewport and sort
-      const inView = [...allIntervalsRef.current]
-        .filter(pos => pos >= newLo && pos <= newHi)
-        .sort((a, b) => a - b);
-
-      // Apply LOD decimation if too many intervals
-      if (inView.length > maxIntervals) {
-        const step = Math.ceil(inView.length / maxIntervals);
-        const decimated = [];
-        for (let i = 0; i < inView.length; i += step) {
-          decimated.push(inView[i]);
-        }
-        setVisibleIntervals(decimated);
-      } else {
-        setVisibleIntervals(inView);
       }
     }, debounceMs);
 
@@ -138,15 +91,17 @@ export function useInterval({
 
   // Reset method - call when underlying data changes
   const reset = useCallback(() => {
-    allIntervalsRef.current.clear();
-    prevBoundsRef.current = null;
     setVisibleIntervals([]);
+    setAllIntervalsInView([]);
+    setIntervalBounds({ lo: 0, hi: 0 });
   }, []);
 
   // Memoize return object to prevent unnecessary re-renders
   return useMemo(() => ({
-    visibleIntervals,
+    visibleIntervals,      // Decimated intervals for display (max 2000)
+    allIntervalsInView,    // Pre-decimation intervals for useLocalData
+    intervalBounds,        // { lo, hi } - global index bounds for useLocalData
     isReady: workerConfigReady,
     reset
-  }), [visibleIntervals, workerConfigReady, reset]);
+  }), [visibleIntervals, allIntervalsInView, intervalBounds, workerConfigReady, reset]);
 }

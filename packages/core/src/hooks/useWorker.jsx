@@ -104,11 +104,28 @@ export function useWorker() {
     return request('intervals', { start, end });
   }, [request]);
 
+  /**
+   * Query local data (tree positioning and visibility) for given intervals
+   * @param {Object} params
+   * @param {number[]} params.intervals - Pre-decimation interval positions
+   * @param {number} params.start - Viewport start (bp)
+   * @param {number} params.end - Viewport end (bp)
+   * @param {number} params.globalBpPerUnit - Base pairs per unit
+   * @param {number} params.new_globalBp - Zoom-adjusted bp per unit
+   * @param {number} params.genome_length - Total genome length
+   * @param {Object} params.displayOptions - { selectionStrategy }
+   * @returns {Promise<{local_bins: Array, displayArray: number[], showing_all_trees: boolean}>}
+   */
+  const queryLocalData = useCallback((params) => {
+    return request('local-data', params);
+  }, [request]);
+
   // Memoize return object to prevent re-renders
   return useMemo(() => ({
     isReady,
     request,
     sendConfig,
-    queryIntervals
-  }), [isReady, request, sendConfig, queryIntervals]);
+    queryIntervals,
+    queryLocalData
+  }), [isReady, request, sendConfig, queryIntervals, queryLocalData]);
 }
