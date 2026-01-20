@@ -29,6 +29,8 @@ lorax serve --reload
 # Or specify host/port
 lorax serve --host 0.0.0.0 --port 8080 --reload
 
+LORAX_MODE=local lorax serve --reload
+
 # Production mode (with gunicorn)
 lorax serve --gunicorn --workers 4
 

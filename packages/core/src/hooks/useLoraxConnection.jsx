@@ -103,6 +103,7 @@ export function useLoraxConnection({ apiBase, isProd = false }) {
         }
         const handleResult = (message) => {
           off("load-file-result", handleResult);
+          console.log('[LoraxConnection] File loaded config:', message.config);
           resolve(message);
         };
 

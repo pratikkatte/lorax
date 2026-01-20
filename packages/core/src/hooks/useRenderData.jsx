@@ -1,11 +1,41 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import workerSpec from '../workers/renderDataWorker.js?worker&inline';
+import { computeRenderArrays, serializeModelMatrices, buildModelMatricesMap } from '../utils/renderUtils.js';
+import { supportsWebWorkers } from '../utils/computations.js';
 
 let requestIdCounter = 0;
+
+// Lazy worker initialization - only loads if needed
+// The dynamic import with the ?worker&inline query string is Vite-specific
+// Webpack will fail to resolve this, but we catch the error
+let workerModulePromise = null;
+
+function getWorkerSpec() {
+  if (workerModulePromise === null) {
+    // Use async function to properly catch import errors
+    workerModulePromise = (async () => {
+      try {
+        // This import syntax only works in Vite
+        // In webpack, this will fail and we'll return null
+        // The magic comments tell both bundlers to skip static analysis
+        const module = await import(/* webpackIgnore: true */ /* @vite-ignore */ '../workers/renderDataWorker.js?worker&inline');
+        return module.default;
+      } catch (e) {
+        console.warn('[useRenderData] Worker import failed (expected in non-Vite environments):', e.message);
+        return null;
+      }
+    })();
+  }
+  return workerModulePromise;
+}
 
 /**
  * Hook to compute render data (typed arrays) for tree visualization.
  * Sends tree data + localBins to worker, receives typed arrays for deck.gl layers.
+ *
+ * Supports two execution modes:
+ * - 'worker': Uses web worker for computation (Vite)
+ * - 'main-thread': Uses synchronous computation (webpack/non-Vite)
+ * - 'auto': Detects environment and chooses appropriate mode
  *
  * @param {Object} params
  * @param {Map|null} params.localBins - Map of tree_idx -> { modelMatrix, ... } from useLocalData
@@ -15,7 +45,8 @@ let requestIdCounter = 0;
  * @param {Object} params.metadataColors - Optional color mapping for metadata values
  * @param {Object} params.populationFilter - Optional { colorBy, enabledValues }
  * @param {number} params.debounceMs - Debounce delay (default: 100)
- * @returns {Object} { renderData, isLoading, error, isReady }
+ * @param {string} params.mode - Execution mode: 'worker' | 'main-thread' | 'auto' (default: 'auto')
+ * @returns {Object} { renderData, isLoading, error, isReady, effectiveMode, clearBuffers }
  */
 export function useRenderData({
   localBins,
@@ -24,43 +55,79 @@ export function useRenderData({
   metadataArrays = null,
   metadataColors = null,
   populationFilter = null,
-  debounceMs = 100
+  debounceMs = 100,
+  mode = 'auto'
 }) {
   const [renderData, setRenderData] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [workerReady, setWorkerReady] = useState(false);
 
   const workerRef = useRef(null);
   const pendingRequestsRef = useRef(new Map());
   const debounceTimer = useRef(null);
   const latestRequestId = useRef(0);
 
-  // Initialize worker once
+  // Determine effective mode
+  const effectiveMode = useMemo(() => {
+    if (mode === 'worker') return 'worker';
+    if (mode === 'main-thread') return 'main-thread';
+    // Auto mode: use worker if we can
+    return supportsWebWorkers() ? 'worker' : 'main-thread';
+  }, [mode]);
+
+  // Initialize worker only if needed (worker mode)
   useEffect(() => {
-    const worker = new workerSpec();
-    workerRef.current = worker;
+    if (effectiveMode !== 'worker') {
+      setWorkerReady(true); // Main-thread mode is always ready
+      return;
+    }
 
-    worker.onmessage = (event) => {
-      const { type, id, success, data, error: errorMsg } = event.data;
+    let mounted = true;
 
-      if (id !== undefined && pendingRequestsRef.current.has(id)) {
-        const { resolve, reject } = pendingRequestsRef.current.get(id);
-        pendingRequestsRef.current.delete(id);
-
-        if (success) {
-          resolve(data);
-        } else {
-          reject(new Error(errorMsg || 'Worker error'));
+    async function initWorker() {
+      try {
+        const WorkerClass = await getWorkerSpec();
+        if (!mounted || !WorkerClass) {
+          // Fallback to main-thread if worker not available
+          setWorkerReady(true);
+          return;
         }
-      }
-    };
 
-    worker.onerror = (err) => {
-      console.error('[useRenderData] Worker error:', err);
-      setError(new Error(err.message || 'Worker error'));
-    };
+        const worker = new WorkerClass();
+        workerRef.current = worker;
+
+        worker.onmessage = (event) => {
+          const { type, id, success, data, error: errorMsg } = event.data;
+
+          if (id !== undefined && pendingRequestsRef.current.has(id)) {
+            const { resolve, reject } = pendingRequestsRef.current.get(id);
+            pendingRequestsRef.current.delete(id);
+
+            if (success) {
+              resolve(data);
+            } else {
+              reject(new Error(errorMsg || 'Worker error'));
+            }
+          }
+        };
+
+        worker.onerror = (err) => {
+          console.error('[useRenderData] Worker error:', err);
+          setError(new Error(err.message || 'Worker error'));
+        };
+
+        setWorkerReady(true);
+      } catch (err) {
+        console.warn('[useRenderData] Failed to initialize worker, falling back to main-thread:', err);
+        setWorkerReady(true);
+      }
+    }
+
+    initWorker();
 
     return () => {
+      mounted = false;
       // Cancel pending debounce
       if (debounceTimer.current) {
         clearTimeout(debounceTimer.current);
@@ -72,10 +139,10 @@ export function useRenderData({
       }
       pendingRequestsRef.current.clear();
 
-      worker?.terminate();
+      workerRef.current?.terminate();
       workerRef.current = null;
     };
-  }, []);
+  }, [effectiveMode]);
 
   /**
    * Send a request to the worker and return a Promise
@@ -111,29 +178,10 @@ export function useRenderData({
     });
   }, []);
 
-  /**
-   * Serialize localBins Map for worker transfer
-   * Extracts only trees with modelMatrix (visible trees)
-   */
-  const serializeModelMatrices = useCallback((bins) => {
-    if (!bins || !(bins instanceof Map)) return [];
-
-    const result = [];
-    for (const [key, value] of bins.entries()) {
-      if (value.modelMatrix && value.visible !== false) {
-        result.push({
-          key,
-          modelMatrix: Array.isArray(value.modelMatrix)
-            ? value.modelMatrix
-            : value.modelMatrix.toArray?.() ?? value.modelMatrix
-        });
-      }
-    }
-    return result;
-  }, []);
-
-  // Trigger computation when inputs change
+  // Worker mode effect
   useEffect(() => {
+    if (effectiveMode !== 'worker' || !workerRef.current) return;
+
     // Skip if missing required data
     if (!localBins || !treeData || !treeData.node_id || treeData.node_id.length === 0) {
       setRenderData(null);
@@ -198,20 +246,96 @@ export function useRenderData({
         clearTimeout(debounceTimer.current);
       }
     };
-  }, [localBins, treeData, displayArray, metadataArrays, metadataColors, populationFilter, debounceMs, request, serializeModelMatrices]);
+  }, [effectiveMode, localBins, treeData, displayArray, metadataArrays, metadataColors, populationFilter, debounceMs, request]);
+
+  // Main-thread mode effect
+  useEffect(() => {
+    if (effectiveMode !== 'main-thread') return;
+
+    // Skip if missing required data
+    if (!localBins || !treeData || !treeData.node_id || treeData.node_id.length === 0) {
+      setRenderData(null);
+      return;
+    }
+
+    // Count visible trees
+    let visibleCount = 0;
+    for (const [, value] of localBins.entries()) {
+      if (value.modelMatrix && value.visible !== false) visibleCount++;
+    }
+
+    if (visibleCount === 0) {
+      setRenderData(null);
+      return;
+    }
+
+    // Clear pending debounce
+    if (debounceTimer.current) {
+      clearTimeout(debounceTimer.current);
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    debounceTimer.current = setTimeout(() => {
+      const requestId = ++latestRequestId.current;
+
+      try {
+        // Synchronous computation on main thread
+        const modelMatricesMap = buildModelMatricesMap(localBins);
+        const result = computeRenderArrays({
+          node_id: treeData.node_id,
+          parent_id: treeData.parent_id,
+          is_tip: treeData.is_tip,
+          tree_idx: treeData.tree_idx,
+          x: treeData.x,
+          y: treeData.y,
+          modelMatrices: modelMatricesMap,
+          displayArray: displayArray || [],
+          metadataArrays,
+          metadataColors,
+          populationFilter
+        });
+
+        // Ignore stale results
+        if (requestId !== latestRequestId.current) {
+          return;
+        }
+
+        setRenderData(result);
+        setIsLoading(false);
+      } catch (err) {
+        if (requestId !== latestRequestId.current) return;
+
+        console.error('[useRenderData] Failed to compute render data:', err);
+        setError(err);
+        setIsLoading(false);
+      }
+    }, debounceMs);
+
+    return () => {
+      if (debounceTimer.current) {
+        clearTimeout(debounceTimer.current);
+      }
+    };
+  }, [effectiveMode, localBins, treeData, displayArray, metadataArrays, metadataColors, populationFilter, debounceMs]);
 
   /**
-   * Clear worker buffers to free memory
+   * Clear worker buffers to free memory (only in worker mode)
    */
   const clearBuffers = useCallback(() => {
-    return request('clear-buffers', null);
-  }, [request]);
+    if (effectiveMode === 'worker' && workerRef.current) {
+      return request('clear-buffers', null);
+    }
+    return Promise.resolve();
+  }, [effectiveMode, request]);
 
   return useMemo(() => ({
     renderData,
     isLoading,
     error,
-    isReady: !!workerRef.current,
+    isReady: workerReady,
+    effectiveMode,
     clearBuffers
-  }), [renderData, isLoading, error, clearBuffers]);
+  }), [renderData, isLoading, error, workerReady, effectiveMode, clearBuffers]);
 }

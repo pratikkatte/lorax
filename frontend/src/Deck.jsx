@@ -148,7 +148,7 @@ function Deck({
         // Check both layer.id and sourceLayer.id (for CompositeLayer sub-layers)
         const layerId = info?.sourceLayer?.id || info?.layer?.id || "";
         if (layerId.includes("tips-pickable") ||
-            (info?.layer?.id?.includes("postorder") && info?.object?.node_id !== undefined)) {
+          (info?.layer?.id?.includes("postorder") && info?.object?.node_id !== undefined)) {
           const pickedObject = info.object;
           if (pickedObject && pickedObject.node_id !== undefined) {
             const data = {
@@ -276,9 +276,8 @@ function Deck({
       const pointsGenomePositionsInfo = [];
       const currentVisibleTrees = [];
 
-      const genomeVP = saveViewports.current?.["genome-positions"];
+      const genomeVP = saveViewports.current?.["genome-info"];
       const orthoVP = saveViewports.current?.["ortho"];
-
 
       // Quick bail-out if viewports missing
       if (!genomeVP || !orthoVP) return;

@@ -91,12 +91,14 @@ function getLocalData(data) {
   }
 
   // Build local_bins Map from provided intervals using GLOBAL indices
+  // intervals includes both endpoints (N+1 breakpoints for N trees), so iterate to length-1
+  // Tree i spans from intervals[i] to intervals[i+1]
   const local_bins = new Map();
 
-  for (let i = 0; i < intervals.length; i++) {
+  for (let i = 0; i < intervals.length - 1; i++) {
     const globalIndex = lo + i;  // Convert to global tree index
     const s = intervals[i];
-    const e = intervals[i + 1] ?? genome_length;
+    const e = intervals[i + 1];
 
     local_bins.set(globalIndex, {  // Key = global index
       s,

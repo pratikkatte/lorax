@@ -78,3 +78,34 @@ export {
 
 // DeckGL Controller
 export { MyOrthographicController, setGlobalControllers } from './controllers/MyOrthographicController.js';
+
+// Pure Computation Utilities (for main-thread mode / webpack compatibility)
+export {
+  lowerBound,
+  upperBound,
+  nearestIndex,
+  selectionStrategies,
+  getSelectionStrategy,
+  new_complete_experiment_map,
+  normalizeIntervals,
+  queryIntervalsSync,
+  queryLocalDataSync,
+  serializeBinsForTransfer,
+  deserializeBins,
+  supportsWebWorkers
+} from './utils/computations.js';
+
+// Render Utilities (for main-thread mode / webpack compatibility)
+export {
+  groupNodesByTree,
+  getTipColor,
+  computeRenderArrays,
+  serializeModelMatrices,
+  buildModelMatricesMap
+} from './utils/renderUtils.js';
+
+// Arrow Utilities (for parsing PyArrow buffers)
+export {
+  parseTreeLayoutBuffer,
+  EMPTY_TREE_LAYOUT
+} from './utils/arrowUtils.js';

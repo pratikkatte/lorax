@@ -1,11 +1,38 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import workerSpec from '../workers/localBackendWorker.js?worker&inline';
 
 let requestIdCounter = 0;
+
+// Lazy worker loader - only executed in Vite environments
+// The dynamic import with the ?worker&inline query string is Vite-specific
+// Webpack will fail to resolve this, but we catch the error
+let workerModulePromise = null;
+
+function getWorkerModule() {
+  if (workerModulePromise === null) {
+    // Use a function-based dynamic import to prevent webpack from
+    // statically analyzing and failing on the Vite-specific syntax
+    workerModulePromise = (async () => {
+      try {
+        // This import syntax only works in Vite
+        // In webpack, this will fail and we'll return null
+        // The magic comments tell both bundlers to skip static analysis
+        const module = await import(/* webpackIgnore: true */ /* @vite-ignore */ '../workers/localBackendWorker.js?worker&inline');
+        return module.default;
+      } catch (e) {
+        console.warn('[useWorker] Worker import failed (expected in non-Vite environments):', e.message);
+        return null;
+      }
+    })();
+  }
+  return workerModulePromise;
+}
 
 /**
  * Hook providing Promise-based communication with the web worker.
  * Pure communication layer - no state management for intervals.
+ *
+ * NOTE: This hook only works in Vite environments. For webpack/non-Vite builds,
+ * use useLocalData with mode='main-thread' instead.
  *
  * @returns {Object} Worker API with Promise-based methods
  */
@@ -16,29 +43,45 @@ export function useWorker() {
 
   // Initialize worker once
   useEffect(() => {
-    const worker = new workerSpec();
-    workerRef.current = worker;
+    let mounted = true;
 
-    worker.onmessage = (event) => {
-      const { type, id, data } = event.data;
+    async function initWorker() {
+      const WorkerClass = await getWorkerModule();
 
-      // Resolve pending promise if this is a response with an id
-      if (id !== undefined && pendingRequestsRef.current.has(id)) {
-        const { resolve } = pendingRequestsRef.current.get(id);
-        pendingRequestsRef.current.delete(id);
-        resolve(data);
+      if (!mounted) return;
+
+      if (!WorkerClass) {
+        console.warn('[useWorker] Worker not available - use main-thread mode instead');
+        return;
       }
-    };
 
-    setIsReady(true);
+      const worker = new WorkerClass();
+      workerRef.current = worker;
+
+      worker.onmessage = (event) => {
+        const { type, id, data } = event.data;
+
+        // Resolve pending promise if this is a response with an id
+        if (id !== undefined && pendingRequestsRef.current.has(id)) {
+          const { resolve } = pendingRequestsRef.current.get(id);
+          pendingRequestsRef.current.delete(id);
+          resolve(data);
+        }
+      };
+
+      setIsReady(true);
+    }
+
+    initWorker();
 
     return () => {
+      mounted = false;
       // Reject all pending requests on cleanup
       for (const { reject } of pendingRequestsRef.current.values()) {
         reject(new Error('Worker terminated'));
       }
       pendingRequestsRef.current.clear();
-      worker?.terminate();
+      workerRef.current?.terminate();
       workerRef.current = null;
       setIsReady(false);
     };
