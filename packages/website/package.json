@@ -10,7 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@lorax/core": "*",
+    "@lorax/core": "0.0.1",
     "@deck.gl/core": "^9.0.0",
     "@deck.gl/react": "^9.0.0",
     "@deck.gl/layers": "^9.0.0",
