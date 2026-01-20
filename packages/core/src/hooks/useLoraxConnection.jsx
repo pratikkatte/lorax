@@ -160,6 +160,36 @@ export function useLoraxConnection({ apiBase, isProd = false }) {
   }, [emit, once, off, socketRef, sidRef]);
 
   /**
+   * Query tree/node/individual details from backend via socket.
+   * Emits `details` and resolves with `details-result.data`.
+   *
+   * @param {Object} detailsPayload - { treeIndex?, node?, comprehensive? }
+   * @returns {Promise<Object>} details result object (e.g. { tree, node, individual, ... })
+   */
+  const queryDetails = useCallback((detailsPayload = {}) => {
+    return new Promise((resolve, reject) => {
+      if (!socketRef.current) {
+        reject(new Error("Socket not available"));
+        return;
+      }
+
+      const handleResult = (message) => {
+        off("details-result", handleResult);
+
+        if (message?.error) {
+          reject(new Error(message.error));
+          return;
+        }
+
+        resolve(message?.data);
+      };
+
+      once("details-result", handleResult);
+      emit("details", { ...detailsPayload, lorax_sid: sidRef.current });
+    });
+  }, [emit, once, off, socketRef, sidRef]);
+
+  /**
    * Query mutations in a genomic window.
    * Returns mutations with position, mutation string, node_id, etc.
    * @param {number} start - Start genomic position (bp)
@@ -335,6 +365,7 @@ export function useLoraxConnection({ apiBase, isProd = false }) {
       isConnected,
       queryFile,
       queryTreeLayout,
+      queryDetails,
       queryMutationsWindow,
       searchMutations,
       loraxSid,
@@ -347,6 +378,7 @@ export function useLoraxConnection({ apiBase, isProd = false }) {
       isConnected,
       queryFile,
       queryTreeLayout,
+      queryDetails,
       queryMutationsWindow,
       searchMutations,
       loraxSid,

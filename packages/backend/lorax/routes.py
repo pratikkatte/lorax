@@ -77,8 +77,8 @@ async def get_file(
         file = "1kg_chr20.trees.tsz"
         file_path = UPLOAD_DIR / (project or "1000Genomes") / file
     try:
-
-        viz_config, chat_config = await handle_upload(str(file_path), UPLOAD_DIR)
+        ts = await handle_upload(str(file_path), UPLOAD_DIR)
+        viz_config = await asyncio.to_thread(get_or_load_config, ts, str(file_path), UPLOAD_DIR)
 
         # Override initial_position if client provided genomic coordinates
         if genomiccoordstart is not None and genomiccoordend is not None:

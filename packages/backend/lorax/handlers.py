@@ -16,6 +16,7 @@ import tszip
 from lorax.viz.trees_to_taxonium import process_csv
 from lorax.cloud.gcs_utils import get_public_gcs_dict
 from lorax.tree_graph import construct_trees_batch
+from lorax.csv.layout import build_empty_layout_response
 from lorax.utils import (
     LRUCacheWithMeta,
     make_json_safe,
@@ -98,8 +99,10 @@ async def get_or_load_ts(file_path):
                     return tszip.load(fp)
                 elif fp.endswith('.trees'):
                     return tskit.load(fp)
-                else:
+                elif fp.endswith('.csv'):
                     return pd.read_csv(fp)
+                else:
+                    raise ValueError(f"Unsupported file type: {fp}")
 
             ts = await asyncio.to_thread(choose_file_loader, file_path)
             # Store with current mtime for validation
@@ -527,6 +530,12 @@ async def handle_tree_graph_query(file_path, tree_indices, sparsity_resolution=N
     ts = await get_or_load_ts(file_path)
     if ts is None:
         return {"error": "Tree sequence not loaded. Please load a file first."}
+
+    # CSV support (minimal): return an empty-but-valid Arrow layout buffer.
+    # This keeps the frontend stable while enabling CSV config/interval workflows.
+    if isinstance(ts, pd.DataFrame):
+        indices = [int(t) for t in (tree_indices or [])]
+        return build_empty_layout_response(indices)
 
     # Run in thread pool to avoid blocking
     def process_trees():

@@ -121,6 +121,26 @@ function FileView() {
     }
   }, []);
 
+  const handlePolygonClick = useCallback(async (payload) => {
+    const treeIndex = payload?.treeIndex;
+    if (treeIndex == null) return;
+
+    try {
+      const intervals = tsconfig?.intervals;
+      if (!Array.isArray(intervals)) return;
+
+      const start = intervals[treeIndex];
+      const end = intervals[treeIndex + 1];
+      if (!Number.isFinite(start) || !Number.isFinite(end)) return;
+
+      // Zoom to the clicked tree interval
+      setGenomicPosition([start, end]);
+      deckRef.current?.setGenomicCoords?.([start, end]);
+    } catch (err) {
+      console.error('[FileView] Failed to zoom to polygon interval:', err);
+    }
+  }, [tsconfig?.intervals]);
+
   return (
     <div className="h-screen flex flex-col bg-slate-50">
       {/* Position Slider - Header bar */}
@@ -206,6 +226,7 @@ function FileView() {
                 treeTime: { enabled: true, ...views?.treeTime }
               }}
               onGenomicCoordsChange={handleGenomicCoordsChange}
+              onPolygonClick={handlePolygonClick}
             />
           </div>
         )}

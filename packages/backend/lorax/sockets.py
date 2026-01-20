@@ -30,6 +30,9 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 
 def register_socket_events(sio):
     
+    def _is_csv_session_file(file_path: str | None) -> bool:
+        return bool(file_path) and str(file_path).lower().endswith(".csv")
+    
     async def require_session(lorax_sid: str, socket_sid: str):
         """Get session or emit error to client. Returns None if session not found."""
         session = await session_manager.get_session(lorax_sid)
@@ -214,6 +217,10 @@ def register_socket_events(sio):
                 print(f"⚠️ No file loaded for session {lorax_sid}")
                 await sio.emit("error", {"code": ERROR_NO_FILE_LOADED, "message": "No file loaded. Please load a file first."}, to=sid)
                 return
+            
+            if _is_csv_session_file(session.file_path):
+                await sio.emit("details-result", {"data": {"error": "Details are not supported for CSV yet."}}, to=sid)
+                return
 
             print("fetch details in ", session.sid, os.getpid())
 
@@ -308,6 +315,10 @@ def register_socket_events(sio):
                 print(f"⚠️ No file loaded for session {lorax_sid}")
                 await sio.emit("error", {"code": ERROR_NO_FILE_LOADED, "message": "No file loaded. Please load a file first."}, to=sid)
                 return
+            
+            if _is_csv_session_file(session.file_path):
+                await sio.emit("metadata-key-result", {"error": "Metadata is not supported for CSV yet."}, to=sid)
+                return
 
             key = data.get("key")
             if not key:
@@ -338,6 +349,10 @@ def register_socket_events(sio):
             if not session.file_path:
                 print(f"⚠️ No file loaded for session {lorax_sid}")
                 await sio.emit("error", {"code": ERROR_NO_FILE_LOADED, "message": "No file loaded. Please load a file first."}, to=sid)
+                return
+            
+            if _is_csv_session_file(session.file_path):
+                await sio.emit("search-result", {"error": "Metadata search is not supported for CSV yet."}, to=sid)
                 return
 
             key = data.get("key")
@@ -376,6 +391,10 @@ def register_socket_events(sio):
             if not session.file_path:
                 print(f"⚠️ No file loaded for session {lorax_sid}")
                 await sio.emit("error", {"code": ERROR_NO_FILE_LOADED, "message": "No file loaded. Please load a file first."}, to=sid)
+                return
+            
+            if _is_csv_session_file(session.file_path):
+                await sio.emit("metadata-array-result", {"error": "Metadata arrays are not supported for CSV yet."}, to=sid)
                 return
 
             key = data.get("key")
@@ -419,6 +438,10 @@ def register_socket_events(sio):
             if not session.file_path:
                 print(f"⚠️ No file loaded for session {lorax_sid}")
                 await sio.emit("error", {"code": ERROR_NO_FILE_LOADED, "message": "No file loaded. Please load a file first."}, to=sid)
+                return
+            
+            if _is_csv_session_file(session.file_path):
+                await sio.emit("mutations-window-result", {"error": "Mutations are not supported for CSV yet."}, to=sid)
                 return
 
             start = data.get("start", 0)
@@ -468,6 +491,10 @@ def register_socket_events(sio):
             if not session.file_path:
                 print(f"⚠️ No file loaded for session {lorax_sid}")
                 await sio.emit("error", {"code": ERROR_NO_FILE_LOADED, "message": "No file loaded. Please load a file first."}, to=sid)
+                return
+            
+            if _is_csv_session_file(session.file_path):
+                await sio.emit("mutations-search-result", {"error": "Mutations search is not supported for CSV yet."}, to=sid)
                 return
 
             position = data.get("position")
@@ -537,6 +564,10 @@ def register_socket_events(sio):
             if not session.file_path:
                 print(f"⚠️ No file loaded for session {lorax_sid}")
                 await sio.emit("error", {"code": ERROR_NO_FILE_LOADED, "message": "No file loaded. Please load a file first."}, to=sid)
+                return
+            
+            if _is_csv_session_file(session.file_path):
+                await sio.emit("search-nodes-result", {"highlights": {}, "lineage": {}}, to=sid)
                 return
 
             sample_names = data.get("sample_names", [])

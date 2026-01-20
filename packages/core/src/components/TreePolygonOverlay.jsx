@@ -12,7 +12,7 @@ import React, { useMemo } from 'react';
  * @param {number} props.strokeWidth - Stroke width in pixels (optional)
  * @param {boolean} props.enableTransitions - Enable CSS transitions for fill changes (default: true)
  * @param {Function} props.onHover - Called with polygon key on hover, null on leave
- * @param {Function} props.onClick - Called with polygon key on click
+ * @param {Function} props.onClick - Called on click with payload: { key, treeIndex, polygon }
  * @param {Object} props.style - Additional styles for the SVG container
  */
 const TreePolygonOverlay = React.memo(({
@@ -68,6 +68,7 @@ const TreePolygonOverlay = React.memo(({
 
         const pointsStr = vertices.map(([x, y]) => `${x},${y}`).join(' ');
         const currentFill = isHovered ? colors.hoverFill : colors.normalFill;
+        const polygon = { key, vertices, treeIndex, isHovered };
 
         return (
           <polygon
@@ -89,7 +90,7 @@ const TreePolygonOverlay = React.memo(({
               e.target.setAttribute('fill', colors.normalFill);
               onHover?.(null);
             }}
-            onClick={() => onClick?.(key)}
+            onClick={() => onClick?.({ key, treeIndex, polygon })}
             data-tree-index={treeIndex}
           />
         );
