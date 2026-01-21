@@ -33,7 +33,7 @@ async def favicon():
 
 @router.get("/")
 async def root():
-    return Response(content="Lorax Backend is running", media_type="text/html")
+    return Response(content="Lorax Backend is running...", media_type="text/html")
 
 @router.post("/init-session")
 async def init_session(request: Request, response: Response):

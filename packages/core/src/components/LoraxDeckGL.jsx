@@ -1,4 +1,4 @@
-import React, { useRef, useCallback, forwardRef, useImperativeHandle, useEffect } from 'react';
+import React, { useRef, useCallback, forwardRef, useImperativeHandle, useEffect, useMemo } from 'react';
 import DeckGL from '@deck.gl/react';
 import { View } from '@deck.gl/core';
 import { useLorax } from '../context/LoraxProvider.jsx';
@@ -101,6 +101,15 @@ const LoraxDeckGL = forwardRef(({
     enabledValues
   } = useLorax();
 
+  // Stabilize population filter to avoid rerunning downstream effects every render
+  const populationFilter = useMemo(() => {
+    if (!selectedColorBy) return null;
+    return {
+      colorBy: selectedColorBy,
+      enabledValues: Array.from(enabledValues || [])
+    };
+  }, [selectedColorBy, enabledValues]);
+
   // 4. Views and view state management (with genomic coordinates)
   const {
     views,
@@ -166,10 +175,7 @@ const LoraxDeckGL = forwardRef(({
     // Metadata-driven tip coloring
     metadataArrays,
     metadataColors,
-    populationFilter: selectedColorBy ? {
-      colorBy: selectedColorBy,
-      enabledValues: Array.from(enabledValues || [])
-    } : null
+    populationFilter
   });
 
   // 7. Compute genome position tick marks

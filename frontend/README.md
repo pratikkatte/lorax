@@ -1,1 +1,0 @@
-# Lorax Frontend
