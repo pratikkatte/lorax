@@ -8,7 +8,14 @@ const Info = ({
   setShowInfo,
   genomicCoords,
   setClickedGenomeInfo,
-  setHighlightedMutationNode
+  setHighlightedMutationNode,
+  treeDetails,
+  nodeDetails,
+  individualDetails,
+  populationDetails,
+  nodeMutations,
+  nodeEdges,
+  selectedTipMetadata
 }) => {
   const [activeTab, setActiveTab] = useState('metadata');
 
@@ -35,14 +42,6 @@ const Info = ({
     searchMutations: searchMutationsQuery,
     genomeLength
   } = useLorax();
-
-  // Placeholder state for InfoMetadata (not yet wired to context)
-  const [treeDetails, setTreeDetails] = useState(null);
-  const [nodeDetails, setNodeDetails] = useState(null);
-  const [individualDetails, setIndividualDetails] = useState(null);
-  const [populationDetails, setPopulationDetails] = useState(null);
-  const [nodeMutations, setNodeMutations] = useState(null);
-  const [nodeEdges, setNodeEdges] = useState(null);
 
   // Use context values or fall back to empty defaults for InfoMetadata
   const sampleDetails = contextSampleDetails || null;
@@ -122,6 +121,7 @@ const Info = ({
             nodeEdges={nodeEdges}
             sampleDetails={sampleDetails}
             tsconfig={tsconfig}
+            selectedTipMetadata={selectedTipMetadata}
           />
         )}
         {activeTab === 'mutations' && (

@@ -1,4 +1,4 @@
-import { useMemo, useCallback } from 'react';
+import { useMemo, useCallback, useState } from 'react';
 import { GenomeGridLayer } from '../layers/GenomeGridLayer.jsx';
 import { GenomeInfoLayer } from '../layers/GenomeInfoLayer.jsx';
 import { TimeGridLayer } from '../layers/TimeGridLayer.jsx';
@@ -16,7 +16,19 @@ import { TreeCompositeLayer } from '../layers/TreeCompositeLayer.jsx';
  * @param {Object} params.renderData - Pre-computed render data for tree visualization
  * @returns {Object} { layers, layerFilter }
  */
-export function useDeckLayers({ enabledViews, globalBpPerUnit = null, visibleIntervals = [], genomePositions = [], renderData = null }) {
+export function useDeckLayers({
+  enabledViews,
+  globalBpPerUnit = null,
+  visibleIntervals = [],
+  genomePositions = [],
+  renderData = null,
+  // Tree interactions (UI handled by packages/website)
+  onTipHover,
+  onTipClick,
+  onEdgeHover,
+  onEdgeClick
+}) {
+  const [hoveredEdgeIndex, setHoveredEdgeIndex] = useState(null);
   /**
    * Layer filter function - maps layer IDs to view IDs
    * Ensures only relevant layers render in each viewport
@@ -70,18 +82,68 @@ export function useDeckLayers({ enabledViews, globalBpPerUnit = null, visibleInt
 
     // Tree visualization layer (ortho view)
     if (enabledViews.includes('ortho')) {
+      const wantsPicking = Boolean(onTipHover || onTipClick || onEdgeHover || onEdgeClick);
+
+      // CompositeLayer sublayer callbacks are not always invoked directly by deck.gl.
+      // We dispatch from the *top-level* layer using sourceLayer id + picking info.
+      const dispatchHover = (info, event) => {
+        const sourceLayerId = info?.sourceLayer?.id || '';
+        if (sourceLayerId.includes('tips-pickable')) {
+          setHoveredEdgeIndex(null);
+          onTipHover?.(info?.object || null, info, event);
+          return;
+        }
+        if (sourceLayerId.includes('edges-pickable')) {
+          setHoveredEdgeIndex(info?.index ?? null);
+          const edge = (renderData?.edgeData && info?.index != null && info.index >= 0)
+            ? renderData.edgeData[info.index]
+            : null;
+          onEdgeHover?.(edge || null, info, event);
+          return;
+        }
+
+        // Nothing pickable hovered
+        setHoveredEdgeIndex(null);
+        onTipHover?.(null, info, event);
+        onEdgeHover?.(null, info, event);
+      };
+
+      const dispatchClick = (info, event) => {
+        const sourceLayerId = info?.sourceLayer?.id || '';
+        if (sourceLayerId.includes('tips-pickable')) {
+          onTipClick?.(info?.object || null, info, event);
+          return;
+        }
+        if (sourceLayerId.includes('edges-pickable')) {
+          const edge = (renderData?.edgeData && info?.index != null && info.index >= 0)
+            ? renderData.edgeData[info.index]
+            : null;
+          onEdgeClick?.(edge || null, info, event);
+          return;
+        }
+      };
+
       result.push(new TreeCompositeLayer({
         id: 'main-trees',
         renderData: renderData || null,
         edgeColor: [100, 100, 100, 255],
         edgeWidth: 1,
         tipRadius: 2,
-        pickable: false
+        pickable: wantsPicking,
+        hoveredEdgeIndex,
+        // Top-level dispatchers (reliable for CompositeLayer picking)
+        onHover: wantsPicking ? dispatchHover : undefined,
+        onClick: wantsPicking ? dispatchClick : undefined,
+        // Still pass through, so the layer can use them internally if needed
+        onTipHover,
+        onTipClick,
+        onEdgeHover,
+        onEdgeClick
       }));
     }
 
     return result;
-  }, [enabledViews, globalBpPerUnit, visibleIntervals, genomePositions, renderData]);
+  }, [enabledViews, globalBpPerUnit, visibleIntervals, genomePositions, renderData, hoveredEdgeIndex, onTipHover, onTipClick, onEdgeHover, onEdgeClick]);
 
   return { layers, layerFilter };
 }

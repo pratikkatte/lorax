@@ -141,6 +141,7 @@ export function computeRenderArrays(data) {
       tipPositions: new Float64Array(0),
       tipColors: new Uint8Array(0),
       tipData: [],
+      edgeData: [],
       edgeCount: 0,
       tipCount: 0
     };
@@ -177,6 +178,7 @@ export function computeRenderArrays(data) {
   pathStartIndicesBuffer[pathStartIndexCount++] = 0;
 
   const tipData = [];
+  const edgeData = [];
 
   // Process each tree that has a modelMatrix
   for (const [treeIdx, modelMatrix] of modelMatricesMap) {
@@ -235,6 +237,11 @@ export function computeRenderArrays(data) {
         pathBuffer[pathOffset++] = ct;
 
         pathStartIndicesBuffer[pathStartIndexCount++] = pathOffset / 2;
+        edgeData.push({
+          tree_idx: treeIdx,
+          parent_id: node.node_id,
+          child_id: childNode.node_id
+        });
         edgeCount++;
       }
     }
@@ -278,6 +285,7 @@ export function computeRenderArrays(data) {
     tipPositions: tipBuffer.slice(0, tipOffset),
     tipColors: colorBuffer.slice(0, colorOffset),
     tipData,
+    edgeData,
     edgeCount,
     tipCount: tipOffset / 2
   };

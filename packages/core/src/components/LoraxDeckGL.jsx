@@ -14,6 +14,32 @@ import { useTreePolygons } from '../hooks/useTreePolygons.jsx';
 import TreePolygonOverlay from './TreePolygonOverlay.jsx';
 import { mergeWithDefaults, validateViewConfig, getEnabledViews } from '../utils/deckViewConfig.js';
 
+function pointInPolygon(point, vs) {
+  // Ray-casting algorithm: point = [x,y], vs = [[x,y], ...]
+  const x = point[0], y = point[1];
+  let inside = false;
+  for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
+    const xi = vs[i][0], yi = vs[i][1];
+    const xj = vs[j][0], yj = vs[j][1];
+    const intersect = ((yi > y) !== (yj > y)) &&
+      (x < ((xj - xi) * (y - yi)) / ((yj - yi) || 1e-9) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+function findPolygonAtPoint(polygons, x, y) {
+  if (!Array.isArray(polygons) || polygons.length === 0) return null;
+  // Iterate in reverse so later polygons (visually “on top”) win.
+  for (let i = polygons.length - 1; i >= 0; i--) {
+    const p = polygons[i];
+    if (p?.vertices && p.vertices.length >= 3 && pointInPolygon([x, y], p.vertices)) {
+      return p;
+    }
+  }
+  return null;
+}
+
 /**
  * LoraxDeckGL - Configurable deck.gl component with 4 views:
  * - ortho: Main tree visualization (always required)
@@ -42,6 +68,11 @@ const LoraxDeckGL = forwardRef(({
   polygonOptions = {},
   onPolygonHover,
   onPolygonClick,
+  // Tree interaction callbacks (UI lives in packages/website)
+  onTipHover,
+  onTipClick,
+  onEdgeHover,
+  onEdgeClick,
   ...otherProps
 }, ref) => {
   const deckRef = useRef(null);
@@ -54,8 +85,21 @@ const LoraxDeckGL = forwardRef(({
   // 2. Controller setup (zoom axis and pan direction state)
   const { zoomAxis, panDirection } = useDeckController();
 
-  // 3. Get config values from context for genomic coordinate conversion
-  const { globalBpPerUnit, genomeLength, tsconfig, worker, workerConfigReady, queryTreeLayout, isConnected } = useLorax();
+  // 3. Get config + filter values from context
+  const {
+    globalBpPerUnit,
+    genomeLength,
+    tsconfig,
+    worker,
+    workerConfigReady,
+    queryTreeLayout,
+    isConnected,
+    // Metadata + filter (when enableMetadataFilter=true)
+    metadataArrays,
+    metadataColors,
+    selectedColorBy,
+    enabledValues
+  } = useLorax();
 
   // 4. Views and view state management (with genomic coordinates)
   const {
@@ -118,7 +162,14 @@ const LoraxDeckGL = forwardRef(({
   const { renderData, isLoading: renderDataLoading } = useRenderData({
     localBins,
     treeData,
-    displayArray
+    displayArray,
+    // Metadata-driven tip coloring
+    metadataArrays,
+    metadataColors,
+    populationFilter: selectedColorBy ? {
+      colorBy: selectedColorBy,
+      enabledValues: Array.from(enabledValues || [])
+    } : null
   });
 
   // 7. Compute genome position tick marks
@@ -130,7 +181,12 @@ const LoraxDeckGL = forwardRef(({
     globalBpPerUnit,
     visibleIntervals,
     genomePositions,
-    renderData
+    renderData,
+    // Tree interactions
+    onTipHover,
+    onTipClick,
+    onEdgeHover,
+    onEdgeClick
   });
 
   // 9. Tree polygon overlay computation and animation
@@ -169,6 +225,32 @@ const LoraxDeckGL = forwardRef(({
     }
   }, [showPolygons, _cacheViewports]);
 
+  // Enable deck.gl picking loop for layer-level onHover/onClick and
+  // implement polygon hover/click without letting the SVG overlay intercept pointer events.
+  const handleDeckHover = useCallback((info) => {
+    if (!showPolygons) return;
+    // Only do polygon hover when nothing pickable is hovered.
+    if (info?.object) return;
+    const x = info?.x;
+    const y = info?.y;
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    const hit = findPolygonAtPoint(polygons, x, y);
+    setHoveredPolygon(hit?.key ?? null);
+  }, [showPolygons, polygons, setHoveredPolygon]);
+
+  const handleDeckClick = useCallback((info) => {
+    if (!showPolygons) return;
+    // If a deck object was picked, its layer handler should handle it.
+    if (info?.object) return;
+    const x = info?.x;
+    const y = info?.y;
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    const hit = findPolygonAtPoint(polygons, x, y);
+    if (hit?.treeIndex != null) {
+      onPolygonClick?.({ key: hit.key, treeIndex: hit.treeIndex, polygon: hit });
+    }
+  }, [showPolygons, polygons, onPolygonClick]);
+
   // 11. Ref forwarding - expose deck instance, viewState, and genomic coordinates
   useImperativeHandle(ref, () => ({
     getDeck: () => deckRef.current?.deck,
@@ -205,6 +287,8 @@ const LoraxDeckGL = forwardRef(({
         layers={layers}
         layerFilter={layerFilter}
         viewState={viewState}
+        onHover={handleDeckHover}
+        onClick={handleDeckClick}
         onViewStateChange={handleViewStateChange}
         views={views}
         onResize={handleResize}

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { useLorax, LoraxDeckGL } from '@lorax/core';
 import PositionSlider from './PositionSlider';
@@ -21,7 +21,11 @@ function FileView() {
     tsconfig,
     filename,
     genomeLength,
-    isConnected
+    isConnected,
+    queryDetails,
+    // For tip hover tooltip value computation
+    selectedColorBy,
+    metadataArrays
   } = useLorax();
 
   const [loading, setLoading] = useState(false);
@@ -33,6 +37,67 @@ function FileView() {
   // Navigation state for mutation tab
   const [clickedGenomeInfo, setClickedGenomeInfo] = useState(null);
   const [highlightedMutationNode, setHighlightedMutationNode] = useState(null);
+
+  // Right-panel details (populated by queryDetails)
+  const [treeDetails, setTreeDetails] = useState(null);
+  const [nodeDetails, setNodeDetails] = useState(null);
+  const [individualDetails, setIndividualDetails] = useState(null);
+  const [populationDetails, setPopulationDetails] = useState(null);
+  const [nodeMutations, setNodeMutations] = useState(null);
+  const [nodeEdges, setNodeEdges] = useState(null);
+
+  // Extra: selected metadata key/value for a clicked tip
+  const [selectedTipMetadata, setSelectedTipMetadata] = useState(null); // { key, value } | null
+
+  // Hover tooltip state (rendered in website, not in core)
+  const [hoverTooltip, setHoverTooltip] = useState(null); // { kind, x, y, title, rows[] }
+
+  const clearHoverTooltip = useCallback(() => setHoverTooltip(null), []);
+
+  const getSelectedMetadataValueForNode = useCallback((nodeId) => {
+    const key = selectedColorBy;
+    if (!key) return null;
+    const arr = metadataArrays?.[key];
+    if (!arr) return null;
+    const idx = arr.nodeIdToIdx?.get?.(nodeId);
+    if (idx === undefined) return null;
+    const valueIdx = arr.indices?.[idx];
+    return arr.uniqueValues?.[valueIdx] ?? null;
+  }, [selectedColorBy, metadataArrays]);
+
+  const setTooltipFromEvent = useCallback((base, info, event) => {
+    // Prefer DOM coordinates when available, fall back to deck.gl's canvas-relative coords.
+    const src = event?.srcEvent;
+    const clientX = src?.clientX;
+    const clientY = src?.clientY;
+    const x = Number.isFinite(clientX) ? clientX : info?.x;
+    const y = Number.isFinite(clientY) ? clientY : info?.y;
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    setHoverTooltip({ ...base, x, y });
+  }, []);
+
+  const resetDetails = useCallback(() => {
+    setTreeDetails(null);
+    setNodeDetails(null);
+    setIndividualDetails(null);
+    setPopulationDetails(null);
+    setNodeMutations(null);
+    setNodeEdges(null);
+    setSelectedTipMetadata(null);
+  }, []);
+
+  // Convenience: populate right-panel from queryDetails response
+  const applyDetailsResponse = useCallback((data) => {
+    setTreeDetails(data?.tree ?? null);
+    setNodeDetails(data?.node ?? null);
+    setIndividualDetails(data?.individual ?? null);
+    setPopulationDetails(data?.population ?? null);
+    setNodeMutations(data?.mutations ?? null);
+    setNodeEdges(data?.edges ?? null);
+  }, []);
+
+  // Keep tooltip label stable for current selection
+  const selectedColorByLabel = useMemo(() => selectedColorBy || null, [selectedColorBy]);
 
   // Viewport and view dimensions with localStorage persistence
   const {
@@ -227,7 +292,105 @@ function FileView() {
               }}
               onGenomicCoordsChange={handleGenomicCoordsChange}
               onPolygonClick={handlePolygonClick}
+              onTipHover={(tip, info, event) => {
+                if (!tip) {
+                  clearHoverTooltip();
+                  return;
+                }
+                const value = getSelectedMetadataValueForNode(tip.node_id);
+                setTooltipFromEvent({
+                  kind: 'tip',
+                  title: 'Tip',
+                  rows: [
+                    { k: 'Tree', v: tip.tree_idx },
+                    { k: 'Node', v: tip.node_id },
+                    ...(selectedColorByLabel ? [{ k: selectedColorByLabel, v: value ?? '-' }] : [])
+                  ]
+                }, info, event);
+              }}
+              onTipClick={async (tip) => {
+                if (tip?.tree_idx == null || tip?.node_id == null) return;
+                try {
+                  setShowInfo(true);
+                  resetDetails();
+                  const details = await queryDetails({
+                    treeIndex: tip.tree_idx,
+                    node: tip.node_id,
+                    comprehensive: true
+                  });
+                  applyDetailsResponse(details);
+                  if (selectedColorByLabel) {
+                    const value = getSelectedMetadataValueForNode(tip.node_id);
+                    setSelectedTipMetadata({ key: selectedColorByLabel, value: value ?? '-' });
+                  }
+                } catch (e) {
+                  console.error('[FileView] tip click queryDetails failed:', e);
+                }
+              }}
+              onEdgeHover={(edge, info, event) => {
+                if (!edge) {
+                  clearHoverTooltip();
+                  return;
+                }
+                setTooltipFromEvent({
+                  kind: 'edge',
+                  title: 'Edge',
+                  rows: [
+                    { k: 'Tree', v: edge.tree_idx },
+                    { k: 'Parent', v: edge.parent_id },
+                    { k: 'Child', v: edge.child_id }
+                  ]
+                }, info, event);
+              }}
+              onEdgeClick={async (edge) => {
+                if (!edge?.tree_idx && edge?.tree_idx !== 0) return;
+                try {
+                  setShowInfo(true);
+                  resetDetails();
+                  const details = await queryDetails({ treeIndex: edge.tree_idx });
+                  applyDetailsResponse(details);
+                } catch (e) {
+                  console.error('[FileView] edge click queryDetails failed:', e);
+                }
+              }}
             />
+
+            {/* Hover tooltip (website-owned UI) */}
+            {hoverTooltip && Number.isFinite(hoverTooltip.x) && Number.isFinite(hoverTooltip.y) && (
+              <div
+                style={{
+                  position: 'fixed',
+                  left: hoverTooltip.x + 16,
+                  top: hoverTooltip.y - 8,
+                  zIndex: 99999,
+                  pointerEvents: 'none',
+                  backgroundColor: '#fff',
+                  boxShadow: '0 4px 20px rgba(0,0,0,0.12), 0 1px 4px rgba(0,0,0,0.08)',
+                  borderRadius: 10,
+                  minWidth: 180,
+                  maxWidth: 320,
+                  border: '1px solid rgba(0,0,0,0.08)',
+                  overflow: 'hidden',
+                  fontFamily: '-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, sans-serif',
+                }}
+              >
+                <div style={{ padding: '10px 12px', fontSize: '13px', color: '#374151' }}>
+                  {hoverTooltip.title && (
+                    <div style={{ fontWeight: 700, color: '#111827', marginBottom: 6 }}>
+                      {hoverTooltip.title}
+                    </div>
+                  )}
+                  {Array.isArray(hoverTooltip.rows) && hoverTooltip.rows.map((row) => (
+                    <div key={row.k} style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', borderBottom: '1px solid #f3f4f6' }}>
+                      <span style={{ color: '#6b7280', fontWeight: 500 }}>{row.k}</span>
+                      <span style={{ fontWeight: 600, color: '#111827', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {String(row.v)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -241,6 +404,13 @@ function FileView() {
             genomicCoords={genomicPosition}
             setClickedGenomeInfo={setClickedGenomeInfo}
             setHighlightedMutationNode={setHighlightedMutationNode}
+            treeDetails={treeDetails}
+            nodeDetails={nodeDetails}
+            individualDetails={individualDetails}
+            populationDetails={populationDetails}
+            nodeMutations={nodeMutations}
+            nodeEdges={nodeEdges}
+            selectedTipMetadata={selectedTipMetadata}
           />
         </div>
       </div>

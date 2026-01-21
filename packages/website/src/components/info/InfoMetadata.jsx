@@ -14,7 +14,8 @@ export default function InfoMetadata({
   tsconfig,
   populationDetails,
   nodeMutations,
-  nodeEdges
+  nodeEdges,
+  selectedTipMetadata
 }) {
   // Get sample name from node metadata if available
   const sampleName = nodeDetails?.metadata?.name || nodeDetails?.id;
@@ -70,6 +71,13 @@ export default function InfoMetadata({
               value={typeof value === 'object' ? JSON.stringify(value) : String(value)}
             />
           ))}
+        </DetailCard>
+      )}
+
+      {/* Selected metadata key/value (matches current Filter \"Color by\") */}
+      {selectedTipMetadata?.key && (
+        <DetailCard title="Selected Metadata">
+          <DetailRow label={formatLabel(selectedTipMetadata.key)} value={String(selectedTipMetadata.value ?? '-')} />
         </DetailCard>
       )}
 

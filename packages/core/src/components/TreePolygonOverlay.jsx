@@ -79,18 +79,10 @@ const TreePolygonOverlay = React.memo(({
             strokeWidth={strokeWidth}
             style={{
               cursor: 'pointer',
-              pointerEvents: 'auto',
+              // Important: do NOT intercept pointer events; tip/edge interactions happen in deck.gl
+              pointerEvents: 'none',
               transition: enableTransitions ? 'fill 0.15s ease-out' : 'none'
             }}
-            onMouseEnter={(e) => {
-              e.target.setAttribute('fill', colors.hoverFill);
-              onHover?.(key);
-            }}
-            onMouseLeave={(e) => {
-              e.target.setAttribute('fill', colors.normalFill);
-              onHover?.(null);
-            }}
-            onClick={() => onClick?.({ key, treeIndex, polygon })}
             data-tree-index={treeIndex}
           />
         );
