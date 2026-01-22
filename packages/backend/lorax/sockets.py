@@ -21,7 +21,7 @@ from lorax.handlers import (
     get_or_load_ts, get_metadata_for_key, search_samples_by_metadata,
     get_metadata_array_for_key,
     get_mutations_in_window, search_mutations_by_position, mutations_to_arrow_buffer,
-    search_nodes_in_trees
+    search_nodes_in_trees, get_highlight_positions
 )
 from lorax.loaders.loader import get_or_load_config
 
@@ -597,3 +597,68 @@ def register_socket_events(sio):
         except Exception as e:
             print(f"❌ Search nodes error: {e}")
             await sio.emit("search-nodes-result", {"error": str(e)}, to=sid)
+
+
+    @sio.event
+    async def get_highlight_positions_event(sid, data):
+        """Socket event to get positions for all tip nodes matching a metadata value.
+
+        Returns positions for ALL matching nodes, ignoring sparsification.
+        Used for highlighting nodes that may not be currently rendered.
+
+        data: {
+            lorax_sid: str,
+            metadata_key: str,      # Metadata key to filter by
+            metadata_value: str,    # Metadata value to match
+            tree_indices: [int]     # Tree indices to compute positions for
+        }
+
+        Returns: {
+            positions: [{node_id, tree_idx, x, y}, ...]
+        }
+        """
+        try:
+            lorax_sid = data.get("lorax_sid")
+            session = await require_session(lorax_sid, sid)
+            if not session:
+                return
+
+            if not session.file_path:
+                print(f"⚠️ No file loaded for session {lorax_sid}")
+                await sio.emit("error", {"code": ERROR_NO_FILE_LOADED, "message": "No file loaded. Please load a file first."}, to=sid)
+                return
+
+            if _is_csv_session_file(session.file_path):
+                await sio.emit("highlight-positions-result", {"positions": []}, to=sid)
+                return
+
+            metadata_key = data.get("metadata_key")
+            metadata_value = data.get("metadata_value")
+            tree_indices = data.get("tree_indices", [])
+
+            if not metadata_key or metadata_value is None:
+                await sio.emit("highlight-positions-result", {"error": "Missing metadata_key or metadata_value"}, to=sid)
+                return
+
+            if not tree_indices:
+                await sio.emit("highlight-positions-result", {"positions": []}, to=sid)
+                return
+
+            ts = await get_or_load_ts(session.file_path)
+            if ts is None:
+                await sio.emit("highlight-positions-result", {"error": "Failed to load tree sequence"}, to=sid)
+                return
+
+            result = await asyncio.to_thread(
+                get_highlight_positions,
+                ts,
+                session.file_path,
+                metadata_key,
+                metadata_value,
+                tree_indices
+            )
+
+            await sio.emit("highlight-positions-result", result, to=sid)
+        except Exception as e:
+            print(f"❌ Get highlight positions error: {e}")
+            await sio.emit("highlight-positions-result", {"error": str(e)}, to=sid)

@@ -267,6 +267,53 @@ export function useLoraxConnection({ apiBase, isProd = false }) {
   }, [emit, once, off, socketRef, sidRef]);
 
   /**
+   * Query highlight positions for all tip nodes matching a metadata value.
+   * Returns positions for ALL matching nodes, ignoring sparsification.
+   * Used for highlighting nodes that may not be currently rendered.
+   * @param {string} metadataKey - Metadata key to filter by
+   * @param {string} metadataValue - Metadata value to match
+   * @param {number[]} treeIndices - Tree indices to compute positions for
+   * @returns {Promise<{positions: [{node_id, tree_idx, x, y}]}>}
+   */
+  const queryHighlightPositions = useCallback((metadataKey, metadataValue, treeIndices) => {
+    return new Promise((resolve, reject) => {
+      if (!socketRef.current) {
+        reject(new Error("Socket not available"));
+        return;
+      }
+
+      if (!metadataKey || metadataValue === null || metadataValue === undefined) {
+        resolve({ positions: [] });
+        return;
+      }
+
+      if (!treeIndices || treeIndices.length === 0) {
+        resolve({ positions: [] });
+        return;
+      }
+
+      const handleResult = (message) => {
+        off("highlight-positions-result", handleResult);
+
+        if (message.error) {
+          reject(new Error(message.error));
+          return;
+        }
+
+        resolve({ positions: message.positions || [] });
+      };
+
+      once("highlight-positions-result", handleResult);
+      emit("get_highlight_positions_event", {
+        lorax_sid: sidRef.current,
+        metadata_key: metadataKey,
+        metadata_value: String(metadataValue),
+        tree_indices: treeIndices
+      });
+    });
+  }, [emit, once, off, socketRef, sidRef]);
+
+  /**
    * Search mutations by position with configurable range.
    * Returns mutations sorted by distance from the searched position.
    * @param {number} position - Center position to search around (bp)
@@ -367,6 +414,7 @@ export function useLoraxConnection({ apiBase, isProd = false }) {
       queryTreeLayout,
       queryDetails,
       queryMutationsWindow,
+      queryHighlightPositions,
       searchMutations,
       loraxSid,
       getProjects,
@@ -380,6 +428,7 @@ export function useLoraxConnection({ apiBase, isProd = false }) {
       queryTreeLayout,
       queryDetails,
       queryMutationsWindow,
+      queryHighlightPositions,
       searchMutations,
       loraxSid,
       getProjects,

@@ -50,6 +50,13 @@ function FileView() {
   // Extra: selected metadata key/value for a clicked tip
   const [selectedTipMetadata, setSelectedTipMetadata] = useState(null); // { key, value } | null
 
+  // Visible trees state (array of tree indices visible in viewport)
+  const [visibleTrees, setVisibleTrees] = useState([]);
+  // Per-tree color customization { [treeIndex]: '#hexcolor' }
+  const [treeColors, setTreeColors] = useState({});
+  // Hovered tree index (for list-to-polygon hover sync)
+  const [hoveredTreeIndex, setHoveredTreeIndex] = useState(null);
+
   // Hover tooltip state (rendered in website, not in core)
   const [hoverTooltip, setHoverTooltip] = useState(null); // { kind, x, y, title, rows[] }
 
@@ -192,6 +199,11 @@ function FileView() {
     setTreeIsLoading(loading);
   }, []);
 
+  // Handle visible trees change from LoraxDeckGL
+  const handleVisibleTreesChange = useCallback((trees) => {
+    setVisibleTrees(trees || []);
+  }, []);
+
   const handlePolygonClick = useCallback(async (payload) => {
     const treeIndex = payload?.treeIndex;
     if (treeIndex == null) return;
@@ -299,6 +311,9 @@ function FileView() {
               }}
               onGenomicCoordsChange={handleGenomicCoordsChange}
               onTreeLoadingChange={handleTreeLoadingChange}
+              onVisibleTreesChange={handleVisibleTreesChange}
+              hoveredTreeIndex={hoveredTreeIndex}
+              polygonOptions={{ treeColors }}
               onPolygonClick={handlePolygonClick}
               onTipHover={(tip, info, event) => {
                 if (!tip) {
@@ -419,6 +434,11 @@ function FileView() {
             nodeMutations={nodeMutations}
             nodeEdges={nodeEdges}
             selectedTipMetadata={selectedTipMetadata}
+            visibleTrees={visibleTrees}
+            treeColors={treeColors}
+            setTreeColors={setTreeColors}
+            hoveredTreeIndex={hoveredTreeIndex}
+            setHoveredTreeIndex={setHoveredTreeIndex}
           />
         </div>
       </div>

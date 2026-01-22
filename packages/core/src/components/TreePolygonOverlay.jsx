@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useCallback } from 'react';
 
 /**
  * TreePolygonOverlay - SVG overlay component for rendering tree trapezoid polygons.
@@ -11,6 +11,7 @@ import React, { useMemo } from 'react';
  * @param {Array} props.strokeColor - RGBA for stroke (optional)
  * @param {number} props.strokeWidth - Stroke width in pixels (optional)
  * @param {boolean} props.enableTransitions - Enable CSS transitions for fill changes (default: true)
+ * @param {Object} props.treeColors - Per-tree color overrides { [treeIndex]: '#hexcolor' }
  * @param {Function} props.onHover - Called with polygon key on hover, null on leave
  * @param {Function} props.onClick - Called on click with payload: { key, treeIndex, polygon }
  * @param {Object} props.style - Additional styles for the SVG container
@@ -22,6 +23,7 @@ const TreePolygonOverlay = React.memo(({
   strokeColor,
   strokeWidth = 0,
   enableTransitions = true,
+  treeColors = {},
   onHover,
   onClick,
   style
@@ -46,6 +48,21 @@ const TreePolygonOverlay = React.memo(({
     return { normalFill, hoverFill, stroke };
   }, [fillColor, hoverFillColor, strokeColor]);
 
+  // Helper to get per-tree fill color (custom or default)
+  const getTreeFillColor = useCallback((treeIndex, isHovered) => {
+    const customColor = treeColors[treeIndex];
+    if (customColor) {
+      // Convert hex to rgba
+      const hex = customColor.replace('#', '');
+      const r = parseInt(hex.substring(0, 2), 16);
+      const g = parseInt(hex.substring(2, 4), 16);
+      const b = parseInt(hex.substring(4, 6), 16);
+      const alpha = isHovered ? 0.36 : 0.18;
+      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    }
+    return isHovered ? colors.hoverFill : colors.normalFill;
+  }, [treeColors, colors]);
+
   if (!polygons || polygons.length === 0) {
     return null;
   }
@@ -67,7 +84,7 @@ const TreePolygonOverlay = React.memo(({
         if (!vertices || vertices.length === 0) return null;
 
         const pointsStr = vertices.map(([x, y]) => `${x},${y}`).join(' ');
-        const currentFill = isHovered ? colors.hoverFill : colors.normalFill;
+        const currentFill = getTreeFillColor(treeIndex, isHovered);
         const polygon = { key, vertices, treeIndex, isHovered };
 
         return (

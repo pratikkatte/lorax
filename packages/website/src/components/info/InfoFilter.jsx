@@ -37,7 +37,9 @@ export default function InfoFilter({
   settings = {},
   setSettings,
   hoveredTreeIndex = null,
-  setHoveredTreeIndex
+  setHoveredTreeIndex,
+  highlightedMetadataValue = null,
+  setHighlightedMetadataValue
 }) {
   const [visibleCount, setVisibleCount] = useState(ITEMS_PER_PAGE);
   const [isTreesExpanded, setIsTreesExpanded] = useState(true);
@@ -191,10 +193,15 @@ export default function InfoFilter({
             <>
               {displayItems.map(([val, color]) => {
                 const isEnabled = enabledValues.has(val);
+                const isHighlighted = highlightedMetadataValue === val;
                 return (
                   <div
                     key={val}
-                    className="group relative w-full flex items-center hover:bg-gray-50 transition-colors"
+                    className={`group relative w-full flex items-center transition-colors ${
+                      isHighlighted
+                        ? 'bg-yellow-100 ring-1 ring-inset ring-yellow-400'
+                        : 'hover:bg-gray-50'
+                    }`}
                   >
                     <div className={`flex-1 flex items-center px-2 py-1 ${isEnabled ? '' : 'opacity-40'}`}>
                       {/* Color picker - clickable swatch */}
@@ -226,10 +233,18 @@ export default function InfoFilter({
                         type="button"
                         className="flex-1 text-left"
                         onClick={() => {
+                          // Toggle highlight on click
+                          if (setHighlightedMetadataValue) {
+                            setHighlightedMetadataValue(prev => prev === val ? null : val);
+                          }
+                        }}
+                        onDoubleClick={() => {
+                          // Double-click adds to search tags (original behavior)
                           if (!searchTags.includes(val) && setSearchTags) {
                             setSearchTags(prev => [...prev, val]);
                           }
                         }}
+                        title="Click to highlight, double-click to add to search"
                       >
                         <span className="text-sm text-gray-800 truncate">{val}</span>
                       </button>
@@ -317,7 +332,11 @@ export default function InfoFilter({
             className="flex items-center justify-between mb-2 cursor-pointer select-none"
             onClick={() => setIsTreesExpanded(!isTreesExpanded)}
           >
-            <h3 className="text-sm font-medium text-gray-700">Trees</h3>
+            <h3 className="text-sm font-medium text-gray-700">
+              Trees {visibleTrees.length > 0 && (
+                <span className="text-gray-400 font-normal">({visibleTrees.length})</span>
+              )}
+            </h3>
             <button type="button" className="p-1 rounded hover:bg-gray-100 text-gray-500">
               <svg className={`w-4 h-4 transform transition-transform duration-200 ${isTreesExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />

@@ -26,6 +26,7 @@ function useMetadataFilter({ enabled = false, config = {} }) {
   const [enabledValues, setEnabledValues] = useState(new Set());
   const [searchTags, setSearchTags] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
+  const [highlightedMetadataValue, setHighlightedMetadataValue] = useState(null);
 
   // Track pending fallback fetch
   const fallbackTimerRef = useRef(null);
@@ -108,6 +109,7 @@ function useMetadataFilter({ enabled = false, config = {} }) {
     setSelectedColorBy(newKey);
     setSearchTerm("");
     setSearchTags([]);
+    setHighlightedMetadataValue(null);  // Clear highlight when key changes
     // enabledValues will be auto-set by the effect above
   }, []);
 
@@ -124,7 +126,9 @@ function useMetadataFilter({ enabled = false, config = {} }) {
       setSearchTerm: () => {},
       coloryby: {},
       metadataColors: null,
-      setMetadataColors: () => {}
+      setMetadataColors: () => {},
+      highlightedMetadataValue: null,
+      setHighlightedMetadataValue: () => {}
     };
   }
 
@@ -138,6 +142,10 @@ function useMetadataFilter({ enabled = false, config = {} }) {
     setSearchTags,
     searchTerm,
     setSearchTerm,
+
+    // Highlight state
+    highlightedMetadataValue,
+    setHighlightedMetadataValue,
 
     // Derived
     coloryby,

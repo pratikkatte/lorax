@@ -27,7 +27,8 @@ from lorax.utils import (
 from lorax.metadata.loader import (
     get_metadata_for_key,
     search_samples_by_metadata,
-    get_metadata_array_for_key
+    get_metadata_array_for_key,
+    _get_sample_metadata_value
 )
 from lorax.metadata.mutations import (
     get_mutations_in_window,
@@ -554,3 +555,80 @@ async def handle_tree_graph_query(file_path, tree_indices, sparsity_resolution=N
         "global_max_time": max_time,
         "tree_indices": processed_indices
     }
+
+
+def get_highlight_positions(
+    ts,
+    file_path,
+    metadata_key,
+    metadata_value,
+    tree_indices,
+    sources=("individual", "node", "population"),
+    sample_name_key="name"
+):
+    """
+    Get positions for all tip nodes with a specific metadata value.
+    Computes full tree layout (no sparsification) for ALL matching nodes.
+
+    Args:
+        ts: tskit.TreeSequence
+        file_path: Path to tree sequence file (for cache key)
+        metadata_key: Metadata key to filter by
+        metadata_value: Metadata value to match
+        tree_indices: List of tree indices to compute positions for
+        sources: Metadata sources to search
+        sample_name_key: Key in node metadata used as sample name
+
+    Returns:
+        dict with:
+        - positions: List of {node_id, tree_idx, x, y} dicts
+    """
+    from lorax.tree_graph import construct_tree
+
+    if not tree_indices:
+        return {"positions": []}
+
+    # Get sample node IDs that have this metadata value
+    matching_node_ids = set()
+    for node_id in ts.samples():
+        sample_name, value = _get_sample_metadata_value(
+            ts, node_id, metadata_key, sources, sample_name_key
+        )
+        if value is not None and str(value) == str(metadata_value):
+            matching_node_ids.add(node_id)
+
+    if not matching_node_ids:
+        return {"positions": []}
+
+    # Pre-extract tables for reuse
+    edges = ts.tables.edges
+    nodes = ts.tables.nodes
+    breakpoints = list(ts.breakpoints())
+
+    min_time = float(ts.min_time)
+    max_time = float(ts.max_time)
+
+    positions = []
+
+    # For each requested tree, compute full layout (no sparsification)
+    for tree_idx in tree_indices:
+        tree_idx = int(tree_idx)
+        if tree_idx < 0 or tree_idx >= ts.num_trees:
+            continue
+
+        # Construct full tree layout
+        graph = construct_tree(ts, edges, nodes, breakpoints, tree_idx, min_time, max_time)
+
+        # Extract positions for matching nodes that are in this tree
+        for node_id in matching_node_ids:
+            if graph.in_tree[node_id]:
+                # Note: graph.y is time (x in frontend), graph.x is layout (y in frontend)
+                # Return using frontend coordinate convention
+                positions.append({
+                    "node_id": int(node_id),
+                    "tree_idx": tree_idx,
+                    "x": float(graph.y[node_id]),  # time -> frontend x
+                    "y": float(graph.x[node_id])   # layout -> frontend y
+                })
+
+    return {"positions": positions}

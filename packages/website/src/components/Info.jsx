@@ -15,7 +15,12 @@ const Info = ({
   populationDetails,
   nodeMutations,
   nodeEdges,
-  selectedTipMetadata
+  selectedTipMetadata,
+  visibleTrees = [],
+  treeColors = {},
+  setTreeColors,
+  hoveredTreeIndex = null,
+  setHoveredTreeIndex
 }) => {
   const [activeTab, setActiveTab] = useState('metadata');
 
@@ -33,6 +38,9 @@ const Info = ({
     coloryby,
     metadataColors,
     setMetadataColors,
+    // Highlight state
+    highlightedMetadataValue,
+    setHighlightedMetadataValue,
     // Config state from useLoraxConfig
     sampleDetails: contextSampleDetails,
     tsconfig: contextTsconfig,
@@ -47,11 +55,8 @@ const Info = ({
   const sampleDetails = contextSampleDetails || null;
   const tsconfig = contextTsconfig || {};
 
-  // Placeholder state for Trees section in InfoFilter (not yet wired)
-  const [visibleTrees, setVisibleTrees] = useState([]);
-  const [treeColors, setTreeColors] = useState({});
+  // Local state for settings (not passed from parent)
   const [settings, setSettings] = useState({ display_lineage_paths: false });
-  const [hoveredTreeIndex, setHoveredTreeIndex] = useState(null);
 
   // Use mutations hook from core
   const mutationsHook = useMutations({
@@ -164,6 +169,8 @@ const Info = ({
             setSettings={setSettings}
             hoveredTreeIndex={hoveredTreeIndex}
             setHoveredTreeIndex={setHoveredTreeIndex}
+            highlightedMetadataValue={highlightedMetadataValue}
+            setHighlightedMetadataValue={setHighlightedMetadataValue}
           />
         )}
       </div>

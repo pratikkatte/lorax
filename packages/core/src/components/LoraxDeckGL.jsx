@@ -1,4 +1,4 @@
-import React, { useRef, useCallback, forwardRef, useImperativeHandle, useEffect, useMemo } from 'react';
+import React, { useRef, useCallback, forwardRef, useImperativeHandle, useEffect, useMemo, useState } from 'react';
 import DeckGL from '@deck.gl/react';
 import { View } from '@deck.gl/core';
 import { useLorax } from '../context/LoraxProvider.jsx';
@@ -75,6 +75,10 @@ const LoraxDeckGL = forwardRef(({
   onEdgeClick,
   // Tree loading state callback
   onTreeLoadingChange,
+  // Visible trees change callback
+  onVisibleTreesChange,
+  // External control of polygon hover (for list-to-polygon sync)
+  hoveredTreeIndex,
   ...otherProps
 }, ref) => {
   const deckRef = useRef(null);
@@ -95,12 +99,14 @@ const LoraxDeckGL = forwardRef(({
     worker,
     workerConfigReady,
     queryTreeLayout,
+    queryHighlightPositions,
     isConnected,
     // Metadata + filter (when enableMetadataFilter=true)
     metadataArrays,
     metadataColors,
     selectedColorBy,
-    enabledValues
+    enabledValues,
+    highlightedMetadataValue
   } = useLorax();
 
   // Stabilize population filter to avoid rerunning downstream effects every render
@@ -174,8 +180,15 @@ const LoraxDeckGL = forwardRef(({
     onTreeLoadingChange?.(treeDataLoading);
   }, [treeDataLoading, onTreeLoadingChange]);
 
+  // 6c.2. Notify parent when visible trees (displayArray) changes
+  useEffect(() => {
+    if (displayArray && onVisibleTreesChange) {
+      onVisibleTreesChange(displayArray);
+    }
+  }, [displayArray, onVisibleTreesChange]);
+
   // 6d. Compute render data (typed arrays) for tree visualization
-  const { renderData, isLoading: renderDataLoading } = useRenderData({
+  const { renderData: baseRenderData, isLoading: renderDataLoading } = useRenderData({
     localBins,
     treeData,
     displayArray,
@@ -184,6 +197,95 @@ const LoraxDeckGL = forwardRef(({
     metadataColors,
     populationFilter
   });
+
+  // 6e. Highlight positions for filter-table clicks
+  const [highlightPositions, setHighlightPositions] = useState(null);
+  const highlightRequestRef = useRef(0);
+
+  // Get visible tree indices from localBins for highlight fetching
+  const visibleTreeIndices = useMemo(() => {
+    if (!localBins) return [];
+    return Array.from(localBins.keys());
+  }, [localBins]);
+
+  // Fetch highlight positions when highlighted value changes
+  useEffect(() => {
+    if (!highlightedMetadataValue || !selectedColorBy || visibleTreeIndices.length === 0) {
+      setHighlightPositions(null);
+      return;
+    }
+
+    if (!queryHighlightPositions || !isConnected) {
+      return;
+    }
+
+    // Track this request to avoid race conditions
+    const requestId = ++highlightRequestRef.current;
+
+    queryHighlightPositions(selectedColorBy, highlightedMetadataValue, visibleTreeIndices)
+      .then(result => {
+        // Ignore stale responses
+        if (requestId !== highlightRequestRef.current) return;
+        setHighlightPositions(result.positions || []);
+      })
+      .catch(err => {
+        if (requestId !== highlightRequestRef.current) return;
+        console.error('Failed to fetch highlight positions:', err);
+        setHighlightPositions(null);
+      });
+  }, [highlightedMetadataValue, selectedColorBy, visibleTreeIndices, queryHighlightPositions, isConnected]);
+
+  // Compute highlight data with world coordinates by applying model matrices
+  const computedHighlightData = useMemo(() => {
+    if (!highlightPositions || !localBins || highlightPositions.length === 0) {
+      return [];
+    }
+
+    // Get color for highlighted value from metadataColors
+    const color = metadataColors?.[selectedColorBy]?.[highlightedMetadataValue]
+      || [255, 200, 0, 255];
+
+    return highlightPositions
+      .map(pos => {
+        const bin = localBins.get(pos.tree_idx);
+        if (!bin?.modelMatrix) return null;
+
+        const m = bin.modelMatrix;
+        // Model matrix format: column-major 4x4
+        // m[0] = scaleX, m[5] = scaleY, m[12] = translateX, m[13] = translateY
+        const scaleX = m[0];
+        const scaleY = m[5];
+        const translateX = m[12];
+        const translateY = m[13];
+
+        // Apply model matrix transform: worldPos = scale * localPos + translate
+        const worldX = pos.x * scaleX + translateX;
+        const worldY = pos.y * scaleY + translateY;
+
+        return {
+          position: [worldX, worldY],
+          color,
+          node_id: pos.node_id,
+          tree_idx: pos.tree_idx
+        };
+      })
+      .filter(Boolean);
+  }, [highlightPositions, localBins, metadataColors, highlightedMetadataValue, selectedColorBy]);
+
+  // Merge highlight data into render data
+  const renderData = useMemo(() => {
+    if (!baseRenderData) return null;
+
+    // If we have computed highlights, merge them into renderData
+    if (computedHighlightData && computedHighlightData.length > 0) {
+      return {
+        ...baseRenderData,
+        highlightData: computedHighlightData
+      };
+    }
+
+    return baseRenderData;
+  }, [baseRenderData, computedHighlightData]);
 
   // 7. Compute genome position tick marks
   const genomePositions = useGenomePositions(genomicCoords);
@@ -220,6 +322,17 @@ const LoraxDeckGL = forwardRef(({
     onPolygonHover,
     onPolygonClick
   });
+
+  // 9b. Sync external hoveredTreeIndex prop to polygon hover state
+  useEffect(() => {
+    if (hoveredTreeIndex != null) {
+      setHoveredPolygon(hoveredTreeIndex);
+    } else {
+      // Clear hover when external control is cleared
+      // This allows both external control (from InfoFilter) and direct canvas hover
+      setHoveredPolygon(null);
+    }
+  }, [hoveredTreeIndex, setHoveredPolygon]);
 
   // 10. Event handlers - run internal logic first, then call external handlers
   const handleResize = useCallback(({ width, height }) => {
@@ -318,6 +431,7 @@ const LoraxDeckGL = forwardRef(({
                 strokeColor={polygonOptions?.strokeColor}
                 strokeWidth={polygonOptions?.strokeWidth}
                 enableTransitions={polygonOptions?.enableTransitions}
+                treeColors={polygonOptions?.treeColors}
                 onHover={setHoveredPolygon}
                 onClick={onPolygonClick}
               />
