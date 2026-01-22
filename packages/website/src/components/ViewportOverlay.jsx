@@ -21,7 +21,8 @@ const ViewportOverlay = React.memo(({
   onViewportChange,
   views,
   onViewChange,
-  resizable = true
+  resizable = true,
+  treeIsLoading = false
 }) => {
   // Calculate divider positions based on view dimensions
   // genome-positions is at the top (y: 1%, height: 3%)
@@ -229,6 +230,33 @@ const ViewportOverlay = React.memo(({
             </div>
           </div>
         )}
+
+      {/* Tree Fetching Overlay - semi-transparent, non-blocking */}
+      {treeIsLoading && !statusMessage?.status && (
+        <div
+          style={{
+            position: 'absolute',
+            top: views?.ortho?.y || '6%',
+            left: viewport.left,
+            height: views?.ortho?.height || '80%',
+            width: viewport.width,
+            zIndex: 15,
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            backgroundColor: 'rgba(255, 255, 255, 0.5)',
+            borderRadius: '0 0 8px 8px',
+            pointerEvents: 'none',
+          }}
+        >
+          <div className="flex flex-col items-center gap-2 p-4 rounded-xl bg-white/90 border border-slate-200 shadow-md">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600"></div>
+            <span className="text-sm font-medium text-slate-600">
+              Fetching trees from backend...
+            </span>
+          </div>
+        </div>
+      )}
     </>
   );
 });

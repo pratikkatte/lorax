@@ -33,6 +33,7 @@ function FileView() {
   const [genomicPosition, setGenomicPosition] = useState(null); // [start, end] - synced with deck
   const [statusMessage, setStatusMessage] = useState(null);
   const [showInfo, setShowInfo] = useState(false);
+  const [treeIsLoading, setTreeIsLoading] = useState(false);
 
   // Navigation state for mutation tab
   const [clickedGenomeInfo, setClickedGenomeInfo] = useState(null);
@@ -186,6 +187,11 @@ function FileView() {
     }
   }, []);
 
+  // Handle tree loading state changes from LoraxDeckGL
+  const handleTreeLoadingChange = useCallback((loading) => {
+    setTreeIsLoading(loading);
+  }, []);
+
   const handlePolygonClick = useCallback(async (payload) => {
     const treeIndex = payload?.treeIndex;
     if (treeIndex == null) return;
@@ -230,6 +236,7 @@ function FileView() {
           views={views}
           onViewChange={updateView}
           resizable={!loading && !error && tsconfig}
+          treeIsLoading={treeIsLoading}
         />
 
         {/* Error display */}
@@ -291,6 +298,7 @@ function FileView() {
                 treeTime: { enabled: true, ...views?.treeTime }
               }}
               onGenomicCoordsChange={handleGenomicCoordsChange}
+              onTreeLoadingChange={handleTreeLoadingChange}
               onPolygonClick={handlePolygonClick}
               onTipHover={(tip, info, event) => {
                 if (!tip) {

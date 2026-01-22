@@ -73,6 +73,8 @@ const LoraxDeckGL = forwardRef(({
   onTipClick,
   onEdgeHover,
   onEdgeClick,
+  // Tree loading state callback
+  onTreeLoadingChange,
   ...otherProps
 }, ref) => {
   const deckRef = useRef(null);
@@ -166,6 +168,11 @@ const LoraxDeckGL = forwardRef(({
     isConnected,
     sparsityOptions: { precision: 2 }
   });
+
+  // 6c.1. Notify parent when tree loading state changes
+  useEffect(() => {
+    onTreeLoadingChange?.(treeDataLoading);
+  }, [treeDataLoading, onTreeLoadingChange]);
 
   // 6d. Compute render data (typed arrays) for tree visualization
   const { renderData, isLoading: renderDataLoading } = useRenderData({
