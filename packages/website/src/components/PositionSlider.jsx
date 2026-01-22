@@ -2,6 +2,18 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
 /**
+ * Format base pairs with appropriate Kb/Mb units
+ */
+const formatBp = (bp) => {
+  if (bp >= 1_000_000) {
+    return `${(bp / 1_000_000).toFixed(1)} Mb`;
+  } else if (bp >= 1_000) {
+    return `${(bp / 1_000).toFixed(1)} Kb`;
+  }
+  return `${bp} bp`;
+};
+
+/**
  * PositionSlider - Header bar with genome position controls
  * Based on frontend's PositionSlider + EditableRange
  */
@@ -182,10 +194,10 @@ export default function PositionSlider({
         &#x21BA;
       </button>
 
-      {/* Genome length display */}
-      {genomeLength && (
+      {/* Genome window size and length display */}
+      {value && genomeLength && (
         <span className="text-xs text-slate-400 ml-2">
-          / {genomeLength.toLocaleString()} bp
+          {formatBp(value[1] - value[0])} / {formatBp(genomeLength)}
         </span>
       )}
 
