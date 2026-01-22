@@ -12,7 +12,9 @@ export default function PositionSlider({
   onChange,
   project,
   showInfo,
-  setShowInfo
+  setShowInfo,
+  showSettings,
+  setShowSettings
 }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const [start, setStart] = useState(value?.[0] || 0);
@@ -190,8 +192,11 @@ export default function PositionSlider({
       {/* Info panel toggle button */}
       {setShowInfo && (
         <button
-          onClick={() => setShowInfo(!showInfo)}
-          className={`absolute right-4 p-2 rounded-lg transition-colors ${
+          onClick={() => {
+            setShowInfo(!showInfo);
+            if (!showInfo && setShowSettings) setShowSettings(false);
+          }}
+          className={`absolute right-14 p-2 rounded-lg transition-colors ${
             showInfo
               ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
               : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
@@ -201,6 +206,28 @@ export default function PositionSlider({
           {/* Kanban/list icon similar to frontend */}
           <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
+          </svg>
+        </button>
+      )}
+
+      {/* Settings panel toggle button */}
+      {setShowSettings && (
+        <button
+          onClick={() => {
+            setShowSettings(!showSettings);
+            if (!showSettings && setShowInfo) setShowInfo(false);
+          }}
+          className={`absolute right-4 p-2 rounded-lg transition-colors ${
+            showSettings
+              ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
+              : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+          }`}
+          title={showSettings ? 'Close settings panel' : 'Open settings panel'}
+        >
+          {/* Gear icon */}
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
           </svg>
         </button>
       )}

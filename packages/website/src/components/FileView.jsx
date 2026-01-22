@@ -4,6 +4,7 @@ import { useLorax, LoraxDeckGL } from '@lorax/core';
 import PositionSlider from './PositionSlider';
 import ViewportOverlay from './ViewportOverlay';
 import Info from './Info';
+import Settings from './Settings';
 import { useViewportDimensions } from '../hooks/useViewportDimensions';
 
 /**
@@ -33,6 +34,7 @@ function FileView() {
   const [genomicPosition, setGenomicPosition] = useState(null); // [start, end] - synced with deck
   const [statusMessage, setStatusMessage] = useState(null);
   const [showInfo, setShowInfo] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [treeIsLoading, setTreeIsLoading] = useState(false);
 
   // Navigation state for mutation tab
@@ -235,6 +237,8 @@ function FileView() {
         project={project}
         showInfo={showInfo}
         setShowInfo={setShowInfo}
+        showSettings={showSettings}
+        setShowSettings={setShowSettings}
       />
 
       {/* Main viewport area */}
@@ -440,6 +444,14 @@ function FileView() {
             hoveredTreeIndex={hoveredTreeIndex}
             setHoveredTreeIndex={setHoveredTreeIndex}
           />
+        </div>
+
+        {/* Settings Panel - Right sidebar */}
+        <div
+          className={`fixed top-0 right-0 w-[25%] min-w-[320px] h-full z-40 shadow-xl transition-transform duration-300 ease-in-out ${showSettings ? 'translate-x-0' : 'translate-x-full'
+            }`}
+        >
+          <Settings setShowSettings={setShowSettings} />
         </div>
       </div>
     </div>
