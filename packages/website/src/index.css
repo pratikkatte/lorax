@@ -36,3 +36,18 @@
     border-radius: 20px;
   }
 }
+
+/* Fix color input swatch styling for circular color pickers */
+input[type="color"]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+input[type="color"]::-webkit-color-swatch {
+  border: none;
+  border-radius: 50%;
+}
+
+input[type="color"]::-moz-color-swatch {
+  border: none;
+  border-radius: 50%;
+}
