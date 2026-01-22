@@ -1,0 +1,133 @@
+import os
+import json
+import asyncio
+from pathlib import Path
+from typing import Optional
+import aiofiles
+
+from fastapi import APIRouter, Request, Response, UploadFile, File, Query
+from fastapi.responses import JSONResponse
+
+from lorax.context import session_manager, IS_VM, BUCKET_NAME
+from lorax.constants import UPLOADS_DIR
+from lorax.cloud.gcs_utils import download_gcs_file, get_public_gcs_dict, upload_to_gcs
+from lorax.handlers import (
+    handle_upload,
+    get_projects,
+    cache_status,
+)
+from lorax.loaders.loader import get_or_load_config
+
+router = APIRouter()
+UPLOAD_DIR = Path(UPLOADS_DIR)
+UPLOAD_DIR.mkdir(exist_ok=True)
+
+@router.get("/health")
+async def healthz():
+    redis_ok = await session_manager.health_check()
+    return {"ok": True, "redis": redis_ok}
+
+@router.get("/fevicon.ico")
+async def favicon():
+    return Response(content="", media_type="image/x-icon")
+
+@router.get("/")
+async def root():
+    return Response(content="Lorax Backend is running...", media_type="text/html")
+
+@router.post("/init-session")
+async def init_session(request: Request, response: Response):
+    sid, session = await session_manager.get_or_create_session(request, response)
+    print("init-session:", sid)
+    return {"sid": sid}
+
+@router.get("/projects")
+async def projects(request: Request, response: Response):
+    sid, session = await session_manager.get_or_create_session(request, response)
+    projects = {}
+    if IS_VM:
+        projects = get_public_gcs_dict(BUCKET_NAME, sid=sid, projects=projects)
+    else:
+        projects = await get_projects(UPLOAD_DIR, BUCKET_NAME)
+    return {"projects": projects}
+
+@router.get("/memory_status")
+async def memory_status():
+    print("cache-status")
+    return await cache_status()
+
+@router.get("/{file}")
+async def get_file(
+    request: Request,
+    response: Response,
+    file: Optional[str] = None,
+    project: Optional[str] = Query(None),
+    genomiccoordstart: Optional[int] = Query(None),
+    genomiccoordend: Optional[int] = Query(None),
+    share_sid: Optional[str] = Query(None),
+):
+    sid, session = await session_manager.get_or_create_session(request, response)
+    if file and file != "" and file != "ucgb":
+        if project == 'Uploads' and IS_VM:
+            target_sid = share_sid if share_sid else sid
+            file_path = UPLOAD_DIR / project / target_sid / file
+        else:
+            file_path = UPLOAD_DIR / (project or "") / file
+    else:
+        file = "1kg_chr20.trees.tsz"
+        file_path = UPLOAD_DIR / (project or "1000Genomes") / file
+    try:
+        ts = await handle_upload(str(file_path), UPLOAD_DIR)
+        viz_config = await asyncio.to_thread(get_or_load_config, ts, str(file_path), UPLOAD_DIR)
+
+        # Override initial_position if client provided genomic coordinates
+        if genomiccoordstart is not None and genomiccoordend is not None:
+            viz_config['initial_position'] = [genomiccoordstart, genomiccoordend]
+
+        # Update session with loaded file path
+        session.file_path = str(file_path)
+        await session_manager.save_session(session)
+
+    except Exception as e:
+        print(f"❌ Error loading file: {e}")
+        return {"error": str(e)}
+
+    return {
+        "sid": sid,
+        "file": file,
+        "project": project,
+        "config": viz_config,
+        "genomiccoordstart": genomiccoordstart,
+        "genomiccoordend": genomiccoordend,
+    }
+
+@router.post("/upload")
+async def upload(request: Request, response: Response, file: UploadFile = File(...)):
+    """
+    Upload a file to the server. 
+    
+    ## TODO for local uploads, we need to upload the file to the local directory and not upload it to GCS. 
+    """
+    sid, session = await session_manager.get_or_create_session(request, response)
+
+    user_dir = UPLOAD_DIR /"Uploads"/sid if IS_VM else UPLOAD_DIR /"Uploads"
+    user_dir.mkdir(parents=True, exist_ok=True)
+
+    file_path = user_dir / file.filename
+
+    try:
+        async with aiofiles.open(file_path, "wb") as f:
+            while chunk := await file.read(1024 * 1024):
+                await f.write(chunk)
+
+        # Upload to GCS asynchronously
+        if IS_VM:
+            gcs_url = await upload_to_gcs(BUCKET_NAME, file_path, sid)
+        
+        return JSONResponse(
+            status_code=200,
+            content={"message": "File uploaded", "sid": sid, "owner_sid": sid, "filename": file.filename}
+        )
+    except Exception as e:
+        print("❌ Upload error:", e)
+        return JSONResponse(status_code=500, content={"error": "Upload error"})

@@ -1,0 +1,172 @@
+# Lorax Monorepo - Cloud Build CI/CD Pipeline
+#
+# This pipeline detects which packages have changed and builds/deploys them accordingly.
+#
+# Triggers:
+#   - Push to main branch: Build and deploy changed packages
+#   - Push to feature branches: Build only (no deploy)
+#
+# Required substitutions (set in Cloud Build trigger):
+#   - _BACKEND_ZONE: Zone where VM is deployed (e.g., us-central1-a)
+#   - _WEBSITE_BUCKET: GCS bucket for website static files
+#   - _BACKEND_API_URL: Backend API URL for website build
+#
+# Required secrets (set in Secret Manager):
+#   - npm-token: NPM authentication token for publishing
+
+steps:
+  - name: 'gcr.io/cloud-builders/git'
+    id: 'detect-changes'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        # Get list of changed files.
+        #
+        # NOTE: For manual runs via `gcloud builds submit`, the uploaded source typically does
+        # NOT include a `.git` directory, so `git diff` cannot work. In that case we default
+        # to building the backend (and skipping the website) so you can test pushes manually.
+        if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+          if [ "$BRANCH_NAME" = "main" ]; then
+            CHANGED=$(git diff --name-only HEAD^..HEAD 2>/dev/null || echo "packages/")
+          else
+            git fetch origin main --depth=1
+            CHANGED=$(git diff --name-only origin/main...HEAD 2>/dev/null || echo "packages/")
+          fi
+        else
+          CHANGED="packages/backend"
+        fi
+        echo "Changed files:"
+        echo "$$CHANGED"
+        echo "$$CHANGED" > /workspace/changed_files.txt
+
+        # Set flags for each package
+        if echo "$$CHANGED" | grep -q "packages/backend"; then
+          echo "true" > /workspace/backend_changed
+        else
+          echo "false" > /workspace/backend_changed
+        fi
+
+        if echo "$$CHANGED" | grep -q "packages/website"; then
+          echo "true" > /workspace/website_changed
+        else
+          echo "false" > /workspace/website_changed
+        fi
+
+        if echo "$$CHANGED" | grep -q "packages/core"; then
+          echo "true" > /workspace/core_changed
+        else
+          echo "false" > /workspace/core_changed
+        fi
+
+        if echo "$$CHANGED" | grep -q "packages/plugin"; then
+          echo "true" > /workspace/plugin_changed
+        else
+          echo "false" > /workspace/plugin_changed
+        fi
+  # Step 2: Build and push backend Docker image (if changed)
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'build-backend'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        if [ "$(cat /workspace/backend_changed)" = "true" ]; then
+          echo "Building backend Docker image..."
+          IMAGE_URI="$_AR_REGION-docker.pkg.dev/$PROJECT_ID/$_AR_REPO/lorax-backend"
+          # For manual `gcloud builds submit`, SHORT_SHA may be empty (no git metadata).
+          # Fall back to BUILD_ID for a valid Docker tag.
+          TAG="$(printf "%s" "${SHORT_SHA:-$BUILD_ID}" | cut -c1-12)"
+          # NOTE: Use $$ to escape bash variables from Cloud Build substitutions.
+          docker build -t "$$IMAGE_URI:$$TAG" packages/backend
+          docker push "$$IMAGE_URI:$$TAG"
+          docker tag "$$IMAGE_URI:$$TAG" "$$IMAGE_URI:latest"
+          docker push "$$IMAGE_URI:latest"
+          echo "Backend image pushed successfully"
+        else
+          echo "Backend unchanged, skipping build"
+        fi
+    waitFor: ['detect-changes']
+
+  # Step 3: Build website (if changed)
+  - name: 'node:22'
+    id: 'build-website'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        if [ "$(cat /workspace/website_changed)" = "true" ]; then
+          echo "Building website..."
+          cd packages/website
+          npm install
+          VITE_API_BASE=$_BACKEND_API_URL npm run build
+          echo "Website built successfully"
+        else
+          echo "Website unchanged, skipping build"
+        fi
+    waitFor: ['detect-changes']
+
+  # Step 4: Deploy backend to Compute Engine (if changed and on main)
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy-backend'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        if [ "$(cat /workspace/backend_changed)" = "true" ] && [ "$BRANCH_NAME" = "main" ]; then
+          echo "Deploying backend to Compute Engine..."
+          IMAGE_URI="$_AR_REGION-docker.pkg.dev/$PROJECT_ID/$_AR_REPO/lorax-backend"
+          gcloud compute ssh $_BACKEND_INSTANCE --zone $_BACKEND_ZONE --command "
+            gcloud auth configure-docker $_AR_REGION-docker.pkg.dev --quiet && \
+            docker pull $$IMAGE_URI:latest && \
+            docker stop lorax-backend 2>/dev/null || true && \
+            docker rm lorax-backend 2>/dev/null || true && \
+            docker run -d --name lorax-backend --restart always \
+              -p 8080:8080 \
+              -e REDIS_URL=redis://$_REDIS_HOST:6379 \
+              -e GCS_BUCKET_NAME=$_GCS_BUCKET \
+              -e LORAX_MODE=production \
+              -e DISK_CACHE_DIR=/cache \
+              -e DISK_CACHE_MAX_GB=50 \
+              -v /var/lorax/cache:/cache \
+              $$IMAGE_URI:latest
+          "
+          echo "Backend deployed successfully"
+        else
+          echo "Skipping backend deployment (unchanged or not on main)"
+        fi
+    waitFor: ['build-backend']
+
+  # Step 5: Deploy website to GCS (if changed and on main)
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy-website'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        if [ "$(cat /workspace/website_changed)" = "true" ] && [ "$BRANCH_NAME" = "main" ]; then
+          echo "Deploying website to Cloud Storage..."
+          gsutil -m rsync -r -d packages/website/dist/ gs://$_WEBSITE_BUCKET/
+          echo "Website deployed successfully"
+        else
+          echo "Skipping website deployment (unchanged or not on main)"
+        fi
+    waitFor: ['build-website']
+
+substitutions:
+  _BACKEND_ZONE: us-west1-c
+  # Artifact Registry (Docker) settings:
+  # - Create repo: gcloud artifacts repositories create lorax --repository-format=docker --location=us-west1
+  _AR_REGION: us-west1
+  _AR_REPO: lorax
+  # Compute Engine instance name to deploy to:
+  _BACKEND_INSTANCE: lorax-backend-test
+  _WEBSITE_BUCKET: lorax-website
+  _BACKEND_API_URL: https://api.lorax.example.com
+  _GCS_BUCKET: lorax_projects
+  _REDIS_HOST: 10.0.0.3  # Memorystore Redis IP - update after creating instance
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: 'E2_HIGHCPU_8'

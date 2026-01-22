@@ -1,0 +1,15 @@
+{
+  "name": "lorax-monorepo",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:website": "yarn workspace website dev",
+    "dev:core": "yarn workspace @lorax/core dev",
+    "build:website": "yarn workspace website build",
+    "build:core": "yarn workspace @lorax/core build",
+    "build:all": "yarn workspaces run build"
+  }
+}
+

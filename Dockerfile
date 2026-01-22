@@ -53,8 +53,12 @@ RUN mkdir -p /app/uploads /var/www/html
 COPY --from=python-builder /wheels /wheels
 RUN find /wheels -name '*.whl' -print0 | xargs -0 pip install --no-cache-dir
 
-COPY lorax/ /app/lorax/
-COPY gunicorn_config.py /app/
+# Copy backend package and install it
+COPY packages/backend/ /app/backend/
+WORKDIR /app/backend
+RUN pip install -e ".[prod]"
+WORKDIR /app
+
 COPY entrypoint.sh /app/
 RUN chmod +x /app/entrypoint.sh
 

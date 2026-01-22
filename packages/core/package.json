@@ -1,0 +1,25 @@
+{
+  "name": "@lorax-arg/core",
+  "version": "0.0.1",
+  "type": "module",
+  "main": "src/index.js",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.js",
+    "./src/*": "./src/*"
+  },
+  "peerDependencies": {
+    "react": "^18.2.0 || ^19.0.0",
+    "@deck.gl/core": "^9.0.0",
+    "@deck.gl/react": "^9.0.0",
+    "@deck.gl/layers": "^9.0.0",
+    "@deck.gl/extensions": "^9.0.0",
+    "@math.gl/core": "^4.0.0"
+  },
+  "dependencies": {
+    "socket.io-client": "^4.8.1",
+    "apache-arrow": "^18.1.0",
+    "axios": "^1.13.2",
+    "eventemitter3": "^5.0.1"
+  }
+}
