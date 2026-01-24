@@ -49,7 +49,7 @@ export function useInterval({
 
       try {
         // Query full viewport to get intervals AND global index bounds (lo, hi)
-        const result = await worker.queryIntervals(newLo, newHi);
+        const result = await worker.request('intervals', { start: newLo, end: newHi });
 
         // Check if this request is still current
         if (requestId !== latestRequestIdRef.current) return;

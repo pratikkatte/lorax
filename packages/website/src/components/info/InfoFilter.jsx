@@ -366,7 +366,7 @@ export default function InfoFilter({
                         <input
                           type="color"
                           className="w-8 h-8 p-0 border-0 rounded cursor-pointer"
-                          value={treeColors[treeIndex] || "#000000"}
+                          value={treeColors[treeIndex] || "#91C2F4"}
                           onClick={(e) => e.stopPropagation()}
                           onChange={(e) => {
                             if (setTreeColors) {

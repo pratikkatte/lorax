@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { getColor, assignUniqueColors } from "../utils/colorUtils.js";
 import { useWorker } from './useWorker.jsx';
+import { getLocalBackendWorker } from '../workers/workerSpecs.js';
 
 /**
  * Hook for managing Lorax config state and metadata operations.
@@ -52,7 +53,7 @@ function useLoraxConfig({ backend, enabled = true, onConfigLoaded, setStatusMess
   }, [tsconfig]);
 
   // Worker for interval computations
-  const worker = useWorker();
+  const worker = useWorker(getLocalBackendWorker);
   const [workerConfigReady, setWorkerConfigReady] = useState(false);
   const configSentRef = useRef(false);
 
@@ -67,7 +68,7 @@ function useLoraxConfig({ backend, enabled = true, onConfigLoaded, setStatusMess
     configSentRef.current = false;
     setWorkerConfigReady(false);
 
-    worker.sendConfig(tsconfig)
+    worker.request('config', tsconfig)
       .then(() => {
         configSentRef.current = true;
         setWorkerConfigReady(true);

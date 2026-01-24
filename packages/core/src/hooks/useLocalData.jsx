@@ -116,7 +116,7 @@ export function useLocalData({
 
     (async () => {
       try {
-        const result = await worker.queryLocalData({
+        const result = await worker.request('local-data', {
           intervals: allIntervalsInView,
           lo: intervalBounds.lo,
           start,
