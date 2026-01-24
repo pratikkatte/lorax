@@ -502,15 +502,14 @@ async def handle_details(file_path, data):
         return json.dumps({"error": f"Error getting details: {str(e)}"})
 
 
-async def handle_tree_graph_query(file_path, tree_indices, sparsity_resolution=None, sparsity_precision=None):
+async def handle_tree_graph_query(file_path, tree_indices, sparsification=False):
     """
     Construct trees using Numba-optimized tree_graph module.
 
     Args:
         file_path: Path to tree sequence file
         tree_indices: List of tree indices to process
-        sparsity_resolution: Optional grid resolution for sparsification
-        sparsity_precision: Optional decimal precision for sparsification
+        sparsification: Enable tip-only sparsification (default False)
 
     Returns:
         dict with:
@@ -536,12 +535,12 @@ async def handle_tree_graph_query(file_path, tree_indices, sparsity_resolution=N
         return build_empty_layout_response(indices)
 
     # Run in thread pool to avoid blocking
+    print("sparsification", sparsification);
     def process_trees():
         return construct_trees_batch(
             ts,
             tree_indices,
-            sparsity_resolution=sparsity_resolution,
-            sparsity_precision=sparsity_precision
+            sparsification=sparsification
         )
 
     buffer, min_time, max_time, processed_indices = await asyncio.to_thread(process_trees)

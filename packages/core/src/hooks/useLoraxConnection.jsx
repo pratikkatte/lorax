@@ -131,10 +131,10 @@ export function useLoraxConnection({ apiBase, isProd = false }) {
    * Returns raw socket response - parsing done by caller.
    * Uses Socket.IO acknowledgement callbacks for request-response correlation.
    * @param {number[]} displayArray - Tree indices to fetch
-   * @param {Object} sparsityOptions - { resolution, precision }
+   * @param {boolean} sparsification - Enable tip-only sparsification (default false)
    * @returns {Promise<{buffer, global_min_time, global_max_time, tree_indices}>}
    */
-  const queryTreeLayout = useCallback((displayArray, sparsityOptions = {}) => {
+  const queryTreeLayout = useCallback((displayArray, sparsification = false) => {
     return new Promise((resolve, reject) => {
       if (!socketRef.current) {
         reject(new Error("Socket not available"));
@@ -150,8 +150,7 @@ export function useLoraxConnection({ apiBase, isProd = false }) {
         "process_postorder_layout",
         {
           displayArray,
-          sparsity_resolution: sparsityOptions.resolution || null,
-          sparsity_precision: sparsityOptions.precision || null,
+          sparsification: sparsification,
           lorax_sid: sidRef.current,
           request_id: requestId
         },

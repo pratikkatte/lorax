@@ -276,16 +276,14 @@ def register_socket_events(sio):
                 return {"error": "No file loaded for session", "request_id": data.get("request_id")}
 
             display_array = data.get("displayArray", [])
-            sparsity_resolution = data.get("sparsity_resolution", None)
-            sparsity_precision = data.get("sparsity_precision", None)
+            sparsification = data.get("sparsification", False)
             request_id = data.get("request_id")
 
             # handle_tree_graph_query returns dict with PyArrow buffer (Numba-optimized)
             result = await handle_tree_graph_query(
                 session.file_path,
                 display_array,
-                sparsity_resolution=sparsity_resolution,
-                sparsity_precision=sparsity_precision
+                sparsification=sparsification
             )
 
             if "error" in result:

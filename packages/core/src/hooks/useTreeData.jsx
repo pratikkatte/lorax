@@ -15,14 +15,14 @@ import { parseTreeLayoutBuffer, EMPTY_TREE_LAYOUT } from '../utils/arrowUtils.js
  * @param {number[]} params.displayArray - Tree indices to fetch (from useLocalData)
  * @param {Function} params.queryTreeLayout - Socket method from useLorax
  * @param {boolean} params.isConnected - Socket connection status
- * @param {Object} params.sparsityOptions - Optional { resolution, precision }
+ * @param {boolean} params.sparsification - Enable tip-only sparsification (default false)
  * @returns {Object} { treeData, isLoading, error }
  */
 export function useTreeData({
   displayArray,
   queryTreeLayout,
   isConnected,
-  sparsityOptions = {}
+  sparsification = false
 }) {
   const [treeData, setTreeData] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -30,9 +30,6 @@ export function useTreeData({
 
   // Request ID counter - only process response if it matches latest request
   const requestIdRef = useRef(0);
-
-  // Serialize sparsityOptions to avoid object reference issues in dependency array
-  const sparsityOptionsKey = JSON.stringify(sparsityOptions);
 
   // Fetch immediately when displayArray changes (no debounce)
   useEffect(() => {
@@ -54,7 +51,7 @@ export function useTreeData({
 
     (async () => {
       try {
-        const response = await queryTreeLayout(displayArray, sparsityOptions);
+        const response = await queryTreeLayout(displayArray, sparsification);
 
         // Ignore stale response if a newer request was sent
         if (currentRequestId !== requestIdRef.current) {
@@ -80,7 +77,7 @@ export function useTreeData({
         setIsLoading(false);
       }
     })();
-  }, [displayArray, queryTreeLayout, isConnected, sparsityOptionsKey]);
+  }, [displayArray, queryTreeLayout, isConnected, sparsification]);
 
   return useMemo(() => ({
     treeData,

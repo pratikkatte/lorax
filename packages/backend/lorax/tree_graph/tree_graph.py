@@ -11,8 +11,13 @@ import struct
 import numpy as np
 import pyarrow as pa
 from numba import njit
+from numba.typed import Dict
+from numba import types
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
+
+# Default cell size for sparsification (0.2% of normalized [0,1] space)
+DEFAULT_SPARSIFY_CELL_SIZE = 0.002
 
 
 @njit(cache=True)
@@ -256,8 +261,7 @@ def construct_tree(
 def construct_trees_batch(
     ts,
     tree_indices: List[int],
-    sparsity_resolution: Optional[int] = None,
-    sparsity_precision: Optional[int] = None,
+    sparsification: bool = False,
     include_mutations: bool = True
 ) -> Tuple[bytes, float, float, List[int]]:
     """
@@ -268,8 +272,7 @@ def construct_trees_batch(
     Args:
         ts: tskit TreeSequence object
         tree_indices: List of tree indices to process
-        sparsity_resolution: Optional grid resolution for sparsification
-        sparsity_precision: Optional decimal precision for sparsification
+        sparsification: Enable tip-only sparsification (default False)
         include_mutations: Whether to include mutation data in buffer
 
     Returns:
@@ -368,19 +371,22 @@ def construct_trees_batch(
         y = graph.x[indices]  # SWAP: layout -> y
 
         # Apply sparsification if requested
-        if sparsity_precision is not None or sparsity_resolution is not None:
-            keep_mask = _sparsify_vectorized(
-                node_ids, x, y, is_tip, parent_ids,
-                resolution=sparsity_resolution,
-                precision=sparsity_precision
+        if sparsification:
+            resolution = int(1.0 / DEFAULT_SPARSIFY_CELL_SIZE)
+            keep_mask = _sparsify_tips_only(
+                node_ids.astype(np.int32),
+                x.astype(np.float32),
+                y.astype(np.float32),
+                is_tip,
+                parent_ids.astype(np.int32),
+                resolution
             )
-            if keep_mask is not None:
-                node_ids = node_ids[keep_mask]
-                parent_ids = parent_ids[keep_mask]
-                x = x[keep_mask]
-                y = y[keep_mask]
-                is_tip = is_tip[keep_mask]
-                n = len(node_ids)
+            node_ids = node_ids[keep_mask]
+            parent_ids = parent_ids[keep_mask]
+            x = x[keep_mask]
+            y = y[keep_mask]
+            is_tip = is_tip[keep_mask]
+            n = len(node_ids)
 
         if n == 0:
             continue
@@ -537,61 +543,76 @@ def construct_trees_batch(
     return combined, min_time, max_time, processed_indices
 
 
-def _sparsify_vectorized(node_ids, x, y, is_tip, parent_ids, resolution=None, precision=None):
+@njit(cache=True)
+def _sparsify_tips_only(node_ids, x, y, is_tip, parent_ids, resolution):
     """
-    Sparsify nodes using vectorized grid-cell approach.
+    Optimized sparsification: only grid-dedupe tips, then trace ancestors.
 
-    Keeps one node per grid cell, preferring tips over internal nodes.
-    Ensures connectivity by tracing paths to root.
+    Algorithm:
+    1. Grid-dedupe ONLY tip nodes (skip internal nodes in grid phase)
+    2. Trace path to root for each kept tip
+    3. Keep all ancestors along the path
+
+    This is faster because tips are ~90% of nodes and we skip
+    the grid computation for internal nodes. Some internal nodes
+    may appear "dangling" (no children visible) - this is correct
+    behavior showing the true ancestry path.
+
+    Args:
+        node_ids: int32 array of node IDs
+        x: float32 array of x coordinates (normalized [0,1])
+        y: float32 array of y coordinates (normalized [0,1])
+        is_tip: bool array indicating tip nodes
+        parent_ids: int32 array of parent IDs (-1 for roots)
+        resolution: Grid resolution (e.g., 500 for cell_size=0.002)
+
+    Returns:
+        keep: bool array indicating which nodes to keep
     """
-    if resolution is None and precision is None:
-        return None
-
     n = len(node_ids)
-    if n == 0:
-        return None
-
-    # Compute grid cells
-    if precision is not None:
-        factor = 10 ** precision
-        cx = np.floor(x * factor).astype(np.int32)
-        cy = np.floor(y * factor).astype(np.int32)
-    else:
-        cx = np.minimum((x * resolution).astype(np.int32), resolution - 1)
-        cy = np.minimum((y * resolution).astype(np.int32), resolution - 1)
-
-    # Create unique cell keys
-    max_coord = max(cx.max(), cy.max()) + 1 if n > 0 else 1
-    cell_keys = cx.astype(np.int64) * (max_coord + 1) + cy
-
-    # For each unique cell, keep one node (prefer tips over internal)
     keep = np.zeros(n, dtype=np.bool_)
-    seen_cells = {}
+
+    if n == 0:
+        return keep
+
+    # Build node_to_idx mapping first (needed for ancestor tracing)
+    max_node_id = 0
+    for i in range(n):
+        if node_ids[i] > max_node_id:
+            max_node_id = node_ids[i]
+
+    node_to_idx = np.full(max_node_id + 1, -1, dtype=np.int32)
+    for i in range(n):
+        node_to_idx[node_ids[i]] = i
+
+    # --- Phase 1: Grid-dedupe ONLY tips ---
+    seen_cells = Dict.empty(key_type=types.int64, value_type=types.int32)
 
     for i in range(n):
-        key = cell_keys[i]
+        if not is_tip[i]:
+            continue  # Skip internal nodes in grid phase
+
+        # Compute grid cell for this tip
+        cx = min(int(x[i] * resolution), resolution - 1)
+        cy = min(int(y[i] * resolution), resolution - 1)
+        key = cx * (resolution + 1) + cy
+
         if key not in seen_cells:
             seen_cells[key] = i
             keep[i] = True
-        elif is_tip[i] and not is_tip[seen_cells[key]]:
-            keep[seen_cells[key]] = False
-            keep[i] = True
-            seen_cells[key] = i
 
-    # Ensure connectivity: trace path to root for each kept node
-    max_node_id = node_ids.max() + 1
-    node_to_idx = np.full(max_node_id, -1, dtype=np.int32)
-    node_to_idx[node_ids] = np.arange(n)
-
+    # --- Phase 2: Trace ancestors for each kept tip ---
     for i in range(n):
-        if keep[i]:
+        if keep[i] and is_tip[i]:  # Only trace from kept tips
             parent = parent_ids[i]
             while parent != -1:
+                if parent > max_node_id:
+                    break
                 parent_idx = node_to_idx[parent]
                 if parent_idx < 0:
                     break
                 if keep[parent_idx]:
-                    break
+                    break  # Already kept, path is connected
                 keep[parent_idx] = True
                 parent = parent_ids[parent_idx]
 

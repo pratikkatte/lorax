@@ -182,7 +182,7 @@ const LoraxDeckGL = forwardRef(({
     displayArray,
     queryTreeLayout,
     isConnected,
-    // sparsityOptions: { precision: 2 }
+    sparsification: displayArray.length > 1  // Enable to reduce data transfer for large trees
   });
 
   // 6c.1. Notify parent when tree loading state changes
