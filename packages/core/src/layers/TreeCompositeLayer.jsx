@@ -21,13 +21,10 @@ export class TreeCompositeLayer extends CompositeLayer {
     edgeColor: [100, 100, 100, 255],
     edgeWidth: 1,
     tipRadius: 2,
-    // Highlighting props
-    highlightStrokeColor: [255, 165, 0, 255],
-    highlightStrokeWidth: 2,
-    highlightRadius: 5,
-    // Lineage props
-    lineageWidth: 1.5,
-    lineageColor: [255, 0, 0, 200],
+    // Mutation props
+    mutationColor: [255, 100, 0, 220],
+    mutationRadius: 3,
+    showMutations: true,
     // Interaction
     pickable: false,
     onTipClick: null,
@@ -61,19 +58,18 @@ export class TreeCompositeLayer extends CompositeLayer {
       edgeCount,
       tipCount,
       tipData,
-      highlightData,
-      lineageData
+      // Mutation data (simplified: only positions)
+      mutPositions,
+      mutCount
     } = processedData;
 
     const {
       edgeColor,
       edgeWidth,
       tipRadius,
-      highlightStrokeColor,
-      highlightStrokeWidth,
-      highlightRadius,
-      lineageWidth,
-      lineageColor,
+      mutationColor,
+      mutationRadius,
+      showMutations,
       pickable,
       onTipClick,
       onTipHover,
@@ -186,41 +182,25 @@ export class TreeCompositeLayer extends CompositeLayer {
       }));
     }
 
-    // // Lineage paths (optional)
-    // if (lineageData && lineageData.length > 0) {
-    //   layers.push(new PathLayer({
-    //     id: `${this.props.id}-lineage`,
-    //     data: lineageData,
-    //     getPath: d => d.path,
-    //     getColor: d => d.color || lineageColor,
-    //     getWidth: lineageWidth,
-    //     widthUnits: 'pixels',
-    //     coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
-    //     parameters: { depthTest: false },
-    //     pickable: false
-    //   }));
-    // }
-
-    // // Highlighted nodes (optional)
-    // if (highlightData && highlightData.length > 0) {
-    //   layers.push(new ScatterplotLayer({
-    //     id: `${this.props.id}-highlights`,
-    //     data: highlightData,
-    //     getPosition: d => d.position,
-    //     getFillColor: d => d.color ? [...d.color.slice(0, 3), 200] : [255, 200, 0, 200],
-    //     getLineColor: highlightStrokeColor,
-    //     getRadius: highlightRadius,
-    //     radiusUnits: 'pixels',
-    //     filled: true,
-    //     stroked: true,
-    //     lineWidthUnits: 'pixels',
-    //     lineWidthMinPixels: highlightStrokeWidth,
-    //     coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
-    //     parameters: { depthTest: false },
-    //     fp64: true,
-    //     pickable: false
-    //   }));
-    // }
+    // Mutation markers (simplified: single layer with fixed color, no picking)
+    if (showMutations && mutCount > 0 && mutPositions?.length > 0) {
+      layers.push(new ScatterplotLayer({
+        id: `${this.props.id}-mutations`,
+        data: {
+          length: mutCount,
+          attributes: {
+            getPosition: { value: mutPositions, size: 2 }
+          }
+        },
+        getFillColor: mutationColor,
+        fp64: true,
+        getRadius: mutationRadius,
+        radiusUnits: 'pixels',
+        stroked: false,
+        coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+        pickable: false
+      }));
+    }
 
     return layers;
   }

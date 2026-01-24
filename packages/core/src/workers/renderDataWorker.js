@@ -15,6 +15,7 @@ let pathBuffer = null;
 let tipBuffer = null;
 let colorBuffer = null;
 let pathStartIndicesBuffer = null;
+let mutBuffer = null;
 
 // Buffer sizing constants
 const BUFFER_GROWTH_FACTOR = 1.5;
@@ -91,6 +92,35 @@ function groupNodesByTree(node_id, parent_id, is_tip, tree_idx, x, y, displayArr
 }
 
 /**
+ * Group mutations by tree index for efficient per-tree processing
+ * Simplified: only needs x, y, tree_idx
+ *
+ * @param {Array} mut_x - X coordinates (time-based)
+ * @param {Array} mut_y - Y coordinates (layout-based)
+ * @param {Array} mut_tree_idx - Tree indices from backend
+ * @returns {Map} Map of global tree index -> mutations
+ */
+function groupMutationsByTree(mut_x, mut_y, mut_tree_idx) {
+  const mutMap = new Map();
+  const length = mut_tree_idx?.length || 0;
+
+  for (let i = 0; i < length; i++) {
+    const tIdx = mut_tree_idx[i];
+
+    if (!mutMap.has(tIdx)) {
+      mutMap.set(tIdx, []);
+    }
+
+    mutMap.get(tIdx).push({
+      x: mut_x[i],      // time-based [0,1]
+      y: mut_y[i]       // layout-based [0,1]
+    });
+  }
+
+  return mutMap;
+}
+
+/**
  * Get tip color based on metadata
  * Uses O(1) lookup via metadataArrays
  */
@@ -128,6 +158,9 @@ function getTipColor(nodeId, metadataArrays, metadataColors, populationFilter, d
  * @param {Array} data.tree_idx - Tree index for each node
  * @param {Array} data.x - X coordinates (time-based [0,1])
  * @param {Array} data.y - Y coordinates (genealogy-based [0,1])
+ * @param {Array} data.mut_x - Mutation X coordinates
+ * @param {Array} data.mut_y - Mutation Y coordinates
+ * @param {Array} data.mut_tree_idx - Mutation tree indices
  * @param {Array} data.modelMatrices - Array of {key, modelMatrix} objects
  * @param {Array} data.displayArray - Global tree indices that were requested
  * @param {Object} data.metadataArrays - Metadata for coloring
@@ -138,6 +171,7 @@ function getTipColor(nodeId, metadataArrays, metadataColors, populationFilter, d
 function computeRenderArrays(data) {
   const {
     node_id, parent_id, is_tip, tree_idx, x, y,
+    mut_x, mut_y, mut_tree_idx,
     modelMatrices, displayArray, metadataArrays, metadataColors, populationFilter
   } = data;
 
@@ -161,30 +195,41 @@ function computeRenderArrays(data) {
       tipData: [],
       edgeData: [],
       edgeCount: 0,
-      tipCount: 0
+      tipCount: 0,
+      // Mutation arrays (simplified: only positions)
+      mutPositions: new Float64Array(0),
+      mutCount: 0
     };
   }
 
   // Group nodes by tree (with mapping from backend's tree_idx to global indices)
   const treeNodesMap = groupNodesByTree(node_id, parent_id, is_tip, tree_idx, x, y, displayArray);
 
-  // Calculate total nodes for buffer sizing
+  // Group mutations by tree (simplified: only x, y, tree_idx)
+  const treeMutationsMap = groupMutationsByTree(mut_x, mut_y, mut_tree_idx);
+
+  // Calculate total nodes and mutations for buffer sizing
   let totalNodes = 0;
+  let totalMutations = 0;
   for (const [treeIdx] of modelMatricesMap) {
     const treeNodes = treeNodesMap.get(treeIdx);
+    const treeMutations = treeMutationsMap.get(treeIdx);
     if (treeNodes) totalNodes += treeNodes.length;
+    if (treeMutations) totalMutations += treeMutations.length;
   }
 
   // Ensure buffers are large enough
   const pathSize = totalNodes * 6;  // 6 floats per L-shape (3 points * 2 coords)
   const tipSize = totalNodes * 2;   // 2 floats per tip
   const colorSize = totalNodes * 4; // 4 bytes RGBA per tip
+  const mutSize = totalMutations * 2;   // 2 floats per mutation
 
   // Use Float64Array to preserve precision for large coordinates
   pathBuffer = ensureBuffer(pathBuffer, pathSize, Float64Array);
   tipBuffer = ensureBuffer(tipBuffer, tipSize, Float64Array);
   colorBuffer = ensureBuffer(colorBuffer, colorSize, Uint8Array);
   pathStartIndicesBuffer = ensureBuffer(pathStartIndicesBuffer, totalNodes + 1, Uint32Array);
+  mutBuffer = ensureBuffer(mutBuffer, mutSize, Float64Array);
 
   const defaultTipColor = [150, 150, 150, 200];
 
@@ -193,6 +238,7 @@ function computeRenderArrays(data) {
   let colorOffset = 0;
   let edgeCount = 0;
   let pathStartIndexCount = 0;
+  let mutOffset = 0;
 
   pathStartIndicesBuffer[pathStartIndexCount++] = 0;
 
@@ -295,6 +341,21 @@ function computeRenderArrays(data) {
         });
       }
     }
+
+    // Process mutations for this tree (simplified: only positions)
+    const treeMutations = treeMutationsMap.get(treeIdx);
+    if (treeMutations && treeMutations.length > 0) {
+      for (const mut of treeMutations) {
+        // Apply same transform as nodes:
+        // World X = y (layout) * scaleX + translateX (horizontal position)
+        // World Y = x (time) (vertical position)
+        const mutWorldX = mut.y * scaleX + translateX;
+        const mutWorldY = mut.x;
+
+        mutBuffer[mutOffset++] = mutWorldX;
+        mutBuffer[mutOffset++] = mutWorldY;
+      }
+    }
   }
 
   // Return subarrays of the pre-allocated buffers
@@ -306,7 +367,10 @@ function computeRenderArrays(data) {
     tipData,
     edgeData,
     edgeCount,
-    tipCount: tipOffset / 2
+    tipCount: tipOffset / 2,
+    // Mutation data (simplified: only positions)
+    mutPositions: mutBuffer.slice(0, mutOffset),
+    mutCount: mutOffset / 2
   };
 }
 
@@ -318,6 +382,7 @@ function clearBuffers() {
   tipBuffer = null;
   colorBuffer = null;
   pathStartIndicesBuffer = null;
+  mutBuffer = null;
 }
 
 // Worker message handler
@@ -332,7 +397,8 @@ onmessage = (event) => {
       const transferables = [
         result.pathPositions.buffer,
         result.tipPositions.buffer,
-        result.tipColors.buffer
+        result.tipColors.buffer,
+        result.mutPositions.buffer
       ];
 
       postMessage({ type: 'render-data-result', id, success: true, data: result }, transferables);

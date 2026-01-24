@@ -4,9 +4,10 @@ tree_graph.py - Numba-optimized tree construction from tskit tables.
 This module provides:
 - TreeGraph: Numpy-based tree representation with CSR children and x,y coordinates
 - construct_tree: Build a single tree from tables (Numba-optimized)
-- construct_trees_batch: Build multiple trees efficiently
+- construct_trees_batch: Build multiple trees efficiently (includes mutation extraction)
 """
 
+import struct
 import numpy as np
 import pyarrow as pa
 from numba import njit
@@ -114,6 +115,10 @@ class TreeGraph:
     def is_tip(self, node_id: int) -> bool:
         """Check if a node is a tip (no children)."""
         return self.children_indptr[node_id + 1] == self.children_indptr[node_id]
+
+    def get_node_x(self, node_id: int) -> float:
+        """Get the x (layout) coordinate for a node."""
+        return self.x[node_id] if node_id >= 0 and node_id < len(self.x) else 0.5
 
     def to_pyarrow(self, tree_idx: int = 0) -> bytes:
         """
@@ -252,7 +257,8 @@ def construct_trees_batch(
     ts,
     tree_indices: List[int],
     sparsity_resolution: Optional[int] = None,
-    sparsity_precision: Optional[int] = None
+    sparsity_precision: Optional[int] = None,
+    include_mutations: bool = True
 ) -> Tuple[bytes, float, float, List[int]]:
     """
     Construct multiple trees and return combined PyArrow buffer.
@@ -264,6 +270,7 @@ def construct_trees_batch(
         tree_indices: List of tree indices to process
         sparsity_resolution: Optional grid resolution for sparsification
         sparsity_precision: Optional decimal precision for sparsification
+        include_mutations: Whether to include mutation data in buffer
 
     Returns:
         Tuple of (buffer, global_min_time, global_max_time, tree_indices)
@@ -276,28 +283,46 @@ def construct_trees_batch(
     min_time = float(ts.min_time)
     max_time = float(ts.max_time)
 
+    # Check if tree sequence has mutations
+    has_mutations = include_mutations and ts.num_mutations > 0
+
     if len(tree_indices) == 0:
-        # Return empty buffer
-        table = pa.table({
+        # Return empty buffer with separate node and mutation tables
+        node_table = pa.table({
             'node_id': pa.array([], type=pa.int32()),
             'parent_id': pa.array([], type=pa.int32()),
             'is_tip': pa.array([], type=pa.bool_()),
             'tree_idx': pa.array([], type=pa.int32()),
             'x': pa.array([], type=pa.float32()),
-            'y': pa.array([], type=pa.float32())
+            'y': pa.array([], type=pa.float32()),
         })
-        sink = pa.BufferOutputStream()
-        writer = pa.ipc.new_stream(sink, table.schema)
-        writer.write_table(table)
-        writer.close()
-        return sink.getvalue().to_pybytes(), min_time, max_time, []
+        mut_table = pa.table({
+            'mut_x': pa.array([], type=pa.float32()),
+            'mut_y': pa.array([], type=pa.float32()),
+            'mut_tree_idx': pa.array([], type=pa.int32()),
+        })
+
+        node_sink = pa.BufferOutputStream()
+        node_writer = pa.ipc.new_stream(node_sink, node_table.schema)
+        node_writer.write_table(node_table)
+        node_writer.close()
+        node_bytes = node_sink.getvalue().to_pybytes()
+
+        mut_sink = pa.BufferOutputStream()
+        mut_writer = pa.ipc.new_stream(mut_sink, mut_table.schema)
+        mut_writer.write_table(mut_table)
+        mut_writer.close()
+        mut_bytes = mut_sink.getvalue().to_pybytes()
+
+        combined = struct.pack('<I', len(node_bytes)) + node_bytes + mut_bytes
+        return combined, min_time, max_time, []
 
     # Estimate total nodes for pre-allocation
     sample_tree = ts.at_index(int(tree_indices[0]) if tree_indices else 0)
     estimated_nodes_per_tree = sample_tree.num_nodes
     total_estimated = estimated_nodes_per_tree * len(tree_indices) * 2
 
-    # Pre-allocate arrays
+    # Pre-allocate node arrays
     all_node_ids = np.empty(total_estimated, dtype=np.int32)
     all_parent_ids = np.empty(total_estimated, dtype=np.int32)
     all_is_tip = np.empty(total_estimated, dtype=np.bool_)
@@ -305,7 +330,15 @@ def construct_trees_batch(
     all_x = np.empty(total_estimated, dtype=np.float32)
     all_y = np.empty(total_estimated, dtype=np.float32)
 
+    # Pre-allocate mutation arrays (estimate based on mutation density)
+    # Simplified: only x, y, tree_idx needed
+    estimated_mutations = max(1000, ts.num_mutations // max(1, ts.num_trees) * len(tree_indices) * 2)
+    all_mut_tree_idx = np.empty(estimated_mutations, dtype=np.int32) if has_mutations else None
+    all_mut_x = np.empty(estimated_mutations, dtype=np.float32) if has_mutations else None
+    all_mut_y = np.empty(estimated_mutations, dtype=np.float32) if has_mutations else None
+
     offset = 0
+    mut_offset = 0
     processed_indices = []
 
     for tree_idx in tree_indices:
@@ -362,7 +395,7 @@ def construct_trees_batch(
             all_x.resize(new_size, refcheck=False)
             all_y.resize(new_size, refcheck=False)
 
-        # Copy data
+        # Copy node data
         all_node_ids[offset:offset+n] = node_ids
         all_parent_ids[offset:offset+n] = parent_ids
         all_is_tip[offset:offset+n] = is_tip
@@ -371,9 +404,71 @@ def construct_trees_batch(
         all_y[offset:offset+n] = y
 
         offset += n
+
+        # Collect mutations for this tree interval (inline computation)
+        if has_mutations:
+            interval_left = breakpoints[tree_idx]
+            interval_right = breakpoints[tree_idx + 1]
+
+            # Filter mutations by genomic position
+            sites = ts.tables.sites
+            mutations = ts.tables.mutations
+            mutation_positions = sites.position[mutations.site]
+            mask = (mutation_positions >= interval_left) & (mutation_positions < interval_right)
+            mut_indices = np.where(mask)[0]
+
+            n_muts = len(mut_indices)
+            if n_muts > 0:
+                # Extract mutation data (simplified: only x, y, tree_idx)
+                mut_node_ids = mutations.node[mut_indices].astype(np.int32)
+                mut_times = mutations.time[mut_indices]
+                mut_parent_ids = graph.parent[mut_node_ids].astype(np.int32)
+
+                # Reuse graph.x for layout position (aligned with node horizontally)
+                mut_layout = graph.x[mut_node_ids].astype(np.float32)
+
+                # Time normalization (same formula as nodes)
+                time_range = max_time - min_time if max_time > min_time else 1.0
+
+                # Compute normalized time for valid times
+                mut_time_norm = (max_time - mut_times) / time_range
+
+                # Handle NaN times: use midpoint between node and parent in normalized y space
+                nan_mask = np.isnan(mut_times)
+                if np.any(nan_mask):
+                    node_y = graph.y[mut_node_ids[nan_mask]]
+                    parent_ids_for_nan = mut_parent_ids[nan_mask]
+                    # For roots (parent=-1), use 0.0 (corresponds to max_time)
+                    parent_y = np.where(
+                        parent_ids_for_nan >= 0,
+                        graph.y[np.maximum(parent_ids_for_nan, 0)],
+                        0.0
+                    )
+                    mut_time_norm[nan_mask] = (node_y + parent_y) / 2.0
+
+                mut_time_norm = mut_time_norm.astype(np.float32)
+
+                # SWAP for backend convention (same as nodes)
+                mut_x = mut_time_norm  # time -> x
+                mut_y = mut_layout     # layout -> y
+
+                # Ensure mutation buffer capacity
+                while mut_offset + n_muts > len(all_mut_tree_idx):
+                    new_size = len(all_mut_tree_idx) * 2
+                    all_mut_tree_idx.resize(new_size, refcheck=False)
+                    all_mut_x.resize(new_size, refcheck=False)
+                    all_mut_y.resize(new_size, refcheck=False)
+
+                # Copy mutation data (only essential fields)
+                all_mut_tree_idx[mut_offset:mut_offset+n_muts] = tree_idx
+                all_mut_x[mut_offset:mut_offset+n_muts] = mut_x
+                all_mut_y[mut_offset:mut_offset+n_muts] = mut_y
+
+                mut_offset += n_muts
+
         processed_indices.append(tree_idx)
 
-    # Trim to actual size
+    # Trim node arrays to actual size
     all_node_ids = all_node_ids[:offset]
     all_parent_ids = all_parent_ids[:offset]
     all_is_tip = all_is_tip[:offset]
@@ -381,32 +476,65 @@ def construct_trees_batch(
     all_x = all_x[:offset]
     all_y = all_y[:offset]
 
+    # Trim mutation arrays to actual size
+    if has_mutations and mut_offset > 0:
+        all_mut_tree_idx = all_mut_tree_idx[:mut_offset]
+        all_mut_x = all_mut_x[:mut_offset]
+        all_mut_y = all_mut_y[:mut_offset]
+
+    # Build separate node table
     if offset == 0:
-        table = pa.table({
+        node_table = pa.table({
             'node_id': pa.array([], type=pa.int32()),
             'parent_id': pa.array([], type=pa.int32()),
             'is_tip': pa.array([], type=pa.bool_()),
             'tree_idx': pa.array([], type=pa.int32()),
             'x': pa.array([], type=pa.float32()),
-            'y': pa.array([], type=pa.float32())
+            'y': pa.array([], type=pa.float32()),
         })
     else:
-        table = pa.table({
+        node_table = pa.table({
             'node_id': pa.array(all_node_ids, type=pa.int32()),
             'parent_id': pa.array(all_parent_ids, type=pa.int32()),
             'is_tip': pa.array(all_is_tip, type=pa.bool_()),
             'tree_idx': pa.array(all_tree_idx, type=pa.int32()),
             'x': pa.array(all_x, type=pa.float32()),
-            'y': pa.array(all_y, type=pa.float32())
+            'y': pa.array(all_y, type=pa.float32()),
         })
 
-    # Serialize to IPC
-    sink = pa.BufferOutputStream()
-    writer = pa.ipc.new_stream(sink, table.schema)
-    writer.write_table(table)
-    writer.close()
+    # Build separate mutation table (simplified: only x, y, tree_idx)
+    if has_mutations and mut_offset > 0:
+        mut_table = pa.table({
+            'mut_x': pa.array(all_mut_x, type=pa.float32()),
+            'mut_y': pa.array(all_mut_y, type=pa.float32()),
+            'mut_tree_idx': pa.array(all_mut_tree_idx, type=pa.int32()),
+        })
+    else:
+        mut_table = pa.table({
+            'mut_x': pa.array([], type=pa.float32()),
+            'mut_y': pa.array([], type=pa.float32()),
+            'mut_tree_idx': pa.array([], type=pa.int32()),
+        })
 
-    return sink.getvalue().to_pybytes(), min_time, max_time, processed_indices
+    # Serialize node table to IPC
+    node_sink = pa.BufferOutputStream()
+    node_writer = pa.ipc.new_stream(node_sink, node_table.schema)
+    node_writer.write_table(node_table)
+    node_writer.close()
+    node_bytes = node_sink.getvalue().to_pybytes()
+
+    # Serialize mutation table to IPC
+    mut_sink = pa.BufferOutputStream()
+    mut_writer = pa.ipc.new_stream(mut_sink, mut_table.schema)
+    mut_writer.write_table(mut_table)
+    mut_writer.close()
+    mut_bytes = mut_sink.getvalue().to_pybytes()
+
+    # Combine with 4-byte length prefix for node buffer
+    # Format: [4-byte node_len (little-endian)][node_bytes][mut_bytes]
+    combined = struct.pack('<I', len(node_bytes)) + node_bytes + mut_bytes
+
+    return combined, min_time, max_time, processed_indices
 
 
 def _sparsify_vectorized(node_ids, x, y, is_tip, parent_ids, resolution=None, precision=None):

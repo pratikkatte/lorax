@@ -210,6 +210,10 @@ export function useRenderData({
           tree_idx: treeData.tree_idx,
           x: treeData.x,
           y: treeData.y,
+          // Mutation fields
+          mut_x: treeData.mut_x,
+          mut_y: treeData.mut_y,
+          mut_tree_idx: treeData.mut_tree_idx,
           modelMatrices: serializeModelMatrices(localBins),
           displayArray: displayArray || [],
           metadataArrays,
@@ -270,6 +274,10 @@ export function useRenderData({
         tree_idx: treeData.tree_idx,
         x: treeData.x,
         y: treeData.y,
+        // Mutation fields
+        mut_x: treeData.mut_x,
+        mut_y: treeData.mut_y,
+        mut_tree_idx: treeData.mut_tree_idx,
         modelMatrices: modelMatricesMap,
         displayArray: displayArray || [],
         metadataArrays,
