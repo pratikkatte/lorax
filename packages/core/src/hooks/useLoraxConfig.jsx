@@ -117,33 +117,19 @@ function useLoraxConfig({ backend, enabled = true, onConfigLoaded, setStatusMess
     // Assign unique colors to sample_names/populations
     setSampleNames({ sample_names: assignUniqueColors(data.sample_names) });
 
-    // Process metadata_schema from backend (lightweight - no sample associations)
-    // Backend format: { metadata_keys: [key1, key2, ...], metadata_values: {key1: [val1, val2, ...], ...} }
+    // Process metadata_schema from backend (lightweight - keys only, values fetched on-demand)
+    // Backend format: { metadata_keys: [key1, key2, ...] }
     const metadataSchema = data.metadata_schema || {};
-    const mColors = {};
     const mKeys = metadataSchema.metadata_keys || [];
-    const metadataValues = metadataSchema.metadata_values || {};
 
-    // Build metadataColors from unique values (no sample mapping yet)
-    mKeys.forEach(metadataKey => {
-      const values = metadataValues[metadataKey] || [];
-      const valueColorMap = {};
-
-      values.forEach((val, index) => {
-        valueColorMap[val] = getColor(index, values.length);
-      });
-
-      mColors[metadataKey] = valueColorMap;
-    });
-
-    // Reset state for new file
+    // Reset state for new file - colors will be assigned when fetchMetadataArrayForKey returns
     setSampleDetails({});
     setLoadedMetadata(new Map());
     setMetadataArrays({});
     // Cancel any pending JSON fallback timers
     pendingJsonFallbacksRef.current.forEach((timeoutId) => clearTimeout(timeoutId));
     pendingJsonFallbacksRef.current.clear();
-    setMetadataColors(mColors);
+    setMetadataColors({});  // Start empty, colors assigned on-demand
     setMetadataKeys(mKeys);
 
     // Call the onConfigLoaded callback if provided
@@ -190,6 +176,17 @@ function useLoraxConfig({ backend, enabled = true, onConfigLoaded, setStatusMess
       });
 
       console.log(`Received metadata (JSON) for key "${key}":`, Object.keys(sampleToValue).length, "samples");
+
+      // Extract unique values and assign colors
+      const uniqueValues = [...new Set(Object.values(sampleToValue))].sort();
+      const valueColorMap = {};
+      uniqueValues.forEach((val, index) => {
+        valueColorMap[val] = getColor(index, uniqueValues.length);
+      });
+      setMetadataColors(prev => ({
+        ...prev,
+        [key]: valueColorMap
+      }));
 
       // Merge into sampleDetails: for each sample, add/update the key-value pair
       setSampleDetails(prev => {
@@ -249,6 +246,16 @@ function useLoraxConfig({ backend, enabled = true, onConfigLoaded, setStatusMess
           indices: result.indices,
           nodeIdToIdx: result.nodeIdToIdx
         }
+      }));
+
+      // Assign colors for the unique values
+      const valueColorMap = {};
+      result.uniqueValues.forEach((val, index) => {
+        valueColorMap[val] = getColor(index, result.uniqueValues.length);
+      });
+      setMetadataColors(prev => ({
+        ...prev,
+        [result.key]: valueColorMap
       }));
 
       // Mark as pyarrow in unified tracking

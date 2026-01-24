@@ -1,4 +1,5 @@
 import React, { useState, useCallback } from "react";
+import { useLorax } from "@lorax/core";
 
 const ITEMS_PER_PAGE = 100;
 
@@ -20,27 +21,32 @@ const hexToRgb = (hex) => {
 };
 
 export default function InfoFilter({
-  searchTerm = "",
-  setSearchTerm,
-  searchTags = [],
-  setSearchTags,
-  selectedColorBy = null,
-  setSelectedColorBy,
-  coloryby = {},
-  metadataColors = {},
-  setMetadataColors,
-  enabledValues = new Set(),
-  setEnabledValues,
+  // FileView-specific props (not available via useLorax)
   visibleTrees = [],
   treeColors = {},
   setTreeColors,
-  settings = {},
-  setSettings,
   hoveredTreeIndex = null,
   setHoveredTreeIndex,
-  highlightedMetadataValue = null,
-  setHighlightedMetadataValue
+  // Info-local state
+  settings = {},
+  setSettings
 }) {
+  // Get filter state from context (via useMetadataFilter in LoraxProvider)
+  const {
+    searchTerm = "",
+    setSearchTerm,
+    searchTags = [],
+    setSearchTags,
+    selectedColorBy = null,
+    setSelectedColorBy,
+    coloryby = {},
+    metadataColors = {},
+    setMetadataColors,
+    enabledValues = new Set(),
+    setEnabledValues,
+    highlightedMetadataValue = null,
+    setHighlightedMetadataValue
+  } = useLorax();
   const [visibleCount, setVisibleCount] = useState(ITEMS_PER_PAGE);
   const [isTreesExpanded, setIsTreesExpanded] = useState(true);
 

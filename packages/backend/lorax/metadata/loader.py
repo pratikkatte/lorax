@@ -355,7 +355,7 @@ def get_metadata_schema(
     sample_name_key="name"
 ):
     """
-    Extract metadata keys and unique values only, without sample associations.
+    Extract metadata keys only (values are fetched on-demand via get_metadata_array_for_key).
 
     Also includes "sample" as the first key, where each sample's name/ID is its
     own unique value (for coloring samples individually).
@@ -372,24 +372,20 @@ def get_metadata_schema(
     -------
     dict
         {
-            "metadata_keys": [key1, key2, ...],
-            "metadata_values": {key1: [val1, val2, ...], ...}
+            "metadata_keys": [key1, key2, ...]
         }
     """
-    keys_values = defaultdict(set)
-    sample_names = set()  # Collect sample names for "sample" key
+    keys = set()
 
     for node_id in ts.samples():
         node = ts.node(node_id)
 
-        # Collect sample name (from node metadata or fallback to node ID)
+        # Parse node metadata
         node_meta = node.metadata or {}
         try:
             node_meta = ensure_json_dict(node_meta)
         except (TypeError, json.JSONDecodeError):
             node_meta = {}
-        sample_name = node_meta.get(sample_name_key, f"{node_id}")
-        sample_names.add(str(sample_name))
 
         for source in sources:
             if source == "individual":
@@ -415,18 +411,10 @@ def get_metadata_schema(
             if not meta:
                 continue
 
-            for key, value in meta.items():
-                if isinstance(value, (list, dict)):
-                    value = repr(value)
-                # Skip None values
-                if value is not None:
-                    keys_values[key].add(str(value))
+            for key in meta.keys():
+                keys.add(key)
 
     # Prepend "sample" to keys - this makes it the default colorBy option
     return {
-        "metadata_keys": ["sample"] + list(keys_values.keys()),
-        "metadata_values": {
-            "sample": sorted(list(sample_names)),
-            **{k: sorted(list(v)) for k, v in keys_values.items()}
-        }
+        "metadata_keys": ["sample"] + sorted(list(keys))
     }

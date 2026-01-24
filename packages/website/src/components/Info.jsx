@@ -24,23 +24,8 @@ const Info = ({
 }) => {
   const [activeTab, setActiveTab] = useState('metadata');
 
-  // Get filter state from context (via useMetadataFilter in LoraxProvider)
+  // Get state from context
   const {
-    // Filter state from useMetadataFilter
-    selectedColorBy,
-    setSelectedColorBy,
-    enabledValues,
-    setEnabledValues,
-    searchTags,
-    setSearchTags,
-    searchTerm,
-    setSearchTerm,
-    coloryby,
-    metadataColors,
-    setMetadataColors,
-    // Highlight state
-    highlightedMetadataValue,
-    setHighlightedMetadataValue,
     // Config state from useLoraxConfig
     sampleDetails: contextSampleDetails,
     tsconfig: contextTsconfig,
@@ -151,26 +136,13 @@ const Info = ({
         )}
         {activeTab === 'filter' && (
           <InfoFilter
-            searchTerm={searchTerm}
-            setSearchTerm={setSearchTerm}
-            searchTags={searchTags}
-            setSearchTags={setSearchTags}
-            selectedColorBy={selectedColorBy}
-            setSelectedColorBy={setSelectedColorBy}
-            coloryby={coloryby}
-            metadataColors={metadataColors}
-            setMetadataColors={setMetadataColors}
-            enabledValues={enabledValues}
-            setEnabledValues={setEnabledValues}
             visibleTrees={visibleTrees}
             treeColors={treeColors}
             setTreeColors={setTreeColors}
-            settings={settings}
-            setSettings={setSettings}
             hoveredTreeIndex={hoveredTreeIndex}
             setHoveredTreeIndex={setHoveredTreeIndex}
-            highlightedMetadataValue={highlightedMetadataValue}
-            setHighlightedMetadataValue={setHighlightedMetadataValue}
+            settings={settings}
+            setSettings={setSettings}
           />
         )}
       </div>
