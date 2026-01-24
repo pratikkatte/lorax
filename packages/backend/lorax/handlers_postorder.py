@@ -243,7 +243,6 @@ async def handle_postorder_query(file_path, tree_indices, sparsity_resolution=No
     all_y = np.empty(total_estimated, dtype=np.float32)
 
     offset = 0
-
     def process_trees():
         nonlocal offset
 

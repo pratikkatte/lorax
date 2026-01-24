@@ -17,6 +17,9 @@ export function useLoraxConnection({ apiBase, isProd = false }) {
   // Ref to hold reconnect function (avoids circular dependency)
   const reconnectRef = useRef(null);
 
+  // Request ID counter for correlating requests with responses
+  const requestIdRef = useRef(0);
+
   // Session error handler uses ref to access connect function
   const handleSessionError = useCallback(() => {
     clearSession();
@@ -126,6 +129,7 @@ export function useLoraxConnection({ apiBase, isProd = false }) {
   /**
    * Query tree layout from backend via socket.
    * Returns raw socket response - parsing done by caller.
+   * Uses Socket.IO acknowledgement callbacks for request-response correlation.
    * @param {number[]} displayArray - Tree indices to fetch
    * @param {Object} sparsityOptions - { resolution, precision }
    * @returns {Promise<{buffer, global_min_time, global_max_time, tree_indices}>}
@@ -137,27 +141,30 @@ export function useLoraxConnection({ apiBase, isProd = false }) {
         return;
       }
 
-      const handleResult = (message) => {
-        off("postorder-layout-result", handleResult);
+      // Generate unique request ID for this request
+      const requestId = ++requestIdRef.current;
 
-        if (message.error) {
-          reject(new Error(message.error));
-          return;
+      // Use callback-based emit - Socket.IO handles correlation
+      // This guarantees the callback receives the response for this specific request
+      socketRef.current.emit(
+        "process_postorder_layout",
+        {
+          displayArray,
+          sparsity_resolution: sparsityOptions.resolution || null,
+          sparsity_precision: sparsityOptions.precision || null,
+          lorax_sid: sidRef.current,
+          request_id: requestId
+        },
+        (response) => {
+          if (response.error) {
+            reject(new Error(response.error));
+          } else {
+            resolve(response);
+          }
         }
-
-        // Return raw response - let caller parse the buffer
-        resolve(message);
-      };
-
-      once("postorder-layout-result", handleResult);
-      emit("process_postorder_layout", {
-        displayArray,
-        sparsity_resolution: sparsityOptions.resolution || null,
-        sparsity_precision: sparsityOptions.precision || null,
-        lorax_sid: sidRef.current
-      });
+      );
     });
-  }, [emit, once, off, socketRef, sidRef]);
+  }, [socketRef, sidRef]);
 
   /**
    * Query tree/node/individual details from backend via socket.

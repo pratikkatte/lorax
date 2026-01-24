@@ -1,34 +1,40 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { parseTreeLayoutBuffer, EMPTY_TREE_LAYOUT } from '../utils/arrowUtils.js';
 
 /**
  * Hook to fetch tree layout data from backend when displayArray changes.
+ *
+ * NOTE: This hook executes immediately without debounce.
+ * Debouncing should be applied at the viewport/genomicCoords level (useInterval)
+ * to ensure atomic processing and prevent race conditions.
+ *
+ * Uses request ID pattern to ignore stale responses - only the latest
+ * request's response is processed, preventing race conditions.
  *
  * @param {Object} params
  * @param {number[]} params.displayArray - Tree indices to fetch (from useLocalData)
  * @param {Function} params.queryTreeLayout - Socket method from useLorax
  * @param {boolean} params.isConnected - Socket connection status
  * @param {Object} params.sparsityOptions - Optional { resolution, precision }
- * @param {number} params.debounceMs - Debounce delay (default: 150)
  * @returns {Object} { treeData, isLoading, error }
  */
 export function useTreeData({
   displayArray,
   queryTreeLayout,
   isConnected,
-  sparsityOptions = {},
-  debounceMs = 150
+  sparsityOptions = {}
 }) {
   const [treeData, setTreeData] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  const debounceTimer = useRef(null);
-  const latestRequestId = useRef(0);
+  // Request ID counter - only process response if it matches latest request
+  const requestIdRef = useRef(0);
 
   // Serialize sparsityOptions to avoid object reference issues in dependency array
   const sparsityOptionsKey = JSON.stringify(sparsityOptions);
 
+  // Fetch immediately when displayArray changes (no debounce)
   useEffect(() => {
     // Skip if not connected or no method available
     if (!isConnected || !queryTreeLayout) return;
@@ -40,28 +46,23 @@ export function useTreeData({
       return;
     }
 
-    // Clear pending request
-    if (debounceTimer.current) {
-      clearTimeout(debounceTimer.current);
-    }
+    // Increment request ID for this request
+    const currentRequestId = ++requestIdRef.current;
 
     setIsLoading(true);
     setError(null);
 
-    debounceTimer.current = setTimeout(async () => {
-      const requestId = ++latestRequestId.current;
-
+    (async () => {
       try {
         const response = await queryTreeLayout(displayArray, sparsityOptions);
 
-        // Ignore stale responses
-        if (requestId !== latestRequestId.current) {
+        // Ignore stale response if a newer request was sent
+        if (currentRequestId !== requestIdRef.current) {
           return;
         }
 
         // Parse PyArrow buffer using utility
         const parsed = parseTreeLayoutBuffer(response.buffer);
-
         setTreeData({
           ...parsed,
           global_min_time: response.global_min_time,
@@ -70,20 +71,16 @@ export function useTreeData({
         });
         setIsLoading(false);
       } catch (err) {
-        if (requestId !== latestRequestId.current) return;
-
+        // Ignore errors from stale requests
+        if (currentRequestId !== requestIdRef.current) {
+          return;
+        }
         console.error('[useTreeData] Failed to fetch tree data:', err);
         setError(err);
         setIsLoading(false);
       }
-    }, debounceMs);
-
-    return () => {
-      if (debounceTimer.current) {
-        clearTimeout(debounceTimer.current);
-      }
-    };
-  }, [displayArray, queryTreeLayout, isConnected, sparsityOptionsKey, debounceMs]);
+    })();
+  }, [displayArray, queryTreeLayout, isConnected, sparsityOptionsKey]);
 
   return useMemo(() => ({
     treeData,

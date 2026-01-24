@@ -306,6 +306,7 @@ def construct_trees_batch(
     all_y = np.empty(total_estimated, dtype=np.float32)
 
     offset = 0
+    processed_indices = []
 
     for tree_idx in tree_indices:
         tree_idx = int(tree_idx)
@@ -370,6 +371,7 @@ def construct_trees_batch(
         all_y[offset:offset+n] = y
 
         offset += n
+        processed_indices.append(tree_idx)
 
     # Trim to actual size
     all_node_ids = all_node_ids[:offset]
@@ -404,7 +406,7 @@ def construct_trees_batch(
     writer.write_table(table)
     writer.close()
 
-    return sink.getvalue().to_pybytes(), min_time, max_time, [int(i) for i in tree_indices]
+    return sink.getvalue().to_pybytes(), min_time, max_time, processed_indices
 
 
 def _sparsify_vectorized(node_ids, x, y, is_tip, parent_ids, resolution=None, precision=None):

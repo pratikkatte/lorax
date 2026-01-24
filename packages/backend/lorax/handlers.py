@@ -548,7 +548,6 @@ async def handle_tree_graph_query(file_path, tree_indices, sparsity_resolution=N
         )
 
     buffer, min_time, max_time, processed_indices = await asyncio.to_thread(process_trees)
-
     return {
         "buffer": buffer,
         "global_min_time": min_time,

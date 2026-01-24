@@ -10,42 +10,20 @@
  * @param {Array} node_id - Node IDs
  * @param {Array} parent_id - Parent node IDs
  * @param {Array} is_tip - Tip flags
- * @param {Array} tree_idx - Tree indices from backend (may be 0-indexed or global)
+ * @param {Array} tree_idx - Tree indices from backend (always global indices)
  * @param {Array} x - X coordinates
  * @param {Array} y - Y coordinates
- * @param {Array} displayArray - Global tree indices that were requested (for mapping)
+ * @param {Array} displayArray - Global tree indices that were requested (for diagnostics)
  * @returns {Map} Map of global tree index -> nodes
  */
 export function groupNodesByTree(node_id, parent_id, is_tip, tree_idx, x, y, displayArray) {
   const treeMap = new Map();
   const length = node_id.length;
 
-  // Create mapping from backend's tree_idx to global indices
-  // The backend may return tree_idx as 0-indexed positions within the response
-  // displayArray contains the actual global indices that were requested
-  const indexMapping = new Map();
-  if (displayArray && Array.isArray(displayArray)) {
-    // Get unique tree_idx values to check if they're 0-indexed or global
-    const uniqueTreeIdx = [...new Set(tree_idx)].sort((a, b) => a - b);
-
-    // If tree_idx values are 0, 1, 2, ... they're likely 0-indexed
-    // If they match displayArray values, they're global indices
-    const isZeroIndexed = uniqueTreeIdx.length > 0 &&
-      uniqueTreeIdx[0] === 0 &&
-      !displayArray.includes(0) &&
-      displayArray.length === uniqueTreeIdx.length;
-
-    if (isZeroIndexed) {
-      displayArray.forEach((globalIdx, localIdx) => {
-        indexMapping.set(localIdx, globalIdx);
-      });
-    }
-  }
-
+  // Backend always sends global tree indices in tree_idx column
+  // No mapping needed - use tree_idx directly
   for (let i = 0; i < length; i++) {
-    // Map tree_idx to global index if needed
-    const rawTreeIdx = tree_idx[i];
-    const tIdx = indexMapping.has(rawTreeIdx) ? indexMapping.get(rawTreeIdx) : rawTreeIdx;
+    const tIdx = tree_idx[i];  // Already global index
 
     if (!treeMap.has(tIdx)) {
       treeMap.set(tIdx, []);
@@ -59,6 +37,10 @@ export function groupNodesByTree(node_id, parent_id, is_tip, tree_idx, x, y, dis
       y: y[i]   // genealogy-based [0,1]
     });
   }
+
+  // Diagnostic logging
+  console.log('[groupNodesByTree] Trees with data:', Array.from(treeMap.keys()));
+  console.log('[groupNodesByTree] displayArray:', displayArray);
 
   return treeMap;
 }

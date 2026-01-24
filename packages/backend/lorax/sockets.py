@@ -261,45 +261,47 @@ def register_socket_events(sio):
 
         Returns PyArrow IPC binary data with post-order node arrays.
         Frontend computes layout using stack-based reconstruction.
+
+        Uses Socket.IO acknowledgement callback pattern - returns result directly
+        instead of emitting to ensure request-response correlation.
         """
         try:
             lorax_sid = data.get("lorax_sid")
             session = await require_session(lorax_sid, sid)
             if not session:
-                return
+                return {"error": "Session not found", "request_id": data.get("request_id")}
 
             if not session.file_path:
                 print(f"⚠️ No file loaded for session {lorax_sid}")
-                await sio.emit("error", {"code": ERROR_NO_FILE_LOADED, "message": "No file loaded. Please load a file first."}, to=sid)
-                return
+                return {"error": "No file loaded for session", "request_id": data.get("request_id")}
 
             display_array = data.get("displayArray", [])
             sparsity_resolution = data.get("sparsity_resolution", None)
             sparsity_precision = data.get("sparsity_precision", None)
+            request_id = data.get("request_id")
 
             # handle_tree_graph_query returns dict with PyArrow buffer (Numba-optimized)
             result = await handle_tree_graph_query(
                 session.file_path,
                 display_array,
-                # sparsity_resolution=None,  
-                # sparsity_precision=None  
                 sparsity_resolution=sparsity_resolution,
                 sparsity_precision=sparsity_precision
             )
 
             if "error" in result:
-                await sio.emit("postorder-layout-result", {"error": result["error"]}, to=sid)
+                return {"error": result["error"], "request_id": request_id}
             else:
-                # Send binary buffer with metadata
-                await sio.emit("postorder-layout-result", {
+                # Return result directly - Socket.IO sends as acknowledgement callback
+                return {
                     "buffer": result["buffer"],  # Binary PyArrow IPC data
                     "global_min_time": result["global_min_time"],
                     "global_max_time": result["global_max_time"],
-                    "tree_indices": result["tree_indices"]
-                }, to=sid)
+                    "tree_indices": result["tree_indices"],
+                    "request_id": request_id
+                }
         except Exception as e:
             print(f"❌ Postorder layout query error: {e}")
-            await sio.emit("postorder-layout-result", {"error": str(e)}, to=sid)
+            return {"error": str(e), "request_id": data.get("request_id")}
 
 
     @sio.event

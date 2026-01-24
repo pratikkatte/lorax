@@ -37,6 +37,10 @@ function getWorkerSpec() {
  * - 'main-thread': Uses synchronous computation (webpack/non-Vite)
  * - 'auto': Detects environment and chooses appropriate mode
  *
+ * NOTE: This hook executes immediately without debounce.
+ * Debouncing should be applied at the viewport/genomicCoords level (useInterval)
+ * to ensure atomic processing and prevent race conditions.
+ *
  * @param {Object} params
  * @param {Map|null} params.localBins - Map of tree_idx -> { modelMatrix, ... } from useLocalData
  * @param {Object|null} params.treeData - { node_id[], parent_id[], is_tip[], tree_idx[], x[], y[] } from useTreeData
@@ -44,7 +48,6 @@ function getWorkerSpec() {
  * @param {Object} params.metadataArrays - Optional metadata for tip coloring
  * @param {Object} params.metadataColors - Optional color mapping for metadata values
  * @param {Object} params.populationFilter - Optional { colorBy, enabledValues }
- * @param {number} params.debounceMs - Debounce delay (default: 100)
  * @param {string} params.mode - Execution mode: 'worker' | 'main-thread' | 'auto' (default: 'auto')
  * @returns {Object} { renderData, isLoading, error, isReady, effectiveMode, clearBuffers }
  */
@@ -55,7 +58,6 @@ export function useRenderData({
   metadataArrays = null,
   metadataColors = null,
   populationFilter = null,
-  debounceMs = 100,
   mode = 'auto'
 }) {
   const [renderData, setRenderData] = useState(null);
@@ -65,7 +67,6 @@ export function useRenderData({
 
   const workerRef = useRef(null);
   const pendingRequestsRef = useRef(new Map());
-  const debounceTimer = useRef(null);
   const latestRequestId = useRef(0);
 
   // Determine effective mode
@@ -128,10 +129,6 @@ export function useRenderData({
 
     return () => {
       mounted = false;
-      // Cancel pending debounce
-      if (debounceTimer.current) {
-        clearTimeout(debounceTimer.current);
-      }
 
       // Reject all pending requests
       for (const { reject } of pendingRequestsRef.current.values()) {
@@ -178,7 +175,7 @@ export function useRenderData({
     });
   }, []);
 
-  // Worker mode effect
+  // Worker mode effect - executes immediately (no debounce)
   useEffect(() => {
     if (effectiveMode !== 'worker' || !workerRef.current) return;
 
@@ -199,17 +196,12 @@ export function useRenderData({
       return;
     }
 
-    // Clear pending debounce
-    if (debounceTimer.current) {
-      clearTimeout(debounceTimer.current);
-    }
+    const requestId = ++latestRequestId.current;
 
     setIsLoading(true);
     setError(null);
 
-    debounceTimer.current = setTimeout(async () => {
-      const requestId = ++latestRequestId.current;
-
+    (async () => {
       try {
         const result = await request('compute-render-data', {
           node_id: treeData.node_id,
@@ -239,16 +231,10 @@ export function useRenderData({
         setError(err);
         setIsLoading(false);
       }
-    }, debounceMs);
+    })();
+  }, [effectiveMode, localBins, treeData, displayArray, metadataArrays, metadataColors, populationFilter, request]);
 
-    return () => {
-      if (debounceTimer.current) {
-        clearTimeout(debounceTimer.current);
-      }
-    };
-  }, [effectiveMode, localBins, treeData, displayArray, metadataArrays, metadataColors, populationFilter, debounceMs, request]);
-
-  // Main-thread mode effect
+  // Main-thread mode effect - executes immediately (no debounce)
   useEffect(() => {
     if (effectiveMode !== 'main-thread') return;
 
@@ -269,56 +255,43 @@ export function useRenderData({
       return;
     }
 
-    // Clear pending debounce
-    if (debounceTimer.current) {
-      clearTimeout(debounceTimer.current);
-    }
+    const requestId = ++latestRequestId.current;
 
     setIsLoading(true);
     setError(null);
 
-    debounceTimer.current = setTimeout(() => {
-      const requestId = ++latestRequestId.current;
+    try {
+      // Synchronous computation on main thread
+      const modelMatricesMap = buildModelMatricesMap(localBins);
+      const result = computeRenderArrays({
+        node_id: treeData.node_id,
+        parent_id: treeData.parent_id,
+        is_tip: treeData.is_tip,
+        tree_idx: treeData.tree_idx,
+        x: treeData.x,
+        y: treeData.y,
+        modelMatrices: modelMatricesMap,
+        displayArray: displayArray || [],
+        metadataArrays,
+        metadataColors,
+        populationFilter
+      });
 
-      try {
-        // Synchronous computation on main thread
-        const modelMatricesMap = buildModelMatricesMap(localBins);
-        const result = computeRenderArrays({
-          node_id: treeData.node_id,
-          parent_id: treeData.parent_id,
-          is_tip: treeData.is_tip,
-          tree_idx: treeData.tree_idx,
-          x: treeData.x,
-          y: treeData.y,
-          modelMatrices: modelMatricesMap,
-          displayArray: displayArray || [],
-          metadataArrays,
-          metadataColors,
-          populationFilter
-        });
-
-        // Ignore stale results
-        if (requestId !== latestRequestId.current) {
-          return;
-        }
-
-        setRenderData(result);
-        setIsLoading(false);
-      } catch (err) {
-        if (requestId !== latestRequestId.current) return;
-
-        console.error('[useRenderData] Failed to compute render data:', err);
-        setError(err);
-        setIsLoading(false);
+      // Ignore stale results
+      if (requestId !== latestRequestId.current) {
+        return;
       }
-    }, debounceMs);
 
-    return () => {
-      if (debounceTimer.current) {
-        clearTimeout(debounceTimer.current);
-      }
-    };
-  }, [effectiveMode, localBins, treeData, displayArray, metadataArrays, metadataColors, populationFilter, debounceMs]);
+      setRenderData(result);
+      setIsLoading(false);
+    } catch (err) {
+      if (requestId !== latestRequestId.current) return;
+
+      console.error('[useRenderData] Failed to compute render data:', err);
+      setError(err);
+      setIsLoading(false);
+    }
+  }, [effectiveMode, localBins, treeData, displayArray, metadataArrays, metadataColors, populationFilter]);
 
   /**
    * Clear worker buffers to free memory (only in worker mode)

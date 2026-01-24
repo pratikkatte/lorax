@@ -167,8 +167,17 @@ const LoraxDeckGL = forwardRef(({
     displayOptions: { selectionStrategy: 'largestSpan' }
   });
 
+
+  const localBinsVisibleKeys = useMemo(() => {
+    if (!localBins) return [];
+    return Array.from(localBins.values())
+      .filter(bin => bin.visible)
+      .map(bin => bin.global_index);
+  }, [localBins]);
+
+
+  
   // 6c. Fetch tree data from backend (auto-triggers on displayArray change)
-  console.log("displayArray", displayArray);
   const { treeData, isLoading: treeDataLoading, error: treeDataError } = useTreeData({
     displayArray,
     queryTreeLayout,

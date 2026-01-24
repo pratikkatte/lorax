@@ -33,6 +33,10 @@ function deserializeBins(serialized) {
  * - 'main-thread': Uses synchronous computation (webpack/non-Vite)
  * - 'auto': Detects environment and chooses appropriate mode
  *
+ * NOTE: This hook executes immediately without debounce.
+ * Debouncing should be applied at the viewport/genomicCoords level (useInterval)
+ * to ensure atomic processing and prevent race conditions.
+ *
  * @param {Object} params
  * @param {Object} params.worker - Worker instance from useWorker (required for 'worker' mode)
  * @param {boolean} params.workerConfigReady - Whether worker has config (required for 'worker' mode)
@@ -42,7 +46,6 @@ function deserializeBins(serialized) {
  * @param {Object} params.viewState - deck.gl viewState with zoom
  * @param {Object} params.tsconfig - { genome_length, intervals[] }
  * @param {Object} params.displayOptions - { selectionStrategy }
- * @param {number} params.debounceMs - Debounce delay (default: 100)
  * @param {string} params.mode - Execution mode: 'worker' | 'main-thread' | 'auto' (default: 'auto')
  * @returns {Object} { localBins, displayArray, isReady, showingAllTrees, reset }
  */
@@ -55,14 +58,12 @@ export function useLocalData({
   viewState,
   tsconfig,
   displayOptions = {},
-  debounceMs = 100,
   mode = 'auto'
 }) {
   const [localBins, setLocalBins] = useState(null);
   const [displayArray, setDisplayArray] = useState([]);
   const [showingAllTrees, setShowingAllTrees] = useState(false);
 
-  const debounceTimer = useRef(null);
   const latestRequestId = useRef(0);
 
   // Determine effective mode
@@ -94,18 +95,16 @@ export function useLocalData({
     return globalBpPerUnit * scaleFactor;
   }, [globalBpPerUnit, viewState]);
 
-  // Worker mode effect
+  // Worker mode effect - executes immediately (no debounce)
   useEffect(() => {
     if (effectiveMode !== 'worker') return;
     if (!workerConfigReady || !genomicCoords || !worker || !globalBpPerUnit || !new_globalBp) return;
     if (!allIntervalsInView || allIntervalsInView.length === 0) return;
 
-    if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    const [start, end] = genomicCoords;
+    const requestId = ++latestRequestId.current;
 
-    debounceTimer.current = setTimeout(async () => {
-      const [start, end] = genomicCoords;
-      const requestId = ++latestRequestId.current;
-
+    (async () => {
       try {
         const result = await worker.queryLocalData({
           intervals: allIntervalsInView,
@@ -126,53 +125,41 @@ export function useLocalData({
       } catch (error) {
         console.error('Failed to query local data:', error);
       }
-    }, debounceMs);
+    })();
+  }, [effectiveMode, workerConfigReady, genomicCoords, worker, globalBpPerUnit, new_globalBp, allIntervalsInView, intervalBounds, displayOptionsKey, tsconfig]);
 
-    return () => {
-      if (debounceTimer.current) clearTimeout(debounceTimer.current);
-    };
-  }, [effectiveMode, workerConfigReady, genomicCoords, worker, globalBpPerUnit, new_globalBp, allIntervalsInView, intervalBounds, displayOptionsKey, debounceMs, tsconfig]);
-
-  // Main-thread mode effect
+  // Main-thread mode effect - executes immediately (no debounce)
   useEffect(() => {
     if (effectiveMode !== 'main-thread') return;
     if (!genomicCoords || !globalBpPerUnit || !new_globalBp) return;
     if (!allIntervalsInView || allIntervalsInView.length === 0) return;
 
-    if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    const [start, end] = genomicCoords;
+    const requestId = ++latestRequestId.current;
 
-    debounceTimer.current = setTimeout(() => {
-      const [start, end] = genomicCoords;
-      const requestId = ++latestRequestId.current;
+    try {
+      // Synchronous computation on main thread
+      const result = queryLocalDataSync({
+        intervals: allIntervalsInView,
+        lo: intervalBounds.lo,
+        start,
+        end,
+        globalBpPerUnit,
+        new_globalBp,
+        genome_length: tsconfig.genome_length,
+        displayOptions
+      });
 
-      try {
-        // Synchronous computation on main thread
-        const result = queryLocalDataSync({
-          intervals: allIntervalsInView,
-          lo: intervalBounds.lo,
-          start,
-          end,
-          globalBpPerUnit,
-          new_globalBp,
-          genome_length: tsconfig.genome_length,
-          displayOptions
-        });
+      if (requestId !== latestRequestId.current) return;
 
-        if (requestId !== latestRequestId.current) return;
-
-        // Result is already a Map, no need to deserialize
-        setLocalBins(result.local_bins);
-        setDisplayArray(result.displayArray || []);
-        setShowingAllTrees(result.showing_all_trees || false);
-      } catch (error) {
-        console.error('Failed to compute local data:', error);
-      }
-    }, debounceMs);
-
-    return () => {
-      if (debounceTimer.current) clearTimeout(debounceTimer.current);
-    };
-  }, [effectiveMode, genomicCoords, globalBpPerUnit, new_globalBp, allIntervalsInView, intervalBounds, displayOptionsKey, debounceMs, tsconfig]);
+      // Result is already a Map, no need to deserialize
+      setLocalBins(result.local_bins);
+      setDisplayArray(result.displayArray || []);
+      setShowingAllTrees(result.showing_all_trees || false);
+    } catch (error) {
+      console.error('Failed to compute local data:', error);
+    }
+  }, [effectiveMode, genomicCoords, globalBpPerUnit, new_globalBp, allIntervalsInView, intervalBounds, displayOptionsKey, tsconfig]);
 
   const reset = useCallback(() => {
     setLocalBins(null);
