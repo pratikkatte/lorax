@@ -5,6 +5,16 @@ import {
   supportsWebWorkers
 } from '../utils/computations.js';
 
+// Compare arrays to avoid unnecessary state updates
+function arraysEqual(a, b) {
+  if (!a || !b) return false;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
 /**
  * Deserialize bins from worker
  * Reconstructs Map and Matrix4 from serialized format
@@ -114,13 +124,16 @@ export function useLocalData({
           globalBpPerUnit,
           new_globalBp,
           genome_length: tsconfig.genome_length,
-          displayOptions
+          displayOptions : { ...displayOptions, showing_all_trees: showingAllTrees }
         });
 
         if (requestId !== latestRequestId.current) return;
 
         setLocalBins(deserializeBins(result.local_bins));
-        setDisplayArray(result.displayArray || []);
+        setDisplayArray(prev => {
+          const newArr = result.displayArray || [];
+          return arraysEqual(prev, newArr) ? prev : newArr;
+        });
         setShowingAllTrees(result.showing_all_trees || false);
       } catch (error) {
         console.error('Failed to query local data:', error);
@@ -154,7 +167,10 @@ export function useLocalData({
 
       // Result is already a Map, no need to deserialize
       setLocalBins(result.local_bins);
-      setDisplayArray(result.displayArray || []);
+      setDisplayArray(prev => {
+        const newArr = result.displayArray || [];
+        return arraysEqual(prev, newArr) ? prev : newArr;
+      });
       setShowingAllTrees(result.showing_all_trees || false);
     } catch (error) {
       console.error('Failed to compute local data:', error);

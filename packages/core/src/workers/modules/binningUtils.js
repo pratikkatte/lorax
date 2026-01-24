@@ -261,15 +261,11 @@ export function new_complete_experiment_map(localBins, globalBpPerUnit, new_glob
 
     const slotWidth = (effectiveEnd - effectiveStart) / allTrees.length;
 
-    // Check if current trees are same/subset of prevLocalBins (user is zooming in)
-    const canReusePositions = prevLocalBins &&
-      allTrees.every(t => prevLocalBins.has(t.idx));
-
     for (let i = 0; i < allTrees.length; i++) {
       const tree = allTrees[i];
 
-      if (canReusePositions && prevLocalBins.has(tree.idx)) {
-        // Copy previous bin data (preserves modelMatrix)
+      // Single tree position lock: reuse cached position if available
+      if (allTrees.length === 1 && prevLocalBins && prevLocalBins.has(tree.idx)) {
         const prevBin = prevLocalBins.get(tree.idx);
         localBins.set(tree.idx, { ...prevBin });
       } else {
@@ -292,10 +288,6 @@ export function new_complete_experiment_map(localBins, globalBpPerUnit, new_glob
           isRepresentative: true,
           groupSize: 1
         });
-
-        if (prevLocalBins) {
-          console.log('[PositionLock] New tree calculated:', tree.idx);
-        }
       }
 
       displayArray.push(tree.idx);

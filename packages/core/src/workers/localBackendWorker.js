@@ -78,10 +78,11 @@ function getLocalData(data) {
     globalBpPerUnit,
     new_globalBp,
     genome_length,
+    
     displayOptions = {}
   } = data;
 
-  const { selectionStrategy = 'largestSpan' } = displayOptions;
+  const { selectionStrategy = 'largestSpan' , showing_all_trees = false} = displayOptions;
 
   if (!intervals || intervals.length === 0) {
     return {
@@ -115,7 +116,7 @@ function getLocalData(data) {
     local_bins,
     globalBpPerUnit,
     new_globalBp,
-    { selectionStrategy, viewportStart: start, viewportEnd: end, prevLocalBins: prevLocalBinsCache }
+    { selectionStrategy, viewportStart: start, viewportEnd: end, prevLocalBins: prevLocalBinsCache}
   );
 
   // Cache for next frame's position locking
