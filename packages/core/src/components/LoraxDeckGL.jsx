@@ -168,11 +168,12 @@ const LoraxDeckGL = forwardRef(({
   });
 
   // 6c. Fetch tree data from backend (auto-triggers on displayArray change)
+  console.log("displayArray", displayArray);
   const { treeData, isLoading: treeDataLoading, error: treeDataError } = useTreeData({
     displayArray,
     queryTreeLayout,
     isConnected,
-    sparsityOptions: { precision: 2 }
+    // sparsityOptions: { precision: 2 }
   });
 
   // 6c.1. Notify parent when tree loading state changes

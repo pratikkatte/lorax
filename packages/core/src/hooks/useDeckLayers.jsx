@@ -93,7 +93,8 @@ export function useDeckLayers({
           onTipHover?.(info?.object || null, info, event);
           return;
         }
-        if (sourceLayerId.includes('edges-pickable')) {
+        // if (sourceLayerId.includes('edges-pickable')) {
+        if (sourceLayerId.includes('edges')) {
           setHoveredEdgeIndex(info?.index ?? null);
           const edge = (renderData?.edgeData && info?.index != null && info.index >= 0)
             ? renderData.edgeData[info.index]
@@ -114,7 +115,8 @@ export function useDeckLayers({
           onTipClick?.(info?.object || null, info, event);
           return;
         }
-        if (sourceLayerId.includes('edges-pickable')) {
+        // if (sourceLayerId.includes('edges-pickable')) {
+        if (sourceLayerId.includes('edges')) {
           const edge = (renderData?.edgeData && info?.index != null && info.index >= 0)
             ? renderData.edgeData[info.index]
             : null;

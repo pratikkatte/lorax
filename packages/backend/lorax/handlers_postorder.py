@@ -79,16 +79,19 @@ def compute_tree_coordinates_vectorized(tree, node_times, min_time, max_time):
         else:
             is_tip[i] = False
 
-    # Second pass: compute internal node y as average of children
+    # Second pass: compute internal node y as (min + max) / 2 of children
+    # This matches jstree.js - parent centered between leftmost and rightmost children
     # Process in postorder (children before parents guaranteed)
     for i in range(n):
         if not is_tip[i]:
-            # Sum children y values (children already processed in postorder)
             node_id = postorder[i]
             children = list(tree.children(node_id))
             if children:
-                total_y = sum(y[node_to_idx[c]] for c in children if node_to_idx[c] >= 0)
-                y[i] = total_y / len(children)
+                children_y = [y[node_to_idx[c]] for c in children if node_to_idx[c] >= 0]
+                if children_y:
+                    y[i] = (min(children_y) + max(children_y)) / 2.0
+                else:
+                    y[i] = 0
             else:
                 y[i] = 0
 

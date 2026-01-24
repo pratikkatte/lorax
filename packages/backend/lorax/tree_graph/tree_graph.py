@@ -19,7 +19,7 @@ def _compute_x_postorder(children_indptr, children_data, roots, num_nodes):
     """
     Numba-compiled post-order traversal for computing x (layout) coordinates.
 
-    Tips get sequential x values (0, 1, 2, ...), internal nodes get average of children.
+    Tips get sequential x values (0, 1, 2, ...), internal nodes get (min + max) / 2 of children.
 
     Args: 
         children_indptr: CSR indptr array
@@ -71,11 +71,16 @@ def _compute_x_postorder(children_indptr, children_data, roots, num_nodes):
                     x[node] = tip_counter
                     tip_counter += 1
                 else:
-                    # Inline mean calculation (avoid np.mean overhead)
-                    total = 0.0
-                    for j in range(start, end):
-                        total += x[children_data[j]]
-                    x[node] = total / num_children
+                    # Compute (min + max) / 2 of children (matches jstree.js)
+                    min_x = x[children_data[start]]
+                    max_x = x[children_data[start]]
+                    for j in range(start + 1, end):
+                        child_x = x[children_data[j]]
+                        if child_x < min_x:
+                            min_x = child_x
+                        if child_x > max_x:
+                            max_x = child_x
+                    x[node] = (min_x + max_x) / 2.0
 
     return x, tip_counter
 
@@ -90,7 +95,7 @@ class TreeGraph:
         time: float32 array of raw node times
         children_indptr: int32 CSR row pointers (length = num_nodes + 1)
         children_data: int32 flattened children array
-        x: float32 layout position [0,1] (tips spread, internal=avg of children)
+        x: float32 layout position [0,1] (tips spread, internal=(min+max)/2 of children)
         y: float32 normalized time [0,1] (min_time=0, max_time=1)
         in_tree: bool array indicating which nodes are in this tree
     """

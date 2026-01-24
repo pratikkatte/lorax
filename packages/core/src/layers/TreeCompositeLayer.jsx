@@ -103,7 +103,17 @@ export class TreeCompositeLayer extends CompositeLayer {
         widthUnits: 'pixels',
         coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
         parameters: { depthTest: false },
-        pickable: false
+        pickable: true,
+        onHover: (info, event) => {
+                const idx = info?.index;
+                const edge = (idx != null && idx >= 0) ? edgeData?.[idx] : null;
+                onEdgeHover?.(edge, info, event);
+              },
+        onClick: (info, event) => {
+                const idx = info?.index;
+                const edge = (idx != null && idx >= 0) ? edgeData?.[idx] : null;
+                onEdgeClick?.(edge, info, event);
+              }
       }));
 
       // Hover highlight (render only the hovered edge, thicker)
@@ -133,31 +143,6 @@ export class TreeCompositeLayer extends CompositeLayer {
             pickable: false
           }));
         }
-      }
-
-      // Pickable edge overlay (invisible, thicker for easier hover/click)
-      if (pickable && edgeData && edgeData.length > 0) {
-        layers.push(new PathLayer({
-          id: `${this.props.id}-edges-pickable`,
-          data: edgeBinaryData,
-          getColor: [0, 0, 0, 0],
-          getWidth: Math.max(edgeWidth + 6, 8),
-          fp64: true,
-          widthUnits: 'pixels',
-          coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
-          parameters: { depthTest: false },
-          pickable: true,
-          onHover: (info, event) => {
-            const idx = info?.index;
-            const edge = (idx != null && idx >= 0) ? edgeData?.[idx] : null;
-            onEdgeHover?.(edge, info, event);
-          },
-          onClick: (info, event) => {
-            const idx = info?.index;
-            const edge = (idx != null && idx >= 0) ? edgeData?.[idx] : null;
-            onEdgeClick?.(edge, info, event);
-          }
-        }));
       }
     }
 
@@ -201,41 +186,41 @@ export class TreeCompositeLayer extends CompositeLayer {
       }));
     }
 
-    // Lineage paths (optional)
-    if (lineageData && lineageData.length > 0) {
-      layers.push(new PathLayer({
-        id: `${this.props.id}-lineage`,
-        data: lineageData,
-        getPath: d => d.path,
-        getColor: d => d.color || lineageColor,
-        getWidth: lineageWidth,
-        widthUnits: 'pixels',
-        coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
-        parameters: { depthTest: false },
-        pickable: false
-      }));
-    }
+    // // Lineage paths (optional)
+    // if (lineageData && lineageData.length > 0) {
+    //   layers.push(new PathLayer({
+    //     id: `${this.props.id}-lineage`,
+    //     data: lineageData,
+    //     getPath: d => d.path,
+    //     getColor: d => d.color || lineageColor,
+    //     getWidth: lineageWidth,
+    //     widthUnits: 'pixels',
+    //     coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+    //     parameters: { depthTest: false },
+    //     pickable: false
+    //   }));
+    // }
 
-    // Highlighted nodes (optional)
-    if (highlightData && highlightData.length > 0) {
-      layers.push(new ScatterplotLayer({
-        id: `${this.props.id}-highlights`,
-        data: highlightData,
-        getPosition: d => d.position,
-        getFillColor: d => d.color ? [...d.color.slice(0, 3), 200] : [255, 200, 0, 200],
-        getLineColor: highlightStrokeColor,
-        getRadius: highlightRadius,
-        radiusUnits: 'pixels',
-        filled: true,
-        stroked: true,
-        lineWidthUnits: 'pixels',
-        lineWidthMinPixels: highlightStrokeWidth,
-        coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
-        parameters: { depthTest: false },
-        fp64: true,
-        pickable: false
-      }));
-    }
+    // // Highlighted nodes (optional)
+    // if (highlightData && highlightData.length > 0) {
+    //   layers.push(new ScatterplotLayer({
+    //     id: `${this.props.id}-highlights`,
+    //     data: highlightData,
+    //     getPosition: d => d.position,
+    //     getFillColor: d => d.color ? [...d.color.slice(0, 3), 200] : [255, 200, 0, 200],
+    //     getLineColor: highlightStrokeColor,
+    //     getRadius: highlightRadius,
+    //     radiusUnits: 'pixels',
+    //     filled: true,
+    //     stroked: true,
+    //     lineWidthUnits: 'pixels',
+    //     lineWidthMinPixels: highlightStrokeWidth,
+    //     coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+    //     parameters: { depthTest: false },
+    //     fp64: true,
+    //     pickable: false
+    //   }));
+    // }
 
     return layers;
   }
