@@ -1,6 +1,4 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { tableFromIPC } from "apache-arrow";
-import websocketEvents from "../utils/websocketEvents.js";
 import { getColor, assignUniqueColors } from "../utils/colorUtils.js";
 import { useWorker } from './useWorker.jsx';
 
@@ -16,7 +14,7 @@ import { useWorker } from './useWorker.jsx';
  * @returns {Object} Config state and methods
  */
 function useLoraxConfig({ backend, enabled = true, onConfigLoaded, setStatusMessage }) {
-  const { isConnected, socketRef, loraxSid } = backend || {};
+  const { isConnected } = backend || {};
 
   // Core config state
   const [tsconfig, setConfig] = useState(null);
@@ -27,12 +25,24 @@ function useLoraxConfig({ backend, enabled = true, onConfigLoaded, setStatusMess
   // Metadata state
   const [metadataColors, setMetadataColors] = useState(null); // {metadata_key: {metadata_value: [r,g,b,a]}}
   const [metadataKeys, setMetadataKeys] = useState([]);  // List of available metadata keys for coloring
-  const [loadedMetadataKeys, setLoadedMetadataKeys] = useState(new Set()); // Track which keys have been fetched
   const [metadataLoading, setMetadataLoading] = useState(false); // Loading state for metadata fetch
+
+  // Unified metadata loading tracking: Map<key, 'pyarrow' | 'json' | 'loading'>
+  const [loadedMetadata, setLoadedMetadata] = useState(new Map());
 
   // PyArrow-based efficient metadata for large tree sequences
   const [metadataArrays, setMetadataArrays] = useState({}); // {key: {uniqueValues, indices, nodeIdToIdx}}
-  const [loadedMetadataArrayKeys, setLoadedMetadataArrayKeys] = useState(new Set()); // Track which keys have array-format loaded
+
+  // Track pending JSON fallback timers for cancellation when PyArrow succeeds
+  const pendingJsonFallbacksRef = useRef(new Map()); // Map<key, timeoutId>
+
+  // Ref for loadedMetadata to avoid stale closures and dependency issues
+  const loadedMetadataRef = useRef(loadedMetadata);
+
+  // Sync loadedMetadataRef with state
+  useEffect(() => {
+    loadedMetadataRef.current = loadedMetadata;
+  }, [loadedMetadata]);
 
   // Derived values
   const genomeLength = useMemo(() => tsconfig?.genome_length ?? null, [tsconfig]);
@@ -128,9 +138,11 @@ function useLoraxConfig({ backend, enabled = true, onConfigLoaded, setStatusMess
 
     // Reset state for new file
     setSampleDetails({});
-    setLoadedMetadataKeys(new Set());
+    setLoadedMetadata(new Map());
     setMetadataArrays({});
-    setLoadedMetadataArrayKeys(new Set());
+    // Cancel any pending JSON fallback timers
+    pendingJsonFallbacksRef.current.forEach((timeoutId) => clearTimeout(timeoutId));
+    pendingJsonFallbacksRef.current.clear();
     setMetadataColors(mColors);
     setMetadataKeys(mKeys);
 
@@ -142,172 +154,133 @@ function useLoraxConfig({ backend, enabled = true, onConfigLoaded, setStatusMess
 
   /**
    * Fetch metadata for a specific key (on-demand, lazy loading).
-   * Emits socket event and waits for metadata-key-result.
+   * Uses Promise-based query from backend connection.
+   * Note: This is the JSON fallback, only called if PyArrow doesn't complete in time.
    */
-  const fetchMetadataForKey = useCallback((key) => {
+  const fetchMetadataForKey = useCallback(async (key) => {
     if (!enabled) return;
-    if (!key || !isConnected || !socketRef?.current || !loraxSid) {
+    if (!key || !isConnected || !backend?.queryMetadataForKey) {
       console.warn("Cannot fetch metadata: not connected or missing params");
       return;
     }
 
-    // Skip if already loaded
-    if (loadedMetadataKeys.has(key)) {
-      console.log(`Metadata for key "${key}" already loaded`);
+    // Skip if already loaded (but allow if still 'loading' - this is the fallback)
+    const status = loadedMetadataRef.current.get(key);
+    if (status === 'pyarrow' || status === 'json') {
+      console.log(`Metadata for key "${key}" already loaded as ${status}`);
       return;
     }
 
-    console.log(`Fetching metadata for key: ${key}`);
+    console.log(`Fetching metadata (JSON) for key: ${key}`);
     setMetadataLoading(true);
-    socketRef.current.emit("fetch_metadata_for_key", {
-      lorax_sid: loraxSid,
-      key: key
-    });
-  }, [enabled, isConnected, socketRef, loraxSid, loadedMetadataKeys]);
 
-  /**
-   * Handle metadata-key-result event from backend.
-   */
-  const handleMetadataKeyResult = useCallback((data) => {
-    setMetadataLoading(false);
+    try {
+      const result = await backend.queryMetadataForKey(key);
+      const sampleToValue = result.data || {};
 
-    if (data.error) {
-      console.error("Error fetching metadata:", data.error);
-      return;
-    }
-
-    const key = data.key;
-    const sampleToValue = data.data || {};
-
-    console.log(`Received metadata for key "${key}":`, Object.keys(sampleToValue).length, "samples");
-
-    // Merge into sampleDetails: for each sample, add/update the key-value pair
-    setSampleDetails(prev => {
-      const updated = { ...prev };
-      Object.entries(sampleToValue).forEach(([sampleName, value]) => {
-        if (!updated[sampleName]) {
-          updated[sampleName] = {};
+      // Skip if already loaded as PyArrow (higher priority format) during async operation
+      setLoadedMetadata(prev => {
+        if (prev.get(key) === 'pyarrow') {
+          console.log(`Skipping JSON result for "${key}" - already loaded as PyArrow`);
+          return prev;
         }
-        updated[sampleName][key] = value;
+        const next = new Map(prev);
+        next.set(key, 'json');
+        return next;
       });
-      return updated;
-    });
 
-    // Mark this key as loaded
-    setLoadedMetadataKeys(prev => new Set([...prev, key]));
-  }, []);
+      console.log(`Received metadata (JSON) for key "${key}":`, Object.keys(sampleToValue).length, "samples");
 
-  // Listen for metadata-key-result events
-  useEffect(() => {
-    if (!enabled || !isConnected) return;
-
-    const handler = (msg) => {
-      if (msg.role === "metadata-key-result") {
-        handleMetadataKeyResult(msg);
-      }
-    };
-
-    websocketEvents.on("viz", handler);
-
-    return () => {
-      websocketEvents.off("viz", handler);
-    };
-  }, [enabled, isConnected, handleMetadataKeyResult]);
+      // Merge into sampleDetails: for each sample, add/update the key-value pair
+      setSampleDetails(prev => {
+        const updated = { ...prev };
+        Object.entries(sampleToValue).forEach(([sampleName, value]) => {
+          if (!updated[sampleName]) {
+            updated[sampleName] = {};
+          }
+          updated[sampleName][key] = value;
+        });
+        return updated;
+      });
+    } catch (err) {
+      console.error("Error fetching metadata:", err);
+    } finally {
+      setMetadataLoading(false);
+    }
+  }, [enabled, isConnected, backend]);
 
   /**
    * Fetch metadata as efficient PyArrow array format (for large tree sequences).
-   * Emits socket event and waits for metadata-array-result.
+   * Uses Promise-based query from backend connection.
    */
-  const fetchMetadataArrayForKey = useCallback((key) => {
+  const fetchMetadataArrayForKey = useCallback(async (key) => {
     if (!enabled) return;
-    if (!key || !isConnected || !socketRef?.current || !loraxSid) {
+    if (!key || !isConnected || !backend?.queryMetadataArray) {
       console.warn("Cannot fetch metadata array: not connected or missing params");
       return;
     }
 
-    // Skip if already loaded
-    if (loadedMetadataArrayKeys.has(key)) {
-      console.log(`Metadata array for key "${key}" already loaded`);
+    // Skip if already loaded or loading (use ref to get current value)
+    const status = loadedMetadataRef.current.get(key);
+    if (status === 'pyarrow' || status === 'json' || status === 'loading') {
+      console.log(`Metadata for key "${key}" already ${status}`);
       return;
     }
 
-    console.log(`Fetching metadata array for key: ${key}`);
-    setMetadataLoading(true);
-    socketRef.current.emit("fetch_metadata_array", {
-      lorax_sid: loraxSid,
-      key: key
+    // Mark as loading
+    setLoadedMetadata(prev => {
+      const next = new Map(prev);
+      next.set(key, 'loading');
+      return next;
     });
-  }, [enabled, isConnected, socketRef, loraxSid, loadedMetadataArrayKeys]);
 
-  /**
-   * Handle metadata-array-result event from backend (PyArrow format).
-   */
-  const handleMetadataArrayResult = useCallback((msg) => {
-    setMetadataLoading(false);
-
-    if (msg.error) {
-      console.error("Error fetching metadata array:", msg.error);
-      return;
-    }
-
-    const { key, unique_values, sample_node_ids, buffer } = msg;
-
-    if (!buffer || !unique_values || !sample_node_ids) {
-      console.error("Invalid metadata array result - missing data");
-      return;
-    }
+    console.log(`Fetching metadata (PyArrow) for key: ${key}`);
+    setMetadataLoading(true);
 
     try {
-      // Parse Arrow buffer to get indices array
-      const arrayBuffer = buffer instanceof ArrayBuffer ? buffer : buffer.buffer || new Uint8Array(buffer).buffer;
-      const table = tableFromIPC(arrayBuffer);
-      const indicesColumn = table.getChild('idx');
+      const result = await backend.queryMetadataArray(key);
 
-      if (!indicesColumn) {
-        console.error("Invalid Arrow table - missing 'idx' column");
-        return;
-      }
-
-      const indices = indicesColumn.toArray(); // Uint16Array
-
-      // Build nodeId -> array index mapping for O(1) lookup
-      const nodeIdToIdx = new Map();
-      sample_node_ids.forEach((nodeId, i) => {
-        nodeIdToIdx.set(nodeId, i);
-      });
-
-      console.log(`Received metadata array for key "${key}":`, sample_node_ids.length, "samples,", unique_values.length, "unique values");
+      console.log(`Received metadata (PyArrow) for key "${result.key}":`, result.sampleNodeIds.length, "samples,", result.uniqueValues.length, "unique values");
 
       setMetadataArrays(prev => ({
         ...prev,
-        [key]: { uniqueValues: unique_values, indices, nodeIdToIdx }
+        [result.key]: {
+          uniqueValues: result.uniqueValues,
+          indices: result.indices,
+          nodeIdToIdx: result.nodeIdToIdx
+        }
       }));
 
-      // Mark this key as loaded
-      setLoadedMetadataArrayKeys(prev => new Set([...prev, key]));
-    } catch (err) {
-      console.error("Error parsing Arrow buffer:", err);
-    }
-  }, []);
+      // Mark as pyarrow in unified tracking
+      setLoadedMetadata(prev => {
+        const next = new Map(prev);
+        next.set(result.key, 'pyarrow');
+        return next;
+      });
 
-  // Listen for metadata-array-result events
-  useEffect(() => {
-    if (!enabled || !isConnected) return;
-
-    const handler = (msg) => {
-      if (msg.role === "metadata-array-result") {
-        handleMetadataArrayResult(msg);
+      // Cancel any pending JSON fallback timer for this key
+      const pendingTimer = pendingJsonFallbacksRef.current.get(key);
+      if (pendingTimer) {
+        clearTimeout(pendingTimer);
+        pendingJsonFallbacksRef.current.delete(key);
+        console.log(`Cancelled pending JSON fallback for "${key}" - PyArrow succeeded`);
       }
-    };
+    } catch (err) {
+      console.error("Error fetching metadata array:", err);
+      // Reset loading state on error so it can be retried
+      setLoadedMetadata(prev => {
+        const next = new Map(prev);
+        if (next.get(key) === 'loading') {
+          next.delete(key);
+        }
+        return next;
+      });
+    } finally {
+      setMetadataLoading(false);
+    }
+  }, [enabled, isConnected, backend]);
 
-    websocketEvents.on("viz", handler);
-
-    return () => {
-      websocketEvents.off("viz", handler);
-    };
-  }, [enabled, isConnected, handleMetadataArrayResult]);
-
-  // Map to store pending search promises
+  // Map to store pending search promises for deduplication
   const searchPromisesRef = useRef(new Map());
 
   /**
@@ -315,64 +288,49 @@ function useLoraxConfig({ backend, enabled = true, onConfigLoaded, setStatusMess
    * Returns a promise that resolves with matching sample names.
    */
   const searchMetadataValue = useCallback((key, value) => {
-    return new Promise((resolve, reject) => {
-      if (!enabled) {
-        resolve([]);
-        return;
-      }
-      if (!key || value === undefined || value === null || !isConnected || !socketRef?.current || !loraxSid) {
-        console.warn("Cannot search metadata: missing params or not connected");
-        resolve([]);
-        return;
-      }
+    if (!enabled) {
+      return Promise.resolve([]);
+    }
+    if (!key || value === undefined || value === null || !isConnected || !backend?.queryMetadataSearch) {
+      console.warn("Cannot search metadata: missing params or not connected");
+      return Promise.resolve([]);
+    }
 
-      const searchKey = `${key}:${value}`;
+    const searchKey = `${key}:${value}`;
 
-      // Check if we already have a pending request for this key-value
-      if (searchPromisesRef.current.has(searchKey)) {
-        return searchPromisesRef.current.get(searchKey);
-      }
+    // Check if we already have a pending request for this key-value
+    if (searchPromisesRef.current.has(searchKey)) {
+      return searchPromisesRef.current.get(searchKey);
+    }
 
-      // Create a one-time handler for this specific search
-      const handler = (msg) => {
-        if (msg.role === "search-result" && msg.key === key && msg.value === value) {
-          websocketEvents.off("viz", handler);
-          searchPromisesRef.current.delete(searchKey);
-
-          if (msg.error) {
-            console.error("Search error:", msg.error);
-            resolve([]);
-          } else {
-            resolve(msg.samples || []);
-          }
-        }
-      };
-
-      websocketEvents.on("viz", handler);
-
-      // Store promise for deduplication
-      const promise = new Promise((res) => {
-        // Resolve will be called by the handler above
-      });
-      searchPromisesRef.current.set(searchKey, promise);
-
-      // Emit the search request
-      socketRef.current.emit("search_metadata", {
-        lorax_sid: loraxSid,
-        key: key,
-        value: value
+    // Create the promise and store it for deduplication
+    const promise = backend.queryMetadataSearch(key, value)
+      .then((samples) => {
+        searchPromisesRef.current.delete(searchKey);
+        return samples;
+      })
+      .catch((err) => {
+        console.error("Search error:", err);
+        searchPromisesRef.current.delete(searchKey);
+        return [];
       });
 
-      // Set a timeout to prevent hanging
-      setTimeout(() => {
-        if (searchPromisesRef.current.has(searchKey)) {
-          websocketEvents.off("viz", handler);
-          searchPromisesRef.current.delete(searchKey);
-          resolve([]);
-        }
-      }, 10000); // 10 second timeout
-    });
-  }, [enabled, isConnected, socketRef, loraxSid]);
+    searchPromisesRef.current.set(searchKey, promise);
+    return promise;
+  }, [enabled, isConnected, backend]);
+
+  // Expose pending JSON fallback ref for useMetadataFilter to register timers
+  const registerJsonFallback = useCallback((key, timeoutId) => {
+    pendingJsonFallbacksRef.current.set(key, timeoutId);
+  }, []);
+
+  const clearJsonFallback = useCallback((key) => {
+    const timeoutId = pendingJsonFallbacksRef.current.get(key);
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+      pendingJsonFallbacksRef.current.delete(key);
+    }
+  }, []);
 
   return useMemo(() => ({
     // Config state
@@ -390,12 +348,17 @@ function useLoraxConfig({ backend, enabled = true, onConfigLoaded, setStatusMess
     metadataColors,
     setMetadataColors,
     metadataKeys,
-    loadedMetadataKeys,
     metadataLoading,
 
-    // PyArrow-based metadata
+    // Unified metadata tracking: Map<key, 'pyarrow' | 'json' | 'loading'>
+    loadedMetadata,
+
+    // PyArrow-based metadata arrays
     metadataArrays,
-    loadedMetadataArrayKeys,
+
+    // JSON fallback timer management
+    registerJsonFallback,
+    clearJsonFallback,
 
     // Worker for interval computations
     worker,
@@ -415,10 +378,11 @@ function useLoraxConfig({ backend, enabled = true, onConfigLoaded, setStatusMess
     sampleDetails,
     metadataColors,
     metadataKeys,
-    loadedMetadataKeys,
     metadataLoading,
+    loadedMetadata,
     metadataArrays,
-    loadedMetadataArrayKeys,
+    registerJsonFallback,
+    clearJsonFallback,
     worker,
     workerConfigReady,
     handleConfigUpdate,

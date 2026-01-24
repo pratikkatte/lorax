@@ -168,14 +168,6 @@ const LoraxDeckGL = forwardRef(({
   });
 
 
-  const localBinsVisibleKeys = useMemo(() => {
-    if (!localBins) return [];
-    return Array.from(localBins.values())
-      .filter(bin => bin.visible)
-      .map(bin => bin.global_index);
-  }, [localBins]);
-
-
   
   // 6c. Fetch tree data from backend (auto-triggers on displayArray change)
   const { treeData, isLoading: treeDataLoading, error: treeDataError } = useTreeData({

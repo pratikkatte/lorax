@@ -1,6 +1,5 @@
 import { useEffect, useRef, useMemo, useCallback } from "react";
 import * as arrow from "apache-arrow";
-import websocketEvents from "../utils/websocketEvents.js";
 import { getProjects as getProjectsApi, uploadFileToBackend as uploadFileApi } from "../services/api.js";
 import { useSession } from "./useSession.jsx";
 import { useSocket } from "./useSocket.jsx";
@@ -59,33 +58,6 @@ export function useLoraxConnection({ apiBase, isProd = false }) {
       disconnect();
     };
   }, [initializeSession, connect, disconnect]);
-
-  // Set up Lorax-specific event listeners
-  useEffect(() => {
-    if (!isConnected) return;
-
-    const handleMetadataKeyResult = (message) => {
-      websocketEvents.emit("viz", { role: "metadata-key-result", ...message });
-    };
-
-    const handleSearchResult = (message) => {
-      websocketEvents.emit("viz", { role: "search-result", ...message });
-    };
-
-    const handleMetadataArrayResult = (message) => {
-      websocketEvents.emit("viz", { role: "metadata-array-result", ...message });
-    };
-
-    on("metadata-key-result", handleMetadataKeyResult);
-    on("search-result", handleSearchResult);
-    on("metadata-array-result", handleMetadataArrayResult);
-
-    return () => {
-      off("metadata-key-result", handleMetadataKeyResult);
-      off("search-result", handleSearchResult);
-      off("metadata-array-result", handleMetadataArrayResult);
-    };
-  }, [isConnected, on, off]);
 
   // Keep-alive ping
   useEffect(() => {
@@ -400,6 +372,134 @@ export function useLoraxConnection({ apiBase, isProd = false }) {
     });
   }, [emit, once, off, socketRef, sidRef]);
 
+  /**
+   * Query metadata for a specific key (JSON format).
+   * Returns sample-to-value mapping for the requested metadata key.
+   * @param {string} key - Metadata key to fetch
+   * @returns {Promise<{key: string, data: Object}>} key and sample->value mapping
+   */
+  const queryMetadataForKey = useCallback((key) => {
+    return new Promise((resolve, reject) => {
+      if (!socketRef.current) {
+        reject(new Error("Socket not available"));
+        return;
+      }
+
+      const handleResult = (message) => {
+        off("metadata-key-result", handleResult);
+        if (message.error) {
+          reject(new Error(message.error));
+          return;
+        }
+        resolve({ key: message.key, data: message.data || {} });
+      };
+
+      once("metadata-key-result", handleResult);
+      emit("fetch_metadata_for_key", { lorax_sid: sidRef.current, key });
+    });
+  }, [emit, once, off, socketRef, sidRef]);
+
+  /**
+   * Query metadata as PyArrow array format (efficient for large tree sequences).
+   * Returns unique values, indices array, and sample node IDs.
+   * @param {string} key - Metadata key to fetch
+   * @returns {Promise<{key: string, uniqueValues: Array, indices: Uint16Array, nodeIdToIdx: Map}>}
+   */
+  const queryMetadataArray = useCallback((key) => {
+    return new Promise((resolve, reject) => {
+      if (!socketRef.current) {
+        reject(new Error("Socket not available"));
+        return;
+      }
+
+      const handleResult = (message) => {
+        off("metadata-array-result", handleResult);
+
+        if (message.error) {
+          reject(new Error(message.error));
+          return;
+        }
+
+        const { key: resultKey, unique_values, sample_node_ids, buffer } = message;
+
+        if (!buffer || !unique_values || !sample_node_ids) {
+          reject(new Error("Invalid metadata array result - missing data"));
+          return;
+        }
+
+        try {
+          // Parse Arrow buffer to get indices array
+          const arrayBuffer = buffer instanceof ArrayBuffer ? buffer : buffer.buffer || new Uint8Array(buffer).buffer;
+          const table = arrow.tableFromIPC(arrayBuffer);
+          const indicesColumn = table.getChild('idx');
+
+          if (!indicesColumn) {
+            reject(new Error("Invalid Arrow table - missing 'idx' column"));
+            return;
+          }
+
+          const indices = indicesColumn.toArray(); // Uint16Array
+
+          // Build nodeId -> array index mapping for O(1) lookup
+          const nodeIdToIdx = new Map();
+          sample_node_ids.forEach((nodeId, i) => {
+            nodeIdToIdx.set(nodeId, i);
+          });
+
+          resolve({
+            key: resultKey,
+            uniqueValues: unique_values,
+            indices,
+            nodeIdToIdx,
+            sampleNodeIds: sample_node_ids
+          });
+        } catch (err) {
+          reject(new Error("Error parsing Arrow buffer: " + err.message));
+        }
+      };
+
+      once("metadata-array-result", handleResult);
+      emit("fetch_metadata_array", { lorax_sid: sidRef.current, key });
+    });
+  }, [emit, once, off, socketRef, sidRef]);
+
+  /**
+   * Search for samples matching a metadata value.
+   * Returns array of sample names that match the key-value pair.
+   * @param {string} key - Metadata key to search
+   * @param {string} value - Metadata value to match
+   * @returns {Promise<string[]>} Array of matching sample names
+   */
+  const queryMetadataSearch = useCallback((key, value) => {
+    return new Promise((resolve, reject) => {
+      if (!socketRef.current) {
+        reject(new Error("Socket not available"));
+        return;
+      }
+
+      if (!key || value === undefined || value === null) {
+        resolve([]);
+        return;
+      }
+
+      const handleResult = (message) => {
+        off("search-result", handleResult);
+        if (message.error) {
+          reject(new Error(message.error));
+          return;
+        }
+        resolve(message.samples || []);
+      };
+
+      once("search-result", handleResult);
+      emit("search_metadata", {
+        lorax_sid: sidRef.current,
+        key,
+        value
+      });
+    });
+  }, [emit, once, off, socketRef, sidRef]);
+
   // Fetch projects - uses apiBase internally
   const getProjects = useCallback(() => {
     return getProjectsApi(apiBase);
@@ -422,6 +522,9 @@ export function useLoraxConnection({ apiBase, isProd = false }) {
       queryMutationsWindow,
       queryHighlightPositions,
       searchMutations,
+      queryMetadataForKey,
+      queryMetadataArray,
+      queryMetadataSearch,
       loraxSid,
       getProjects,
       uploadFileToBackend
@@ -436,6 +539,9 @@ export function useLoraxConnection({ apiBase, isProd = false }) {
       queryMutationsWindow,
       queryHighlightPositions,
       searchMutations,
+      queryMetadataForKey,
+      queryMetadataArray,
+      queryMetadataSearch,
       loraxSid,
       getProjects,
       uploadFileToBackend

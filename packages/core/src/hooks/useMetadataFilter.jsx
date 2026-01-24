@@ -1,5 +1,22 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 
+// Module-level constant for disabled state - frozen to prevent accidental mutations
+const DISABLED_FILTER_STATE = Object.freeze({
+  selectedColorBy: null,
+  setSelectedColorBy: () => {},
+  enabledValues: Object.freeze(new Set()),
+  setEnabledValues: () => {},
+  searchTags: Object.freeze([]),
+  setSearchTags: () => {},
+  searchTerm: "",
+  setSearchTerm: () => {},
+  coloryby: Object.freeze({}),
+  metadataColors: null,
+  setMetadataColors: () => {},
+  highlightedMetadataValue: null,
+  setHighlightedMetadataValue: () => {}
+});
+
 /**
  * Hook for managing metadata filter UI state.
  * Handles auto-selection of first key, auto-fetch of values, and auto-enable logic.
@@ -14,10 +31,11 @@ function useMetadataFilter({ enabled = false, config = {} }) {
     metadataKeys = [],
     metadataColors,
     setMetadataColors,
-    loadedMetadataKeys,
-    loadedMetadataArrayKeys,
+    loadedMetadata,          // Unified tracking: Map<key, 'pyarrow' | 'json' | 'loading'>
     fetchMetadataForKey,
     fetchMetadataArrayForKey,
+    registerJsonFallback,    // Register timer for cancellation on PyArrow success
+    clearJsonFallback,       // Clear timer on unmount/key change
     isConnected
   } = config;
 
@@ -28,8 +46,13 @@ function useMetadataFilter({ enabled = false, config = {} }) {
   const [searchTerm, setSearchTerm] = useState("");
   const [highlightedMetadataValue, setHighlightedMetadataValue] = useState(null);
 
-  // Track pending fallback fetch
-  const fallbackTimerRef = useRef(null);
+  // Ref to track loadedMetadata for use in timeout callbacks (avoids stale closure)
+  const loadedMetadataRef = useRef(loadedMetadata);
+
+  // Sync ref with state
+  useEffect(() => {
+    loadedMetadataRef.current = loadedMetadata;
+  }, [loadedMetadata]);
 
   // Compute coloryby dropdown options from metadataKeys
   const coloryby = useMemo(() => {
@@ -53,21 +76,20 @@ function useMetadataFilter({ enabled = false, config = {} }) {
   }, [enabled, metadataKeys, selectedColorBy]);
 
   // Auto-fetch metadata values when key changes
+  // Note: We intentionally exclude loadedMetadata from deps to avoid infinite loops.
+  // The ref is used to check current state in the timeout callback.
   useEffect(() => {
     if (!enabled || !selectedColorBy || !isConnected) return;
 
-    // Check if already loaded in either format
-    const hasArrayData = loadedMetadataArrayKeys?.has(selectedColorBy);
-    const hasJsonData = loadedMetadataKeys?.has(selectedColorBy);
-
-    if (hasArrayData || hasJsonData) {
-      return; // Already loaded
+    // Check if already loaded or loading (using ref for current value)
+    const status = loadedMetadataRef.current?.get(selectedColorBy);
+    if (status === 'pyarrow' || status === 'json' || status === 'loading') {
+      return; // Already loaded or in progress
     }
 
-    // Clear any pending fallback timer
-    if (fallbackTimerRef.current) {
-      clearTimeout(fallbackTimerRef.current);
-      fallbackTimerRef.current = null;
+    // Clear any pending fallback timer for previous key
+    if (clearJsonFallback) {
+      clearJsonFallback(selectedColorBy);
     }
 
     // Try PyArrow first (more efficient for large datasets)
@@ -76,21 +98,29 @@ function useMetadataFilter({ enabled = false, config = {} }) {
     }
 
     // Set up fallback to JSON after 2s if PyArrow doesn't complete
-    fallbackTimerRef.current = setTimeout(() => {
-      // Check again if array data has loaded
-      if (!loadedMetadataArrayKeys?.has(selectedColorBy) && fetchMetadataForKey) {
+    const timeoutId = setTimeout(() => {
+      // Use ref to get current state (avoids stale closure)
+      const currentStatus = loadedMetadataRef.current?.get(selectedColorBy);
+      if (currentStatus !== 'pyarrow' && currentStatus !== 'json' && fetchMetadataForKey) {
         console.log(`PyArrow fetch didn't complete for "${selectedColorBy}", falling back to JSON`);
         fetchMetadataForKey(selectedColorBy);
       }
     }, 2000);
 
+    // Register the timer so it can be canceled if PyArrow succeeds
+    if (registerJsonFallback) {
+      registerJsonFallback(selectedColorBy, timeoutId);
+    }
+
     return () => {
-      if (fallbackTimerRef.current) {
-        clearTimeout(fallbackTimerRef.current);
-        fallbackTimerRef.current = null;
+      // Clear timer on unmount or key change
+      clearTimeout(timeoutId);
+      if (clearJsonFallback) {
+        clearJsonFallback(selectedColorBy);
       }
     };
-  }, [enabled, selectedColorBy, isConnected, loadedMetadataArrayKeys, loadedMetadataKeys, fetchMetadataArrayForKey, fetchMetadataForKey]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled, selectedColorBy, isConnected, fetchMetadataArrayForKey, fetchMetadataForKey, registerJsonFallback, clearJsonFallback]);
 
   // Auto-enable all values when key changes or colors are updated
   useEffect(() => {
@@ -113,47 +143,47 @@ function useMetadataFilter({ enabled = false, config = {} }) {
     // enabledValues will be auto-set by the effect above
   }, []);
 
-  // Return early with empty state if disabled
-  if (!enabled) {
+  // Return memoized state
+  return useMemo(() => {
+    // Return constant disabled state if not enabled
+    if (!enabled) {
+      return DISABLED_FILTER_STATE;
+    }
+
     return {
-      selectedColorBy: null,
-      setSelectedColorBy: () => {},
-      enabledValues: new Set(),
-      setEnabledValues: () => {},
-      searchTags: [],
-      setSearchTags: () => {},
-      searchTerm: "",
-      setSearchTerm: () => {},
-      coloryby: {},
-      metadataColors: null,
-      setMetadataColors: () => {},
-      highlightedMetadataValue: null,
-      setHighlightedMetadataValue: () => {}
+      // Filter state
+      selectedColorBy,
+      setSelectedColorBy: handleKeyChange,
+      enabledValues,
+      setEnabledValues,
+      searchTags,
+      setSearchTags,
+      searchTerm,
+      setSearchTerm,
+
+      // Highlight state
+      highlightedMetadataValue,
+      setHighlightedMetadataValue,
+
+      // Derived
+      coloryby,
+
+      // Pass-through from config
+      metadataColors,
+      setMetadataColors
     };
-  }
-
-  return {
-    // Filter state
+  }, [
+    enabled,
     selectedColorBy,
-    setSelectedColorBy: handleKeyChange,
+    handleKeyChange,
     enabledValues,
-    setEnabledValues,
     searchTags,
-    setSearchTags,
     searchTerm,
-    setSearchTerm,
-
-    // Highlight state
     highlightedMetadataValue,
-    setHighlightedMetadataValue,
-
-    // Derived
     coloryby,
-
-    // Pass-through from config
     metadataColors,
     setMetadataColors
-  };
+  ]);
 }
 
 export default useMetadataFilter;
