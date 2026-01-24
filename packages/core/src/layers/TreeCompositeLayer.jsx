@@ -1,5 +1,5 @@
 import { CompositeLayer, COORDINATE_SYSTEM } from '@deck.gl/core';
-import { PathLayer, ScatterplotLayer } from '@deck.gl/layers';
+import { PathLayer, ScatterplotLayer, IconLayer } from '@deck.gl/layers';
 
 /**
  * TreeCompositeLayer - Renders trees using pre-computed render data.
@@ -22,7 +22,7 @@ export class TreeCompositeLayer extends CompositeLayer {
     edgeWidth: 1,
     tipRadius: 2,
     // Mutation props
-    mutationColor: [255, 100, 0, 220],
+    mutationColor: [255, 0, 0, 220],
     mutationRadius: 3,
     showMutations: true,
     // Interaction
@@ -182,21 +182,28 @@ export class TreeCompositeLayer extends CompositeLayer {
       }));
     }
 
-    // Mutation markers (simplified: single layer with fixed color, no picking)
+    // Mutation markers using IconLayer with X icon
     if (showMutations && mutCount > 0 && mutPositions?.length > 0) {
-      layers.push(new ScatterplotLayer({
+      // Convert Float64Array positions to array of objects for IconLayer
+      const mutationData = [];
+      for (let i = 0; i < mutCount; i++) {
+        mutationData.push({
+          position: [mutPositions[i * 2], mutPositions[i * 2 + 1]]
+        });
+      }
+
+      layers.push(new IconLayer({
         id: `${this.props.id}-mutations`,
-        data: {
-          length: mutCount,
-          attributes: {
-            getPosition: { value: mutPositions, size: 2 }
-          }
+        data: mutationData,
+        getPosition: d => d.position,
+        getIcon: () => 'marker',
+        getColor: mutationColor,
+        getSize: mutationRadius * 4,  // IconLayer uses different sizing
+        sizeUnits: 'pixels',
+        iconAtlas: '/X.png',
+        iconMapping: {
+          marker: { x: 0, y: 0, width: 128, height: 128, mask: true }
         },
-        getFillColor: mutationColor,
-        fp64: true,
-        getRadius: mutationRadius,
-        radiusUnits: 'pixels',
-        stroked: false,
         coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
         pickable: false
       }));
