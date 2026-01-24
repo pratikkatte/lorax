@@ -184,7 +184,8 @@ export function new_complete_experiment_map(localBins, globalBpPerUnit, new_glob
   const {
     selectionStrategy = 'largestSpan',
     viewportStart = null,
-    viewportEnd = null
+    viewportEnd = null,
+    prevLocalBins = null  // Previous frame's localBins Map for position locking
   } = options;
 
   const invisibleKeys = new Set();
@@ -260,26 +261,42 @@ export function new_complete_experiment_map(localBins, globalBpPerUnit, new_glob
 
     const slotWidth = (effectiveEnd - effectiveStart) / allTrees.length;
 
+    // Check if current trees are same/subset of prevLocalBins (user is zooming in)
+    const canReusePositions = prevLocalBins &&
+      allTrees.every(t => prevLocalBins.has(t.idx));
+
     for (let i = 0; i < allTrees.length; i++) {
       const tree = allTrees[i];
-      const slotCenter = effectiveStart + (i + 0.5) * slotWidth;
-      const translateX = (slotCenter / globalBpPerUnit) - (uniformTreeWidth / 2);
 
-      const modelMatrix = tempMatrix.clone()
-        .translate([translateX, 0, 0])
-        .scale([uniformTreeWidth, 1, 1]);
+      if (canReusePositions && prevLocalBins.has(tree.idx)) {
+        // Copy previous bin data (preserves modelMatrix)
+        const prevBin = prevLocalBins.get(tree.idx);
+        localBins.set(tree.idx, { ...prevBin });
+      } else {
+        // Calculate new position
+        const slotCenter = effectiveStart + (i + 0.5) * slotWidth;
+        const translateX = (slotCenter / globalBpPerUnit) - (uniformTreeWidth / 2);
 
-      localBins.set(tree.idx, {
-        ...tree.bin,
-        modelMatrix,
-        visible: true,
-        position: tree.s,
-        span: tree.span,
-        precision: 2,
-        slotIndex: i,
-        isRepresentative: true,
-        groupSize: 1
-      });
+        const modelMatrix = tempMatrix.clone()
+          .translate([translateX, 0, 0])
+          .scale([uniformTreeWidth, 1, 1]);
+
+        localBins.set(tree.idx, {
+          ...tree.bin,
+          modelMatrix,
+          visible: true,
+          position: tree.s,
+          span: tree.span,
+          precision: 2,
+          slotIndex: i,
+          isRepresentative: true,
+          groupSize: 1
+        });
+
+        if (prevLocalBins) {
+          console.log('[PositionLock] New tree calculated:', tree.idx);
+        }
+      }
 
       displayArray.push(tree.idx);
     }

@@ -2,6 +2,7 @@ import { nearestIndex, upperBound, new_complete_experiment_map } from "./modules
 
 let tsconfig = null;
 let normalizedIntervals = null;  // Cached normalized array - computed once when config is set
+let prevLocalBinsCache = null;   // Cache previous frame's bins for position locking
 
 export const queryConfig = async (data) => {
   tsconfig = data.data;
@@ -114,8 +115,11 @@ function getLocalData(data) {
     local_bins,
     globalBpPerUnit,
     new_globalBp,
-    { selectionStrategy, viewportStart: start, viewportEnd: end }
+    { selectionStrategy, viewportStart: start, viewportEnd: end, prevLocalBins: prevLocalBinsCache }
   );
+
+  // Cache for next frame's position locking
+  prevLocalBinsCache = return_local_bins;
 
   return {
     local_bins: serializeBinsForTransfer(return_local_bins),

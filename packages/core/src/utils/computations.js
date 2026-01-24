@@ -25,6 +25,9 @@ export {
   new_complete_experiment_map
 };
 
+// Module-level cache for position locking (main-thread mode)
+let prevLocalBinsCache = null;
+
 /**
  * Normalize intervals array (handle [start, end] tuples if present)
  * @param {Array} intervals - Raw intervals (may be tuples or flat array)
@@ -123,8 +126,11 @@ export function queryLocalDataSync({
     local_bins,
     globalBpPerUnit,
     new_globalBp,
-    { selectionStrategy, viewportStart: start, viewportEnd: end }
+    { selectionStrategy, viewportStart: start, viewportEnd: end, prevLocalBins: prevLocalBinsCache }
   );
+
+  // Cache for next frame's position locking
+  prevLocalBinsCache = return_local_bins;
 
   return {
     local_bins: return_local_bins,
