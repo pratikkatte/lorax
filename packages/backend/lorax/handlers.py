@@ -506,9 +506,6 @@ async def handle_tree_graph_query(file_path, tree_indices, sparsity_resolution=N
     """
     Construct trees using Numba-optimized tree_graph module.
 
-    This is an alternative to handle_postorder_query that uses the faster
-    Numba-compiled tree construction for large tree sequences.
-
     Args:
         file_path: Path to tree sequence file
         tree_indices: List of tree indices to process
