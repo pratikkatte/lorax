@@ -81,18 +81,8 @@ function useMetadataFilter({ enabled = false, config = {} }) {
   useEffect(() => {
     if (!enabled || !selectedColorBy || !isConnected) return;
 
-    // Check if already loaded or loading (using ref for current value)
-    const status = loadedMetadataRef.current?.get(selectedColorBy);
-    if (status === 'pyarrow' || status === 'json' || status === 'loading') {
-      return; // Already loaded or in progress
-    }
-
-    // Clear any pending fallback timer for previous key
-    if (clearJsonFallback) {
-      clearJsonFallback(selectedColorBy);
-    }
-
     // Try PyArrow first (more efficient for large datasets)
+    // Note: fetchMetadataArrayForKey already checks if key is loaded/loading
     if (fetchMetadataArrayForKey) {
       fetchMetadataArrayForKey(selectedColorBy);
     }
@@ -122,15 +112,24 @@ function useMetadataFilter({ enabled = false, config = {} }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, selectedColorBy, isConnected, fetchMetadataArrayForKey, fetchMetadataForKey, registerJsonFallback, clearJsonFallback]);
 
-  // Auto-enable all values when key changes or colors are updated
+  // Track previous selectedColorBy to detect key changes vs color changes
+  const prevSelectedColorByRef = useRef(null);
+
+  // Auto-enable all values when colors are available
+  // Reset search state ONLY when the key changes, not when colors update
   useEffect(() => {
     if (!enabled || !selectedColorBy) return;
 
     const valueToColor = metadataColors?.[selectedColorBy];
     if (valueToColor && Object.keys(valueToColor).length > 0) {
       setEnabledValues(new Set(Object.keys(valueToColor)));
-      setSearchTags([]); // Clear search tags on key change
-      setSearchTerm(""); // Clear search term on key change
+
+      // Only reset search state when the key actually changes
+      if (prevSelectedColorByRef.current !== selectedColorBy) {
+        setSearchTags([]);
+        setSearchTerm("");
+        prevSelectedColorByRef.current = selectedColorBy;
+      }
     }
   }, [enabled, selectedColorBy, metadataColors]);
 
