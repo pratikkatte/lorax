@@ -1,33 +1,32 @@
+"""
+Metadata extraction and caching for tree sequences.
+
+Functions accept FileContext and use its nested metadata cache.
+When a FileContext is evicted, its metadata cache is evicted together.
+"""
 
 import json
 import numpy as np
 import tskit
 import pyarrow as pa
 from collections import defaultdict
-from lorax.utils import LRUCache, ensure_json_dict, make_json_safe, make_json_serializable
+from lorax.utils import ensure_json_dict, make_json_safe, make_json_serializable
 
-# Cache for metadata lookups
-# Key format examples:
-# - "filepath:key" -> for get_metadata_for_key and search_samples_by_metadata
-# - "filepath:key:array" -> for get_metadata_array_for_key
-_metadata_cache = LRUCache(max_size=10)
 
 def get_metadata_for_key(
-    ts,
-    file_path,
+    ctx,
     key,
     sources=("individual", "node", "population"),
     sample_name_key="name"
 ):
     """
     Get sample-to-value mapping for a specific metadata key.
-    Results are cached per (file_path, key) for performance.
+    Results are cached in the FileContext's nested metadata cache.
 
     Parameters
     ----------
-    ts : tskit.TreeSequence
-    file_path : str
-        Used as part of cache key
+    ctx : FileContext
+        The file context containing tree_sequence and metadata cache
     key : str
         The metadata key to extract
     sources : tuple
@@ -40,11 +39,13 @@ def get_metadata_for_key(
     dict
         {sample_name: value} for the specified key
     """
-    cache_key = f"{file_path}:{key}"
-    cached = _metadata_cache.get(cache_key)
+    # Check nested cache in FileContext
+    cached = ctx.get_metadata(key)
     if cached is not None:
         print(f"✅ Using cached metadata for key: {key}")
         return cached
+
+    ts = ctx.tree_sequence
 
     # Special handling for "sample" key - each sample's value is its own name
     if key == "sample":
@@ -58,7 +59,7 @@ def get_metadata_for_key(
                 node_meta = {}
             sample_name = str(node_meta.get(sample_name_key, f"{node_id}"))
             result[sample_name] = sample_name
-        _metadata_cache.set(cache_key, result)
+        ctx.set_metadata(key, result)
         return result
 
     result = {}
@@ -102,13 +103,12 @@ def get_metadata_for_key(
                 result[sample_name] = str(value)
                 break  # Found the key, move to next sample
 
-    _metadata_cache.set(cache_key, result)
+    ctx.set_metadata(key, result)
     return result
 
 
 def search_samples_by_metadata(
-    ts,
-    file_path,
+    ctx,
     key,
     value,
     sources=("individual", "node", "population"),
@@ -119,9 +119,8 @@ def search_samples_by_metadata(
 
     Parameters
     ----------
-    ts : tskit.TreeSequence
-    file_path : str
-        Used for cache lookup
+    ctx : FileContext
+        The file context containing tree_sequence and metadata cache
     key : str
         The metadata key to search
     value : str
@@ -136,9 +135,10 @@ def search_samples_by_metadata(
     list
         List of sample names matching the criteria
     """
+    ts = ctx.tree_sequence
+
     # Try to use cached metadata if available
-    cache_key = f"{file_path}:{key}"
-    cached = _metadata_cache.get(cache_key)
+    cached = ctx.get_metadata(key)
 
     if cached is not None:
         # Use cached data for fast lookup
@@ -234,8 +234,7 @@ def _get_sample_metadata_value(ts, node_id, key, sources, sample_name_key="name"
 
 
 def get_metadata_array_for_key(
-    ts,
-    file_path,
+    ctx,
     key,
     sources=("individual", "node", "population"),
     sample_name_key="name"
@@ -248,9 +247,8 @@ def get_metadata_array_for_key(
 
     Parameters
     ----------
-    ts : tskit.TreeSequence
-    file_path : str
-        Used as part of cache key
+    ctx : FileContext
+        The file context containing tree_sequence and metadata cache
     key : str
         The metadata key to extract
     sources : tuple
@@ -267,12 +265,13 @@ def get_metadata_array_for_key(
             'arrow_buffer': bytes  # PyArrow IPC serialized indices
         }
     """
-    cache_key = f"{file_path}:{key}:array"
-    cached = _metadata_cache.get(cache_key)
+    cache_key = f"{key}:array"
+    cached = ctx.get_metadata(cache_key)
     if cached is not None:
         print(f"✅ Using cached metadata array for key: {key}")
         return cached
 
+    ts = ctx.tree_sequence
     sample_ids = list(ts.samples())
     n_samples = len(sample_ids)
 
@@ -309,7 +308,7 @@ def get_metadata_array_for_key(
             'sample_node_ids': [int(x) for x in sample_ids],
             'arrow_buffer': sink.getvalue().to_pybytes()
         }
-        _metadata_cache.set(cache_key, result)
+        ctx.set_metadata(cache_key, result)
         print(f"✅ Built sample metadata array ({n_samples} samples, {len(unique_values)} unique values)")
         return result
 
@@ -344,7 +343,7 @@ def get_metadata_array_for_key(
         'arrow_buffer': sink.getvalue().to_pybytes()
     }
 
-    _metadata_cache.set(cache_key, result)
+    ctx.set_metadata(cache_key, result)
     print(f"✅ Built metadata array for key: {key} ({n_samples} samples, {len(unique_values)} unique values)")
     return result
 
@@ -363,6 +362,7 @@ def get_metadata_schema(
     Parameters
     ----------
     ts : tskit.TreeSequence
+        The tree sequence (not FileContext - this doesn't need caching)
     sources : tuple
         Any of ("individual", "node", "population")
     sample_name_key : str

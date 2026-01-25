@@ -1,6 +1,5 @@
 import os
 import json
-import asyncio
 from pathlib import Path
 from typing import Optional
 import aiofiles
@@ -16,7 +15,6 @@ from lorax.handlers import (
     get_projects,
     cache_status,
 )
-from lorax.loaders.loader import get_or_load_config
 
 router = APIRouter()
 UPLOAD_DIR = Path(UPLOADS_DIR)
@@ -77,8 +75,8 @@ async def get_file(
         file = "1kg_chr20.trees.tsz"
         file_path = UPLOAD_DIR / (project or "1000Genomes") / file
     try:
-        ts = await handle_upload(str(file_path), UPLOAD_DIR)
-        viz_config = await asyncio.to_thread(get_or_load_config, ts, str(file_path), UPLOAD_DIR)
+        ctx = await handle_upload(str(file_path), str(UPLOAD_DIR))
+        viz_config = ctx.config
 
         # Override initial_position if client provided genomic coordinates
         if genomiccoordstart is not None and genomiccoordend is not None:

@@ -3,23 +3,17 @@ import os
 import json
 import asyncio
 import re
-from collections import OrderedDict, defaultdict
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import psutil
-import pyarrow as pa
 import tskit
-import tszip
 
 from lorax.viz.trees_to_taxonium import process_csv
 from lorax.cloud.gcs_utils import get_public_gcs_dict
 from lorax.tree_graph import construct_trees_batch, construct_tree, TreeGraph
 from lorax.csv.layout import build_empty_layout_response
 from lorax.utils import (
-    LRUCacheWithMeta,
-    make_json_safe,
     ensure_json_dict,
     list_project_files,
     make_json_serializable,
@@ -35,83 +29,8 @@ from lorax.metadata.mutations import (
     search_mutations_by_position
 )
 from lorax.buffer import mutations_to_arrow_buffer
-from lorax.constants import TS_CACHE_SIZE
+from lorax.cache import get_file_context, get_file_cache_size
 
-from lorax.loaders.loader import get_or_load_config
-
-_cache_lock = asyncio.Lock()
-
-# Global cache for loaded tree sequences (kept here as it deals with Data)
-# Uses LRUCacheWithMeta to track file mtime for cache validation
-_ts_cache = LRUCacheWithMeta(max_size=TS_CACHE_SIZE)
-# _config_cache moved to loader.py
-# _metadata_cache moved to metadata/loader.py
-
-
-def _get_file_mtime(file_path: str) -> float:
-    """Get file modification time, or 0 if file doesn't exist."""
-    try:
-        return Path(file_path).stat().st_mtime
-    except (OSError, FileNotFoundError):
-        return 0.0
-
-
-async def get_or_load_ts(file_path):
-    """
-    Load a tree sequence from file_path with mtime validation.
-
-    Validates that cached tree sequence matches current file on disk.
-    This prevents serving stale data if the file was updated.
-    """
-
-    # Check if file exists
-    file_path_obj = Path(file_path)
-    if not file_path_obj.exists():
-        # If file was cached but no longer exists, remove from cache
-        _ts_cache.remove(file_path)
-        print(f"❌ File not found: {file_path}")
-        return None
-
-    current_mtime = _get_file_mtime(file_path)
-
-    # Double-checked locking optimization
-    # 1. Optimistic check (lock-free read)
-    ts, cached_mtime = _ts_cache.get_with_meta(file_path)
-    if ts is not None:
-        # Validate mtime hasn't changed
-        if cached_mtime == current_mtime:
-            print(f"✅ Using cached tree sequence: {file_path}")
-            return ts
-        else:
-            print(f"🔄 File changed, reloading: {file_path}")
-            _ts_cache.remove(file_path)
-
-    async with _cache_lock:
-        # 2. Check again under lock (in case another task loaded it while we waited)
-        ts, cached_mtime = _ts_cache.get_with_meta(file_path)
-        if ts is not None and cached_mtime == current_mtime:
-            print(f"✅ Using cached tree sequence (after lock): {file_path}")
-            return ts
-
-        print(f"📂 Loading tree sequence from: {file_path}")
-        try:
-            def choose_file_loader(fp):
-                if fp.endswith('.tsz'):
-                    return tszip.load(fp)
-                elif fp.endswith('.trees'):
-                    return tskit.load(fp)
-                elif fp.endswith('.csv'):
-                    return pd.read_csv(fp)
-                else:
-                    raise ValueError(f"Unsupported file type: {fp}")
-
-            ts = await asyncio.to_thread(choose_file_loader, file_path)
-            # Store with current mtime for validation
-            _ts_cache.set(file_path, ts, meta=current_mtime)
-            return ts
-        except Exception as e:
-            print(f"❌ Failed to load {file_path}: {e}")
-            return None
 
 async def cache_status():
     """Return current memory usage and cache statistics."""
@@ -119,71 +38,21 @@ async def cache_status():
     mem_info = process.memory_info()
     rss_mb = mem_info.rss / (1024 * 1024)
     vms_mb = mem_info.vms / (1024 * 1024)
-    
-    # helper to check cache size if it exists in imported module or here
-    # We only have _ts_cache here now
-    
+
     return {
         "rss_MB": round(rss_mb, 2),
         "vms_MB": round(vms_mb, 2),
-        "ts_cache_size": len(_ts_cache.cache),
-        "config_cache_size": "n/a", # Managed in loader.py, could expose if needed
+        "file_cache_size": get_file_cache_size(),
         "pid": os.getpid(),
     }
 
 
-async def handle_edges_query(file_path, start, end):
-    """Fetch edges for a genomic interval [start, end).
-    
-    Args:
-        file_path: Path to tree sequence file
-        start: Start genomic position (bp)
-        end: End genomic position (bp)
-    
-    Returns:
-        JSON string with edges data or error
-    """
-    ts = await get_or_load_ts(file_path)
-    if ts is None:
-        return json.dumps({"error": "Tree sequence not loaded. Please load a file first."})
-    try:
-        edges = await asyncio.to_thread(get_edges_for_interval, ts, start, end)
-        return json.dumps({"edges": edges.tolist(), "start": start, "end": end})
-    except Exception as e:
-        print("Error in handle_edges_query", e)
-        return json.dumps({"error": f"Error fetching edges: {str(e)}"})
-
-
-
-
-
-
-
-
-
-
-
-def get_edges_for_interval(ts, start, end):
-    edges = ts.tables.edges
-
-    # FAST slicing: edges.left is sorted
-    hi = np.searchsorted(edges.left, end, side="left")
-
-    mask = edges.right[:hi] > start
-
-    return np.column_stack((
-        edges.left[:hi][mask],
-        edges.right[:hi][mask],
-        edges.parent[:hi][mask],
-        edges.child[:hi][mask],
-    ))
-
-
 async def handle_upload(file_path, root_dir):
-    """Load a tree sequence file and return its configuration."""
-    ts = await get_or_load_ts(file_path)
+    """Load a file and return its FileContext."""
+    ctx = await get_file_context(file_path, root_dir)
     print("File loading complete")
-    return ts
+    return ctx
+
 
 async def get_projects(upload_dir, BUCKET_NAME):
     """List all projects and their files from local uploads and GCS bucket."""
@@ -197,6 +66,67 @@ async def get_projects(upload_dir, BUCKET_NAME):
     projects = list_project_files(upload_dir, projects, root=upload_dir)
     projects = get_public_gcs_dict(BUCKET_NAME, sid=None, projects=projects)
     return projects
+
+def _build_sample_name_mapping(ts, sample_name_key="name"):
+    """
+    Build mapping from sample name (lowercase) to node_id.
+
+    Args:
+        ts: tskit.TreeSequence
+        sample_name_key: Key in node metadata used as sample name
+
+    Returns:
+        dict mapping lowercase sample name to node_id
+    """
+    name_to_node_id = {}
+    for node_id in ts.samples():
+        node = ts.node(node_id)
+        node_meta = node.metadata or {}
+        try:
+            node_meta = ensure_json_dict(node_meta)
+        except (TypeError, json.JSONDecodeError):
+            node_meta = {}
+        name = str(node_meta.get(sample_name_key, f"{node_id}"))
+        name_to_node_id[name.lower()] = node_id
+    return name_to_node_id
+
+
+def _compute_lineage_paths(tree, tree_seeds, name_map, sample_colors):
+    """
+    Compute ancestry paths for seed nodes in a tree.
+
+    Args:
+        tree: tskit.Tree object
+        tree_seeds: List of seed node IDs to trace ancestry
+        name_map: Dict mapping node_id to original name
+        sample_colors: Optional dict {sample_name: [r,g,b,a]} for coloring
+
+    Returns:
+        List of lineage dicts with path_node_ids and color
+    """
+    tree_lineages = []
+    for seed_node in tree_seeds:
+        # Trace ancestry path from sample to root
+        path_nodes = []
+        current = seed_node
+        while current != -1 and current != tskit.NULL:
+            path_nodes.append(current)
+            current = tree.parent(current)
+
+        if len(path_nodes) > 1:
+            # Get color for this lineage
+            name = name_map.get(seed_node, str(seed_node))
+            color = None
+            if sample_colors:
+                color = sample_colors.get(name.lower())
+
+            tree_lineages.append({
+                "path_node_ids": [int(n) for n in path_nodes],
+                "color": color
+            })
+
+    return tree_lineages
+
 
 def search_nodes_in_trees(
     ts,
@@ -227,16 +157,7 @@ def search_nodes_in_trees(
         return {"highlights": {}, "lineage": {}}
 
     # Build sample_name -> node_id mapping
-    name_to_node_id = {}
-    for node_id in ts.samples():
-        node = ts.node(node_id)
-        node_meta = node.metadata or {}
-        try:
-            node_meta = ensure_json_dict(node_meta)
-        except (TypeError, json.JSONDecodeError):
-            node_meta = {}
-        name = str(node_meta.get(sample_name_key, f"{node_id}"))
-        name_to_node_id[name.lower()] = node_id
+    name_to_node_id = _build_sample_name_mapping(ts, sample_name_key)
 
     # Convert sample_names to node_ids
     target_node_ids = set()
@@ -266,7 +187,7 @@ def search_nodes_in_trees(
         tree_seeds = []  # For lineage computation
 
         for node_id in target_node_ids:
-            # Check if this sample is in this tree (has edges in this interval)
+            # Check if this sample is in this tree
             if tree.is_sample(node_id):
                 name = name_map.get(node_id, str(node_id))
                 tree_highlights.append({
@@ -280,27 +201,9 @@ def search_nodes_in_trees(
 
             # Compute lineage paths if requested
             if show_lineages and tree_seeds:
-                tree_lineages = []
-                for seed_node in tree_seeds:
-                    # Trace ancestry path from sample to root
-                    path_nodes = []
-                    current = seed_node
-                    while current != -1 and current != tskit.NULL:
-                        path_nodes.append(current)
-                        current = tree.parent(current)
-
-                    if len(path_nodes) > 1:
-                        # Get color for this lineage
-                        name = name_map.get(seed_node, str(seed_node))
-                        color = None
-                        if sample_colors:
-                            color = sample_colors.get(name.lower())
-
-                        tree_lineages.append({
-                            "path_node_ids": [int(n) for n in path_nodes],
-                            "color": color
-                        })
-
+                tree_lineages = _compute_lineage_paths(
+                    tree, tree_seeds, name_map, sample_colors
+                )
                 if tree_lineages:
                     lineage[tree_idx] = tree_lineages
 
@@ -322,7 +225,7 @@ def get_node_details(ts, node_name):
 def get_tree_details(ts, tree_index):
     """Get details for a specific tree at the given index."""
     tree = ts.at_index(tree_index)
-    
+
     mutations = []
     for mut in tree.mutations():
         site = ts.site(mut.site)
@@ -451,10 +354,11 @@ def get_edges_for_node(ts, node_id, tree_index=None):
 async def handle_details(file_path, data):
     """Handle requests for tree, node, and individual details."""
     try:
-        ts = await get_or_load_ts(file_path)
-        if ts is None:
+        ctx = await get_file_context(file_path)
+        if ctx is None:
             return json.dumps({"error": "Tree sequence (ts) is not set. Please upload a file first."})
 
+        ts = ctx.tree_sequence
         return_data = {}
         tree_index = data.get("treeIndex")
         comprehensive = data.get("comprehensive", False)
@@ -502,7 +406,14 @@ async def handle_details(file_path, data):
         return json.dumps({"error": f"Error getting details: {str(e)}"})
 
 
-async def handle_tree_graph_query(file_path, tree_indices, sparsification=False):
+async def handle_tree_graph_query(
+    file_path,
+    tree_indices,
+    sparsification=False,
+    session_id: str = None,
+    tree_graph_cache=None,
+    actual_display_array=None
+):
     """
     Construct trees using Numba-optimized tree_graph module.
 
@@ -510,6 +421,8 @@ async def handle_tree_graph_query(file_path, tree_indices, sparsification=False)
         file_path: Path to tree sequence file
         tree_indices: List of tree indices to process
         sparsification: Enable tip-only sparsification (default False)
+        session_id: Session ID for cache lookup/storage
+        tree_graph_cache: TreeGraphCache instance for caching TreeGraph objects
 
     Returns:
         dict with:
@@ -524,9 +437,11 @@ async def handle_tree_graph_query(file_path, tree_indices, sparsification=False)
         - global_max_time: float
         - tree_indices: list[int]
     """
-    ts = await get_or_load_ts(file_path)
-    if ts is None:
+    ctx = await get_file_context(file_path)
+    if ctx is None:
         return {"error": "Tree sequence not loaded. Please load a file first."}
+
+    ts = ctx.tree_sequence
 
     # CSV support (minimal): return an empty-but-valid Arrow layout buffer.
     # This keeps the frontend stable while enabling CSV config/interval workflows.
@@ -534,15 +449,37 @@ async def handle_tree_graph_query(file_path, tree_indices, sparsification=False)
         indices = [int(t) for t in (tree_indices or [])]
         return build_empty_layout_response(indices)
 
+    # Collect pre-cached TreeGraphs
+    pre_cached_graphs = {}
+    if session_id and tree_graph_cache:
+        for tree_idx in tree_indices:
+            cached = await tree_graph_cache.get(session_id, int(tree_idx))
+            if cached is not None:
+                pre_cached_graphs[int(tree_idx)] = cached
+        if pre_cached_graphs:
+            print(f"TreeGraph cache hits: {len(pre_cached_graphs)}/{len(tree_indices)} trees")
+
     # Run in thread pool to avoid blocking
     def process_trees():
         return construct_trees_batch(
             ts,
             tree_indices,
-            sparsification=sparsification
+            sparsification=sparsification,
+            pre_cached_graphs=pre_cached_graphs
         )
 
-    buffer, min_time, max_time, processed_indices = await asyncio.to_thread(process_trees)
+    buffer, min_time, max_time, processed_indices, newly_built = await asyncio.to_thread(process_trees)
+
+    # Cache newly built TreeGraphs
+    if session_id and tree_graph_cache and newly_built:
+        for tree_idx, graph in newly_built.items():
+            await tree_graph_cache.set(session_id, tree_idx, graph)
+        print(f"TreeGraph cached: {len(newly_built)} new trees for session {session_id[:8]}...")
+
+    # Evict trees no longer in visible set (visibility-based eviction)
+    if session_id and tree_graph_cache and actual_display_array is not None:
+        await tree_graph_cache.evict_not_visible(session_id, set(actual_display_array))
+
     return {
         "buffer": buffer,
         "global_min_time": min_time,
@@ -578,10 +515,12 @@ async def get_or_construct_tree_graph(
         print(f"TreeGraph cache hit: session={session_id[:8]}... tree={tree_index}")
         return cached
 
-    # Load tree sequence
-    ts = await get_or_load_ts(file_path)
-    if ts is None:
+    # Load file context
+    ctx = await get_file_context(file_path)
+    if ctx is None:
         return None
+
+    ts = ctx.tree_sequence
 
     # Can't construct TreeGraph for CSV
     if isinstance(ts, pd.DataFrame):
@@ -626,9 +565,11 @@ async def ensure_trees_cached(
     Returns:
         Number of trees newly cached (not already in cache)
     """
-    ts = await get_or_load_ts(file_path)
-    if ts is None:
+    ctx = await get_file_context(file_path)
+    if ctx is None:
         return 0
+
+    ts = ctx.tree_sequence
 
     if isinstance(ts, pd.DataFrame):
         return 0
@@ -664,38 +605,20 @@ async def ensure_trees_cached(
     return newly_cached
 
 
-def get_highlight_positions(
-    ts,
-    file_path,
-    metadata_key,
-    metadata_value,
-    tree_indices,
-    sources=("individual", "node", "population"),
-    sample_name_key="name"
-):
+def _get_matching_sample_nodes(ts, metadata_key, metadata_value, sources, sample_name_key):
     """
-    Get positions for all tip nodes with a specific metadata value.
-    Computes full tree layout (no sparsification) for ALL matching nodes.
+    Find all sample node IDs that match a metadata value.
 
     Args:
         ts: tskit.TreeSequence
-        file_path: Path to tree sequence file (for cache key)
         metadata_key: Metadata key to filter by
         metadata_value: Metadata value to match
-        tree_indices: List of tree indices to compute positions for
         sources: Metadata sources to search
         sample_name_key: Key in node metadata used as sample name
 
     Returns:
-        dict with:
-        - positions: List of {node_id, tree_idx, x, y} dicts
+        Set of matching node IDs
     """
-    from lorax.tree_graph import construct_tree
-
-    if not tree_indices:
-        return {"positions": []}
-
-    # Get sample node IDs that have this metadata value
     matching_node_ids = set()
     for node_id in ts.samples():
         sample_name, value = _get_sample_metadata_value(
@@ -703,39 +626,121 @@ def get_highlight_positions(
         )
         if value is not None and str(value) == str(metadata_value):
             matching_node_ids.add(node_id)
+    return matching_node_ids
+
+
+async def _ensure_tree_graph_loaded(
+    ts,
+    tree_idx,
+    session_id,
+    tree_graph_cache,
+    edges,
+    nodes,
+    breakpoints,
+    min_time,
+    max_time
+):
+    """
+    Get tree graph from cache or construct and cache it.
+
+    Args:
+        ts: tskit.TreeSequence
+        tree_idx: Tree index to load
+        session_id: Session ID for cache key
+        tree_graph_cache: TreeGraphCache instance
+        edges, nodes, breakpoints, min_time, max_time: Pre-extracted table data
+
+    Returns:
+        TreeGraph object
+    """
+    from lorax.tree_graph import construct_tree
+
+    # Try to get from cache first
+    graph = await tree_graph_cache.get(session_id, tree_idx)
+    if graph is not None:
+        return graph
+
+    # Construct tree graph
+    def _construct():
+        return construct_tree(ts, edges, nodes, breakpoints, tree_idx, min_time, max_time)
+
+    graph = await asyncio.to_thread(_construct)
+
+    # Cache it for future use
+    await tree_graph_cache.set(session_id, tree_idx, graph)
+
+    return graph
+
+
+async def get_highlight_positions(
+    ts,
+    file_path,
+    metadata_key,
+    metadata_value,
+    tree_indices,
+    session_id: str,
+    tree_graph_cache,
+    sources=("individual", "node", "population"),
+    sample_name_key="name"
+):
+    """
+    Get positions for all tip nodes with a specific metadata value.
+    Uses cached TreeGraph objects when available.
+
+    Args:
+        ts: tskit.TreeSequence
+        file_path: Path to tree sequence file (for cache key)
+        metadata_key: Metadata key to filter by
+        metadata_value: Metadata value to match
+        tree_indices: List of tree indices to compute positions for
+        session_id: Session ID for cache lookup
+        tree_graph_cache: TreeGraphCache instance
+        sources: Metadata sources to search
+        sample_name_key: Key in node metadata used as sample name
+
+    Returns:
+        dict with:
+        - positions: List of {node_id, tree_idx, x, y} dicts
+    """
+    if not tree_indices:
+        return {"positions": []}
+
+    # Get sample node IDs that have this metadata value
+    matching_node_ids = _get_matching_sample_nodes(
+        ts, metadata_key, metadata_value, sources, sample_name_key
+    )
 
     if not matching_node_ids:
         return {"positions": []}
 
-    # Pre-extract tables for reuse
+    # Pre-extract tables for reuse (only needed if cache miss)
     edges = ts.tables.edges
     nodes = ts.tables.nodes
     breakpoints = list(ts.breakpoints())
-
     min_time = float(ts.min_time)
     max_time = float(ts.max_time)
 
     positions = []
 
-    # For each requested tree, compute full layout (no sparsification)
+    # For each requested tree, get graph and extract positions
     for tree_idx in tree_indices:
         tree_idx = int(tree_idx)
         if tree_idx < 0 or tree_idx >= ts.num_trees:
             continue
 
-        # Construct full tree layout
-        graph = construct_tree(ts, edges, nodes, breakpoints, tree_idx, min_time, max_time)
+        graph = await _ensure_tree_graph_loaded(
+            ts, tree_idx, session_id, tree_graph_cache,
+            edges, nodes, breakpoints, min_time, max_time
+        )
 
         # Extract positions for matching nodes that are in this tree
         for node_id in matching_node_ids:
             if graph.in_tree[node_id]:
-                # Note: graph.y is time (x in frontend), graph.x is layout (y in frontend)
-                # Return using frontend coordinate convention
                 positions.append({
                     "node_id": int(node_id),
                     "tree_idx": tree_idx,
-                    "x": float(graph.y[node_id]),  # time -> frontend x
-                    "y": float(graph.x[node_id])   # layout -> frontend y
+                    "x": float(graph.x[node_id]),
+                    "y": float(graph.y[node_id])
                 })
 
     return {"positions": positions}

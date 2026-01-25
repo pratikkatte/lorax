@@ -12,8 +12,7 @@ from lorax.modes import (
     validate_mode_requirements,
 )
 from lorax.session_manager import SessionManager
-from lorax.disk_cache import DiskCacheManager
-from lorax.tree_graph_cache import TreeGraphCache
+from lorax.cache import DiskCacheManager, TreeGraphCache
 from lorax.constants import (
     DISK_CACHE_ENABLED,
     DISK_CACHE_DIR,

@@ -154,10 +154,9 @@ export function useTreeData({
   isConnected,
   sparsification = false,
   tsconfig = null,
-  genomicCoords = null
+  genomicCoords = null,
 }) {
 
-  console.log("displayArray", displayArray);
   const [treeData, setTreeData] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -231,7 +230,7 @@ export function useTreeData({
       try {
         // Only fetch unfetched trees (or all if no time bounds yet)
         const indicesToFetch = unfetchedIndices.length > 0 ? unfetchedIndices : displayArray;
-        const response = await queryTreeLayout(indicesToFetch, sparsification);
+        const response = await queryTreeLayout(indicesToFetch, sparsification, displayArray);
 
         // Ignore stale response if a newer request was sent
         if (currentRequestId !== requestIdRef.current) {

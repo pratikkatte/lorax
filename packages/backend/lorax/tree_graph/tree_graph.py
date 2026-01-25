@@ -262,8 +262,9 @@ def construct_trees_batch(
     ts,
     tree_indices: List[int],
     sparsification: bool = False,
-    include_mutations: bool = True
-) -> Tuple[bytes, float, float, List[int]]:
+    include_mutations: bool = True,
+    pre_cached_graphs: Optional[dict] = None
+) -> Tuple[bytes, float, float, List[int], dict]:
     """
     Construct multiple trees and return combined PyArrow buffer.
 
@@ -274,9 +275,11 @@ def construct_trees_batch(
         tree_indices: List of tree indices to process
         sparsification: Enable tip-only sparsification (default False)
         include_mutations: Whether to include mutation data in buffer
+        pre_cached_graphs: Optional dict mapping tree_idx -> TreeGraph for cache hits
 
     Returns:
-        Tuple of (buffer, global_min_time, global_max_time, tree_indices)
+        Tuple of (buffer, global_min_time, global_max_time, tree_indices, newly_built_graphs)
+        where newly_built_graphs is a dict mapping tree_idx -> TreeGraph for trees constructed
     """
     # Pre-extract tables for reuse
     edges = ts.tables.edges
@@ -328,7 +331,7 @@ def construct_trees_batch(
         mut_bytes = mut_sink.getvalue().to_pybytes()
 
         combined = struct.pack('<I', len(node_bytes)) + node_bytes + mut_bytes
-        return combined, min_time, max_time, []
+        return combined, min_time, max_time, [], {}
 
     # Estimate total nodes for pre-allocation
     sample_tree = ts.at_index(int(tree_indices[0]) if tree_indices else 0)
@@ -354,14 +357,22 @@ def construct_trees_batch(
     mut_offset = 0
     processed_indices = []
 
+    # Initialize cache tracking
+    pre_cached_graphs = pre_cached_graphs or {}
+    newly_built_graphs = {}
+
     for tree_idx in tree_indices:
         tree_idx = int(tree_idx)
 
         if tree_idx < 0 or tree_idx >= ts.num_trees:
             continue
 
-        # Construct tree using optimized function
-        graph = construct_tree(ts, edges, nodes, breakpoints, tree_idx, min_time, max_time)
+        # Check pre-cached first, then construct if needed
+        if tree_idx in pre_cached_graphs:
+            graph = pre_cached_graphs[tree_idx]
+        else:
+            graph = construct_tree(ts, edges, nodes, breakpoints, tree_idx, min_time, max_time)
+            newly_built_graphs[tree_idx] = graph  # Track for caching
 
         # Get nodes in tree
         indices = np.where(graph.in_tree)[0].astype(np.int32)
@@ -547,7 +558,7 @@ def construct_trees_batch(
     # Format: [4-byte node_len (little-endian)][node_bytes][mut_bytes]
     combined = struct.pack('<I', len(node_bytes)) + node_bytes + mut_bytes
 
-    return combined, min_time, max_time, processed_indices
+    return combined, min_time, max_time, processed_indices, newly_built_graphs
 
 
 @njit(cache=True)

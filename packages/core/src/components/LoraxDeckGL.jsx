@@ -167,8 +167,12 @@ const LoraxDeckGL = forwardRef(({
     displayOptions: { selectionStrategy: 'largestSpan' }
   });
 
+  // Get visible tree indices from localBins (needed for useTreeData and highlight fetching)
+  const visibleTreeIndices = useMemo(() => {
+    if (!localBins) return [];
+    return Array.from(localBins.keys());
+  }, [localBins]);
 
-  
   // 6c. Fetch tree data from backend (auto-triggers on displayArray change)
   // Uses frontend caching to avoid re-fetching already loaded trees
   const { treeData, isLoading: treeDataLoading, error: treeDataError } = useTreeData({
@@ -177,7 +181,7 @@ const LoraxDeckGL = forwardRef(({
     isConnected,
     sparsification: displayArray.length > 1,  // Enable to reduce data transfer for large trees
     tsconfig,  // For cache invalidation on file change
-    genomicCoords  // For viewport-based cache eviction
+    genomicCoords,  // For viewport-based cache eviction
   });
 
   // 6c.1. Notify parent when tree loading state changes
@@ -206,15 +210,16 @@ const LoraxDeckGL = forwardRef(({
   // 6e. Highlight positions for filter-table clicks
   const [highlightPositions, setHighlightPositions] = useState(null);
   const highlightRequestRef = useRef(0);
+  const highlightDebounceRef = useRef(null);
 
-  // Get visible tree indices from localBins for highlight fetching
-  const visibleTreeIndices = useMemo(() => {
-    if (!localBins) return [];
-    return Array.from(localBins.keys());
-  }, [localBins]);
-
-  // Fetch highlight positions when highlighted value changes
+  // Fetch highlight positions when highlighted value or visible trees change
   useEffect(() => {
+    // Clear any pending debounced request
+    if (highlightDebounceRef.current) {
+      clearTimeout(highlightDebounceRef.current);
+      highlightDebounceRef.current = null;
+    }
+
     if (!highlightedMetadataValue || !selectedColorBy || visibleTreeIndices.length === 0) {
       setHighlightPositions(null);
       return;
@@ -224,20 +229,30 @@ const LoraxDeckGL = forwardRef(({
       return;
     }
 
-    // Track this request to avoid race conditions
-    const requestId = ++highlightRequestRef.current;
+    // Debounce the request to avoid excessive calls during panning/zooming
+    highlightDebounceRef.current = setTimeout(() => {
+      // Track this request to avoid race conditions
+      const requestId = ++highlightRequestRef.current;
 
-    queryHighlightPositions(selectedColorBy, highlightedMetadataValue, visibleTreeIndices)
-      .then(result => {
-        // Ignore stale responses
-        if (requestId !== highlightRequestRef.current) return;
-        setHighlightPositions(result.positions || []);
-      })
-      .catch(err => {
-        if (requestId !== highlightRequestRef.current) return;
-        console.error('Failed to fetch highlight positions:', err);
-        setHighlightPositions(null);
-      });
+      console.log('[LoraxDeckGL] Fetching highlight positions for', visibleTreeIndices.length, 'trees');
+      queryHighlightPositions(selectedColorBy, highlightedMetadataValue, visibleTreeIndices)
+        .then(result => {
+          // Ignore stale responses
+          if (requestId !== highlightRequestRef.current) return;
+          setHighlightPositions(result.positions || []);
+        })
+        .catch(err => {
+          if (requestId !== highlightRequestRef.current) return;
+          console.error('Failed to fetch highlight positions:', err);
+          setHighlightPositions(null);
+        });
+    }, 150); // 150ms debounce
+
+    return () => {
+      if (highlightDebounceRef.current) {
+        clearTimeout(highlightDebounceRef.current);
+      }
+    };
   }, [highlightedMetadataValue, selectedColorBy, visibleTreeIndices, queryHighlightPositions, isConnected]);
 
   // Compute highlight data with world coordinates by applying model matrices

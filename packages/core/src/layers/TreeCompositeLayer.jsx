@@ -60,8 +60,16 @@ export class TreeCompositeLayer extends CompositeLayer {
       tipData,
       // Mutation data (simplified: only positions)
       mutPositions,
-      mutCount
+      mutCount,
+      // Highlight data for metadata value clicks
+      highlightData
     } = processedData;
+
+    // Console.log when highlightData is present
+    if (highlightData && highlightData.length > 0) {
+      console.log('[TreeCompositeLayer] highlightData:', highlightData);
+      console.log('[TreeCompositeLayer] highlightData count:', highlightData.length);
+    }
 
     const {
       edgeColor,
@@ -204,6 +212,25 @@ export class TreeCompositeLayer extends CompositeLayer {
         iconMapping: {
           marker: { x: 0, y: 0, width: 128, height: 128, mask: true }
         },
+        coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+        pickable: false
+      }));
+    }
+
+    // Highlight circles for metadata value selection
+    if (highlightData && highlightData.length > 0) {
+      layers.push(new ScatterplotLayer({
+        id: `${this.props.id}-highlights`,
+        data: highlightData,
+        getPosition: d => d.position,
+        getFillColor: [0, 0, 0, 0],  // Transparent fill (hollow)
+        getLineColor: d => d.color || [255, 200, 0, 255],
+        getRadius: tipRadius + 4,
+        radiusUnits: 'pixels',
+        stroked: true,
+        filled: false,
+        lineWidthUnits: 'pixels',
+        getLineWidth: 2,
         coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
         pickable: false
       }));

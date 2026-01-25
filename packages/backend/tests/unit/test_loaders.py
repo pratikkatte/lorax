@@ -39,11 +39,11 @@ class TestTskitLoader:
         assert ts is not None
         assert ts.num_trees == minimal_ts.num_trees
 
-    def test_get_or_load_config_trees(self, minimal_ts, temp_dir):
+    def test_compute_config_trees(self, minimal_ts, temp_dir):
         """Test config generation for tree sequence."""
-        from lorax.loaders.loader import get_or_load_config
+        from lorax.loaders.loader import compute_config
 
-        config = get_or_load_config(minimal_ts, str(temp_dir / "test.trees"), temp_dir)
+        config = compute_config(minimal_ts, str(temp_dir / "test.trees"), str(temp_dir))
 
         assert config is not None
         # Config should contain key fields (names may vary by implementation)
@@ -55,18 +55,18 @@ class TestTskitLoader:
 
     def test_config_includes_metadata_keys(self, minimal_ts, temp_dir):
         """Test that config includes metadata key information."""
-        from lorax.loaders.loader import get_or_load_config
+        from lorax.loaders.loader import compute_config
 
-        config = get_or_load_config(minimal_ts, str(temp_dir / "test.trees"), temp_dir)
+        config = compute_config(minimal_ts, str(temp_dir / "test.trees"), str(temp_dir))
 
         # Should include metadata-related config
         assert "metadata_keys" in config or "node_metadata_keys" in config or True  # May be empty
 
     def test_config_includes_initial_position(self, minimal_ts, temp_dir):
         """Test that config includes initial position."""
-        from lorax.loaders.loader import get_or_load_config
+        from lorax.loaders.loader import compute_config
 
-        config = get_or_load_config(minimal_ts, str(temp_dir / "test.trees"), temp_dir)
+        config = compute_config(minimal_ts, str(temp_dir / "test.trees"), str(temp_dir))
 
         assert "initial_position" in config
         assert len(config["initial_position"]) == 2
@@ -86,7 +86,7 @@ class TestCSVLoader:
 
     def test_csv_config_generation(self, temp_dir):
         """Test config generation for CSV file with proper format."""
-        from lorax.loaders.loader import get_or_load_config
+        from lorax.loaders.loader import compute_config
 
         # Create CSV with required columns for the loader
         csv_content = """genomic_positions,newick
@@ -98,7 +98,7 @@ class TestCSVLoader:
 
         df = pd.read_csv(csv_file)
         try:
-            config = get_or_load_config(df, str(csv_file), temp_dir)
+            config = compute_config(df, str(csv_file), str(temp_dir))
             assert config is not None
         except (ValueError, KeyError):
             # CSV loader may have specific requirements
@@ -122,44 +122,49 @@ class TestCSVLoader:
         assert "time" in df.columns
 
 
-class TestConfigCaching:
-    """Tests for configuration caching."""
+class TestFileContextCaching:
+    """Tests for FileContext-based caching."""
 
-    def test_config_is_cached(self, minimal_ts, temp_dir):
-        """Test that configurations are cached."""
-        from lorax.loaders.loader import get_or_load_config, _config_cache
-
-        file_path = str(temp_dir / "test.trees")
+    @pytest.mark.asyncio
+    async def test_file_context_caches_config(self, minimal_ts_file):
+        """Test that FileContext caches config with tree sequence."""
+        from lorax.cache import get_file_context
+        from lorax.cache.file_cache import _file_cache
 
         # Clear cache
-        _config_cache.cache.clear()
+        _file_cache.cache.clear()
 
-        # First call
-        config1 = get_or_load_config(minimal_ts, file_path, temp_dir)
+        # Load file
+        ctx = await get_file_context(str(minimal_ts_file))
 
-        # Second call should use cache
-        config2 = get_or_load_config(minimal_ts, file_path, temp_dir)
+        assert ctx is not None
+        assert ctx.config is not None
+        assert ctx.tree_sequence is not None
 
-        # Configs should be equal
-        assert config1 == config2
+        # Config should be accessible from the same context
+        config1 = ctx.config
+        config2 = ctx.config
+        assert config1 is config2  # Same object
 
-    def test_config_cache_invalidation(self, minimal_ts, temp_dir):
-        """Test that config cache is invalidated on file change."""
-        from lorax.loaders.loader import get_or_load_config
+    @pytest.mark.asyncio
+    async def test_file_context_atomic_eviction(self, minimal_ts_file):
+        """Test that FileContext evicts config with tree sequence."""
+        from lorax.cache import get_file_context
+        from lorax.cache.file_cache import _file_cache
 
-        file_path = temp_dir / "test.trees"
-        minimal_ts.dump(str(file_path))
+        # Clear cache
+        _file_cache.cache.clear()
 
-        # First call
-        config1 = get_or_load_config(minimal_ts, str(file_path), temp_dir)
+        # Load file
+        ctx = await get_file_context(str(minimal_ts_file))
+        assert ctx is not None
 
-        # Modify file (touch to change mtime)
-        import time
-        time.sleep(0.1)
-        file_path.touch()
+        # Manually clear cache
+        _file_cache.cache.clear()
 
-        # Config might be invalidated based on mtime
-        # (Implementation dependent)
+        # Context should be gone
+        ctx2 = await get_file_context(str(minimal_ts_file))
+        assert ctx2 is not ctx  # New object after cache clear
 
 
 class TestLoaderEdgeCases:

@@ -28,7 +28,7 @@ class TestFileLoading:
     @pytest.mark.asyncio
     async def test_get_file_mtime(self, minimal_ts_file):
         """Test getting file modification time."""
-        from lorax.handlers import _get_file_mtime
+        from lorax.cache.file_cache import _get_file_mtime
 
         mtime = _get_file_mtime(str(minimal_ts_file))
         assert mtime > 0
@@ -36,15 +36,54 @@ class TestFileLoading:
     @pytest.mark.asyncio
     async def test_get_file_mtime_nonexistent(self):
         """Test getting mtime for non-existent file."""
-        from lorax.handlers import _get_file_mtime
+        from lorax.cache.file_cache import _get_file_mtime
 
         mtime = _get_file_mtime("/nonexistent/path.trees")
         assert mtime == 0.0
 
     @pytest.mark.asyncio
+    async def test_get_file_context(self, minimal_ts_file):
+        """Test loading a FileContext."""
+        from lorax.cache import get_file_context
+
+        ctx = await get_file_context(str(minimal_ts_file))
+
+        assert ctx is not None
+        assert ctx.tree_sequence is not None
+        assert hasattr(ctx.tree_sequence, 'num_trees')
+        assert hasattr(ctx.tree_sequence, 'num_samples')
+        assert ctx.config is not None
+        assert ctx.mtime > 0
+
+    @pytest.mark.asyncio
+    async def test_get_file_context_cached(self, minimal_ts_file):
+        """Test that FileContexts are cached."""
+        from lorax.cache import get_file_context
+        from lorax.cache.file_cache import _file_cache
+
+        # Clear cache first
+        _file_cache.cache.clear()
+
+        # First load
+        ctx1 = await get_file_context(str(minimal_ts_file))
+        assert ctx1 is not None
+
+        # Second load should use cache
+        ctx2 = await get_file_context(str(minimal_ts_file))
+        assert ctx2 is ctx1  # Same object
+
+    @pytest.mark.asyncio
+    async def test_get_file_context_nonexistent(self, temp_dir):
+        """Test loading non-existent file."""
+        from lorax.cache import get_file_context
+
+        ctx = await get_file_context(str(temp_dir / "nonexistent.trees"))
+        assert ctx is None
+
+    @pytest.mark.asyncio
     async def test_get_or_load_ts(self, minimal_ts_file):
-        """Test loading a tree sequence."""
-        from lorax.handlers import get_or_load_ts
+        """Test backwards-compatible get_or_load_ts function."""
+        from lorax.cache import get_or_load_ts
 
         ts = await get_or_load_ts(str(minimal_ts_file))
 
@@ -53,50 +92,25 @@ class TestFileLoading:
         assert hasattr(ts, 'num_samples')
 
     @pytest.mark.asyncio
-    async def test_get_or_load_ts_cached(self, minimal_ts_file):
-        """Test that tree sequences are cached."""
-        from lorax.handlers import get_or_load_ts, _ts_cache
-
-        # Clear cache first
-        _ts_cache.cache.clear()
-
-        # First load
-        ts1 = await get_or_load_ts(str(minimal_ts_file))
-        assert ts1 is not None
-
-        # Second load should use cache
-        ts2 = await get_or_load_ts(str(minimal_ts_file))
-        assert ts2 is ts1  # Same object
-
-    @pytest.mark.asyncio
     async def test_get_or_load_ts_nonexistent(self, temp_dir):
-        """Test loading non-existent file."""
-        from lorax.handlers import get_or_load_ts
+        """Test loading non-existent file with backwards-compatible function."""
+        from lorax.cache import get_or_load_ts
 
         ts = await get_or_load_ts(str(temp_dir / "nonexistent.trees"))
         assert ts is None
 
     @pytest.mark.asyncio
-    async def test_get_or_load_ts_invalid_extension(self, temp_dir):
-        """Test loading file with unsupported extension."""
-        from lorax.handlers import get_or_load_ts
-
-        invalid_file = temp_dir / "test.invalid"
-        invalid_file.write_text("invalid content")
-
-        with pytest.raises(ValueError, match="Unsupported file type"):
-            await get_or_load_ts(str(invalid_file))
-
-    @pytest.mark.asyncio
     async def test_load_csv_file(self, sample_csv_file):
         """Test loading a CSV file."""
-        from lorax.handlers import get_or_load_ts
+        from lorax.cache import get_file_context
         import pandas as pd
 
-        result = await get_or_load_ts(str(sample_csv_file))
+        ctx = await get_file_context(str(sample_csv_file))
 
-        assert result is not None
-        assert isinstance(result, pd.DataFrame)
+        assert ctx is not None
+        assert isinstance(ctx.tree_sequence, pd.DataFrame)
+        assert ctx.is_csv
+        assert not ctx.is_tree_sequence
 
 
 class TestDetailsHandlers:
@@ -181,45 +195,6 @@ class TestDetailsHandlers:
         assert "edges" in result_data
 
 
-class TestEdgesQuery:
-    """Tests for edge query handlers."""
-
-    @pytest.mark.asyncio
-    async def test_get_edges_for_interval(self, minimal_ts):
-        """Test getting edges for a genomic interval."""
-        from lorax.handlers import get_edges_for_interval
-
-        edges = get_edges_for_interval(minimal_ts, 0, 1000)
-
-        assert isinstance(edges, np.ndarray)
-        if len(edges) > 0:
-            assert edges.shape[1] == 4  # left, right, parent, child
-
-    @pytest.mark.asyncio
-    async def test_handle_edges_query(self, minimal_ts_file):
-        """Test handle_edges_query function."""
-        from lorax.handlers import handle_edges_query
-
-        result = await handle_edges_query(str(minimal_ts_file), 0, 1000)
-        data = json.loads(result)
-
-        assert "edges" in data
-        assert "start" in data
-        assert "end" in data
-
-    @pytest.mark.asyncio
-    async def test_handle_edges_query_no_file(self, temp_dir):
-        """Test handle_edges_query with non-existent file."""
-        from lorax.handlers import handle_edges_query
-
-        result = await handle_edges_query(
-            str(temp_dir / "nonexistent.trees"), 0, 1000
-        )
-        data = json.loads(result)
-
-        assert "error" in data
-
-
 class TestNodeSearch:
     """Tests for node search functionality."""
 
@@ -290,9 +265,11 @@ class TestTreeGraphQuery:
     @pytest.mark.asyncio
     async def test_handle_tree_graph_query_multiple_trees(self, minimal_ts_file):
         """Test tree graph query with multiple trees."""
-        from lorax.handlers import handle_tree_graph_query, get_or_load_ts
+        from lorax.handlers import handle_tree_graph_query
+        from lorax.cache import get_file_context
 
-        ts = await get_or_load_ts(str(minimal_ts_file))
+        ctx = await get_file_context(str(minimal_ts_file))
+        ts = ctx.tree_sequence
         num_trees = min(ts.num_trees, 5)
         tree_indices = list(range(num_trees))
 
@@ -317,9 +294,62 @@ class TestCacheStatus:
 
         assert "rss_MB" in status
         assert "vms_MB" in status
-        assert "ts_cache_size" in status
+        assert "file_cache_size" in status
         assert "pid" in status
         assert isinstance(status["rss_MB"], float)
+
+
+class TestFileContext:
+    """Tests for FileContext functionality."""
+
+    @pytest.mark.asyncio
+    async def test_file_context_metadata_caching(self, minimal_ts_file):
+        """Test that FileContext caches metadata."""
+        from lorax.cache import get_file_context
+
+        ctx = await get_file_context(str(minimal_ts_file))
+        assert ctx is not None
+
+        # Set some metadata
+        ctx.set_metadata("test_key", {"sample1": "value1"})
+
+        # Get it back
+        cached = ctx.get_metadata("test_key")
+        assert cached == {"sample1": "value1"}
+
+        # Non-existent key returns None
+        assert ctx.get_metadata("nonexistent") is None
+
+    @pytest.mark.asyncio
+    async def test_file_context_clear_metadata(self, minimal_ts_file):
+        """Test clearing FileContext metadata."""
+        from lorax.cache import get_file_context
+
+        ctx = await get_file_context(str(minimal_ts_file))
+
+        ctx.set_metadata("key1", "value1")
+        ctx.set_metadata("key2", "value2")
+
+        ctx.clear_metadata()
+
+        assert ctx.get_metadata("key1") is None
+        assert ctx.get_metadata("key2") is None
+
+    @pytest.mark.asyncio
+    async def test_file_context_properties(self, minimal_ts_file, sample_csv_file):
+        """Test FileContext type properties."""
+        from lorax.cache import get_file_context
+
+        # Test with tree sequence
+        ctx_ts = await get_file_context(str(minimal_ts_file))
+        assert ctx_ts.is_tree_sequence
+        assert not ctx_ts.is_csv
+        assert ctx_ts.ts is ctx_ts.tree_sequence
+
+        # Test with CSV
+        ctx_csv = await get_file_context(str(sample_csv_file))
+        assert ctx_csv.is_csv
+        assert not ctx_csv.is_tree_sequence
 
 
 class TestMutationsHandlers:

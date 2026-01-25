@@ -104,9 +104,10 @@ export function useLoraxConnection({ apiBase, isProd = false }) {
    * Uses Socket.IO acknowledgement callbacks for request-response correlation.
    * @param {number[]} displayArray - Tree indices to fetch
    * @param {boolean} sparsification - Enable tip-only sparsification (default false)
+   * @param {number[]} actualDisplayArray - All visible tree indices for backend cache eviction (defaults to displayArray)
    * @returns {Promise<{buffer, global_min_time, global_max_time, tree_indices}>}
    */
-  const queryTreeLayout = useCallback((displayArray, sparsification = false) => {
+  const queryTreeLayout = useCallback((displayArray, sparsification = false, actualDisplayArray = null) => {
     return new Promise((resolve, reject) => {
       if (!socketRef.current) {
         reject(new Error("Socket not available"));
@@ -122,6 +123,7 @@ export function useLoraxConnection({ apiBase, isProd = false }) {
         "process_postorder_layout",
         {
           displayArray,
+          actualDisplayArray: actualDisplayArray || displayArray,  // All visible trees for backend cache eviction
           sparsification: sparsification,
           lorax_sid: sidRef.current,
           request_id: requestId
@@ -259,6 +261,8 @@ export function useLoraxConnection({ apiBase, isProd = false }) {
         reject(new Error("Socket not available"));
         return;
       }
+      console.log("queryHighlightPositions", metadataKey, metadataValue, treeIndices);
+
 
       if (!metadataKey || metadataValue === null || metadataValue === undefined) {
         resolve({ positions: [] });
@@ -274,14 +278,23 @@ export function useLoraxConnection({ apiBase, isProd = false }) {
         off("highlight-positions-result", handleResult);
 
         if (message.error) {
+          console.log("message error", message.error);
           reject(new Error(message.error));
           return;
         }
 
+        console.log("message", message);
         resolve({ positions: message.positions || [] });
       };
 
       once("highlight-positions-result", handleResult);
+
+      console.log("emit get_highlight_positions_event", {
+        lorax_sid: sidRef.current,
+        metadata_key: metadataKey,
+        metadata_value: String(metadataValue),
+        tree_indices: treeIndices
+      });
       emit("get_highlight_positions_event", {
         lorax_sid: sidRef.current,
         metadata_key: metadataKey,
