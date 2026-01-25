@@ -289,6 +289,16 @@ def construct_trees_batch(
     # Check if tree sequence has mutations
     has_mutations = include_mutations and ts.num_mutations > 0
 
+    # Pre-extract mutation tables and positions (avoid repeated lookups in loop)
+    if has_mutations:
+        sites = ts.tables.sites
+        mutations = ts.tables.mutations
+        mutation_positions = sites.position[mutations.site]
+    else:
+        sites = None
+        mutations = None
+        mutation_positions = None
+
     if len(tree_indices) == 0:
         # Return empty buffer with separate node and mutation tables
         node_table = pa.table({
@@ -416,10 +426,7 @@ def construct_trees_batch(
             interval_left = breakpoints[tree_idx]
             interval_right = breakpoints[tree_idx + 1]
 
-            # Filter mutations by genomic position
-            sites = ts.tables.sites
-            mutations = ts.tables.mutations
-            mutation_positions = sites.position[mutations.site]
+            # Filter mutations by genomic position (using pre-extracted mutation_positions)
             mask = (mutation_positions >= interval_left) & (mutation_positions < interval_right)
             mut_indices = np.where(mask)[0]
 

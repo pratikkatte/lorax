@@ -13,6 +13,7 @@ from lorax.modes import (
 )
 from lorax.session_manager import SessionManager
 from lorax.disk_cache import DiskCacheManager
+from lorax.tree_graph_cache import TreeGraphCache
 from lorax.constants import (
     DISK_CACHE_ENABLED,
     DISK_CACHE_DIR,
@@ -53,5 +54,19 @@ disk_cache_manager = DiskCacheManager(
     redis_client=_redis_client,
     enabled=DISK_CACHE_ENABLED,
 )
+
+# Initialize TreeGraph Cache for per-session tree caching
+# Uses Redis in production for distributed caching, in-memory for local mode
+_tree_graph_redis = None
+if REDIS_URL:
+    try:
+        import redis.asyncio as aioredis
+        # Create a separate connection for binary data (decode_responses=False)
+        _tree_graph_redis = aioredis.from_url(REDIS_URL, decode_responses=False)
+        print(f"TreeGraphCache using Redis at {REDIS_URL}")
+    except Exception as e:
+        print(f"Warning: Failed to connect Redis for TreeGraphCache: {e}")
+
+tree_graph_cache = TreeGraphCache(redis_client=_tree_graph_redis)
 
 print(f"Context initialized: mode={CURRENT_MODE}, disk_cache={DISK_CACHE_ENABLED}")

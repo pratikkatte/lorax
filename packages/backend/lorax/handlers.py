@@ -15,7 +15,7 @@ import tszip
 
 from lorax.viz.trees_to_taxonium import process_csv
 from lorax.cloud.gcs_utils import get_public_gcs_dict
-from lorax.tree_graph import construct_trees_batch
+from lorax.tree_graph import construct_trees_batch, construct_tree, TreeGraph
 from lorax.csv.layout import build_empty_layout_response
 from lorax.utils import (
     LRUCacheWithMeta,
@@ -524,7 +524,6 @@ async def handle_tree_graph_query(file_path, tree_indices, sparsification=False)
         - global_max_time: float
         - tree_indices: list[int]
     """
-    print("tree_indices", tree_indices);
     ts = await get_or_load_ts(file_path)
     if ts is None:
         return {"error": "Tree sequence not loaded. Please load a file first."}
@@ -550,6 +549,119 @@ async def handle_tree_graph_query(file_path, tree_indices, sparsification=False)
         "global_max_time": max_time,
         "tree_indices": processed_indices
     }
+
+
+async def get_or_construct_tree_graph(
+    file_path: str,
+    tree_index: int,
+    session_id: str,
+    tree_graph_cache
+) -> TreeGraph:
+    """
+    Get a TreeGraph from cache or construct and cache it.
+
+    This function is used by lineage operations that need the full TreeGraph
+    structure for ancestor/descendant traversal.
+
+    Args:
+        file_path: Path to tree sequence file
+        tree_index: Index of the tree to get
+        session_id: Session ID for cache key
+        tree_graph_cache: TreeGraphCache instance
+
+    Returns:
+        TreeGraph object, or None if file not loaded
+    """
+    # Check cache first
+    cached = await tree_graph_cache.get(session_id, tree_index)
+    if cached is not None:
+        print(f"TreeGraph cache hit: session={session_id[:8]}... tree={tree_index}")
+        return cached
+
+    # Load tree sequence
+    ts = await get_or_load_ts(file_path)
+    if ts is None:
+        return None
+
+    # Can't construct TreeGraph for CSV
+    if isinstance(ts, pd.DataFrame):
+        return None
+
+    # Construct tree graph
+    def _construct():
+        edges = ts.tables.edges
+        nodes = ts.tables.nodes
+        breakpoints = list(ts.breakpoints())
+        min_time = float(ts.min_time)
+        max_time = float(ts.max_time)
+        return construct_tree(ts, edges, nodes, breakpoints, tree_index, min_time, max_time)
+
+    tree_graph = await asyncio.to_thread(_construct)
+
+    # Cache it
+    await tree_graph_cache.set(session_id, tree_index, tree_graph)
+    print(f"TreeGraph cached: session={session_id[:8]}... tree={tree_index}")
+
+    return tree_graph
+
+
+async def ensure_trees_cached(
+    file_path: str,
+    tree_indices: list,
+    session_id: str,
+    tree_graph_cache
+) -> int:
+    """
+    Ensure multiple trees are cached for a session.
+
+    This is called after process_postorder_layout to cache trees for
+    subsequent lineage operations.
+
+    Args:
+        file_path: Path to tree sequence file
+        tree_indices: List of tree indices to cache
+        session_id: Session ID for cache key
+        tree_graph_cache: TreeGraphCache instance
+
+    Returns:
+        Number of trees newly cached (not already in cache)
+    """
+    ts = await get_or_load_ts(file_path)
+    if ts is None:
+        return 0
+
+    if isinstance(ts, pd.DataFrame):
+        return 0
+
+    newly_cached = 0
+
+    # Pre-extract tables for efficiency
+    edges = ts.tables.edges
+    nodes = ts.tables.nodes
+    breakpoints = list(ts.breakpoints())
+    min_time = float(ts.min_time)
+    max_time = float(ts.max_time)
+
+    for tree_index in tree_indices:
+        tree_index = int(tree_index)
+
+        # Skip if already cached
+        cached = await tree_graph_cache.get(session_id, tree_index)
+        if cached is not None:
+            continue
+
+        # Construct and cache
+        def _construct(idx):
+            return construct_tree(ts, edges, nodes, breakpoints, idx, min_time, max_time)
+
+        tree_graph = await asyncio.to_thread(_construct, tree_index)
+        await tree_graph_cache.set(session_id, tree_index, tree_graph)
+        newly_cached += 1
+
+    if newly_cached > 0:
+        print(f"Cached {newly_cached} trees for session {session_id[:8]}...")
+
+    return newly_cached
 
 
 def get_highlight_positions(
