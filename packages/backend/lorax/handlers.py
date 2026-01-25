@@ -744,3 +744,121 @@ async def get_highlight_positions(
                 })
 
     return {"positions": positions}
+
+
+async def get_multi_value_highlight_positions(
+    ts,
+    file_path,
+    metadata_key,
+    metadata_values,  # List[str] - Array of values (OR logic)
+    tree_indices,
+    session_id: str,
+    tree_graph_cache,
+    show_lineages: bool = False,
+    sources=("individual", "node", "population"),
+    sample_name_key="name"
+):
+    """
+    Get positions for tip nodes matching ANY of the metadata values.
+    Returns positions grouped by value for per-value coloring.
+
+    Args:
+        ts: tskit.TreeSequence
+        file_path: Path to tree sequence file (for cache key)
+        metadata_key: Metadata key to filter by
+        metadata_values: List of metadata values to match (OR logic)
+        tree_indices: List of tree indices to compute positions for
+        session_id: Session ID for cache lookup
+        tree_graph_cache: TreeGraphCache instance
+        show_lineages: Whether to compute lineage (ancestry) paths
+        sources: Metadata sources to search
+        sample_name_key: Key in node metadata used as sample name
+
+    Returns:
+        dict with:
+        - positions_by_value: {"Africa": [{node_id, tree_idx, x, y}, ...], ...}
+        - lineages: {"Africa": {tree_idx: [{path_node_ids, color}]}} if show_lineages
+        - total_count: int
+    """
+    if not tree_indices or not metadata_values:
+        return {"positions_by_value": {}, "lineages": {}, "total_count": 0}
+
+    # Deduplicate values
+    unique_values = list(set(str(v) for v in metadata_values))
+
+    # Pre-extract tables for reuse (only needed if cache miss)
+    edges = ts.tables.edges
+    nodes = ts.tables.nodes
+    breakpoints = list(ts.breakpoints())
+    min_time = float(ts.min_time)
+    max_time = float(ts.max_time)
+
+    positions_by_value = {}
+    lineages = {} if show_lineages else None
+    total_count = 0
+
+    # For each value, find matching samples
+    for value in unique_values:
+        matching_node_ids = _get_matching_sample_nodes(
+            ts, metadata_key, value, sources, sample_name_key
+        )
+
+        if not matching_node_ids:
+            positions_by_value[value] = []
+            continue
+
+        value_positions = []
+        value_lineages = {} if show_lineages else None
+
+        # For each requested tree, get graph and extract positions
+        for tree_idx in tree_indices:
+            tree_idx = int(tree_idx)
+            if tree_idx < 0 or tree_idx >= ts.num_trees:
+                continue
+
+            graph = await _ensure_tree_graph_loaded(
+                ts, tree_idx, session_id, tree_graph_cache,
+                edges, nodes, breakpoints, min_time, max_time
+            )
+
+            tree_positions = []
+            tree_seeds = []  # For lineage computation
+
+            # Extract positions for matching nodes that are in this tree
+            for node_id in matching_node_ids:
+                if graph.in_tree[node_id]:
+                    tree_positions.append({
+                        "node_id": int(node_id),
+                        "tree_idx": tree_idx,
+                        "x": float(graph.x[node_id]),
+                        "y": float(graph.y[node_id])
+                    })
+                    tree_seeds.append(node_id)
+
+            value_positions.extend(tree_positions)
+
+            # Compute lineage paths if requested
+            if show_lineages and tree_seeds:
+                tree = ts.at_index(tree_idx)
+                name_map = {nid: str(nid) for nid in tree_seeds}
+                tree_lineages = _compute_lineage_paths(
+                    tree, tree_seeds, name_map, None  # No per-sample colors, use value color
+                )
+                if tree_lineages:
+                    value_lineages[tree_idx] = tree_lineages
+
+        positions_by_value[value] = value_positions
+        total_count += len(value_positions)
+
+        if show_lineages and value_lineages:
+            lineages[value] = value_lineages
+
+    result = {
+        "positions_by_value": positions_by_value,
+        "total_count": total_count
+    }
+
+    if show_lineages:
+        result["lineages"] = lineages
+
+    return result

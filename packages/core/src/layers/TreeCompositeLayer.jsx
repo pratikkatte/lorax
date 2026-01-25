@@ -225,12 +225,12 @@ export class TreeCompositeLayer extends CompositeLayer {
         getPosition: d => d.position,
         getFillColor: [0, 0, 0, 0],  // Transparent fill (hollow)
         getLineColor: d => d.color || [255, 200, 0, 255],
-        getRadius: tipRadius + 4,
+        getRadius: tipRadius + 1,
         radiusUnits: 'pixels',
         stroked: true,
         filled: false,
         lineWidthUnits: 'pixels',
-        getLineWidth: 2,
+        getLineWidth: 1,
         coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
         pickable: false
       }));

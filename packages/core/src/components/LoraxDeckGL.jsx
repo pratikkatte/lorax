@@ -100,13 +100,15 @@ const LoraxDeckGL = forwardRef(({
     workerConfigReady,
     queryTreeLayout,
     queryHighlightPositions,
+    queryMultiValueSearch,
     isConnected,
     // Metadata + filter (when enableMetadataFilter=true)
     metadataArrays,
     metadataColors,
     selectedColorBy,
     enabledValues,
-    highlightedMetadataValue
+    highlightedMetadataValue,
+    searchTags  // Multi-value search tags
   } = useLorax();
 
   // Stabilize population filter to avoid rerunning downstream effects every render
@@ -292,11 +294,110 @@ const LoraxDeckGL = forwardRef(({
       .filter(Boolean);
   }, [highlightPositions, localBins, metadataColors, highlightedMetadataValue, selectedColorBy]);
 
+  // 6f. Multi-value highlight positions for searchTags (OR logic, per-value colors)
+  const [multiHighlightData, setMultiHighlightData] = useState(null);
+  const multiHighlightRequestRef = useRef(0);
+  const multiHighlightDebounceRef = useRef(null);
+
+  // Fetch multi-value highlight positions when searchTags or visible trees change
+  useEffect(() => {
+    // Clear any pending debounced request
+    if (multiHighlightDebounceRef.current) {
+      clearTimeout(multiHighlightDebounceRef.current);
+      multiHighlightDebounceRef.current = null;
+    }
+
+    // If no searchTags or key, clear highlights
+    if (!searchTags || searchTags.length === 0 || !selectedColorBy || visibleTreeIndices.length === 0) {
+      setMultiHighlightData(null);
+      return;
+    }
+
+    if (!queryMultiValueSearch || !isConnected) {
+      return;
+    }
+
+    // Debounce the request to avoid excessive calls during panning/zooming
+    multiHighlightDebounceRef.current = setTimeout(() => {
+      // Track this request to avoid race conditions
+      const requestId = ++multiHighlightRequestRef.current;
+
+      console.log('[LoraxDeckGL] Fetching multi-value highlight positions for', searchTags.length, 'values,', visibleTreeIndices.length, 'trees');
+
+      queryMultiValueSearch(selectedColorBy, searchTags, visibleTreeIndices, false)
+        .then(result => {
+          // Ignore stale responses
+          if (requestId !== multiHighlightRequestRef.current) return;
+          setMultiHighlightData(result);
+        })
+        .catch(err => {
+          if (requestId !== multiHighlightRequestRef.current) return;
+          console.error('Failed to fetch multi-value highlight positions:', err);
+          setMultiHighlightData(null);
+        });
+    }, 150); // 150ms debounce
+
+    return () => {
+      if (multiHighlightDebounceRef.current) {
+        clearTimeout(multiHighlightDebounceRef.current);
+      }
+    };
+  }, [searchTags, selectedColorBy, visibleTreeIndices, queryMultiValueSearch, isConnected]);
+
+  // Compute multi-highlight data with world coordinates and per-value colors
+  const computedMultiHighlightData = useMemo(() => {
+    if (!multiHighlightData?.positions_by_value || !localBins) {
+      return [];
+    }
+
+    const positions = [];
+    const valueToColor = metadataColors?.[selectedColorBy] || {};
+
+    for (const [value, valuePositions] of Object.entries(multiHighlightData.positions_by_value)) {
+      // Get color for this value from metadataColors, or use default
+      const color = valueToColor[value] || [255, 200, 0, 255];
+
+      for (const pos of valuePositions) {
+        const bin = localBins.get(pos.tree_idx);
+        if (!bin?.modelMatrix) continue;
+
+        const m = bin.modelMatrix;
+        // Model matrix format: column-major 4x4
+        const scaleX = m[0];
+        const scaleY = m[5];
+        const translateX = m[12];
+        const translateY = m[13];
+
+        // Apply model matrix transform
+        const worldX = pos.x * scaleX + translateX;
+        const worldY = pos.y * scaleY + translateY;
+
+        positions.push({
+          position: [worldX, worldY],
+          color,
+          node_id: pos.node_id,
+          tree_idx: pos.tree_idx,
+          value  // Include value for debugging/inspection
+        });
+      }
+    }
+    return positions;
+  }, [multiHighlightData, localBins, metadataColors, selectedColorBy]);
+
   // Merge highlight data into render data
+  // Multi-value search takes priority over single-value highlight
   const renderData = useMemo(() => {
     if (!baseRenderData) return null;
 
-    // If we have computed highlights, merge them into renderData
+    // Multi-value search (searchTags) takes priority over single-value highlight
+    if (computedMultiHighlightData && computedMultiHighlightData.length > 0) {
+      return {
+        ...baseRenderData,
+        highlightData: computedMultiHighlightData
+      };
+    }
+
+    // Fall back to single-value highlight
     if (computedHighlightData && computedHighlightData.length > 0) {
       return {
         ...baseRenderData,
@@ -305,7 +406,7 @@ const LoraxDeckGL = forwardRef(({
     }
 
     return baseRenderData;
-  }, [baseRenderData, computedHighlightData]);
+  }, [baseRenderData, computedHighlightData, computedMultiHighlightData]);
 
   // 7. Compute genome position tick marks
   const genomePositions = useGenomePositions(genomicCoords);

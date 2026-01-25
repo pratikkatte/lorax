@@ -305,6 +305,64 @@ export function useLoraxConnection({ apiBase, isProd = false }) {
   }, [emit, once, off, socketRef, sidRef]);
 
   /**
+   * Query multi-value metadata search for highlight positions.
+   * Returns positions grouped by value for per-value coloring with OR logic.
+   * @param {string} metadataKey - Metadata key to filter by
+   * @param {string[]} metadataValues - Array of metadata values to match (OR logic)
+   * @param {number[]} treeIndices - Tree indices to compute positions for
+   * @param {boolean} showLineages - Whether to compute lineage paths (default false)
+   * @returns {Promise<{positions_by_value: Object, lineages: Object, total_count: number}>}
+   */
+  const queryMultiValueSearch = useCallback((metadataKey, metadataValues, treeIndices, showLineages = false) => {
+    return new Promise((resolve, reject) => {
+      if (!socketRef.current) {
+        reject(new Error("Socket not available"));
+        return;
+      }
+
+      if (!metadataKey) {
+        resolve({ positions_by_value: {}, lineages: {}, total_count: 0 });
+        return;
+      }
+
+      if (!metadataValues || metadataValues.length === 0) {
+        resolve({ positions_by_value: {}, lineages: {}, total_count: 0 });
+        return;
+      }
+
+      if (!treeIndices || treeIndices.length === 0) {
+        resolve({ positions_by_value: {}, lineages: {}, total_count: 0 });
+        return;
+      }
+
+      const handleResult = (message) => {
+        off("search-metadata-multi-result", handleResult);
+
+        if (message.error) {
+          reject(new Error(message.error));
+          return;
+        }
+
+        resolve({
+          positions_by_value: message.positions_by_value || {},
+          lineages: message.lineages || {},
+          total_count: message.total_count || 0
+        });
+      };
+
+      once("search-metadata-multi-result", handleResult);
+
+      emit("search_metadata_multi_event", {
+        lorax_sid: sidRef.current,
+        metadata_key: metadataKey,
+        metadata_values: metadataValues.map(String),
+        tree_indices: treeIndices,
+        show_lineages: showLineages
+      });
+    });
+  }, [emit, once, off, socketRef, sidRef]);
+
+  /**
    * Search mutations by position with configurable range.
    * Returns mutations sorted by distance from the searched position.
    * @param {number} position - Center position to search around (bp)
@@ -534,6 +592,7 @@ export function useLoraxConnection({ apiBase, isProd = false }) {
       queryDetails,
       queryMutationsWindow,
       queryHighlightPositions,
+      queryMultiValueSearch,
       searchMutations,
       queryMetadataForKey,
       queryMetadataArray,
@@ -551,6 +610,7 @@ export function useLoraxConnection({ apiBase, isProd = false }) {
       queryDetails,
       queryMutationsWindow,
       queryHighlightPositions,
+      queryMultiValueSearch,
       searchMutations,
       queryMetadataForKey,
       queryMetadataArray,
