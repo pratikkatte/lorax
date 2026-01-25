@@ -239,6 +239,7 @@ function FileView() {
         setShowInfo={setShowInfo}
         showSettings={showSettings}
         setShowSettings={setShowSettings}
+        tsconfig={tsconfig}
       />
 
       {/* Main viewport area */}
@@ -267,29 +268,6 @@ function FileView() {
               >
                 Back to Projects
               </a>
-            </div>
-          </div>
-        )}
-
-        {/* Config info overlay - shown when loaded and not in error state */}
-        {!loading && !error && tsconfig && (
-          <div className="absolute bottom-4 right-4 z-10 bg-white/90 backdrop-blur-sm border border-slate-200 rounded-lg p-4 text-sm max-w-xs">
-            <h4 className="font-semibold text-slate-800 mb-2">File Info</h4>
-            <div className="space-y-1 text-slate-600">
-              <p>
-                <span className="text-slate-400">Genome:</span>{' '}
-                {genomeLength?.toLocaleString()} bp
-              </p>
-              <p>
-                <span className="text-slate-400">Intervals:</span>{' '}
-                {tsconfig.intervals?.length?.toLocaleString() || '-'}
-              </p>
-              {tsconfig.project && (
-                <p>
-                  <span className="text-slate-400">Project:</span>{' '}
-                  {tsconfig.project}
-                </p>
-              )}
             </div>
           </div>
         )}

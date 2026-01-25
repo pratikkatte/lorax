@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
 /**
@@ -14,6 +14,14 @@ const formatBp = (bp) => {
 };
 
 /**
+ * Calculate input width based on digit count using ch units
+ */
+const getInputWidth = (value) => {
+  const digits = String(value).length;
+  return `${Math.max(digits + 6, 10)}ch`; // +6 for padding and spinner arrows, min 10 chars
+};
+
+/**
  * PositionSlider - Header bar with genome position controls
  * Based on frontend's PositionSlider + EditableRange
  */
@@ -26,12 +34,15 @@ export default function PositionSlider({
   showInfo,
   setShowInfo,
   showSettings,
-  setShowSettings
+  setShowSettings,
+  tsconfig
 }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const [start, setStart] = useState(value?.[0] || 0);
   const [end, setEnd] = useState(value?.[1] || genomeLength || 0);
   const [hasChanges, setHasChanges] = useState(false);
+  const [showFileInfo, setShowFileInfo] = useState(false);
+  const fileInfoRef = useRef(null);
 
   // Sync local state with prop value
   useEffect(() => {
@@ -51,6 +62,19 @@ export default function PositionSlider({
       setSearchParams(updatedParams, { replace: true });
     }
   }, [value, project, setSearchParams]);
+
+  // Close file info dropdown on click outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (fileInfoRef.current && !fileInfoRef.current.contains(event.target)) {
+        setShowFileInfo(false);
+      }
+    };
+    if (showFileInfo) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [showFileInfo]);
 
   const handleStartChange = (e) => {
     const val = parseInt(e.target.value) || 0;
@@ -125,11 +149,53 @@ export default function PositionSlider({
         <span className="font-bold text-slate-800">Lorax</span>
       </a>
 
-      {/* Filename badge */}
+      {/* Filename badge with file info dropdown */}
       {filename && (
-        <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700 mr-4">
-          {filename}
-        </span>
+        <div className="relative mr-4" ref={fileInfoRef}>
+          <button
+            onClick={() => setShowFileInfo(!showFileInfo)}
+            className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium transition-colors ${
+              showFileInfo
+                ? 'bg-emerald-100 text-emerald-700'
+                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+            }`}
+            title="Show file info"
+          >
+            {filename}
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className={`h-3 w-3 ml-1 transition-transform ${showFileInfo ? 'rotate-180' : ''}`}
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+
+          {/* File info dropdown */}
+          {showFileInfo && (
+            <div className="absolute top-full left-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg p-3 text-xs min-w-[200px] z-50">
+              <h4 className="font-semibold text-slate-800 mb-2">File Info</h4>
+              <div className="space-y-1 text-slate-600">
+                <p>
+                  <span className="text-slate-400">Genome:</span>{' '}
+                  {genomeLength?.toLocaleString()} bp
+                </p>
+                <p>
+                  <span className="text-slate-400">Intervals:</span>{' '}
+                  {tsconfig?.intervals?.length?.toLocaleString() || '-'}
+                </p>
+                {tsconfig?.project && (
+                  <p>
+                    <span className="text-slate-400">Project:</span>{' '}
+                    {tsconfig.project}
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
       )}
 
       {/* Pan left button */}
@@ -148,7 +214,8 @@ export default function PositionSlider({
           value={start}
           onChange={handleStartChange}
           onKeyPress={handleKeyPress}
-          className="w-24 px-2 py-1 text-center text-sm font-mono border-none outline-none bg-transparent"
+          className="px-2 py-1 text-center text-sm font-mono border-none outline-none bg-transparent"
+          style={{ width: getInputWidth(start) }}
           min={0}
           max={genomeLength}
         />
@@ -158,7 +225,8 @@ export default function PositionSlider({
           value={end}
           onChange={handleEndChange}
           onKeyPress={handleKeyPress}
-          className="w-24 px-2 py-1 text-center text-sm font-mono border-none outline-none bg-transparent"
+          className="px-2 py-1 text-center text-sm font-mono border-none outline-none bg-transparent"
+          style={{ width: getInputWidth(end) }}
           min={0}
           max={genomeLength}
         />
@@ -188,10 +256,12 @@ export default function PositionSlider({
       {/* Reset view button */}
       <button
         onClick={handleReset}
-        className="px-2 py-1 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded transition-colors"
-        title="Reset view"
+        className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
+        title="Fit all trees"
       >
-        &#x21BA;
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+        </svg>
       </button>
 
       {/* Genome window size and length display */}
