@@ -2,31 +2,23 @@
 # Setup and imports
 ###################
 # Import necessary libraries
-import os
-import sys
 from dotenv import load_dotenv
 
-from langchain_community.document_loaders import TextLoader
-from langchain_text_splitters import RecursiveCharacterTextSplitter, Language
-from langchain_openai import OpenAIEmbeddings
-from langchain_community.vectorstores import FAISS
-from langchain_community.docstore.in_memory import InMemoryDocstore
 from langchain_classic.tools.retriever import create_retriever_tool
 from langchain.chat_models import init_chat_model
-from langchain.tools import tool
-from langchain_core.messages import convert_to_messages
 from langchain_core.messages import HumanMessage
 
 from langgraph.graph import MessagesState
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode, tools_condition
 
-import faiss
-
 from pydantic import BaseModel, Field
 from typing import Literal
 
 from IPython.display import Image, display
+
+# Import custom vector store class
+from vector_store import DocumentVectorStore
 
 # Load environment variables
 load_dotenv()
@@ -44,10 +36,10 @@ response_model = init_chat_model("openai:gpt-4o", temperature=0)
 # Grade Prompt Node Stuff
 ###################
 GRADE_PROMPT = (
-    "You are a grader assessing relevance of a retrieved document to a user question. \n "
+    "You are a grader assessing relevance of a retrieved document to a user question about tskit. \n "
     "Here is the retrieved document: \n\n {context} \n\n"
     "Here is the user question: {question} \n"
-    "If the document contains keyword(s) or semantic meaning related to the user question, grade it as relevant. \n"
+    "If the document contains keyword(s) or semantic meaning related to the tskit question, grade it as relevant. \n"
     "Give a binary score 'yes' or 'no' score to indicate whether the document is relevant to the question."
 )
 
@@ -87,12 +79,13 @@ def grade_documents(
 ###################
 # Initialize response model for rewriting questions
 REWRITE_PROMPT = (
+    "You are helping reformulate questions about tskit (a Python library for tree sequences) to improve retrieval results.\n"
     "Look at the input and try to reason about the underlying semantic intent / meaning.\n"
-    "Here is the initial question:"
+    "Here is the initial question about tskit:"
     "\n ------- \n"
     "{question}"
     "\n ------- \n"
-    "Formulate an improved question:"
+    "Formulate an improved question that is more specific and likely to retrieve relevant tskit documentation:"
 )
 
 # Function to rewrite questions
@@ -110,11 +103,12 @@ def rewrite_question(state: MessagesState):
 ###################
 # Prompt for generating answers
 GENERATE_PROMPT = (
-    "You are an assistant for question-answering tasks. "
-    "Use the following pieces of retrieved context to answer the question. "
-    "If you don't know the answer, just say that you don't know. "
-    "Use three sentences maximum and keep the answer concise.\n"
-    "Question: {question} \n"
+    "You are a helpful chatbot assistant specializing in tskit, a Python library for analyzing tree sequences in population genetics. "
+    "Your role is to answer questions about tskit's functionality, API, concepts, and usage based on the official documentation. "
+    "Use the following pieces of retrieved context from the tskit documentation to answer the question. "
+    "If the context doesn't contain enough information to answer the question, say that you don't know or that the information isn't in the provided documentation. "
+    "Be clear, concise, and accurate. Use code examples from the context when relevant.\n\n"
+    "Question: {question} \n\n"
     "Context: {context}"
 )
 
@@ -134,61 +128,32 @@ def generate_answer(state: MessagesState):
 # Main Code
 ###################
 def main():
-    # Initialize embeddings model
-    embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
+    # Initialize DocumentVectorStore with enhanced metadata
+    print("Initializing vector store...")
+    doc_store = DocumentVectorStore(
+        store_path="tskit_vectorstore_class",
+        embedding_model="text-embedding-3-small",
+        chunk_size=1000,
+        chunk_overlap=200
+    )
 
-    # Load or create vector store
-    vector_store_path = "tskit_vectorstore_class"
-    if os.path.exists(vector_store_path):
-        print(f"Loading existing vector store from '{vector_store_path}'...")
-        vectorstore = FAISS.load_local(
-            vector_store_path,
-            embeddings,
-            allow_dangerous_deserialization=True
-        )
-    else:
-        print(f"Creating new vector store...")
-        loader = TextLoader("data-new.txt")
-        documents = loader.load()
-
-        # Split documents
-        python_splitter = RecursiveCharacterTextSplitter.from_language(
-            language=Language.PYTHON,
-            chunk_size=1000,
-            chunk_overlap=200
-        )
-        tskit_docs = python_splitter.split_documents(documents)
-
-        # Create FAISS index
-        embedding_dim = len(embeddings.embed_query("hello world"))
-        index = faiss.IndexFlatL2(embedding_dim)
-
-        # Initialize empty vector store
-        vectorstore = FAISS(
-            embedding_function=embeddings,
-            index=index,
-            docstore=InMemoryDocstore(),
-            index_to_docstore_id={},
-        )
-
-        # Add documents in batches
-        batch_size = 500
-        for i in range(0, len(tskit_docs), batch_size):
-            batch = tskit_docs[i:i + batch_size]
-            vectorstore.add_documents(batch)
-
-        # Save vector store
-        vectorstore.save_local(vector_store_path)
+    # Load or create vector store (uses smart_loader_enhanced internally)
+    doc_store.load_or_create(document_path="data-new.txt")
 
     # Create retriever
-    retriever = vectorstore.as_retriever()
-    print("Retriever ready.")
+    retriever = doc_store.get_retriever(k=4)
+    print("Retriever ready with enhanced metadata.")
 
 
     # Create retrieval tool
     retriever_tool = create_retriever_tool(
         name="tskit_documentation_retriever",
-        description="Useful for answering questions about the tskit library and its documentation.",
+        description=(
+            "Search the tskit documentation for information about the tskit Python library. "
+            "Use this tool when users ask about tskit concepts (tree sequences, nodes, edges, mutations, sites), "
+            "API functions, methods, classes, usage examples, or any technical questions about tskit. "
+            "Input should be a search query related to tskit."
+        ),
         retriever=retriever,
     )
 
@@ -392,8 +357,38 @@ def main():
         }
     ):
         for node, update in chunk.items():
-            print("Update from node", node)
-            update["messages"][-1].pretty_print()
+            print("="*80)
+            print(f"UPDATE FROM NODE: {node.upper()}")
+            print("="*80)
+
+            # Special handling for retrieve node to show segments clearly
+            if node == "retrieve":
+                last_message = update["messages"][-1]
+                if hasattr(last_message, 'content'):
+                    content = last_message.content
+                    print("\n🔍 RETRIEVED SEGMENTS:\n")
+
+                    # Try to split by common separators used by retrievers
+                    # The retriever tool typically separates docs with \n\n
+                    segments = content.split('\n\n')
+
+                    print(f"Total segments found: {len(segments)}")
+                    print("="*80)
+
+                    for i, segment in enumerate(segments, 1):
+                        if segment.strip():  # Only show non-empty segments
+                            print(f"\n📄 SEGMENT {i}:")
+                            print("-"*80)
+                            print(segment.strip())
+                            print("-"*80)
+
+                    print(f"\n📊 RAW CONTENT LENGTH: {len(content)} characters")
+                    print("="*80)
+                else:
+                    last_message.pretty_print()
+            else:
+                update["messages"][-1].pretty_print()
+
             print("\n\n")
 
 
