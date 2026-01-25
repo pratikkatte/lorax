@@ -524,6 +524,7 @@ async def handle_tree_graph_query(file_path, tree_indices, sparsification=False)
         - global_max_time: float
         - tree_indices: list[int]
     """
+    print("tree_indices", tree_indices);
     ts = await get_or_load_ts(file_path)
     if ts is None:
         return {"error": "Tree sequence not loaded. Please load a file first."}
@@ -535,7 +536,6 @@ async def handle_tree_graph_query(file_path, tree_indices, sparsification=False)
         return build_empty_layout_response(indices)
 
     # Run in thread pool to avoid blocking
-    print("sparsification", sparsification);
     def process_trees():
         return construct_trees_batch(
             ts,

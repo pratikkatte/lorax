@@ -170,11 +170,14 @@ const LoraxDeckGL = forwardRef(({
 
   
   // 6c. Fetch tree data from backend (auto-triggers on displayArray change)
+  // Uses frontend caching to avoid re-fetching already loaded trees
   const { treeData, isLoading: treeDataLoading, error: treeDataError } = useTreeData({
     displayArray,
     queryTreeLayout,
     isConnected,
-    sparsification: displayArray.length > 1  // Enable to reduce data transfer for large trees
+    sparsification: displayArray.length > 1,  // Enable to reduce data transfer for large trees
+    tsconfig,  // For cache invalidation on file change
+    genomicCoords  // For viewport-based cache eviction
   });
 
   // 6c.1. Notify parent when tree loading state changes
