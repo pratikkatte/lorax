@@ -62,7 +62,9 @@ export class TreeCompositeLayer extends CompositeLayer {
       mutPositions,
       mutCount,
       // Highlight data for metadata value clicks
-      highlightData
+      highlightData,
+      // Lineage path data
+      lineageData
     } = processedData;
 
     // Console.log when highlightData is present
@@ -233,6 +235,24 @@ export class TreeCompositeLayer extends CompositeLayer {
         getLineWidth: 1,
         coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
         pickable: false
+      }));
+    }
+
+    // Lineage paths (ancestry from tips to root)
+    if (lineageData && lineageData.length > 0) {
+      layers.push(new PathLayer({
+        id: `${this.props.id}-lineages`,
+        data: lineageData,
+        getPath: d => d.path,
+        getColor: d => d.color || [255, 200, 0, 200],
+        getWidth: 2,
+        fp64: true,
+        widthUnits: 'pixels',
+        coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+        parameters: { depthTest: false },
+        pickable: false,
+        capRounded: false,
+        jointRounded: false
       }));
     }
 

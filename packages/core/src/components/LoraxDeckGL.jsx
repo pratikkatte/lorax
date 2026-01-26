@@ -108,7 +108,8 @@ const LoraxDeckGL = forwardRef(({
     selectedColorBy,
     enabledValues,
     highlightedMetadataValue,
-    searchTags  // Multi-value search tags
+    searchTags,  // Multi-value search tags
+    displayLineagePaths  // Lineage display toggle
   } = useLorax();
 
   // Stabilize population filter to avoid rerunning downstream effects every render
@@ -324,7 +325,7 @@ const LoraxDeckGL = forwardRef(({
 
       console.log('[LoraxDeckGL] Fetching multi-value highlight positions for', searchTags.length, 'values,', visibleTreeIndices.length, 'trees');
 
-      queryMultiValueSearch(selectedColorBy, searchTags, visibleTreeIndices, false)
+      queryMultiValueSearch(selectedColorBy, searchTags, visibleTreeIndices, displayLineagePaths)
         .then(result => {
           // Ignore stale responses
           if (requestId !== multiHighlightRequestRef.current) return;
@@ -342,7 +343,7 @@ const LoraxDeckGL = forwardRef(({
         clearTimeout(multiHighlightDebounceRef.current);
       }
     };
-  }, [searchTags, selectedColorBy, visibleTreeIndices, queryMultiValueSearch, isConnected]);
+  }, [searchTags, selectedColorBy, visibleTreeIndices, queryMultiValueSearch, isConnected, displayLineagePaths]);
 
   // Compute multi-highlight data with world coordinates and per-value colors
   const computedMultiHighlightData = useMemo(() => {
@@ -384,29 +385,122 @@ const LoraxDeckGL = forwardRef(({
     return positions;
   }, [multiHighlightData, localBins, metadataColors, selectedColorBy]);
 
+  // Build nodePositions lookup from treeData for lineage path rendering
+  const nodePositionsLookup = useMemo(() => {
+    if (!treeData?.node_id) return new Map();
+
+    // Map<tree_idx, Map<node_id, {x, y}>>
+    const lookup = new Map();
+    for (let i = 0; i < treeData.node_id.length; i++) {
+      const treeIdx = treeData.tree_idx[i];
+      if (!lookup.has(treeIdx)) {
+        lookup.set(treeIdx, new Map());
+      }
+      lookup.get(treeIdx).set(treeData.node_id[i], {
+        x: treeData.x[i],
+        y: treeData.y[i]
+      });
+    }
+    return lookup;
+  }, [treeData]);
+
+  // Compute lineage path data when displayLineagePaths is enabled
+  const computedLineageData = useMemo(() => {
+    if (!displayLineagePaths || !multiHighlightData?.lineages || !localBins || nodePositionsLookup.size === 0) {
+      return [];
+    }
+
+    const lineages = [];
+    const valueToColor = metadataColors?.[selectedColorBy] || {};
+
+    for (const [value, treeLineages] of Object.entries(multiHighlightData.lineages)) {
+      // Get color for this value, or use lineage-specific color if provided
+      const defaultColor = valueToColor[value] || [255, 200, 0, 255];
+
+      for (const [treeIdxStr, pathsForTree] of Object.entries(treeLineages)) {
+        const treeIdx = parseInt(treeIdxStr, 10);
+        const bin = localBins.get(treeIdx);
+        if (!bin?.modelMatrix) continue;
+
+        const nodePositions = nodePositionsLookup.get(treeIdx);
+        if (!nodePositions) continue;
+
+        const m = bin.modelMatrix;
+        const scaleX = m[0];
+        const scaleY = m[5];
+        const translateX = m[12];
+        const translateY = m[13];
+
+        for (const lineage of pathsForTree) {
+          const pathNodeIds = lineage.path_node_ids;
+          if (!pathNodeIds || pathNodeIds.length < 2) continue;
+
+          // Use lineage-specific color if provided, otherwise use value color
+          const lineageColor = lineage.color || defaultColor;
+
+          // Build L-shaped path coordinates
+          // For each consecutive pair of nodes, create horizontal-then-vertical path
+          const pathCoords = [];
+
+          for (let i = 0; i < pathNodeIds.length; i++) {
+            const nodeId = pathNodeIds[i];
+            // Look up node position from treeData
+            const nodePos = nodePositions.get(nodeId);
+            if (!nodePos) continue;
+
+            // Apply model matrix transform
+            // In tree coordinates: y is horizontal (genomic/time), x is vertical (layout)
+            // worldX = nodePos.y * scaleX + translateX (horizontal position)
+            // worldY = nodePos.x * scaleY + translateY (vertical position)
+            const worldX = nodePos.y * scaleX + translateX;
+            const worldY = nodePos.x * scaleY + translateY;
+
+            if (i > 0 && pathCoords.length > 0) {
+              // Insert L-shaped corner: horizontal then vertical
+              const prevCoord = pathCoords[pathCoords.length - 1];
+              // Move horizontally first (same Y as previous), then vertically to current
+              pathCoords.push([worldX, prevCoord[1]]);
+            }
+            pathCoords.push([worldX, worldY]);
+          }
+
+          if (pathCoords.length >= 2) {
+            lineages.push({
+              path: pathCoords,
+              color: lineageColor,
+              treeIdx,
+              value
+            });
+          }
+        }
+      }
+    }
+
+    return lineages;
+  }, [displayLineagePaths, multiHighlightData, localBins, nodePositionsLookup, metadataColors, selectedColorBy]);
+
   // Merge highlight data into render data
   // Multi-value search takes priority over single-value highlight
   const renderData = useMemo(() => {
     if (!baseRenderData) return null;
 
+    const result = { ...baseRenderData };
+
     // Multi-value search (searchTags) takes priority over single-value highlight
     if (computedMultiHighlightData && computedMultiHighlightData.length > 0) {
-      return {
-        ...baseRenderData,
-        highlightData: computedMultiHighlightData
-      };
+      result.highlightData = computedMultiHighlightData;
+    } else if (computedHighlightData && computedHighlightData.length > 0) {
+      // Fall back to single-value highlight
+      result.highlightData = computedHighlightData;
     }
 
-    // Fall back to single-value highlight
-    if (computedHighlightData && computedHighlightData.length > 0) {
-      return {
-        ...baseRenderData,
-        highlightData: computedHighlightData
-      };
+    // Add lineage data when enabled
+    if (computedLineageData && computedLineageData.length > 0) {
+      result.lineageData = computedLineageData;
     }
 
-    return baseRenderData;
-  }, [baseRenderData, computedHighlightData, computedMultiHighlightData]);
+    return result;
+  }, [baseRenderData, computedHighlightData, computedMultiHighlightData, computedLineageData]);
 
   // 7. Compute genome position tick marks
   const genomePositions = useGenomePositions(genomicCoords);

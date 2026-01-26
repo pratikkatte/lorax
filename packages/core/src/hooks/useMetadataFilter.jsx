@@ -14,7 +14,9 @@ const DISABLED_FILTER_STATE = Object.freeze({
   metadataColors: null,
   setMetadataColors: () => {},
   highlightedMetadataValue: null,
-  setHighlightedMetadataValue: () => {}
+  setHighlightedMetadataValue: () => {},
+  displayLineagePaths: false,
+  setDisplayLineagePaths: () => {}
 });
 
 /**
@@ -45,6 +47,7 @@ function useMetadataFilter({ enabled = false, config = {} }) {
   const [searchTags, setSearchTags] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [highlightedMetadataValue, setHighlightedMetadataValue] = useState(null);
+  const [displayLineagePaths, setDisplayLineagePaths] = useState(false);
 
   // Ref to track loadedMetadata for use in timeout callbacks (avoids stale closure)
   const loadedMetadataRef = useRef(loadedMetadata);
@@ -164,6 +167,10 @@ function useMetadataFilter({ enabled = false, config = {} }) {
       highlightedMetadataValue,
       setHighlightedMetadataValue,
 
+      // Lineage display state
+      displayLineagePaths,
+      setDisplayLineagePaths,
+
       // Derived
       coloryby,
 
@@ -179,6 +186,7 @@ function useMetadataFilter({ enabled = false, config = {} }) {
     searchTags,
     searchTerm,
     highlightedMetadataValue,
+    displayLineagePaths,
     coloryby,
     metadataColors,
     setMetadataColors

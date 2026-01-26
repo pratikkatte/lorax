@@ -26,10 +26,7 @@ export default function InfoFilter({
   treeColors = {},
   setTreeColors,
   hoveredTreeIndex = null,
-  setHoveredTreeIndex,
-  // Info-local state
-  settings = {},
-  setSettings
+  setHoveredTreeIndex
 }) {
   // Get filter state from context (via useMetadataFilter in LoraxProvider)
   const {
@@ -45,7 +42,9 @@ export default function InfoFilter({
     enabledValues = new Set(),
     setEnabledValues,
     highlightedMetadataValue = null,
-    setHighlightedMetadataValue
+    setHighlightedMetadataValue,
+    displayLineagePaths = false,
+    setDisplayLineagePaths
   } = useLorax();
   const [visibleCount, setVisibleCount] = useState(ITEMS_PER_PAGE);
   const [isTreesExpanded, setIsTreesExpanded] = useState(true);
@@ -87,16 +86,13 @@ export default function InfoFilter({
           <span className="text-xs text-gray-500">Display Lineages</span>
           <button
             type="button"
-            className={`w-4 h-4 rounded-full border-2 transition-colors ${settings?.display_lineage_paths
+            className={`w-4 h-4 rounded-full border-2 transition-colors ${displayLineagePaths
               ? 'bg-gray-700 border-gray-700'
               : 'bg-white border-gray-400'
             }`}
             onClick={() => {
-              if (setSettings) {
-                setSettings(prev => ({
-                  ...prev,
-                  display_lineage_paths: !prev?.display_lineage_paths
-                }));
+              if (setDisplayLineagePaths) {
+                setDisplayLineagePaths(prev => !prev);
               }
             }}
             title="Display Lineage Paths"

@@ -40,9 +40,6 @@ const Info = ({
   const sampleDetails = contextSampleDetails || null;
   const tsconfig = contextTsconfig || {};
 
-  // Local state for settings (not passed from parent)
-  const [settings, setSettings] = useState({ display_lineage_paths: false });
-
   // Use mutations hook from core
   const mutationsHook = useMutations({
     genomicValues: genomicCoords,
@@ -141,8 +138,6 @@ const Info = ({
             setTreeColors={setTreeColors}
             hoveredTreeIndex={hoveredTreeIndex}
             setHoveredTreeIndex={setHoveredTreeIndex}
-            settings={settings}
-            setSettings={setSettings}
           />
         )}
       </div>
