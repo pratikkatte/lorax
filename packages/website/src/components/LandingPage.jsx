@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { BsCloudUpload, BsGithub } from "react-icons/bs";
-import { LuTreePine, LuFileText, LuFolder } from "react-icons/lu";
+import { LuFileText, LuFolder } from "react-icons/lu";
 import { BsChevronDown } from "react-icons/bs";
 import ErrorAlert from "./ErrorAlert.jsx";
 import DatasetFiles from "./landing/DatasetFiles.jsx";
@@ -35,9 +35,8 @@ export default function LandingPage({
                 <div className="mx-auto max-w-7xl px-6 py-4 flex items-center justify-between">
                     <div className="flex items-center gap-3">
                         {/* Logo placeholder or image if available in public */}
-                        <div className="w-10 h-10 grid place-items-center bg-slate-100 rounded-full">
-                            {/* <img src="/logo.png" alt="Lorax Logo" className="w-full h-full object-contain" /> */}
-                            <LuTreePine className="text-emerald-600 text-xl" />
+                        <div className="w-10 h-10 grid place-items-center bg-slate-100 rounded-full overflow-hidden">
+                            <img src="/logo.png" alt="Lorax Logo" className="w-full h-full object-contain" />
                         </div>
                         <div className="leading-tight">
                             <h1 className="font-display font-bold text-xl tracking-tight text-slate-900">LORAX</h1>
@@ -67,7 +66,7 @@ export default function LandingPage({
                 )}
 
                 {/* Hero Section */}
-                <section className="mx-auto max-w-7xl px-6 pt-16 pb-12 grid lg:grid-cols-2 gap-16 items-center">
+                <section className="mx-auto max-w-7xl px-6 pt-8 pb-6 grid lg:grid-cols-2 gap-8 items-center">
                     <div className="max-w-xl">
                         <div className="inline-flex items-center gap-2 rounded-full border border-emerald-100 bg-emerald-50/50 px-3 py-1 text-xs font-medium text-emerald-800 backdrop-blur-sm mb-6">
                             <span className="flex h-2 w-2 rounded-full bg-emerald-500"></span>
@@ -112,7 +111,7 @@ export default function LandingPage({
                             <img
                                 src="/lorax-logo.png"
                                 alt="Lorax - Genome Analysis"
-                                className="w-[28rem] h-auto object-contain"
+                                className="w-[22rem] h-auto object-contain"
                             />
                             {upload.isUploading && (
                                 <div className="mt-4 text-sm font-medium text-emerald-600 bg-emerald-50 px-4 py-2 rounded-lg">
@@ -124,8 +123,8 @@ export default function LandingPage({
                 </section>
 
                 {/* Existing Files Section */}
-                <section className="mx-auto max-w-7xl px-6 py-8">
-                    <div className="flex items-center justify-between mb-8">
+                <section className="mx-auto max-w-7xl px-6 py-4">
+                    <div className="flex items-center justify-between mb-4">
                         <h2 className="font-display text-2xl font-bold text-slate-900">Inferred Project Library</h2>
                         <div className="h-px flex-1 bg-slate-200 ml-6"></div>
                     </div>
