@@ -1,6 +1,10 @@
-<<<<<<< HEAD
+# Project-specific
 lorax/data/
 pg.ipynb
+
+# Vector stores (FAISS databases)
+agent/tskit_vectorstore_class/
+**/tskit_vectorstore_class/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
