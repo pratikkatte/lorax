@@ -12,7 +12,7 @@ import tskit
 from lorax.viz.trees_to_taxonium import process_csv
 from lorax.cloud.gcs_utils import get_public_gcs_dict
 from lorax.tree_graph import construct_trees_batch, construct_tree, TreeGraph
-from lorax.csv.layout import build_empty_layout_response
+from lorax.csv.layout import build_empty_layout_response, build_csv_layout_response
 from lorax.utils import (
     ensure_json_dict,
     list_project_files,
@@ -443,11 +443,13 @@ async def handle_tree_graph_query(
 
     ts = ctx.tree_sequence
 
-    # CSV support (minimal): return an empty-but-valid Arrow layout buffer.
-    # This keeps the frontend stable while enabling CSV config/interval workflows.
+    # CSV support: parse Newick strings and build tree layout
     if isinstance(ts, pd.DataFrame):
+        # Get max_branch_length from config (times.values[1])
+        times_values = ctx.config.get("times", {}).get("values", [0.0, 1.0])
+        max_branch_length = float(times_values[1]) if len(times_values) > 1 else 1.0
         indices = [int(t) for t in (tree_indices or [])]
-        return build_empty_layout_response(indices)
+        return build_csv_layout_response(ts, indices, max_branch_length)
 
     # Collect pre-cached TreeGraphs
     pre_cached_graphs = {}

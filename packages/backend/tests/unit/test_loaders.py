@@ -210,6 +210,116 @@ class TestLoaderEdgeCases:
             pytest.skip("msprime not installed")
 
 
+class TestNewickTreeParsing:
+    """Tests for Newick tree parsing and layout computation."""
+
+    def test_parse_simple_newick(self):
+        """Test parsing a simple Newick tree."""
+        from lorax.csv.newick_tree import parse_newick_to_tree
+
+        nwk = "((A:0.1,B:0.2):0.3,C:0.4);"
+        graph = parse_newick_to_tree(nwk, 0.4)
+
+        assert len(graph.node_id) == 5  # 3 tips + 2 internal
+        assert sum(graph.is_tip) == 3  # 3 leaf nodes
+        assert graph.x.min() >= 0.0
+        assert graph.x.max() <= 1.0
+        assert graph.y.min() >= 0.0
+        assert graph.y.max() <= 1.0
+
+    def test_parse_newick_names(self):
+        """Test that leaf names are extracted correctly."""
+        from lorax.csv.newick_tree import parse_newick_to_tree
+
+        nwk = "((A:0.1,B:0.2):0.3,C:0.4);"
+        graph = parse_newick_to_tree(nwk, 0.4)
+
+        names = [n for n in graph.name if n]
+        assert "A" in names
+        assert "B" in names
+        assert "C" in names
+
+    def test_parse_newick_parent_relationships(self):
+        """Test that parent-child relationships are correct."""
+        from lorax.csv.newick_tree import parse_newick_to_tree
+
+        nwk = "((A:0.1,B:0.2):0.3,C:0.4);"
+        graph = parse_newick_to_tree(nwk, 0.4)
+
+        # Root should have parent -1
+        root_mask = graph.parent_id == -1
+        assert sum(root_mask) == 1
+
+        # All other nodes should have valid parents
+        non_roots = graph.parent_id[~root_mask]
+        assert all(p >= 0 for p in non_roots)
+
+    def test_parse_newick_normalization(self):
+        """Test that coordinates are normalized to [0,1]."""
+        from lorax.csv.newick_tree import parse_newick_to_tree
+
+        # Tree with branch lengths up to 0.5
+        nwk = "((A:0.1,B:0.2):0.3,C:0.5);"
+        graph = parse_newick_to_tree(nwk, 0.5)
+
+        # Y should be normalized by max_branch_length
+        assert graph.y.max() <= 1.0
+
+        # X should be normalized based on tip count
+        assert graph.x.min() == 0.0
+        assert graph.x.max() == 1.0
+
+    def test_build_csv_layout_response(self, temp_dir):
+        """Test building layout response for CSV trees."""
+        import struct
+        import pyarrow as pa
+        from lorax.csv.layout import build_csv_layout_response
+
+        # Create a simple CSV dataframe
+        df = pd.DataFrame({
+            "genomic_positions": [0, 1000, 2000],
+            "newick": [
+                "((A:0.1,B:0.2):0.3,C:0.4);",
+                "((A:0.2,B:0.1):0.3,C:0.4);",
+                "((A:0.1,C:0.2):0.3,B:0.4);"
+            ]
+        })
+
+        result = build_csv_layout_response(df, [0, 1, 2], 0.5)
+
+        # Check response structure
+        assert "buffer" in result
+        assert "global_min_time" in result
+        assert "global_max_time" in result
+        assert "tree_indices" in result
+
+        # Check buffer format
+        buffer = result["buffer"]
+        node_len = struct.unpack("<I", buffer[:4])[0]
+        node_bytes = buffer[4:4+node_len]
+
+        # Parse PyArrow table
+        reader = pa.ipc.open_stream(node_bytes)
+        table = reader.read_all()
+
+        # Should have nodes from all 3 trees
+        assert len(table) == 15  # 5 nodes per tree * 3 trees
+        assert set(table["tree_idx"].to_pylist()) == {0, 1, 2}
+
+    def test_build_csv_layout_response_empty(self, temp_dir):
+        """Test building layout response with empty tree indices."""
+        from lorax.csv.layout import build_csv_layout_response
+
+        df = pd.DataFrame({
+            "genomic_positions": [0],
+            "newick": ["((A:0.1,B:0.2):0.3,C:0.4);"]
+        })
+
+        result = build_csv_layout_response(df, [], 0.5)
+
+        assert result["tree_indices"] == []
+
+
 class TestFileTypeDetection:
     """Tests for file type detection."""
 
