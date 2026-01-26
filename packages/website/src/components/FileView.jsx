@@ -58,6 +58,8 @@ function FileView() {
   const [treeColors, setTreeColors] = useState({});
   // Hovered tree index (for list-to-polygon hover sync)
   const [hoveredTreeIndex, setHoveredTreeIndex] = useState(null);
+  // Polygon fill color [r, g, b, a]
+  const [polygonFillColor, setPolygonFillColor] = useState([145, 194, 244, 46]);
 
   // Hover tooltip state (rendered in website, not in core)
   const [hoverTooltip, setHoverTooltip] = useState(null); // { kind, x, y, title, rows[] }
@@ -291,7 +293,7 @@ function FileView() {
               onTreeLoadingChange={handleTreeLoadingChange}
               onVisibleTreesChange={handleVisibleTreesChange}
               hoveredTreeIndex={hoveredTreeIndex}
-              polygonOptions={{ treeColors }}
+              polygonOptions={{ treeColors, fillColor: polygonFillColor }}
               onPolygonClick={handlePolygonClick}
               onTipHover={(tip, info, event) => {
                 if (!tip) {
@@ -475,7 +477,11 @@ function FileView() {
           className={`fixed top-0 right-8 w-[25%] min-w-[320px] h-full z-50 shadow-xl transition-transform duration-300 ease-in-out ${showSettings ? 'translate-x-0' : 'translate-x-full'
             }`}
         >
-          <Settings setShowSettings={setShowSettings} />
+          <Settings
+            setShowSettings={setShowSettings}
+            polygonFillColor={polygonFillColor}
+            setPolygonFillColor={setPolygonFillColor}
+          />
         </div>
       </div>
     </div>
