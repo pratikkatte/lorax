@@ -1,10 +1,9 @@
 import React, { useState } from "react";
 import { BsCloudUpload, BsGithub } from "react-icons/bs";
-import { LuTreePine, LuActivity, LuSearch, LuFileText, LuFolder } from "react-icons/lu";
+import { LuTreePine, LuFileText, LuFolder } from "react-icons/lu";
 import { BsChevronDown } from "react-icons/bs";
 import ErrorAlert from "./ErrorAlert.jsx";
 import DatasetFiles from "./landing/DatasetFiles.jsx";
-import FeatureCard from "./landing/FeatureCard.jsx";
 
 // Minimal Badge Component
 function Badge({ children, pill }) {
@@ -107,14 +106,14 @@ export default function LandingPage({
                         <input {...upload.getInputProps()} />
                     </div>
 
-                    {/* Fallback Illustration or Logo */}
+                    {/* Lorax Logo - Drag & Drop Area */}
                     <div className="relative group" {...upload.getDropzoneProps()}>
-                        <div className="flex flex-col items-center justify-center p-6 bg-white rounded-3xl shadow-sm min-h-[400px]">
-                            {/* Replaced Image with text/icon if header logo is missing, or keep image if assets copied */}
-                            {/* <img src="/lorax-logo.png" ... /> */}
-                            <LuTreePine className="text-emerald-500 text-[10rem] opacity-20" />
-                            <p className="mt-4 text-slate-400 font-medium">Drag & Drop files here</p>
-
+                        <div className="flex flex-col items-center justify-center p-6 bg-white rounded-3xl shadow-sm">
+                            <img
+                                src="/lorax-logo.png"
+                                alt="Lorax - Genome Analysis"
+                                className="w-[28rem] h-auto object-contain"
+                            />
                             {upload.isUploading && (
                                 <div className="mt-4 text-sm font-medium text-emerald-600 bg-emerald-50 px-4 py-2 rounded-lg">
                                     {upload.uploadStatus}
@@ -188,32 +187,6 @@ export default function LandingPage({
                             );
                         })}
                     </ul>
-                </section>
-
-
-                {/* Features */}
-                <section className="mx-auto max-w-7xl px-6 py-12 border-t border-slate-200/60">
-                    <div className="text-center mb-12">
-                        <h2 className="font-display text-3xl font-bold text-slate-900 mb-4">Powerful Features for Genetics</h2>
-                        <p className="text-slate-500 max-w-2xl mx-auto">Designed for researchers and bioinformaticians to visualize complex evolutionary histories.</p>
-                    </div>
-                    <div className="grid md:grid-cols-3 gap-8">
-                        <FeatureCard
-                            icon={<LuTreePine />}
-                            title="Interactive Topologies"
-                            desc="Seamlessly scroll through thousands of marginal trees."
-                        />
-                        <FeatureCard
-                            icon={<LuSearch />}
-                            title="Deep Metadata Inspection"
-                            desc="Click on any node to reveal population data and mutations."
-                        />
-                        <FeatureCard
-                            icon={<LuActivity />}
-                            title="Recombination Events"
-                            desc="Track recombination breakpoints across the genome."
-                        />
-                    </div>
                 </section>
             </main>
 
