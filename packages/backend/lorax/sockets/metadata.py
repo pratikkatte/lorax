@@ -36,10 +36,23 @@ def register_metadata_events(sio):
                 return
 
             if is_csv_session_file(session.file_path):
-                await sio.emit("metadata-key-result", {
-                    "error": "Metadata is not supported for CSV yet."
-                }, to=sid)
-                return
+                key = data.get("key")
+                if key == "sample":
+                    ctx = await get_file_context(session.file_path)
+                    if ctx is None:
+                        await sio.emit("metadata-key-result", {"error": "Failed to load CSV"}, to=sid)
+                        return
+                    # sample_names is {name: {"sample_name": name}, ...}
+                    sample_names = ctx.config.get("sample_names", {})
+                    # Return {name: name} like tskit's "sample" key
+                    result = {name: name for name in sample_names.keys()}
+                    await sio.emit("metadata-key-result", {"key": key, "data": result}, to=sid)
+                    return
+                else:
+                    await sio.emit("metadata-key-result", {
+                        "error": f"Metadata key '{key}' is not supported for CSV files."
+                    }, to=sid)
+                    return
 
             key = data.get("key")
             if not key:
@@ -80,10 +93,23 @@ def register_metadata_events(sio):
                 return
 
             if is_csv_session_file(session.file_path):
-                await sio.emit("search-result", {
-                    "error": "Metadata search is not supported for CSV yet."
-                }, to=sid)
-                return
+                key = data.get("key")
+                value = data.get("value")
+                if key == "sample":
+                    ctx = await get_file_context(session.file_path)
+                    if ctx is None:
+                        await sio.emit("search-result", {"error": "Failed to load CSV"}, to=sid)
+                        return
+                    sample_names = ctx.config.get("sample_names", {})
+                    # Return matching sample names (exact match)
+                    matching = [name for name in sample_names.keys() if name == value]
+                    await sio.emit("search-result", {"key": key, "value": value, "samples": matching}, to=sid)
+                    return
+                else:
+                    await sio.emit("search-result", {
+                        "error": f"Metadata key '{key}' is not supported for CSV files."
+                    }, to=sid)
+                    return
 
             key = data.get("key")
             value = data.get("value")
@@ -137,10 +163,42 @@ def register_metadata_events(sio):
                 return
 
             if is_csv_session_file(session.file_path):
-                await sio.emit("metadata-array-result", {
-                    "error": "Metadata arrays are not supported for CSV yet."
-                }, to=sid)
-                return
+                key = data.get("key")
+                if key == "sample":
+                    ctx = await get_file_context(session.file_path)
+                    if ctx is None:
+                        await sio.emit("metadata-array-result", {"error": "Failed to load CSV"}, to=sid)
+                        return
+
+                    sample_names = ctx.config.get("sample_names", {})
+                    names_list = list(sample_names.keys())
+
+                    # Build PyArrow array where each sample maps to its own unique index
+                    import numpy as np
+                    import pyarrow as pa
+
+                    unique_values = names_list
+                    indices = np.arange(len(names_list), dtype=np.uint32)
+
+                    # Create Arrow IPC buffer
+                    table = pa.table({'idx': pa.array(indices, type=pa.uint32())})
+                    sink = pa.BufferOutputStream()
+                    writer = pa.ipc.new_stream(sink, table.schema)
+                    writer.write_table(table)
+                    writer.close()
+
+                    await sio.emit("metadata-array-result", {
+                        "key": key,
+                        "unique_values": unique_values,
+                        "sample_node_ids": list(range(len(names_list))),  # Sequential indices for CSV
+                        "buffer": sink.getvalue().to_pybytes()
+                    }, to=sid)
+                    return
+                else:
+                    await sio.emit("metadata-array-result", {
+                        "error": f"Metadata key '{key}' is not supported for CSV files."
+                    }, to=sid)
+                    return
 
             key = data.get("key")
             if not key:
