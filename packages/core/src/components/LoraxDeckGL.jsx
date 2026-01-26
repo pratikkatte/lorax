@@ -14,6 +14,7 @@ import { useTimePositions } from '../hooks/useTimePositions.jsx';
 import { useTreePolygons } from '../hooks/useTreePolygons.jsx';
 import TreePolygonOverlay from './TreePolygonOverlay.jsx';
 import { mergeWithDefaults, validateViewConfig, getEnabledViews } from '../utils/deckViewConfig.js';
+import { getSVG } from '../utils/deckglToSvg.js';
 
 function pointInPolygon(point, vs) {
   // Ray-casting algorithm: point = [x,y], vs = [[x,y], ...]
@@ -635,7 +636,29 @@ const LoraxDeckGL = forwardRef(({
     polygons,
     hoveredPolygon,
     setHoveredPolygon,
-    polygonsReady
+    polygonsReady,
+    // SVG capture for screenshot functionality
+    captureSVG: (polygonColor = [145, 194, 244, 46]) => {
+      const deck = deckRef.current?.deck;
+      if (!deck) {
+        console.warn('[captureSVG] No deck instance available');
+        return;
+      }
+      // Extract polygon vertex arrays from current polygons state
+      const polygonVertices = polygons?.map(p => p.vertices) || [];
+      const svg = getSVG(deck, polygonVertices, polygonColor);
+      if (svg) {
+        const blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = 'lorax-capture.svg';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      }
+    }
   }), [viewState, views, viewReset, xzoom, yzoom, genomicCoords, setGenomicCoords, coordsReady, localBins, displayArray, showingAllTrees, treeData, treeDataLoading, treeDataError, polygons, hoveredPolygon, setHoveredPolygon, polygonsReady]);
 
   return (
