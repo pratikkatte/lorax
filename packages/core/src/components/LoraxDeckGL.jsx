@@ -10,6 +10,7 @@ import { useLocalData } from '../hooks/useLocalData.jsx';
 import { useTreeData } from '../hooks/useTreeData.jsx';
 import { useRenderData } from '../hooks/useRenderData.jsx';
 import { useGenomePositions } from '../hooks/useGenomePositions.jsx';
+import { useTimePositions } from '../hooks/useTimePositions.jsx';
 import { useTreePolygons } from '../hooks/useTreePolygons.jsx';
 import TreePolygonOverlay from './TreePolygonOverlay.jsx';
 import { mergeWithDefaults, validateViewConfig, getEnabledViews } from '../utils/deckViewConfig.js';
@@ -126,6 +127,7 @@ const LoraxDeckGL = forwardRef(({
     views,
     viewState,
     handleViewStateChange: internalHandleViewStateChange,
+    decksize,
     setDecksize,
     xzoom,
     yzoom,
@@ -505,12 +507,29 @@ const LoraxDeckGL = forwardRef(({
   // 7. Compute genome position tick marks
   const genomePositions = useGenomePositions(genomicCoords);
 
+  // 7b. Compute tree-time view height for time positions
+  const treeTimeHeight = useMemo(() => {
+    if (!decksize?.height) return null;
+    const heightStr = viewConfig.treeTime?.height || '97%';
+    const percent = parseFloat(heightStr) / 100;
+    return decksize.height * percent;
+  }, [decksize?.height, viewConfig.treeTime?.height]);
+
+  // 7c. Compute time position tick marks for tree-time view
+  const timePositions = useTimePositions({
+    minTime: treeData?.global_min_time,
+    maxTime: treeData?.global_max_time,
+    viewState: viewState?.['tree-time'],
+    viewHeight: treeTimeHeight
+  });
+
   // 8. Layers for enabled views
   const { layers, layerFilter } = useDeckLayers({
     enabledViews,
     globalBpPerUnit,
     visibleIntervals,
     genomePositions,
+    timePositions,
     renderData,
     // Tree interactions
     onTipHover,

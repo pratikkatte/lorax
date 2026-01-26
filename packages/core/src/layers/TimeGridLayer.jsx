@@ -26,7 +26,7 @@ export class TimeGridLayer extends CompositeLayer {
   renderLayers() {
     const { data, viewId } = this.props;
 
-    if (!Object.keys(data).length) return [];
+    if (!Array.isArray(data) || data.length === 0) return [];
 
     const treeSpacing = 0;
     const modelMatrix = new Matrix4().translate([treeSpacing, 0, 0]);
@@ -35,8 +35,8 @@ export class TimeGridLayer extends CompositeLayer {
       new TextLayer({
         id: `${this.props.id}-labels`,
         data,
-        getPosition: d => [0.5, d.position],
-        getText: d => d.text.toString(),
+        getPosition: d => [0.5, d.y],
+        getText: d => d.text,
         getColor: [0, 0, 0, 255],
         sizeUnits: 'pixels',
         getSize: 12,

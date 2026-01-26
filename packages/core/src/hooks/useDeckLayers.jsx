@@ -13,6 +13,7 @@ import { TreeCompositeLayer } from '../layers/TreeCompositeLayer.jsx';
  * @param {number} params.globalBpPerUnit - Base pairs per coordinate unit (optional)
  * @param {number[]} params.visibleIntervals - Array of visible interval positions in bp
  * @param {number[]} params.genomePositions - Array of genome position tick marks in bp
+ * @param {Array} params.timePositions - Array of time tick marks {time, y, text}
  * @param {Object} params.renderData - Pre-computed render data for tree visualization
  * @returns {Object} { layers, layerFilter }
  */
@@ -21,6 +22,7 @@ export function useDeckLayers({
   globalBpPerUnit = null,
   visibleIntervals = [],
   genomePositions = [],
+  timePositions = [],
   renderData = null,
   // Tree interactions (UI handled by packages/website)
   onTipHover,
@@ -75,7 +77,7 @@ export function useDeckLayers({
     if (enabledViews.includes('tree-time')) {
       result.push(new TimeGridLayer({
         id: 'tree-time-ticks',
-        data: [], // Empty initially
+        data: timePositions,
         viewId: 'tree-time',
       }));
     }
@@ -145,7 +147,7 @@ export function useDeckLayers({
     }
 
     return result;
-  }, [enabledViews, globalBpPerUnit, visibleIntervals, genomePositions, renderData, hoveredEdgeIndex, onTipHover, onTipClick, onEdgeHover, onEdgeClick]);
+  }, [enabledViews, globalBpPerUnit, visibleIntervals, genomePositions, timePositions, renderData, hoveredEdgeIndex, onTipHover, onTipClick, onEdgeHover, onEdgeClick]);
 
   return { layers, layerFilter };
 }
