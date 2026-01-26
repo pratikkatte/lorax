@@ -88,6 +88,7 @@ export function useRenderData({
           tree_idx: treeData.tree_idx,
           x: treeData.x,
           y: treeData.y,
+          name: treeData.name,
           // Mutation fields
           mut_x: treeData.mut_x,
           mut_y: treeData.mut_y,
@@ -152,6 +153,7 @@ export function useRenderData({
         tree_idx: treeData.tree_idx,
         x: treeData.x,
         y: treeData.y,
+        name: treeData.name,
         // Mutation fields
         mut_x: treeData.mut_x,
         mut_y: treeData.mut_y,

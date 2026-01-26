@@ -115,6 +115,6 @@ def build_csv_config(
         "filename": str(file_path).split("/")[-1],
         "sample_names": sample_names_map,
         # Present but empty for compatibility; CSV doesn’t have these yet.
-        "metadata_schema": {},
+        "metadata_schema": {"metadata_keys": ["sample"]},
     }
 

@@ -41,10 +41,11 @@ function ensureBuffer(currentBuffer, requiredSize, ArrayType) {
  * @param {Array} tree_idx - Tree indices from backend (may be 0-indexed or global)
  * @param {Array} x - X coordinates
  * @param {Array} y - Y coordinates
+ * @param {Array} name - Node names (for tips)
  * @param {Array} displayArray - Global tree indices that were requested (for mapping)
  * @returns {Map} Map of global tree index -> nodes
  */
-function groupNodesByTree(node_id, parent_id, is_tip, tree_idx, x, y, displayArray) {
+function groupNodesByTree(node_id, parent_id, is_tip, tree_idx, x, y, name, displayArray) {
   const treeMap = new Map();
   const length = node_id.length;
 
@@ -84,7 +85,8 @@ function groupNodesByTree(node_id, parent_id, is_tip, tree_idx, x, y, displayArr
       parent_id: parent_id[i],
       is_tip: is_tip[i],
       x: x[i],  // time-based [0,1], root=0, tips=1
-      y: y[i]   // genealogy-based [0,1]
+      y: y[i],  // genealogy-based [0,1]
+      name: name?.[i] || ''
     });
   }
 
@@ -158,6 +160,7 @@ function getTipColor(nodeId, metadataArrays, metadataColors, populationFilter, d
  * @param {Array} data.tree_idx - Tree index for each node
  * @param {Array} data.x - X coordinates (time-based [0,1])
  * @param {Array} data.y - Y coordinates (genealogy-based [0,1])
+ * @param {Array} data.name - Node names (for tips)
  * @param {Array} data.mut_x - Mutation X coordinates
  * @param {Array} data.mut_y - Mutation Y coordinates
  * @param {Array} data.mut_tree_idx - Mutation tree indices
@@ -170,7 +173,7 @@ function getTipColor(nodeId, metadataArrays, metadataColors, populationFilter, d
  */
 function computeRenderArrays(data) {
   const {
-    node_id, parent_id, is_tip, tree_idx, x, y,
+    node_id, parent_id, is_tip, tree_idx, x, y, name,
     mut_x, mut_y, mut_tree_idx,
     modelMatrices, displayArray, metadataArrays, metadataColors, populationFilter
   } = data;
@@ -203,7 +206,7 @@ function computeRenderArrays(data) {
   }
 
   // Group nodes by tree (with mapping from backend's tree_idx to global indices)
-  const treeNodesMap = groupNodesByTree(node_id, parent_id, is_tip, tree_idx, x, y, displayArray);
+  const treeNodesMap = groupNodesByTree(node_id, parent_id, is_tip, tree_idx, x, y, name, displayArray);
 
   // Group mutations by tree (simplified: only x, y, tree_idx)
   const treeMutationsMap = groupMutationsByTree(mut_x, mut_y, mut_tree_idx);
@@ -260,6 +263,7 @@ function computeRenderArrays(data) {
         y: n.y,
         is_tip: n.is_tip,
         parent_id: n.parent_id,
+        name: n.name,
         children: []
       });
     }
@@ -337,7 +341,8 @@ function computeRenderArrays(data) {
         tipData.push({
           node_id: node.node_id,
           tree_idx: treeIdx,
-          position: [tipX, tipY]
+          position: [tipX, tipY],
+          name: node.name
         });
       }
     }

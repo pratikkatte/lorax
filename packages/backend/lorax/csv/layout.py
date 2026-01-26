@@ -29,6 +29,7 @@ def build_empty_tree_layout_arrow_ipc() -> bytes:
             "x": pa.array([], type=pa.float32()),
             "y": pa.array([], type=pa.float32()),
             "time": pa.array([], type=pa.float32()),
+            "name": pa.array([], type=pa.string()),
         }
     )
     sink = pa.BufferOutputStream()
@@ -76,6 +77,7 @@ def build_csv_layout_response(
     all_tree_idx: List[np.ndarray] = []
     all_x: List[np.ndarray] = []
     all_y: List[np.ndarray] = []
+    all_names: List[np.ndarray] = []
 
     processed_indices: List[int] = []
 
@@ -107,6 +109,7 @@ def build_csv_layout_response(
         all_tree_idx.append(np.full(n, tree_idx, dtype=np.int32))
         all_x.append(graph.y.astype(np.float32))  # SWAP: time -> x
         all_y.append(graph.x.astype(np.float32))  # SWAP: layout -> y
+        all_names.append(np.array(graph.name, dtype=object))
 
         processed_indices.append(tree_idx)
 
@@ -124,6 +127,7 @@ def build_csv_layout_response(
             "tree_idx": pa.array(np.concatenate(all_tree_idx), type=pa.int32()),
             "x": pa.array(np.concatenate(all_x), type=pa.float32()),
             "y": pa.array(np.concatenate(all_y), type=pa.float32()),
+            "name": pa.array(np.concatenate(all_names), type=pa.string()),
         }
     )
 

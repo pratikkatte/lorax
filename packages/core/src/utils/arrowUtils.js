@@ -24,6 +24,7 @@ export function parseTreeLayoutBuffer(buffer) {
       x: [],
       y: [],
       time: [],
+      name: [],
       // Mutations: only x, y, tree_idx
       mut_x: [],
       mut_y: [],
@@ -54,6 +55,7 @@ export function parseTreeLayoutBuffer(buffer) {
     x: Array.from(nodeTable.getChild('x')?.toArray() || []),
     y: Array.from(nodeTable.getChild('y')?.toArray() || []),
     time: Array.from(nodeTable.getChild('time')?.toArray() || []),
+    name: Array.from(nodeTable.getChild('name')?.toArray() || []),
     // Mutation fields from mutTable (simplified: only x, y, tree_idx)
     mut_x: Array.from(mutTable?.getChild('mut_x')?.toArray() || []),
     mut_y: Array.from(mutTable?.getChild('mut_y')?.toArray() || []),
@@ -72,6 +74,7 @@ export const EMPTY_TREE_LAYOUT = {
   x: [],
   y: [],
   time: [],
+  name: [],
   // Mutation fields (simplified: only x, y, tree_idx)
   mut_x: [],
   mut_y: [],
