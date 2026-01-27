@@ -14,6 +14,19 @@ class CsvConfigOptions:
 
 
 REQUIRED_COLUMNS = ("genomic_positions", "newick")
+MAX_BRANCH_COL = "max_branch_length"
+
+
+def _dedupe_preserve_order(values: List[Any]) -> List[str]:
+    seen = set()
+    out: List[str] = []
+    for v in values:
+        s = str(v)
+        if s in seen:
+            continue
+        seen.add(s)
+        out.append(s)
+    return out
 
 
 def _validate_csv_df(df: pd.DataFrame) -> None:
@@ -50,6 +63,46 @@ def _compute_intervals(genomic_positions: List[int], window_size: int) -> List[i
     return intervals
 
 
+def _is_empty_value(value: Any) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, float) and pd.isna(value):
+        return True
+    if isinstance(value, str) and value.strip() == "":
+        return True
+    return False
+
+
+def extract_csv_metadata(df: pd.DataFrame) -> Dict[str, List[str]]:
+    """Extract file-level metadata from a CSV DataFrame.
+
+    Metadata columns are all columns after max_branch_length. File-level metadata
+    values come only from metadata-only rows (rows with empty tree columns).
+    """
+    if MAX_BRANCH_COL not in df.columns:
+        return {}
+
+    max_idx = list(df.columns).index(MAX_BRANCH_COL)
+    tree_cols = list(df.columns[: max_idx + 1])
+    metadata_cols = list(df.columns[max_idx + 1 :])
+
+    if not metadata_cols:
+        return {}
+
+    file_level: Dict[str, List[str]] = {c: [] for c in metadata_cols}
+
+    for _, row in df.iterrows():
+        if any(not _is_empty_value(row[col]) for col in tree_cols):
+            continue
+        for col in metadata_cols:
+            value = row[col]
+            if _is_empty_value(value):
+                continue
+            file_level[col].append(str(value))
+
+    return file_level
+
+
 def build_csv_config(
     df: pd.DataFrame,
     file_path: str,
@@ -69,6 +122,7 @@ def build_csv_config(
     options = options or CsvConfigOptions()
 
     _validate_csv_df(df)
+    file_metadata = extract_csv_metadata(df)
     df2 = _sorted_reset(df)
 
     # Compute max branch length and sample names (best-effort, lightweight).
@@ -105,7 +159,15 @@ def build_csv_config(
     start = max(0, midpoint - window_size / 2.0)
     end = min(genome_length, midpoint + window_size / 2.0)
 
-    sample_names_map: Dict[str, Dict[str, Any]] = {str(s): {"sample_name": s} for s in samples_set}
+    # Build a deterministic, file-level sample order for stable tip node IDs across trees.
+    # Prefer explicit file metadata (if provided), otherwise derive from all Newicks.
+    samples_list_meta = file_metadata.get("samples", [])
+    if samples_list_meta:
+        samples_order = _dedupe_preserve_order(samples_list_meta)
+    else:
+        samples_order = sorted(str(s) for s in samples_set)
+
+    sample_names_map = {str(s): {"sample_name": s} for s in samples_order}
 
     return {
         "genome_length": genome_length,
@@ -114,7 +176,9 @@ def build_csv_config(
         "intervals": intervals,
         "filename": str(file_path).split("/")[-1],
         "sample_names": sample_names_map,
+        "samples": samples_order,
         # Present but empty for compatibility; CSV doesn’t have these yet.
-        "metadata_schema": {"metadata_keys": ["sample"]},
+        "metadata_schema": {
+            "metadata_keys": list(file_metadata.keys()) if file_metadata else ["sample"]
+        },
     }
-

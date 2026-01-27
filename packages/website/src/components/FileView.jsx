@@ -306,7 +306,7 @@ function FileView() {
                   title: 'Tip',
                   rows: [
                     { k: 'Tree', v: tip.tree_idx },
-                    { k: 'Name', v: tip.name || tip.node_id },
+                    { k: 'Node ID', v: tip.node_id || tip.node_id },
                     ...(selectedColorByLabel ? [{ k: selectedColorByLabel, v: value ?? '-' }] : [])
                   ]
                 }, info, event);

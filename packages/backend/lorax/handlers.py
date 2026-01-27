@@ -449,7 +449,8 @@ async def handle_tree_graph_query(
         times_values = ctx.config.get("times", {}).get("values", [0.0, 1.0])
         max_branch_length = float(times_values[1]) if len(times_values) > 1 else 1.0
         indices = [int(t) for t in (tree_indices or [])]
-        return build_csv_layout_response(ts, indices, max_branch_length)
+        samples_order = ctx.config.get("samples") or []
+        return build_csv_layout_response(ts, indices, max_branch_length, samples_order=samples_order)
 
     # Collect pre-cached TreeGraphs
     pre_cached_graphs = {}

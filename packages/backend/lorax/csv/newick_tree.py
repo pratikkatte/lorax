@@ -12,7 +12,7 @@ Coordinate system:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List
+from typing import List, Optional
 
 import numpy as np
 
@@ -43,7 +43,11 @@ class NewickTreeGraph:
     y: np.ndarray  # float32, normalized time
 
 
-def parse_newick_to_tree(newick_str: str, max_branch_length: float) -> NewickTreeGraph:
+def parse_newick_to_tree(
+    newick_str: str,
+    max_branch_length: float,
+    samples_order: Optional[List[str]] = None,
+) -> NewickTreeGraph:
     """Parse Newick string and compute x,y coordinates.
 
     Uses ete3 to parse the Newick string, then computes layout coordinates
@@ -61,11 +65,9 @@ def parse_newick_to_tree(newick_str: str, max_branch_length: float) -> NewickTre
     # Parse with ete3 - format=1 includes branch lengths and internal node names
     tree = Tree(newick_str, format=1)
 
-    # Assign sequential node IDs via post-order traversal
-    nodes = []
-    for node in tree.traverse("postorder"):
-        node.add_feature("node_id", len(nodes))
-        nodes.append(node)
+    # Assign traversal order via post-order traversal
+    nodes = list(tree.traverse("postorder"))
+    node_index = {node: idx for idx, node in enumerate(nodes)}
 
     num_nodes = len(nodes)
 
@@ -76,21 +78,45 @@ def parse_newick_to_tree(newick_str: str, max_branch_length: float) -> NewickTre
     branch_length = np.zeros(num_nodes, dtype=np.float32)
     name = [""] * num_nodes
 
+    assigned_ids = {}
+    next_id = 0
+    if samples_order:
+        sample_id_map = {str(name): idx for idx, name in enumerate(samples_order)}
+        for node in nodes:
+            if node.is_leaf():
+                node_name = node.name if node.name else ""
+                if node_name not in sample_id_map:
+                    raise ValueError(
+                        f"Leaf sample name '{node_name}' not found in samples_order. "
+                        "Ensure CSV config provides a complete, file-level samples list."
+                    )
+                assigned_ids[node] = sample_id_map[node_name]
+        next_id = len(samples_order)
+        for node in nodes:
+            if not node.is_leaf():
+                assigned_ids[node] = next_id
+                next_id += 1
+    else:
+        for node in nodes:
+            assigned_ids[node] = next_id
+            next_id += 1
+
     for node in nodes:
-        idx = node.node_id
+        idx = node_index[node]
         if node.up is not None:
-            parent_id[idx] = node.up.node_id
+            parent_id[idx] = assigned_ids[node.up]
         is_tip[idx] = node.is_leaf()
         branch_length[idx] = node.dist if node.dist else 0.0
         name[idx] = node.name if node.name else ""
+        node_id[idx] = assigned_ids[node]
 
     # Compute y (time): cumulative distance from root, normalized
     # Root at y=0, tips at y=max_cumulative_distance
     y = np.zeros(num_nodes, dtype=np.float32)
     for node in tree.traverse("preorder"):  # Root first
-        idx = node.node_id
+        idx = node_index[node]
         if node.up is not None:
-            parent_idx = node.up.node_id
+            parent_idx = node_index[node.up]
             y[idx] = y[parent_idx] + branch_length[idx]
 
     # Normalize y to [0,1] using max_branch_length
@@ -106,12 +132,12 @@ def parse_newick_to_tree(newick_str: str, max_branch_length: float) -> NewickTre
     tip_counter = 0
 
     for node in tree.traverse("postorder"):
-        idx = node.node_id
+        idx = node_index[node]
         if node.is_leaf():
             x[idx] = tip_counter
             tip_counter += 1
         else:
-            child_xs = [x[child.node_id] for child in node.children]
+            child_xs = [x[node_index[child]] for child in node.children]
             x[idx] = (min(child_xs) + max(child_xs)) / 2.0
 
     # Normalize x to [0,1]
