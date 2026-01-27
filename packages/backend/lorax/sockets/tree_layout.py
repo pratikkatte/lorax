@@ -4,7 +4,7 @@ Tree layout event handlers for Lorax Socket.IO.
 Handles process_postorder_layout and cache_trees events.
 """
 
-from lorax.context import tree_graph_cache
+from lorax.context import tree_graph_cache, csv_tree_graph_cache
 from lorax.handlers import handle_tree_graph_query, ensure_trees_cached
 from lorax.sockets.decorators import require_session
 from lorax.sockets.utils import is_csv_session_file
@@ -47,6 +47,7 @@ def register_tree_layout_events(sio):
                 sparsification=sparsification,
                 session_id=lorax_sid,
                 tree_graph_cache=tree_graph_cache,
+                csv_tree_graph_cache=csv_tree_graph_cache,
                 actual_display_array=actual_display_array
             )
 

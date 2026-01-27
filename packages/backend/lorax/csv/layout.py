@@ -54,6 +54,7 @@ def build_csv_layout_response(
     tree_indices: List[int],
     max_branch_length: float,
     samples_order: List[str] | None = None,
+    pre_parsed_graphs: Dict[int, Any] | None = None,
 ) -> Dict[str, Any]:
     """Build PyArrow IPC buffer for CSV trees.
 
@@ -91,16 +92,18 @@ def build_csv_layout_response(
         if pd.isna(newick_str):
             continue
 
-        try:
-            graph = parse_newick_to_tree(
-                str(newick_str),
-                max_branch_length,
-                samples_order=samples_order,
-            )
-        except Exception as e:
-            # Log error but continue with other trees
-            print(f"Failed to parse Newick for tree {tree_idx}: {e}")
-            continue
+        graph = pre_parsed_graphs.get(tree_idx) if pre_parsed_graphs else None
+        if graph is None:
+            try:
+                graph = parse_newick_to_tree(
+                    str(newick_str),
+                    max_branch_length,
+                    samples_order=samples_order,
+                )
+            except Exception as e:
+                # Log error but continue with other trees
+                print(f"Failed to parse Newick for tree {tree_idx}: {e}")
+                continue
 
         n = len(graph.node_id)
         if n == 0:

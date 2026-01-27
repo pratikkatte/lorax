@@ -351,6 +351,46 @@ class TestNodeSearchEvents:
             assert len(results) >= 0
 
     @pytest.mark.asyncio
+    async def test_search_nodes_csv(self, socket_harness, mock_sio, session_manager_memory, temp_dir):
+        """CSV: search_nodes should return tip node_ids for sample names (cached Newick graphs)."""
+        from lorax.sockets import register_socket_events
+
+        # Minimal Newick-per-row CSV expected by lorax.csv.config/build_csv_config
+        csv_path = temp_dir / "test_newick.csv"
+        csv_path.write_text(
+            "genomic_positions,newick\n"
+            "0,\"(A:1,B:1):0;\"\n"
+            "50000,\"(A:1,B:1):0;\"\n"
+        )
+
+        session = await session_manager_memory.create_session()
+        session.file_path = str(csv_path)
+        await session_manager_memory.save_session(session)
+
+        with patch("lorax.sockets.session_manager", session_manager_memory):
+            register_socket_events(mock_sio)
+
+        if "search_nodes" in socket_harness._event_handlers:
+            await socket_harness._event_handlers["search_nodes"](
+                "socket-1",
+                {
+                    "lorax_sid": session.sid,
+                    "sample_names": ["A"],
+                    "tree_indices": [0],
+                    "show_lineages": False,
+                },
+            )
+
+            results = socket_harness.get_emitted("search-nodes-result")
+            assert len(results) == 1
+            payload = results[0]["data"]
+            assert "highlights" in payload
+            # A is first in sorted samples_order -> node_id 0
+            assert 0 in payload["highlights"]
+            assert payload["highlights"][0][0]["node_id"] == 0
+            assert payload["highlights"][0][0]["name"] == "A"
+
+    @pytest.mark.asyncio
     async def test_get_highlight_positions(self, socket_harness, mock_sio, session_manager_memory, minimal_ts_file):
         """Test get_highlight_positions_event."""
         from lorax.sockets import register_socket_events
@@ -375,6 +415,45 @@ class TestNodeSearchEvents:
 
             results = socket_harness.get_emitted("highlight-positions-result")
             assert len(results) >= 0
+
+    @pytest.mark.asyncio
+    async def test_get_highlight_positions_csv_sample(self, socket_harness, mock_sio, session_manager_memory, temp_dir):
+        """CSV: get_highlight_positions_event should return x/y for metadata_key=sample."""
+        from lorax.sockets import register_socket_events
+
+        csv_path = temp_dir / "test_newick.csv"
+        csv_path.write_text(
+            "genomic_positions,newick\n"
+            "0,\"(A:1,B:1):0;\"\n"
+        )
+
+        session = await session_manager_memory.create_session()
+        session.file_path = str(csv_path)
+        await session_manager_memory.save_session(session)
+
+        with patch("lorax.sockets.session_manager", session_manager_memory):
+            register_socket_events(mock_sio)
+
+        if "get_highlight_positions_event" in socket_harness._event_handlers:
+            await socket_harness._event_handlers["get_highlight_positions_event"](
+                "socket-1",
+                {
+                    "lorax_sid": session.sid,
+                    "metadata_key": "sample",
+                    "metadata_value": "A",
+                    "tree_indices": [0],
+                },
+            )
+
+            results = socket_harness.get_emitted("highlight-positions-result")
+            assert len(results) == 1
+            payload = results[0]["data"]
+            assert "positions" in payload
+            assert len(payload["positions"]) == 1
+            pos = payload["positions"][0]
+            assert pos["node_id"] == 0
+            assert pos["tree_idx"] == 0
+            assert "x" in pos and "y" in pos
 
 
 class TestDisconnectEvent:

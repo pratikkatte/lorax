@@ -16,6 +16,7 @@ together, preventing orphan metadata.
 from lorax.cache.lru import LRUCache, LRUCacheWithMeta
 from lorax.cache.disk import DiskCacheManager
 from lorax.cache.tree_graph import TreeGraphCache
+from lorax.cache.csv_tree_graph import CsvTreeGraphCache
 from lorax.cache.file_context import FileContext
 from lorax.cache.file_cache import (
     get_file_context,
@@ -31,6 +32,7 @@ __all__ = [
     "LRUCacheWithMeta",
     "DiskCacheManager",
     "TreeGraphCache",
+    "CsvTreeGraphCache",
     # Unified file caching (preferred API)
     "FileContext",
     "get_file_context",

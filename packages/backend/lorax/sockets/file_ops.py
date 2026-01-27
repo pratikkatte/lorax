@@ -9,7 +9,7 @@ import json
 import asyncio
 from pathlib import Path
 
-from lorax.context import session_manager, IS_VM, BUCKET_NAME, tree_graph_cache
+from lorax.context import session_manager, IS_VM, BUCKET_NAME, tree_graph_cache, csv_tree_graph_cache
 from lorax.constants import (
     UPLOADS_DIR, ERROR_SESSION_NOT_FOUND, ERROR_MISSING_SESSION, ERROR_NO_FILE_LOADED,
 )
@@ -82,6 +82,7 @@ def register_file_events(sio):
 
             # Clear TreeGraph cache when loading a new file
             await tree_graph_cache.clear_session(lorax_sid)
+            await csv_tree_graph_cache.clear_session(lorax_sid)
 
             session.file_path = str(file_path)
             await session_manager.save_session(session)

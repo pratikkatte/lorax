@@ -12,7 +12,7 @@ from lorax.modes import (
     validate_mode_requirements,
 )
 from lorax.session_manager import SessionManager
-from lorax.cache import DiskCacheManager, TreeGraphCache
+from lorax.cache import DiskCacheManager, TreeGraphCache, CsvTreeGraphCache
 from lorax.constants import (
     DISK_CACHE_ENABLED,
     DISK_CACHE_DIR,
@@ -67,5 +67,8 @@ if REDIS_URL:
         print(f"Warning: Failed to connect Redis for TreeGraphCache: {e}")
 
 tree_graph_cache = TreeGraphCache(redis_client=_tree_graph_redis)
+
+# CSV mode: cache parsed Newick trees per session (in-memory only)
+csv_tree_graph_cache = CsvTreeGraphCache()
 
 print(f"Context initialized: mode={CURRENT_MODE}, disk_cache={DISK_CACHE_ENABLED}")

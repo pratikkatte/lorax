@@ -412,6 +412,7 @@ async def handle_tree_graph_query(
     sparsification=False,
     session_id: str = None,
     tree_graph_cache=None,
+    csv_tree_graph_cache=None,
     actual_display_array=None
 ):
     """
@@ -450,7 +451,47 @@ async def handle_tree_graph_query(
         max_branch_length = float(times_values[1]) if len(times_values) > 1 else 1.0
         indices = [int(t) for t in (tree_indices or [])]
         samples_order = ctx.config.get("samples") or []
-        return build_csv_layout_response(ts, indices, max_branch_length, samples_order=samples_order)
+        pre_parsed_graphs = {}
+        if session_id and csv_tree_graph_cache:
+            from lorax.csv.newick_tree import parse_newick_to_tree
+
+            for tree_idx in indices:
+                cached = await csv_tree_graph_cache.get(session_id, int(tree_idx))
+                if cached is not None:
+                    pre_parsed_graphs[int(tree_idx)] = cached
+                    continue
+
+                # Cache miss: parse and store (best-effort)
+                try:
+                    newick_str = ts.iloc[int(tree_idx)].get("newick")
+                except Exception:
+                    newick_str = None
+                if newick_str is None or pd.isna(newick_str):
+                    continue
+
+                try:
+                    graph = await asyncio.to_thread(
+                        parse_newick_to_tree,
+                        str(newick_str),
+                        max_branch_length,
+                        samples_order,
+                    )
+                except Exception:
+                    continue
+
+                pre_parsed_graphs[int(tree_idx)] = graph
+                await csv_tree_graph_cache.set(session_id, int(tree_idx), graph)
+
+            if actual_display_array is not None:
+                await csv_tree_graph_cache.evict_not_visible(session_id, set(actual_display_array))
+
+        return build_csv_layout_response(
+            ts,
+            indices,
+            max_branch_length,
+            samples_order=samples_order,
+            pre_parsed_graphs=pre_parsed_graphs,
+        )
 
     # Collect pre-cached TreeGraphs
     pre_cached_graphs = {}

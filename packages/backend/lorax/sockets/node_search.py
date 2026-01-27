@@ -6,12 +6,69 @@ Handles search_nodes and get_highlight_positions_event events.
 
 import asyncio
 
-from lorax.context import tree_graph_cache
+from lorax.context import tree_graph_cache, csv_tree_graph_cache
 from lorax.constants import ERROR_NO_FILE_LOADED
 from lorax.handlers import search_nodes_in_trees, get_highlight_positions, get_multi_value_highlight_positions
 from lorax.cache import get_file_context
 from lorax.sockets.decorators import require_session
 from lorax.sockets.utils import is_csv_session_file
+
+
+async def _get_or_parse_csv_tree_graph(ctx, session_id: str, tree_idx: int):
+    """
+    Return a parsed CSV Newick tree graph, using CsvTreeGraphCache.
+
+    The cache is populated by the layout pipeline, but node search/highlight
+    should also be able to populate it on demand.
+    """
+    cached = await csv_tree_graph_cache.get(session_id, int(tree_idx))
+    if cached is not None:
+        return cached
+
+    # Import lazily to avoid CSV dependencies on tskit paths.
+    import pandas as pd
+    from lorax.csv.newick_tree import parse_newick_to_tree
+
+    df = ctx.tree_sequence
+    if not isinstance(df, pd.DataFrame):
+        return None
+
+    try:
+        newick_str = df.iloc[int(tree_idx)].get("newick")
+    except Exception:
+        newick_str = None
+    if newick_str is None or pd.isna(newick_str):
+        return None
+
+    # Parse with same normalization settings as the layout pipeline.
+    times_values = ctx.config.get("times", {}).get("values", [0.0, 1.0])
+    max_branch_length = float(times_values[1]) if len(times_values) > 1 else 1.0
+    samples_order = ctx.config.get("samples") or []
+
+    try:
+        graph = await asyncio.to_thread(
+            parse_newick_to_tree,
+            str(newick_str),
+            max_branch_length,
+            samples_order,
+        )
+    except Exception:
+        return None
+
+    await csv_tree_graph_cache.set(session_id, int(tree_idx), graph)
+    return graph
+
+
+def _find_node_index(graph, node_id: int):
+    """Find the array index in a NewickTreeGraph for a given node_id."""
+    # node_id is stored as a numpy array; use vectorized equality.
+    try:
+        idxs = (graph.node_id == int(node_id)).nonzero()[0]
+        if idxs.size == 0:
+            return None
+        return int(idxs[0])
+    except Exception:
+        return None
 
 
 def register_node_search_events(sio):
@@ -53,10 +110,47 @@ def register_node_search_events(sio):
                 return
 
             if is_csv_session_file(session.file_path):
-                await sio.emit("search-nodes-result", {
-                    "highlights": {},
-                    "lineage": {}
-                }, to=sid)
+                sample_names = data.get("sample_names", [])
+                tree_indices = data.get("tree_indices", [])
+                show_lineages = data.get("show_lineages", False)
+
+                # CSV mode currently supports only tip highlights (no lineage paths).
+                if show_lineages:
+                    show_lineages = False
+
+                if not sample_names or not tree_indices:
+                    await sio.emit("search-nodes-result", {"highlights": {}, "lineage": {}}, to=sid)
+                    return
+
+                ctx = await get_file_context(session.file_path)
+                if ctx is None:
+                    await sio.emit("search-nodes-result", {"error": "Failed to load CSV"}, to=sid)
+                    return
+
+                samples_order = ctx.config.get("samples") or []
+                sample_id_map = {str(name): idx for idx, name in enumerate(samples_order)}
+
+                highlights = {}
+
+                for tree_idx in tree_indices:
+                    tree_idx = int(tree_idx)
+                    graph = await _get_or_parse_csv_tree_graph(ctx, lorax_sid, tree_idx)
+                    if graph is None:
+                        continue
+
+                    hits = []
+                    for name in sample_names:
+                        node_id = sample_id_map.get(str(name))
+                        if node_id is None:
+                            continue
+                        if _find_node_index(graph, node_id) is None:
+                            continue
+                        hits.append({"node_id": int(node_id), "name": str(name)})
+
+                    if hits:
+                        highlights[tree_idx] = hits
+
+                await sio.emit("search-nodes-result", {"highlights": highlights, "lineage": {}}, to=sid)
                 return
 
             sample_names = data.get("sample_names", [])
@@ -138,7 +232,55 @@ def register_node_search_events(sio):
                 return
 
             if is_csv_session_file(session.file_path):
-                await sio.emit("highlight-positions-result", {"positions": []}, to=sid)
+                metadata_key = data.get("metadata_key")
+                metadata_value = data.get("metadata_value")
+                tree_indices = data.get("tree_indices", [])
+
+                if metadata_key != "sample":
+                    await sio.emit("highlight-positions-result", {"positions": []}, to=sid)
+                    return
+
+                if metadata_value is None or not tree_indices:
+                    await sio.emit("highlight-positions-result", {"positions": []}, to=sid)
+                    return
+
+                ctx = await get_file_context(session.file_path)
+                if ctx is None:
+                    await sio.emit("highlight-positions-result", {"error": "Failed to load CSV"}, to=sid)
+                    return
+
+                samples_order = ctx.config.get("samples") or []
+                sample_id_map = {str(name): idx for idx, name in enumerate(samples_order)}
+                target_node_id = sample_id_map.get(str(metadata_value))
+                if target_node_id is None:
+                    await sio.emit("highlight-positions-result", {"positions": []}, to=sid)
+                    return
+
+                positions = []
+                for tree_idx in tree_indices:
+                    tree_idx = int(tree_idx)
+                    graph = await _get_or_parse_csv_tree_graph(ctx, lorax_sid, tree_idx)
+                    if graph is None:
+                        continue
+
+                    arr_idx = _find_node_index(graph, target_node_id)
+                    if arr_idx is None:
+                        continue
+
+                    # Match the coordinate convention used by CSV layout buffer:
+                    # build_csv_layout_response swaps (time->x, layout->y).
+                    positions.append(
+                        {
+                            "node_id": int(target_node_id),
+                            "tree_idx": int(tree_idx),
+                            # Match tskit highlight convention: x=layout, y=time.
+                            # (tskit highlight uses TreeGraph internal coords, not the swapped PyArrow coords)
+                            "x": float(graph.x[arr_idx]),
+                            "y": float(graph.y[arr_idx]),
+                        }
+                    )
+
+                await sio.emit("highlight-positions-result", {"positions": positions}, to=sid)
                 return
 
             metadata_key = data.get("metadata_key")
@@ -216,11 +358,69 @@ def register_node_search_events(sio):
                 return
 
             if is_csv_session_file(session.file_path):
-                await sio.emit("search-metadata-multi-result", {
-                    "positions_by_value": {},
-                    "lineages": {},
-                    "total_count": 0
-                }, to=sid)
+                metadata_key = data.get("metadata_key")
+                metadata_values = data.get("metadata_values", [])
+                tree_indices = data.get("tree_indices", [])
+
+                if metadata_key != "sample":
+                    await sio.emit(
+                        "search-metadata-multi-result",
+                        {"positions_by_value": {}, "lineages": {}, "total_count": 0},
+                        to=sid,
+                    )
+                    return
+
+                if not metadata_values or not tree_indices:
+                    await sio.emit(
+                        "search-metadata-multi-result",
+                        {"positions_by_value": {}, "lineages": {}, "total_count": 0},
+                        to=sid,
+                    )
+                    return
+
+                ctx = await get_file_context(session.file_path)
+                if ctx is None:
+                    await sio.emit("search-metadata-multi-result", {"error": "Failed to load CSV"}, to=sid)
+                    return
+
+                samples_order = ctx.config.get("samples") or []
+                sample_id_map = {str(name): idx for idx, name in enumerate(samples_order)}
+
+                # Deduplicate and stringify values
+                unique_values = list({str(v) for v in metadata_values})
+                positions_by_value = {v: [] for v in unique_values}
+                total_count = 0
+
+                for value in unique_values:
+                    node_id = sample_id_map.get(value)
+                    if node_id is None:
+                        continue
+
+                    for tree_idx in tree_indices:
+                        tree_idx = int(tree_idx)
+                        graph = await _get_or_parse_csv_tree_graph(ctx, lorax_sid, tree_idx)
+                        if graph is None:
+                            continue
+                        arr_idx = _find_node_index(graph, node_id)
+                        if arr_idx is None:
+                            continue
+
+                        positions_by_value[value].append(
+                            {
+                                "node_id": int(node_id),
+                                "tree_idx": int(tree_idx),
+                                # Match tskit highlight convention: x=layout, y=time.
+                                "x": float(graph.x[arr_idx]),
+                                "y": float(graph.y[arr_idx]),
+                            }
+                        )
+                        total_count += 1
+
+                await sio.emit(
+                    "search-metadata-multi-result",
+                    {"positions_by_value": positions_by_value, "lineages": {}, "total_count": total_count},
+                    to=sid,
+                )
                 return
 
             metadata_key = data.get("metadata_key")
