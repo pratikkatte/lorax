@@ -15,7 +15,7 @@ from langgraph.prebuilt import ToolNode, tools_condition
 from pydantic import BaseModel, Field
 from typing import Literal
 
-# Import custom vector store class
+# Import our custom vector store
 from vector_store import DocumentVectorStore
 
 # Load environment variables
@@ -27,17 +27,17 @@ load_dotenv()
 # Node Stuff
 ###################
 # Node response model
-response_model = init_chat_model("openai:gpt-5-mini", temperature=0)
+response_model = init_chat_model("openai:gpt-4o", temperature=0)
 
 
 ###################
 # Grade Prompt Node Stuff
 ###################
 GRADE_PROMPT = (
-    "You are a grader assessing relevance of a retrieved document to a user question about tskit. \n "
+    "You are a grader assessing relevance of a retrieved document to a user question. \n "
     "Here is the retrieved document: \n\n {context} \n\n"
     "Here is the user question: {question} \n"
-    "If the document contains keyword(s) or semantic meaning related to the tskit question, grade it as relevant. \n"
+    "If the document contains keyword(s) or semantic meaning related to the user question, grade it as relevant. \n"
     "Give a binary score 'yes' or 'no' score to indicate whether the document is relevant to the question."
 )
 
@@ -54,13 +54,19 @@ def grade_documents(
     state: MessagesState,
 ) -> Literal["generate_answer", "rewrite_question"]:
     """Determine whether the retrieved documents are relevant to the question."""
-    question = state["messages"][0].content
-    context = state["messages"][-1].content
+    messages = state["messages"]
+
+    # Get the most recent human question (not necessarily the first message)
+    human_messages = [m for m in messages if m.type == "human"]
+    question = human_messages[-1].content if human_messages else messages[0].content
+
+    # Context is still the last message (from retrieval tool)
+    context = messages[-1].content
 
     prompt = GRADE_PROMPT.format(question=question, context=context)
     response = (
         response_model
-        .with_structured_output(GradeDocuments).invoke(  
+        .with_structured_output(GradeDocuments).invoke(
             [{"role": "user", "content": prompt}]
         )
     )
@@ -77,23 +83,28 @@ def grade_documents(
 ###################
 # Initialize response model for rewriting questions
 REWRITE_PROMPT = (
-    "You are helping reformulate questions about tskit (a Python library for tree sequences) to improve retrieval results.\n"
     "Look at the input and try to reason about the underlying semantic intent / meaning.\n"
-    "Here is the initial question about tskit:"
+    "Here is the initial question:"
     "\n ------- \n"
     "{question}"
     "\n ------- \n"
-    "Formulate an improved question that is more specific and likely to retrieve relevant tskit documentation:"
+    "Formulate an improved question:"
 )
 
 # Function to rewrite questions
 def rewrite_question(state: MessagesState):
-    """Rewrite the original user question."""
+    """Rewrite the most recent user question while preserving conversation history."""
     messages = state["messages"]
-    question = messages[0].content
+
+    # Get the most recent human question
+    human_messages = [m for m in messages if m.type == "human"]
+    question = human_messages[-1].content if human_messages else messages[0].content
+
     prompt = REWRITE_PROMPT.format(question=question)
     response = response_model.invoke([{"role": "user", "content": prompt}])
-    return {"messages": [HumanMessage(content=response.content)]}
+
+    # Append the rewritten question to preserve history, don't replace all messages
+    return {"messages": messages + [HumanMessage(content=response.content)]}
 
 
 ###################
@@ -101,21 +112,26 @@ def rewrite_question(state: MessagesState):
 ###################
 # Prompt for generating answers
 GENERATE_PROMPT = (
-    "You are a helpful chatbot assistant specializing in tskit, a Python library for analyzing tree sequences in population genetics. "
-    "Your role is to answer questions about tskit's functionality, API, concepts, and usage based on the official documentation. "
-    "Use the following pieces of retrieved context from the tskit documentation to answer the question. "
-    "If the context doesn't contain enough information to answer the question, say that you don't know or that the information isn't in the provided documentation. "
-    "Be clear, concise, and accurate. Use code examples from the context when relevant.\n\n"
-    "Question: {question} \n\n"
-    "Context: {context}"
+    "You are an assistant for question-answering tasks. "
+    "Use the full conversation history below to answer the current question. "
+    "If you don't know the answer, just say that you don't know. "
+    "Use three sentences maximum and keep the answer concise.\n\n"
+    "Full Conversation:\n{conversation}"
 )
 
 # Function to generate answers
 def generate_answer(state: MessagesState):
-    """Generate an answer."""
-    question = state["messages"][0].content
-    context = state["messages"][-1].content
-    prompt = GENERATE_PROMPT.format(question=question, context=context)
+    """Generate an answer using full conversation context."""
+    messages = state["messages"]
+
+    # Build conversation from ALL messages
+    conversation = "\n".join([
+        f"{msg.type}: {msg.content}"
+        for msg in messages
+    ])
+
+    prompt = GENERATE_PROMPT.format(conversation=conversation)
+
     response = response_model.invoke([{"role": "user", "content": prompt}])
     return {"messages": [response]}
 
@@ -168,7 +184,8 @@ def run_interactive(graph):
                 continue
 
             # Add user message to conversation
-            conversation_state["messages"].append(HumanMessage(content=user_input))
+            user_msg = HumanMessage(content=user_input)
+            conversation_state["messages"].append(user_msg)
 
             # Invoke agent
             print("\n[Agent thinking...]")
@@ -186,7 +203,7 @@ def run_interactive(graph):
 
             # Update conversation state with all messages from the final state
             if final_state:
-                conversation_state["messages"] = final_state["messages"]
+                conversation_state["messages"].append(final_state["messages"][-1])
 
                 # Print only the final AI response
                 print("\nAgent:", end=" ")
@@ -208,39 +225,34 @@ def run_interactive(graph):
 # Main Code
 ###################
 def main():
-    # Initialize DocumentVectorStore with enhanced metadata
+    # Initialize vector store using DocumentVectorStore class
     print("Initializing vector store...")
-    doc_store = DocumentVectorStore(
+    vector_store = DocumentVectorStore(
         store_path="tskit_vectorstore_class",
         embedding_model="text-embedding-3-small",
         chunk_size=1000,
         chunk_overlap=200
     )
 
-    # Load or create vector store (uses smart_loader_enhanced internally)
-    doc_store.load_or_create(document_path="data-new.txt")
+    # Load existing or create new vector store
+    vector_store.load_or_create(document_path="data-new.txt")
+    print("✓ Vector store ready")
 
     # Create retriever
-    retriever = doc_store.get_retriever(k=4)
-    print("Retriever ready with enhanced metadata.")
+    retriever = vector_store.get_retriever(k=4)
 
 
     # Create retrieval tool
     retriever_tool = create_retriever_tool(
         name="tskit_documentation_retriever",
-        description=(
-            "Search the tskit documentation for information about the tskit Python library. "
-            "Use this tool when users ask about tskit concepts (tree sequences, nodes, edges, mutations, sites), "
-            "API functions, methods, classes, usage examples, or any technical questions about tskit. "
-            "Input should be a search query related to tskit."
-        ),
+        description="Useful for answering questions about the tskit library and its documentation.",
         retriever=retriever,
     )
 
     ################
     # Generate Agent
     ################
-    chat_model = init_chat_model(model="gpt-5-mini", temperature=0)
+    chat_model = init_chat_model(model="gpt-4o", temperature=0)
 
     def generate_query_or_respond(state: MessagesState):
         """Call the model to generate a response based on the current state. Given
