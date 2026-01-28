@@ -27,7 +27,7 @@ const Info = ({
   hoveredTreeIndex = null,
   setHoveredTreeIndex
 }) => {
-  const [activeTab, setActiveTab] = useState('metadata');
+  const [activeTab, setActiveTab] = useState('details');
 
   // Get state from context
   const {
@@ -71,13 +71,13 @@ const Info = ({
         <div className="w-full flex p-1 bg-slate-100 rounded-lg">
           <button
             className={`flex-1 px-4 py-2 rounded-md text-sm font-semibold transition-all duration-200
-              ${activeTab === 'metadata'
+              ${activeTab === 'details'
                 ? "bg-white text-emerald-700 shadow-sm ring-1 ring-slate-200"
                 : "text-slate-500 hover:text-slate-700"}
             `}
-            onClick={() => setActiveTab('metadata')}
+            onClick={() => setActiveTab('details')}
           >
-            Metadata
+            Details
           </button>
           <button
             className={`flex-1 px-4 py-2 rounded-md text-sm font-semibold transition-all duration-200
@@ -91,19 +91,19 @@ const Info = ({
           </button>
           <button
             className={`flex-1 px-4 py-2 rounded-md text-sm font-semibold transition-all duration-200
-              ${activeTab === 'filter'
+              ${activeTab === 'metadata'
                 ? "bg-white text-emerald-700 shadow-sm ring-1 ring-slate-200"
                 : "text-slate-500 hover:text-slate-700"}
             `}
-            onClick={() => setActiveTab('filter')}
+            onClick={() => setActiveTab('metadata')}
           >
-            Filter
+            Metadata
           </button>
         </div>
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
-        {activeTab === 'metadata' && (
+        {activeTab === 'details' && (
           <InfoMetadata
             treeDetails={treeDetails}
             nodeDetails={nodeDetails}
@@ -139,7 +139,7 @@ const Info = ({
             setHighlightedMutationTreeIndex={setHighlightedMutationTreeIndex}
           />
         )}
-        {activeTab === 'filter' && (
+        {activeTab === 'metadata' && (
           <InfoFilter
             visibleTrees={visibleTrees}
             treeColors={treeColors}
