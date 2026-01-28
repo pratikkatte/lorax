@@ -22,7 +22,8 @@ const ViewportOverlay = React.memo(({
   views,
   onViewChange,
   resizable = true,
-  treeIsLoading = false
+  treeIsLoading = false,
+  timelineLabel,
 }) => {
   // Calculate divider positions based on view dimensions
   // genome-positions is at the top (y: 1%, height: 3%)
@@ -194,7 +195,7 @@ const ViewportOverlay = React.memo(({
             opacity: 0.8,
           }}
         >
-          Timeline
+          {timelineLabel || 'Timeline'}
         </div>
       </div>
 

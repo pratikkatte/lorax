@@ -270,6 +270,7 @@ function FileView() {
           onViewChange={updateView}
           resizable={!loading && !error && tsconfig}
           treeIsLoading={treeIsLoading}
+          timelineLabel={tsconfig?.times?.type}
         />
 
         {/* Error display */}

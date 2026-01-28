@@ -13,6 +13,11 @@ def get_config_tskit(ts, file_path, root_dir):
         times = [ts.min_time, ts.max_time]
         genome_length = ts.sequence_length
 
+        # Timeline unit label for UI: normalize unknown -> "Time"
+        time_units = getattr(ts, "time_units", None)
+        time_units_str = str(time_units) if time_units is not None else "unknown"
+        timeline_type = "Coalescent Time" if time_units_str.strip().lower() == "unknown" else time_units_str
+
         # Compute centered initial position (10% of genome, minimum 1kb)
         window_size = max(genome_length * 0.1, 1000)
         midpoint = genome_length / 2.0
@@ -27,7 +32,7 @@ def get_config_tskit(ts, file_path, root_dir):
         config = {
             'genome_length': genome_length,
             'initial_position': [int(start), int(end)],
-            'times': {'type': 'coalescent time', 'values': times},
+            'times': {'type': timeline_type, 'values': times},
             'intervals': intervals,
             'filename': str(filename),
             # node_times removed - now sent per-query from handle_layout_query for efficiency

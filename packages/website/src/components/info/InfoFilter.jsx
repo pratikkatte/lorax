@@ -90,20 +90,6 @@ export default function InfoFilter({
           <span className="text-sm font-medium">Search</span>
         </div>
         <div className="flex items-center gap-4">
-          {isCsvFile && (
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-500">Color by tree</span>
-              <button
-                type="button"
-                className={`w-4 h-4 rounded-full border-2 transition-colors ${colorByTree
-                  ? 'bg-gray-700 border-gray-700'
-                  : 'bg-white border-gray-400'
-                }`}
-                onClick={() => setColorByTree?.(prev => !prev)}
-                title="Color edges by tree index (CSV)"
-              />
-            </div>
-          )}
           <div className="flex items-center gap-2">
             <span className="text-xs text-gray-500">Display Lineages</span>
             <button
@@ -392,11 +378,30 @@ export default function InfoFilter({
                 <span className="text-gray-400 font-normal">({visibleTrees.length})</span>
               )}
             </h3>
-            <button type="button" className="p-1 rounded hover:bg-gray-100 text-gray-500">
-              <svg className={`w-4 h-4 transform transition-transform duration-200 ${isTreesExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
-            </button>
+            <div className="flex items-center gap-3">
+              {isCsvFile && (
+                <div
+                  className="flex items-center gap-2"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <span className="text-xs text-gray-500">Color by tree</span>
+                  <button
+                    type="button"
+                    className={`w-4 h-4 rounded-full border-2 transition-colors ${colorByTree
+                      ? 'bg-gray-700 border-gray-700'
+                      : 'bg-white border-gray-400'
+                    }`}
+                    onClick={() => setColorByTree?.(prev => !prev)}
+                    title="Color edges by tree index (CSV)"
+                  />
+                </div>
+              )}
+              <button type="button" className="p-1 rounded hover:bg-gray-100 text-gray-500">
+                <svg className={`w-4 h-4 transform transition-transform duration-200 ${isTreesExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+            </div>
           </div>
           {isTreesExpanded && (
             <div className="max-h-64 overflow-auto border border-gray-100 rounded-md divide-y divide-gray-100">
