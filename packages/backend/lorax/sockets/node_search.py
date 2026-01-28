@@ -71,6 +71,40 @@ def _find_node_index(graph, node_id: int):
         return None
 
 
+def _build_node_id_to_index(graph):
+    """Build a node_id -> array index dict for a NewickTreeGraph."""
+    try:
+        return {int(nid): i for i, nid in enumerate(graph.node_id)}
+    except Exception:
+        return {}
+
+
+def _compute_csv_lineage_path(graph, seed_node_id: int, node_id_to_index: dict):
+    """
+    Compute ancestry path (tip -> root) for a CSV NewickTreeGraph.
+
+    Returns a list of node_ids starting at seed_node_id, following parent_id until -1.
+    Includes a cycle guard to avoid infinite loops on malformed graphs.
+    """
+    path = []
+    current = int(seed_node_id)
+    visited = set()
+
+    while current != -1:
+        if current in visited:
+            break
+        visited.add(current)
+        path.append(current)
+
+        idx = node_id_to_index.get(current)
+        if idx is None:
+            break
+        parent = int(graph.parent_id[idx])
+        current = parent
+
+    return path
+
+
 def register_node_search_events(sio):
     """Register node search socket events."""
 
@@ -361,6 +395,7 @@ def register_node_search_events(sio):
                 metadata_key = data.get("metadata_key")
                 metadata_values = data.get("metadata_values", [])
                 tree_indices = data.get("tree_indices", [])
+                show_lineages = bool(data.get("show_lineages", False))
 
                 if metadata_key != "sample":
                     await sio.emit(
@@ -389,6 +424,7 @@ def register_node_search_events(sio):
                 # Deduplicate and stringify values
                 unique_values = list({str(v) for v in metadata_values})
                 positions_by_value = {v: [] for v in unique_values}
+                lineages = {} if show_lineages else {}
                 total_count = 0
 
                 for value in unique_values:
@@ -396,11 +432,14 @@ def register_node_search_events(sio):
                     if node_id is None:
                         continue
 
+                    value_lineages = {} if show_lineages else None
+
                     for tree_idx in tree_indices:
                         tree_idx = int(tree_idx)
                         graph = await _get_or_parse_csv_tree_graph(ctx, lorax_sid, tree_idx)
                         if graph is None:
                             continue
+                        node_id_to_index = _build_node_id_to_index(graph) if show_lineages else None
                         arr_idx = _find_node_index(graph, node_id)
                         if arr_idx is None:
                             continue
@@ -416,9 +455,21 @@ def register_node_search_events(sio):
                         )
                         total_count += 1
 
+                        if show_lineages:
+                            path_node_ids = _compute_csv_lineage_path(graph, int(node_id), node_id_to_index)
+                            if len(path_node_ids) > 1:
+                                # Emit root -> tip to match frontend L-shape construction.
+                                path_node_ids = list(reversed(path_node_ids))
+                                value_lineages.setdefault(tree_idx, []).append(
+                                    {"path_node_ids": path_node_ids, "color": None}
+                                )
+
+                    if show_lineages and value_lineages:
+                        lineages[value] = value_lineages
+
                 await sio.emit(
                     "search-metadata-multi-result",
-                    {"positions_by_value": positions_by_value, "lineages": {}, "total_count": total_count},
+                    {"positions_by_value": positions_by_value, "lineages": lineages, "total_count": total_count},
                     to=sid,
                 )
                 return

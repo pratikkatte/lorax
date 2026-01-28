@@ -18,7 +18,6 @@ def build_empty_tree_layout_arrow_ipc() -> bytes:
     - tree_idx:int32
     - x:float32
     - y:float32
-    - time:float32
     """
     empty_table = pa.table(
         {
@@ -28,7 +27,6 @@ def build_empty_tree_layout_arrow_ipc() -> bytes:
             "tree_idx": pa.array([], type=pa.int32()),
             "x": pa.array([], type=pa.float32()),
             "y": pa.array([], type=pa.float32()),
-            "time": pa.array([], type=pa.float32()),
             "name": pa.array([], type=pa.string()),
         }
     )

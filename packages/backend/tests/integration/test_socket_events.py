@@ -455,6 +455,48 @@ class TestNodeSearchEvents:
             assert pos["tree_idx"] == 0
             assert "x" in pos and "y" in pos
 
+    @pytest.mark.asyncio
+    async def test_search_metadata_multi_csv_lineages(self, socket_harness, mock_sio, session_manager_memory, temp_dir):
+        """CSV: search_metadata_multi_event should return lineage paths when show_lineages=true."""
+        from lorax.sockets import register_socket_events
+
+        csv_path = temp_dir / "test_newick.csv"
+        csv_path.write_text(
+            "genomic_positions,newick\n"
+            "0,\"(A:1,B:1):0;\"\n"
+        )
+
+        session = await session_manager_memory.create_session()
+        session.file_path = str(csv_path)
+        await session_manager_memory.save_session(session)
+
+        with patch("lorax.sockets.session_manager", session_manager_memory):
+            register_socket_events(mock_sio)
+
+        if "search_metadata_multi_event" in socket_harness._event_handlers:
+            await socket_harness._event_handlers["search_metadata_multi_event"](
+                "socket-1",
+                {
+                    "lorax_sid": session.sid,
+                    "metadata_key": "sample",
+                    "metadata_values": ["A"],
+                    "tree_indices": [0],
+                    "show_lineages": True,
+                },
+            )
+
+            results = socket_harness.get_emitted("search-metadata-multi-result")
+            assert len(results) == 1
+            payload = results[0]["data"]
+            assert payload["positions_by_value"]["A"]
+            assert "lineages" in payload
+            assert "A" in payload["lineages"]
+            assert 0 in payload["lineages"]["A"]
+            lineage_list = payload["lineages"]["A"][0]
+            assert len(lineage_list) >= 1
+            assert "path_node_ids" in lineage_list[0]
+            assert len(lineage_list[0]["path_node_ids"]) > 1
+
 
 class TestDisconnectEvent:
     """Tests for the disconnect event."""

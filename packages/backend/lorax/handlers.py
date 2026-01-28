@@ -114,6 +114,9 @@ def _compute_lineage_paths(tree, tree_seeds, name_map, sample_colors):
             current = tree.parent(current)
 
         if len(path_nodes) > 1:
+            # Emit root -> tip to match frontend L-shape construction.
+            path_nodes = list(reversed(path_nodes))
+
             # Get color for this lineage
             name = name_map.get(seed_node, str(seed_node))
             color = None
