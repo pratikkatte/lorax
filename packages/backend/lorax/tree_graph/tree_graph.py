@@ -410,6 +410,52 @@ def construct_trees_batch(
             is_tip = is_tip[keep_mask]
             n = len(node_ids)
 
+            if n > 0:
+                # Collapse unary internal nodes (keep roots even if unary).
+                order = np.argsort(node_ids)
+                sorted_ids = node_ids[order]
+                pos = np.searchsorted(sorted_ids, parent_ids)
+                parent_local = np.full(n, -1, dtype=np.int32)
+                valid = (parent_ids != -1) & (pos < n) & (sorted_ids[pos] == parent_ids)
+                parent_local[valid] = order[pos[valid]]
+                child_counts = np.bincount(parent_local[parent_local >= 0], minlength=n)
+                collapse_mask = child_counts != 1
+
+                if not np.all(collapse_mask):
+                    new_parent_ids = parent_ids.copy()
+                    for i in range(n):
+                        if not collapse_mask[i]:
+                            continue
+                        parent = new_parent_ids[i]
+                        while parent != -1:
+                            pos = np.searchsorted(sorted_ids, parent)
+                            if pos >= n or sorted_ids[pos] != parent:
+                                parent = -1
+                                break
+                            parent_idx = order[pos]
+                            if collapse_mask[parent_idx]:
+                                break
+                            parent = new_parent_ids[parent_idx]
+                        new_parent_ids[i] = parent
+
+                    node_ids = node_ids[collapse_mask]
+                    parent_ids = new_parent_ids[collapse_mask]
+                    x = x[collapse_mask]
+                    y = y[collapse_mask]
+                    n = len(node_ids)
+
+                    if n > 0:
+                        order = np.argsort(node_ids)
+                        sorted_ids = node_ids[order]
+                        pos = np.searchsorted(sorted_ids, parent_ids)
+                        parent_local = np.full(n, -1, dtype=np.int32)
+                        valid = (parent_ids != -1) & (pos < n) & (sorted_ids[pos] == parent_ids)
+                        parent_local[valid] = order[pos[valid]]
+                        child_counts = np.bincount(parent_local[parent_local >= 0], minlength=n)
+                        is_tip = child_counts == 0
+                    else:
+                        is_tip = is_tip[:0]
+
         if n == 0:
             continue
 
