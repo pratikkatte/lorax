@@ -30,6 +30,7 @@ export default function PositionSlider({
   genomeLength,
   value,
   onChange,
+  onResetY,
   project,
   tsconfig
 }) {
@@ -123,11 +124,10 @@ export default function PositionSlider({
     onChange?.([newStart, newEnd]);
   }, [value, genomeLength, onChange]);
 
+  // Reset ONLY the vertical (Y) view, keeping the current genomic window (X) intact.
   const handleReset = useCallback(() => {
-    if (genomeLength) {
-      onChange?.([0, genomeLength]);
-    }
-  }, [genomeLength, onChange]);
+    onResetY?.();
+  }, [onResetY]);
 
   return (
     <div className="flex items-center justify-center gap-2 px-4 py-2 bg-white border-b border-slate-200 relative">
@@ -253,7 +253,7 @@ export default function PositionSlider({
       <button
         onClick={handleReset}
         className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
-        title="Fit all trees"
+        title="Reset vertical view"
       >
         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
