@@ -25,11 +25,14 @@ export default function InfoFilter({
   visibleTrees = [],
   treeColors = {},
   setTreeColors,
+  colorByTree = false,
+  setColorByTree,
   hoveredTreeIndex = null,
   setHoveredTreeIndex
 }) {
   // Get filter state from context (via useMetadataFilter in LoraxProvider)
   const {
+    tsconfig,
     searchTerm = "",
     setSearchTerm,
     searchTags = [],
@@ -48,6 +51,10 @@ export default function InfoFilter({
   } = useLorax();
   const [visibleCount, setVisibleCount] = useState(ITEMS_PER_PAGE);
   const [isTreesExpanded, setIsTreesExpanded] = useState(true);
+
+  const isCsvFile = Boolean(
+    String(tsconfig?.filename || '').toLowerCase().endsWith('.csv') || tsconfig?.tree_info
+  );
 
   // Get filtered items
   const getFilteredItems = useCallback(() => {
@@ -82,21 +89,37 @@ export default function InfoFilter({
           </svg>
           <span className="text-sm font-medium">Search</span>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-gray-500">Display Lineages</span>
-          <button
-            type="button"
-            className={`w-4 h-4 rounded-full border-2 transition-colors ${displayLineagePaths
-              ? 'bg-gray-700 border-gray-700'
-              : 'bg-white border-gray-400'
-            }`}
-            onClick={() => {
-              if (setDisplayLineagePaths) {
-                setDisplayLineagePaths(prev => !prev);
-              }
-            }}
-            title="Display Lineage Paths"
-          />
+        <div className="flex items-center gap-4">
+          {isCsvFile && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-500">Color by tree</span>
+              <button
+                type="button"
+                className={`w-4 h-4 rounded-full border-2 transition-colors ${colorByTree
+                  ? 'bg-gray-700 border-gray-700'
+                  : 'bg-white border-gray-400'
+                }`}
+                onClick={() => setColorByTree?.(prev => !prev)}
+                title="Color edges by tree index (CSV)"
+              />
+            </div>
+          )}
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-500">Display Lineages</span>
+            <button
+              type="button"
+              className={`w-4 h-4 rounded-full border-2 transition-colors ${displayLineagePaths
+                ? 'bg-gray-700 border-gray-700'
+                : 'bg-white border-gray-400'
+              }`}
+              onClick={() => {
+                if (setDisplayLineagePaths) {
+                  setDisplayLineagePaths(prev => !prev);
+                }
+              }}
+              title="Display Lineage Paths"
+            />
+          </div>
         </div>
       </div>
       <div className="space-y-3">

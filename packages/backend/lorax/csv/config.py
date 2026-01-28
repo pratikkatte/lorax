@@ -125,6 +125,29 @@ def build_csv_config(
     file_metadata = extract_csv_metadata(df)
     df2 = _sorted_reset(df)
 
+    # Optional per-tree metadata: "tree_info" / "tree info" column.
+    # This is intended for frontend-side per-tree UI (e.g., default per-tree colors)
+    # and is sent eagerly with config on load_file.
+    tree_info_map: Dict[str, str] = {}
+    tree_info_col = None
+    for cand in ("tree_info", "tree info"):
+        if cand in df2.columns:
+            tree_info_col = cand
+            break
+
+    if tree_info_col is not None:
+        # Use row index as tree_idx (this matches backend CSV layout access: df.iloc[tree_idx])
+        for i, row in df2.iterrows():
+            nwk = row.get("newick")
+            if isinstance(nwk, float) and pd.isna(nwk):
+                continue
+            if _is_empty_value(nwk):
+                continue
+            v = row.get(tree_info_col)
+            if _is_empty_value(v):
+                continue
+            tree_info_map[str(int(i))] = str(v)
+
     # Compute max branch length and sample names (best-effort, lightweight).
     max_branch_length_all = 0.0
     samples_set = set()
@@ -169,7 +192,7 @@ def build_csv_config(
 
     sample_names_map = {str(s): {"sample_name": s} for s in samples_order}
 
-    return {
+    config: Dict[str, Any] = {
         "genome_length": genome_length,
         "initial_position": [int(start), int(end)],
         "times": {"type": "branch length", "values": [0.0, float(max_branch_length_all)]},
@@ -179,6 +202,14 @@ def build_csv_config(
         "samples": samples_order,
         # Present but empty for compatibility; CSV doesn’t have these yet.
         "metadata_schema": {
-            "metadata_keys": list(file_metadata.keys()) if file_metadata else ["sample"]
+            # Always expose "sample" as the only supported metadata key for CSV.
+            # (CSV metadata Socket.IO handlers currently support only key == "sample".)
+            "metadata_keys": ["sample"]
         },
     }
+
+    if tree_info_map:
+        # Kept as "tree_info" regardless of whether CSV column is "tree info" or "tree_info".
+        config["tree_info"] = tree_info_map
+
+    return config

@@ -15,6 +15,8 @@ function FileView() {
   const { file } = useParams();
   const [searchParams] = useSearchParams();
   const deckRef = useRef(null);
+  const appliedInitialTreeColorsRef = useRef(false);
+  const appliedInitialTreeEdgeColorsRef = useRef(false);
 
   const {
     queryFile,
@@ -56,6 +58,10 @@ function FileView() {
   const [visibleTrees, setVisibleTrees] = useState([]);
   // Per-tree color customization { [treeIndex]: '#hexcolor' }
   const [treeColors, setTreeColors] = useState({});
+  // Per-tree edge/path colors { [treeIndex]: '#hexcolor' } (CSV tree_info defaults)
+  const [treeEdgeColors, setTreeEdgeColors] = useState({});
+  // CSV-only: color edges by tree index (tree_idx)
+  const [colorByTree, setColorByTree] = useState(false);
   // Hovered tree index (for list-to-polygon hover sync)
   const [hoveredTreeIndex, setHoveredTreeIndex] = useState(null);
   // Polygon fill color [r, g, b, a]
@@ -162,6 +168,18 @@ function FileView() {
         });
     }
   }, [file, project, sid, genomiccoordstart, genomiccoordend, isConnected, tsconfig?.filename, queryFile, handleConfigUpdate]);
+
+  // Apply backend-provided per-tree defaults for edge/path colors (CSV only, optional).
+  // Backend provides: tsconfig.tree_info = { [treeIndex]: "#RRGGBB" }
+  // Do not override if user already customized edge colors.
+  useEffect(() => {
+    if (appliedInitialTreeEdgeColorsRef.current) return;
+    const initial = tsconfig?.tree_info;
+    if (!initial || typeof initial !== 'object') return;
+    if (Object.keys(initial).length === 0) return;
+    setTreeEdgeColors(initial);
+    appliedInitialTreeEdgeColorsRef.current = true;
+  }, [tsconfig?.tree_info]);
 
   // Initialize position when config loads (only if deck hasn't set it yet)
   useEffect(() => {
@@ -289,6 +307,8 @@ function FileView() {
                 genomePositions: { enabled: true, ...views?.genomePositions },
                 treeTime: { enabled: true, ...views?.treeTime }
               }}
+              colorEdgesByTree={colorByTree}
+              treeEdgeColors={treeEdgeColors}
               onGenomicCoordsChange={handleGenomicCoordsChange}
               onTreeLoadingChange={handleTreeLoadingChange}
               onVisibleTreesChange={handleVisibleTreesChange}
@@ -483,6 +503,10 @@ function FileView() {
             visibleTrees={visibleTrees}
             treeColors={treeColors}
             setTreeColors={setTreeColors}
+            treeEdgeColors={treeEdgeColors}
+            setTreeEdgeColors={setTreeEdgeColors}
+            colorByTree={colorByTree}
+            setColorByTree={setColorByTree}
             hoveredTreeIndex={hoveredTreeIndex}
             setHoveredTreeIndex={setHoveredTreeIndex}
           />

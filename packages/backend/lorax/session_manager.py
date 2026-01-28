@@ -27,7 +27,7 @@ class Session:
         # socket_connections: {socket_sid: connected_at_iso_string}
         self.socket_connections: Dict[str, str] = socket_connections or {}
 
-    def to_dict(self):
+    def to_dict(self): 
         return {
             "sid": self.sid,
             "file_path": self.file_path,

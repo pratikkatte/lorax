@@ -19,6 +19,10 @@ const Info = ({
   visibleTrees = [],
   treeColors = {},
   setTreeColors,
+  treeEdgeColors = {},
+  setTreeEdgeColors,
+  colorByTree = false,
+  setColorByTree,
   hoveredTreeIndex = null,
   setHoveredTreeIndex
 }) => {
@@ -136,6 +140,8 @@ const Info = ({
             visibleTrees={visibleTrees}
             treeColors={treeColors}
             setTreeColors={setTreeColors}
+            colorByTree={colorByTree}
+            setColorByTree={setColorByTree}
             hoveredTreeIndex={hoveredTreeIndex}
             setHoveredTreeIndex={setHoveredTreeIndex}
           />

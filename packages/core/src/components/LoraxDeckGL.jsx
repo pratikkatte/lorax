@@ -81,6 +81,9 @@ const LoraxDeckGL = forwardRef(({
   onVisibleTreesChange,
   // External control of polygon hover (for list-to-polygon sync)
   hoveredTreeIndex,
+  // Optional: per-tree edge coloring (CSV "color by tree")
+  colorEdgesByTree = false,
+  treeEdgeColors = null,
   ...otherProps
 }, ref) => {
   const deckRef = useRef(null);
@@ -532,6 +535,8 @@ const LoraxDeckGL = forwardRef(({
     genomePositions,
     timePositions,
     renderData,
+    colorEdgesByTree,
+    treeEdgeColors,
     // Tree interactions
     onTipHover,
     onTipClick,

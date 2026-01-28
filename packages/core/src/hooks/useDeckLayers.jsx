@@ -24,6 +24,9 @@ export function useDeckLayers({
   genomePositions = [],
   timePositions = [],
   renderData = null,
+  // Optional: per-tree edge coloring (CSV "color by tree")
+  colorEdgesByTree = false,
+  treeEdgeColors = null,
   // Tree interactions (UI handled by packages/website)
   onTipHover,
   onTipClick,
@@ -86,6 +89,24 @@ export function useDeckLayers({
     if (enabledViews.includes('ortho')) {
       const wantsPicking = Boolean(onTipHover || onTipClick || onEdgeHover || onEdgeClick);
 
+      const edgeColor = (colorEdgesByTree && treeEdgeColors && renderData?.edgeData)
+        ? (d, { index }) => {
+          const edge = renderData.edgeData?.[index];
+          const t = edge?.tree_idx;
+          const hex = (t != null)
+            ? (treeEdgeColors[String(t)] ?? treeEdgeColors[t])
+            : null;
+          if (typeof hex === 'string' && /^#?[0-9a-fA-F]{6}$/.test(hex)) {
+            const h = hex.startsWith('#') ? hex.slice(1) : hex;
+            const r = parseInt(h.slice(0, 2), 16);
+            const g = parseInt(h.slice(2, 4), 16);
+            const b = parseInt(h.slice(4, 6), 16);
+            return [r, g, b, 255];
+          }
+          return [100, 100, 100, 255];
+        }
+        : [100, 100, 100, 255];
+
       // CompositeLayer sublayer callbacks are not always invoked directly by deck.gl.
       // We dispatch from the *top-level* layer using sourceLayer id + picking info.
       const dispatchHover = (info, event) => {
@@ -130,7 +151,7 @@ export function useDeckLayers({
       result.push(new TreeCompositeLayer({
         id: 'main-trees',
         renderData: renderData || null,
-        edgeColor: [100, 100, 100, 255],
+        edgeColor,
         edgeWidth: 1,
         tipRadius: 2,
         pickable: wantsPicking,
@@ -147,7 +168,7 @@ export function useDeckLayers({
     }
 
     return result;
-  }, [enabledViews, globalBpPerUnit, visibleIntervals, genomePositions, timePositions, renderData, hoveredEdgeIndex, onTipHover, onTipClick, onEdgeHover, onEdgeClick]);
+  }, [enabledViews, globalBpPerUnit, visibleIntervals, genomePositions, timePositions, renderData, hoveredEdgeIndex, onTipHover, onTipClick, onEdgeHover, onEdgeClick, colorEdgesByTree, treeEdgeColors]);
 
   return { layers, layerFilter };
 }
