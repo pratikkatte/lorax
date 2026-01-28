@@ -200,6 +200,12 @@ def _get_sample_metadata_value(ts, node_id, key, sources, sample_name_key="name"
     node_meta = ensure_json_dict(node_meta)
     sample_name = node_meta.get(sample_name_key, f"{node_id}")
 
+    # Special handling for "sample" key: it is not a real metadata field in tskit.
+    # Treat it as identity so "sample" searches/highlights match by sample name.
+    if key == "sample":
+        sample_name = str(sample_name)
+        return (sample_name, sample_name)
+
     for source in sources:
         if source == "individual":
             if node.individual == tskit.NULL:
