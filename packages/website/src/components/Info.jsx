@@ -9,6 +9,7 @@ const Info = ({
   genomicCoords,
   setClickedGenomeInfo,
   setHighlightedMutationNode,
+  setHighlightedMutationTreeIndex,
   treeDetails,
   nodeDetails,
   individualDetails,
@@ -133,6 +134,7 @@ const Info = ({
             genomeLength={genomeLength}
             setClickedGenomeInfo={setClickedGenomeInfo}
             setHighlightedMutationNode={setHighlightedMutationNode}
+            setHighlightedMutationTreeIndex={setHighlightedMutationTreeIndex}
           />
         )}
         {activeTab === 'filter' && (

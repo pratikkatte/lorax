@@ -6,7 +6,7 @@ import { parseTreeLayoutBuffer, EMPTY_TREE_LAYOUT } from '../utils/arrowUtils.js
  * Groups nodes and mutations by tree_idx and stores in cache.
  */
 function updateCacheFromResponse(cache, parsed) {
-  const { node_id, parent_id, is_tip, tree_idx, x, y, time, mut_x, mut_y, mut_tree_idx } = parsed;
+  const { node_id, parent_id, is_tip, tree_idx, x, y, time, mut_x, mut_y, mut_tree_idx, mut_node_id } = parsed;
 
   // Group node data by tree_idx
   const treeIndices = [...new Set(tree_idx)];
@@ -33,11 +33,13 @@ function updateCacheFromResponse(cache, parsed) {
     }
 
     // Get mutations for this tree
-    const mutData = { mut_x: [], mut_y: [] };
+    const mutData = { mut_x: [], mut_y: [], mut_node_id: [] };
+    const hasMutNodeId = Array.isArray(mut_node_id) && mut_node_id.length === mut_tree_idx.length;
     for (let i = 0; i < mut_tree_idx.length; i++) {
       if (mut_tree_idx[i] === idx) {
         mutData.mut_x.push(mut_x[i]);
         mutData.mut_y.push(mut_y[i]);
+        mutData.mut_node_id.push(hasMutNodeId ? mut_node_id[i] : null);
       }
     }
 
@@ -99,6 +101,7 @@ function buildTreeDataFromCache(cache, displayArray) {
     mut_x: [],
     mut_y: [],
     mut_tree_idx: [],
+    mut_node_id: [],
     tree_indices: []
   };
 
@@ -118,6 +121,7 @@ function buildTreeDataFromCache(cache, displayArray) {
       // Mutations
       result.mut_x.push(...cached.mut_x);
       result.mut_y.push(...cached.mut_y);
+      result.mut_node_id.push(...(cached.mut_node_id || []));
       for (let i = 0; i < cached.mut_x.length; i++) {
         result.mut_tree_idx.push(idx);
       }

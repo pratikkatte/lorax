@@ -25,10 +25,11 @@ export function parseTreeLayoutBuffer(buffer) {
       y: [],
       time: [],
       name: [],
-      // Mutations: only x, y, tree_idx
+      // Mutations
       mut_x: [],
       mut_y: [],
       mut_tree_idx: [],
+      mut_node_id: [],
     };
   }
 
@@ -56,10 +57,11 @@ export function parseTreeLayoutBuffer(buffer) {
     y: Array.from(nodeTable.getChild('y')?.toArray() || []),
     time: Array.from(nodeTable.getChild('time')?.toArray() || []),
     name: Array.from(nodeTable.getChild('name')?.toArray() || []),
-    // Mutation fields from mutTable (simplified: only x, y, tree_idx)
+    // Mutation fields from mutTable
     mut_x: Array.from(mutTable?.getChild('mut_x')?.toArray() || []),
     mut_y: Array.from(mutTable?.getChild('mut_y')?.toArray() || []),
     mut_tree_idx: Array.from(mutTable?.getChild('mut_tree_idx')?.toArray() || []),
+    mut_node_id: Array.from(mutTable?.getChild('mut_node_id')?.toArray() || []),
   };
 }
 
@@ -75,10 +77,11 @@ export const EMPTY_TREE_LAYOUT = {
   y: [],
   time: [],
   name: [],
-  // Mutation fields (simplified: only x, y, tree_idx)
+  // Mutation fields
   mut_x: [],
   mut_y: [],
   mut_tree_idx: [],
+  mut_node_id: [],
   // Metadata
   global_min_time: null,
   global_max_time: null,

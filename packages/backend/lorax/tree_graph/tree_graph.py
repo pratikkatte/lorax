@@ -352,6 +352,7 @@ def construct_trees_batch(
     all_mut_tree_idx = np.empty(estimated_mutations, dtype=np.int32) if has_mutations else None
     all_mut_x = np.empty(estimated_mutations, dtype=np.float32) if has_mutations else None
     all_mut_y = np.empty(estimated_mutations, dtype=np.float32) if has_mutations else None
+    all_mut_node_id = np.empty(estimated_mutations, dtype=np.int32) if has_mutations else None
 
     offset = 0
     mut_offset = 0
@@ -482,11 +483,13 @@ def construct_trees_batch(
                     all_mut_tree_idx.resize(new_size, refcheck=False)
                     all_mut_x.resize(new_size, refcheck=False)
                     all_mut_y.resize(new_size, refcheck=False)
+                    all_mut_node_id.resize(new_size, refcheck=False)
 
                 # Copy mutation data (only essential fields)
                 all_mut_tree_idx[mut_offset:mut_offset+n_muts] = tree_idx
                 all_mut_x[mut_offset:mut_offset+n_muts] = mut_x
                 all_mut_y[mut_offset:mut_offset+n_muts] = mut_y
+                all_mut_node_id[mut_offset:mut_offset+n_muts] = mut_node_ids
 
                 mut_offset += n_muts
 
@@ -505,6 +508,7 @@ def construct_trees_batch(
         all_mut_tree_idx = all_mut_tree_idx[:mut_offset]
         all_mut_x = all_mut_x[:mut_offset]
         all_mut_y = all_mut_y[:mut_offset]
+        all_mut_node_id = all_mut_node_id[:mut_offset]
 
     # Build separate node table
     if offset == 0:
@@ -526,18 +530,20 @@ def construct_trees_batch(
             'y': pa.array(all_y, type=pa.float32()),
         })
 
-    # Build separate mutation table (simplified: only x, y, tree_idx)
+    # Build separate mutation table (simplified: only x, y, tree_idx, node_id)
     if has_mutations and mut_offset > 0:
         mut_table = pa.table({
             'mut_x': pa.array(all_mut_x, type=pa.float32()),
             'mut_y': pa.array(all_mut_y, type=pa.float32()),
             'mut_tree_idx': pa.array(all_mut_tree_idx, type=pa.int32()),
+            'mut_node_id': pa.array(all_mut_node_id, type=pa.int32()),
         })
     else:
         mut_table = pa.table({
             'mut_x': pa.array([], type=pa.float32()),
             'mut_y': pa.array([], type=pa.float32()),
             'mut_tree_idx': pa.array([], type=pa.int32()),
+            'mut_node_id': pa.array([], type=pa.int32()),
         })
 
     # Serialize node table to IPC

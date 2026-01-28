@@ -258,7 +258,8 @@ export class TreeCompositeLayer extends CompositeLayer {
         getPosition: d => d.position,
         getFillColor: [0, 0, 0, 0],  // Transparent fill (hollow)
         getLineColor: d => d.color || [255, 200, 0, 255],
-        getRadius: tipRadius + 1,
+        // Allow per-highlight radius override (e.g. mutation/node highlight)
+        getRadius: d => (d?.radius ?? (tipRadius + 1)),
         radiusUnits: 'pixels',
         stroked: true,
         filled: false,

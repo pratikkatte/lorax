@@ -42,6 +42,7 @@ function FileView() {
   // Navigation state for mutation tab
   const [clickedGenomeInfo, setClickedGenomeInfo] = useState(null);
   const [highlightedMutationNode, setHighlightedMutationNode] = useState(null);
+  const [highlightedMutationTreeIndex, setHighlightedMutationTreeIndex] = useState(null);
 
   // Right-panel details (populated by queryDetails)
   const [treeDetails, setTreeDetails] = useState(null);
@@ -312,6 +313,8 @@ function FileView() {
               }}
               colorEdgesByTree={colorByTree}
               treeEdgeColors={treeEdgeColors}
+              highlightedMutationNode={highlightedMutationNode}
+              highlightedMutationTreeIndex={highlightedMutationTreeIndex}
               onGenomicCoordsChange={handleGenomicCoordsChange}
               onTreeLoadingChange={handleTreeLoadingChange}
               onVisibleTreesChange={handleVisibleTreesChange}
@@ -496,6 +499,7 @@ function FileView() {
             genomicCoords={genomicPosition}
             setClickedGenomeInfo={setClickedGenomeInfo}
             setHighlightedMutationNode={setHighlightedMutationNode}
+            setHighlightedMutationTreeIndex={setHighlightedMutationTreeIndex}
             treeDetails={treeDetails}
             nodeDetails={nodeDetails}
             individualDetails={individualDetails}

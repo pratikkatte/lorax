@@ -42,6 +42,41 @@ function findPolygonAtPoint(polygons, x, y) {
   return null;
 }
 
+function getCanvasXYFromDeckEvent(deckRef, info, event) {
+  // Prefer deck.gl-provided canvas coords when available.
+  const ix = info?.x;
+  const iy = info?.y;
+  if (Number.isFinite(ix) && Number.isFinite(iy)) return { x: ix, y: iy };
+
+  const src = event?.srcEvent;
+  // offsetX/offsetY are already relative to the event target (typically the canvas).
+  const ox = src?.offsetX;
+  const oy = src?.offsetY;
+  if (Number.isFinite(ox) && Number.isFinite(oy)) return { x: ox, y: oy };
+
+  // Fall back to clientX/clientY relative to the deck canvas rect.
+  const cx = src?.clientX;
+  const cy = src?.clientY;
+  if (!Number.isFinite(cx) || !Number.isFinite(cy)) return null;
+  const canvas = deckRef?.current?.deck?.canvas;
+  const rect = canvas?.getBoundingClientRect?.();
+  if (!rect) return null;
+  return { x: cx - rect.left, y: cy - rect.top };
+}
+
+function getOrthoLocalXY(deckRef, info, event) {
+  const canvasXY = getCanvasXYFromDeckEvent(deckRef, info, event);
+  if (!canvasXY) return null;
+
+  // Polygons are rendered inside the `ortho` <View>, so their vertices are in
+  // ortho-viewport-local pixel coordinates. Convert from canvas to ortho-local.
+  const vp = info?.viewport;
+  if (vp?.id && vp.id !== 'ortho') return null;
+  const vx = vp?.x ?? 0;
+  const vy = vp?.y ?? 0;
+  return { x: canvasXY.x - vx, y: canvasXY.y - vy };
+}
+
 /**
  * LoraxDeckGL - Configurable deck.gl component with 4 views:
  * - ortho: Main tree visualization (always required)
@@ -84,6 +119,10 @@ const LoraxDeckGL = forwardRef(({
   // Optional: per-tree edge coloring (CSV "color by tree")
   colorEdgesByTree = false,
   treeEdgeColors = null,
+  // Optional: node id to highlight (e.g. mutation click)
+  highlightedMutationNode = null,
+  // Optional: tree index to restrict mutation highlight to (e.g. Info→Mutations click)
+  highlightedMutationTreeIndex = null,
   ...otherProps
 }, ref) => {
   const deckRef = useRef(null);
@@ -391,6 +430,72 @@ const LoraxDeckGL = forwardRef(({
     return positions;
   }, [multiHighlightData, localBins, metadataColors, selectedColorBy]);
 
+  // Compute mutation highlight data from a selected node id.
+  // We compute positions directly from currently loaded `treeData` (visible trees),
+  // applying the same transform as the render worker uses for mutation markers.
+  const computedMutationHighlightData = useMemo(() => {
+    const raw = highlightedMutationNode;
+    if (raw === null || raw === undefined || raw === '') return [];
+    if (!treeData?.mut_node_id || !treeData?.mut_tree_idx || !treeData?.mut_x || !treeData?.mut_y) return [];
+    if (!localBins || !(localBins instanceof Map)) return [];
+
+    const nodeId = Number.parseInt(String(raw), 10);
+    if (!Number.isFinite(nodeId)) return [];
+
+    const selectedTreeIdxRaw = highlightedMutationTreeIndex;
+    const selectedTreeIdx = (selectedTreeIdxRaw === null || selectedTreeIdxRaw === undefined || selectedTreeIdxRaw === '')
+      ? null
+      : Number.parseInt(String(selectedTreeIdxRaw), 10);
+    if (selectedTreeIdxRaw != null && selectedTreeIdx === null) return [];
+    if (selectedTreeIdx != null && !Number.isFinite(selectedTreeIdx)) return [];
+
+    const out = [];
+    const defaultColor = [255, 0, 0, 255];
+    const defaultRadius = 7;
+
+    // Use mutation marker coordinates (mutations are not sparsified, unlike nodes).
+    // `mut_x` is normalized time (vertical), `mut_y` is normalized layout (horizontal, backend-swapped).
+    // World X for mutation markers = mut_y * scaleX + translateX; World Y = mut_x.
+    const n = Math.min(
+      treeData.mut_node_id.length,
+      treeData.mut_tree_idx.length,
+      treeData.mut_x.length,
+      treeData.mut_y.length
+    );
+    for (let i = 0; i < n; i++) {
+      if (treeData.mut_node_id[i] !== nodeId) continue;
+
+      const treeIdx = treeData.mut_tree_idx[i];
+      if (selectedTreeIdx != null && treeIdx !== selectedTreeIdx) continue;
+      const bin = localBins.get(treeIdx);
+      if (!bin?.modelMatrix) continue;
+
+      const m = bin.modelMatrix;
+      const scaleX = m[0];
+      const translateX = m[12];
+
+      const time = treeData.mut_x[i];
+      const layout = treeData.mut_y[i];
+      if (!Number.isFinite(time) || !Number.isFinite(layout)) continue;
+
+      const worldX = layout * scaleX + translateX;
+      const worldY = time;
+
+      out.push({
+        position: [worldX, worldY],
+        color: defaultColor,
+        radius: defaultRadius,
+        node_id: nodeId,
+        tree_idx: treeIdx
+      });
+
+      // Only highlight a single marker for the clicked mutation.
+      break;
+    }
+
+    return out;
+  }, [highlightedMutationNode, highlightedMutationTreeIndex, treeData, localBins]);
+
   // Build nodePositions lookup from treeData for lineage path rendering
   const nodePositionsLookup = useMemo(() => {
     if (!treeData?.node_id) return new Map();
@@ -491,13 +596,23 @@ const LoraxDeckGL = forwardRef(({
     if (!baseRenderData) return null;
 
     const result = { ...baseRenderData };
+    const mergedHighlights = [];
 
     // Multi-value search (searchTags) takes priority over single-value highlight
     if (computedMultiHighlightData && computedMultiHighlightData.length > 0) {
-      result.highlightData = computedMultiHighlightData;
+      mergedHighlights.push(...computedMultiHighlightData);
     } else if (computedHighlightData && computedHighlightData.length > 0) {
       // Fall back to single-value highlight
-      result.highlightData = computedHighlightData;
+      mergedHighlights.push(...computedHighlightData);
+    }
+
+    // Append node-based mutation highlight (from Info click).
+    if (computedMutationHighlightData && computedMutationHighlightData.length > 0) {
+      mergedHighlights.push(...computedMutationHighlightData);
+    }
+
+    if (mergedHighlights.length > 0) {
+      result.highlightData = mergedHighlights;
     }
 
     // Add lineage data when enabled
@@ -506,7 +621,7 @@ const LoraxDeckGL = forwardRef(({
     }
 
     return result;
-  }, [baseRenderData, computedHighlightData, computedMultiHighlightData, computedLineageData]);
+  }, [baseRenderData, computedHighlightData, computedMultiHighlightData, computedMutationHighlightData, computedLineageData]);
 
   // 7. Compute genome position tick marks
   const genomePositions = useGenomePositions(genomicCoords);
@@ -593,23 +708,25 @@ const LoraxDeckGL = forwardRef(({
 
   // Enable deck.gl picking loop for layer-level onHover/onClick and
   // implement polygon hover/click without letting the SVG overlay intercept pointer events.
-  const handleDeckHover = useCallback((info) => {
+  const handleDeckHover = useCallback((info, event) => {
     if (!showPolygons) return;
     // Only do polygon hover when nothing pickable is hovered.
     if (info?.object) return;
-    const x = info?.x;
-    const y = info?.y;
+    const xy = getOrthoLocalXY(deckRef, info, event);
+    const x = xy?.x;
+    const y = xy?.y;
     if (!Number.isFinite(x) || !Number.isFinite(y)) return;
     const hit = findPolygonAtPoint(polygons, x, y);
     setHoveredPolygon(hit?.key ?? null);
   }, [showPolygons, polygons, setHoveredPolygon]);
 
-  const handleDeckClick = useCallback((info) => {
+  const handleDeckClick = useCallback((info, event) => {
     if (!showPolygons) return;
     // If a deck object was picked, its layer handler should handle it.
     if (info?.object) return;
-    const x = info?.x;
-    const y = info?.y;
+    const xy = getOrthoLocalXY(deckRef, info, event);
+    const x = xy?.x;
+    const y = xy?.y;
     if (!Number.isFinite(x) || !Number.isFinite(y)) return;
     const hit = findPolygonAtPoint(polygons, x, y);
     if (hit?.treeIndex != null) {

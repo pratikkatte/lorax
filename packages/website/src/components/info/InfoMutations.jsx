@@ -53,7 +53,8 @@ export default function InfoMutations({
   intervals,
   genomeLength,
   setClickedGenomeInfo,
-  setHighlightedMutationNode
+  setHighlightedMutationNode,
+  setHighlightedMutationTreeIndex
 }) {
   const [searchInput, setSearchInput] = useState("");
 
@@ -66,6 +67,11 @@ export default function InfoMutations({
     // Find the tree index for this position
     const treeIndex = findTreeIndex(intervals, position);
     if (treeIndex < 0) return;
+
+    // Set the highlighted mutation tree index (so we can draw exactly one ring)
+    if (setHighlightedMutationTreeIndex) {
+      setHighlightedMutationTreeIndex(treeIndex);
+    }
 
     // Get the start and end positions for this tree
     const start = intervals[treeIndex];
@@ -80,7 +86,7 @@ export default function InfoMutations({
     if (setHighlightedMutationNode && mutation.node_id !== undefined) {
       setHighlightedMutationNode(String(mutation.node_id));
     }
-  }, [intervals, genomeLength, setClickedGenomeInfo, setHighlightedMutationNode]);
+  }, [intervals, genomeLength, setClickedGenomeInfo, setHighlightedMutationNode, setHighlightedMutationTreeIndex]);
 
   // Search range options (in bp)
   const rangeOptions = [
