@@ -300,6 +300,7 @@ function FileView() {
               width: viewport.width,
               height: viewport.height
             }}
+            onMouseLeave={clearHoverTooltip}
           >
             <LoraxDeckGL
               ref={deckRef}

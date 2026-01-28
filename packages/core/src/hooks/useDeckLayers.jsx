@@ -34,6 +34,14 @@ export function useDeckLayers({
   onEdgeClick
 }) {
   const [hoveredEdgeIndex, setHoveredEdgeIndex] = useState(null);
+
+  // Clear any hover-driven UI state when pointer leaves the canvas.
+  // This is used by LoraxDeckGL because DeckGL's onHover stops firing outside the canvas.
+  const clearHover = useCallback(() => {
+    setHoveredEdgeIndex(null);
+    onTipHover?.(null, null, null);
+    onEdgeHover?.(null, null, null);
+  }, [onTipHover, onEdgeHover]);
   /**
    * Layer filter function - maps layer IDs to view IDs
    * Ensures only relevant layers render in each viewport
@@ -170,5 +178,5 @@ export function useDeckLayers({
     return result;
   }, [enabledViews, globalBpPerUnit, visibleIntervals, genomePositions, timePositions, renderData, hoveredEdgeIndex, onTipHover, onTipClick, onEdgeHover, onEdgeClick, colorEdgesByTree, treeEdgeColors]);
 
-  return { layers, layerFilter };
+  return { layers, layerFilter, clearHover };
 }

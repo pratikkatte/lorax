@@ -528,7 +528,7 @@ const LoraxDeckGL = forwardRef(({
   });
 
   // 8. Layers for enabled views
-  const { layers, layerFilter } = useDeckLayers({
+  const { layers, layerFilter, clearHover: clearPickingHover } = useDeckLayers({
     enabledViews,
     globalBpPerUnit,
     visibleIntervals,
@@ -617,6 +617,13 @@ const LoraxDeckGL = forwardRef(({
     }
   }, [showPolygons, polygons, onPolygonClick]);
 
+  // Ensure hover-driven UI (tooltips, edge highlights) clears when pointer leaves the canvas.
+  // DeckGL's onHover won't fire once the pointer is outside the canvas, so we proactively clear.
+  const handlePointerLeave = useCallback(() => {
+    clearPickingHover?.();
+    setHoveredPolygon(null);
+  }, [clearPickingHover, setHoveredPolygon]);
+
   // 11. Ref forwarding - expose deck instance, viewState, and genomic coordinates
   useImperativeHandle(ref, () => ({
     getDeck: () => deckRef.current?.deck,
@@ -667,7 +674,11 @@ const LoraxDeckGL = forwardRef(({
   }), [viewState, views, viewReset, xzoom, yzoom, genomicCoords, setGenomicCoords, coordsReady, localBins, displayArray, showingAllTrees, treeData, treeDataLoading, treeDataError, polygons, hoveredPolygon, setHoveredPolygon, polygonsReady]);
 
   return (
-    <div style={{ width: '100%', height: '100%', position: 'relative' }}>
+    <div
+      style={{ width: '100%', height: '100%', position: 'relative' }}
+      onMouseLeave={handlePointerLeave}
+      onPointerLeave={handlePointerLeave}
+    >
       <DeckGL
         ref={deckRef}
         glOptions={glOptions}
