@@ -106,8 +106,10 @@ function FileView() {
   }, []);
 
   // Convenience: populate right-panel from queryDetails response
-  const applyDetailsResponse = useCallback((data) => {
-    setTreeDetails(data?.tree ?? null);
+  // Keep the originating tree index around for downstream UI actions (e.g. highlight mutations).
+  const applyDetailsResponse = useCallback((data, treeIndex = null) => {
+    const tree = data?.tree ?? null;
+    setTreeDetails(tree ? { ...tree, tree_idx: treeIndex } : null);
     setNodeDetails(data?.node ?? null);
     setIndividualDetails(data?.individual ?? null);
     setPopulationDetails(data?.population ?? null);
@@ -347,7 +349,7 @@ function FileView() {
                     node: tip.node_id,
                     comprehensive: true
                   });
-                  applyDetailsResponse(details);
+                  applyDetailsResponse(details, tip.tree_idx);
                   if (selectedColorByLabel) {
                     const value = getSelectedMetadataValueForNode(tip.node_id);
                     setSelectedTipMetadata({ key: selectedColorByLabel, value: value ?? '-' });
@@ -377,7 +379,7 @@ function FileView() {
                   setShowInfo(true);
                   resetDetails();
                   const details = await queryDetails({ treeIndex: edge.tree_idx });
-                  applyDetailsResponse(details);
+                  applyDetailsResponse(details, edge.tree_idx);
                 } catch (e) {
                   console.error('[FileView] edge click queryDetails failed:', e);
                 }

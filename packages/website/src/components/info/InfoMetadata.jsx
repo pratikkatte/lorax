@@ -15,7 +15,9 @@ export default function InfoMetadata({
   populationDetails,
   nodeMutations,
   nodeEdges,
-  selectedTipMetadata
+  selectedTipMetadata,
+  setHighlightedMutationNode,
+  setHighlightedMutationTreeIndex
 }) {
   // Get sample name from node metadata if available
   const sampleName = nodeDetails?.metadata?.name || nodeDetails?.id;
@@ -36,6 +38,16 @@ export default function InfoMetadata({
                 <div
                   key={mut.id}
                   className="cursor-pointer hover:bg-emerald-50 transition-colors rounded px-1 -mx-1"
+                  onClick={() => {
+                    // Reuse the same highlight mechanism as the Mutations tab.
+                    // treeDetails.mutations entries come from backend `get_tree_details` and include `node`.
+                    if (setHighlightedMutationTreeIndex && treeDetails?.tree_idx != null) {
+                      setHighlightedMutationTreeIndex(treeDetails.tree_idx);
+                    }
+                    if (setHighlightedMutationNode && mut?.node != null) {
+                      setHighlightedMutationNode(String(mut.node));
+                    }
+                  }}
                 >
                   <DetailRow
                     label={`Mut ${mut.id}`}

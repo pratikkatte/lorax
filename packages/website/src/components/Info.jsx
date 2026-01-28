@@ -114,6 +114,8 @@ const Info = ({
             sampleDetails={sampleDetails}
             tsconfig={tsconfig}
             selectedTipMetadata={selectedTipMetadata}
+            setHighlightedMutationNode={setHighlightedMutationNode}
+            setHighlightedMutationTreeIndex={setHighlightedMutationTreeIndex}
           />
         )}
         {activeTab === 'mutations' && (
