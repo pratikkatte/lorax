@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lorax-app"
+version = "0.1.0"
+description = "Lorax single-port app (bundled UI + backend)"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [{name = "Lorax Team"}]
+keywords = ["lorax", "arg", "visualization", "fastapi", "socketio"]
+
+dependencies = [
+  # Runtime backend (FastAPI + Socket.IO + tskit tooling, etc.)
+  "lorax>=1.0.0",
+  # Explicitly required by the app runner CLI.
+  "uvicorn>=0.20.0",
+]
+
+[project.scripts]
+lorax-app = "lorax_app.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["lorax_app*"]
+
+[tool.setuptools.package-data]
+lorax_app = [
+  # Bundled website build output (copied in at build time)
+  "static/**/*",
+  "static/*",
+]
+

@@ -17,19 +17,33 @@ export function useSocket({
       return;
     }
 
-    // In production we may pass a relative apiBase like "/api" so the app can
-    // be deployed behind a same-origin reverse proxy.
-    const url = isProd && apiBase?.startsWith("/")
-      ? new URL(apiBase, window.location.origin)
-      : new URL(apiBase);
+    /**
+     * Determine Socket.IO URL in a way that works for:
+     * - Local dev (Vite): UI on :3001, backend on :8080, Vite proxies /socket.io
+     * - Docker single-port: UI on :3000, nginx proxies /api/socket.io -> backend /socket.io
+     * - pip single-port: UI on :3000, backend mounted under /api and Socket.IO at /api/socket.io
+     * - Production behind reverse-proxy on GCP: typically same-origin /api (recommended)
+     *
+     * Rule of thumb:
+     * - In dev (isProd=false), prefer SAME-ORIGIN `/socket.io/` so dev-server proxies work.
+     * - In prod (isProd=true), derive Socket.IO path from apiBase, supporting both `/api` and absolute URLs.
+     */
+    const resolvedApiBase = new URL(apiBase || "/", window.location.origin);
+    const isCrossOrigin = resolvedApiBase.origin !== window.location.origin;
 
-    const host = url.origin;
-    const path = `${url.pathname}/socket.io/`;
+    const host = (!isProd && isCrossOrigin) ? window.location.origin : resolvedApiBase.origin;
+
+    const apiPath = resolvedApiBase.pathname.replace(/\/$/, "");
+    const prodSocketPath = `${apiPath}/socket.io/`;
+    const devSocketPath = "/socket.io/";
 
     const socket = io(host, {
-      transports: ["websocket"],
+      // Prefer websocket, allow fallback to polling for tougher proxy setups.
+      transports: ["websocket", "polling"],
       withCredentials: true,
-      path: isProd ? path : "/socket.io/",
+      // - Bundled app / reverse-proxy: isProd=true, apiBase="/api" -> "/api/socket.io/"
+      // - Dev with proxy: isProd=false -> "/socket.io/"
+      path: isProd ? prodSocketPath : devSocketPath,
       reconnection: true,
       reconnectionAttempts: 10,
       reconnectionDelay: 3000,
