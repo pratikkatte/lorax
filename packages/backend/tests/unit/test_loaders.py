@@ -331,6 +331,45 @@ class TestNewickTreeParsing:
 
         assert result["tree_indices"] == []
 
+    def test_parse_newick_prunes_etal_outgroup(self):
+        """CSV Newick parsing should prune the 'etal' outgroup leaf (temporary workaround)."""
+        from lorax.csv.newick_tree import parse_newick_to_tree
+
+        # Include Etal (capitalized) as a leaf tip.
+        nwk = "((Etal:0.1,A:0.2):0.3,B:0.4);"
+        graph = parse_newick_to_tree(nwk, 0.4)
+
+        names = [n for n in graph.name if n]
+        assert "etal" not in {str(n).lower() for n in names}
+        assert "A" in names
+        assert "B" in names
+
+    def test_parse_newick_prunes_etal_before_samples_order_mapping(self):
+        """If samples_order excludes 'etal', parsing should still succeed after pruning."""
+        from lorax.csv.newick_tree import parse_newick_to_tree
+
+        nwk = "((Etal:0.1,A:0.2):0.3,B:0.4);"
+        graph = parse_newick_to_tree(nwk, 0.4, samples_order=["A", "B"])
+
+        names = [n for n in graph.name if n]
+        assert "etal" not in {str(n).lower() for n in names}
+        assert set(names) == {"A", "B"}
+
+
+class TestCsvConfigOutgroupFiltering:
+    def test_build_csv_config_filters_etal_outgroup_from_samples(self, temp_dir):
+        """CSV config samples list should exclude 'etal' to match pruning behavior."""
+        from lorax.csv.config import build_csv_config
+
+        df = pd.DataFrame(
+            {
+                "genomic_positions": [0],
+                "newick": ["((Etal:0.1,A:0.2):0.3,B:0.4);"],
+            }
+        )
+        cfg = build_csv_config(df, str(temp_dir / "test.csv"))
+        assert "etal" not in {str(s).lower() for s in cfg.get("samples", [])}
+
 
 class TestFileTypeDetection:
     """Tests for file type detection."""

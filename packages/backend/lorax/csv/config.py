@@ -220,6 +220,11 @@ def build_csv_config(
     else:
         samples_order = sorted(str(s) for s in samples_set)
 
+    # Temporary workaround: CSV inputs may include the outgroup sample "etal" (any case).
+    # The layout/parsing pipeline prunes it from the Newick tree, so also remove it
+    # from the file-level samples list to keep UI/search options consistent.
+    samples_order = [s for s in samples_order if str(s).lower() != "etal"]
+
     sample_names_map = {str(s): {"sample_name": s} for s in samples_order}
 
     config: Dict[str, Any] = {

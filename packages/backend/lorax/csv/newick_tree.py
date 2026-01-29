@@ -21,6 +21,44 @@ import numpy as np
 from ete3 import Tree
 
 
+def prune_outgroup_sample(tree: Tree, outgroup: str = "etal") -> None:
+    """Prune an outgroup leaf from an ete3 Tree (best-effort).
+
+    This is a temporary compatibility workaround for CSV Newick inputs that include
+    a known outgroup sample (e.g. "etal") that should not be displayed.
+
+    Behavior:
+    - If outgroup is missing, do nothing.
+    - Otherwise, reroot on outgroup, delete it, and clear the root branch lengths
+      (mirrors logic in `lorax.viz.trees_to_taxonium.remove_outgroup`).
+    """
+    try:
+        leaf_names = tree.get_leaf_names()
+        if not leaf_names:
+            return
+
+        # Match case-insensitively (e.g. "etal" vs "Etal")
+        target = None
+        out_l = str(outgroup).lower()
+        for name in leaf_names:
+            if str(name).lower() == out_l:
+                target = str(name)
+                break
+        if target is None:
+            return
+
+        tree.set_outgroup(target)
+        (tree & target).delete()
+
+        # Remove root branch distortion after rerooting/pruning
+        tree.dist = 0.0
+        for child in tree.get_children():
+            child.dist = 0.0
+    except Exception:
+        # Best-effort: CSV loading should remain resilient.
+        return
+
+
 @dataclass
 class NewickTreeGraph:
     """Tree structure from parsed Newick with layout coordinates.
@@ -70,6 +108,8 @@ def parse_newick_to_tree(
     """
     # Parse with ete3 - format=1 includes branch lengths and internal node names
     tree = Tree(newick_str, format=1)
+    # TODO: to remove in feature.
+    prune_outgroup_sample(tree, outgroup="etal")
 
     # Assign traversal order via post-order traversal
     nodes = list(tree.traverse("postorder"))
