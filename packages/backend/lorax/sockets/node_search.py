@@ -44,13 +44,22 @@ async def _get_or_parse_csv_tree_graph(ctx, session_id: str, tree_idx: int):
     times_values = ctx.config.get("times", {}).get("values", [0.0, 1.0])
     max_branch_length = float(times_values[1]) if len(times_values) > 1 else 1.0
     samples_order = ctx.config.get("samples") or []
+    tree_max_branch_length = None
+    if "max_branch_length" in df.columns:
+        try:
+            v = df.iloc[int(tree_idx)].get("max_branch_length")
+            if v is not None and not (isinstance(v, float) and pd.isna(v)) and str(v).strip() != "":
+                tree_max_branch_length = float(v)
+        except Exception:
+            tree_max_branch_length = None
 
     try:
         graph = await asyncio.to_thread(
             parse_newick_to_tree,
             str(newick_str),
             max_branch_length,
-            samples_order,
+            samples_order=samples_order,
+            tree_max_branch_length=tree_max_branch_length,
         )
     except Exception:
         return None

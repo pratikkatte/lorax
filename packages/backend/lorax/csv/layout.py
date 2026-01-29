@@ -90,6 +90,15 @@ def build_csv_layout_response(
         if pd.isna(newick_str):
             continue
 
+        tree_max_branch_length = None
+        if "max_branch_length" in df.columns:
+            try:
+                v = df.iloc[tree_idx].get("max_branch_length")
+                if v is not None and not (isinstance(v, float) and pd.isna(v)) and str(v).strip() != "":
+                    tree_max_branch_length = float(v)
+            except Exception:
+                tree_max_branch_length = None
+
         graph = pre_parsed_graphs.get(tree_idx) if pre_parsed_graphs else None
         if graph is None:
             try:
@@ -97,6 +106,7 @@ def build_csv_layout_response(
                     str(newick_str),
                     max_branch_length,
                     samples_order=samples_order,
+                    tree_max_branch_length=tree_max_branch_length,
                 )
             except Exception as e:
                 # Log error but continue with other trees

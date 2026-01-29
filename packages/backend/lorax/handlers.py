@@ -472,12 +472,22 @@ async def handle_tree_graph_query(
                 if newick_str is None or pd.isna(newick_str):
                     continue
 
+                tree_max_branch_length = None
+                if "max_branch_length" in ts.columns:
+                    try:
+                        v = ts.iloc[int(tree_idx)].get("max_branch_length")
+                        if v is not None and not (isinstance(v, float) and pd.isna(v)) and str(v).strip() != "":
+                            tree_max_branch_length = float(v)
+                    except Exception:
+                        tree_max_branch_length = None
+
                 try:
                     graph = await asyncio.to_thread(
                         parse_newick_to_tree,
                         str(newick_str),
                         max_branch_length,
-                        samples_order,
+                        samples_order=samples_order,
+                        tree_max_branch_length=tree_max_branch_length,
                     )
                 except Exception:
                     continue

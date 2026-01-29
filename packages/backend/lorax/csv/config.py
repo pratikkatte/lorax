@@ -148,29 +148,59 @@ def build_csv_config(
                 continue
             tree_info_map[str(int(i))] = str(v)
 
-    # Compute max branch length and sample names (best-effort, lightweight).
+    # Compute max tree height (branch length) and sample names (best-effort, lightweight).
+    #
+    # Prefer the CSV-provided per-tree `max_branch_length` column when present, since
+    # regex parsing only captures max *edge* length, not the full root→tip height.
     max_branch_length_all = 0.0
     samples_set = set()
+    has_max_col = MAX_BRANCH_COL in df2.columns
+    saw_valid_max_col_value = False
 
     for _, row in df2.iterrows():
         nwk = row["newick"]
         if isinstance(nwk, float) and pd.isna(nwk):
             continue
+        if _is_empty_value(nwk):
+            continue
         nwk = str(nwk)
 
-        try:
-            max_br = float(max_branch_length_from_newick(nwk))
-            if max_br > max_branch_length_all:
-                max_branch_length_all = max_br
-        except Exception:
-            # Keep config resilient; downstream can still load.
-            pass
+        if has_max_col:
+            v = row.get(MAX_BRANCH_COL)
+            if not _is_empty_value(v):
+                try:
+                    max_br = float(v)
+                    saw_valid_max_col_value = True
+                    if max_br > max_branch_length_all:
+                        max_branch_length_all = max_br
+                except Exception:
+                    # Ignore invalid per-row values; may fallback to regex below.
+                    pass
 
         try:
             sample_names = extract_sample_names(nwk)
             samples_set.update(sample_names)
         except Exception:
             pass
+
+    # Fallback: if the CSV doesn't provide usable per-tree max heights, derive a
+    # best-effort global max from Newick text (max edge length).
+    if not saw_valid_max_col_value:
+        for _, row in df2.iterrows():
+            nwk = row["newick"]
+            if isinstance(nwk, float) and pd.isna(nwk):
+                continue
+            if _is_empty_value(nwk):
+                continue
+            nwk = str(nwk)
+
+            try:
+                max_br = float(max_branch_length_from_newick(nwk))
+                if max_br > max_branch_length_all:
+                    max_branch_length_all = max_br
+            except Exception:
+                # Keep config resilient; downstream can still load.
+                pass
 
     genomic_positions = df2["genomic_positions"].astype(int).tolist()
     intervals = _compute_intervals(genomic_positions, options.window_size)

@@ -262,12 +262,24 @@ class TestNewickTreeParsing:
         nwk = "((A:0.1,B:0.2):0.3,C:0.5);"
         graph = parse_newick_to_tree(nwk, 0.5)
 
-        # Y should be normalized by max_branch_length
-        assert graph.y.max() <= 1.0
+        # Y should be normalized by max_branch_length:
+        # root (past/max-time) near 0, tips (present/min-time) near 1.
+        root_mask = graph.parent_id == -1
+        assert sum(root_mask) == 1
+        assert float(graph.y[root_mask][0]) == pytest.approx(0.0)
+        assert float(graph.y[graph.is_tip].max()) == pytest.approx(1.0)
 
         # X should be normalized based on tip count
         assert graph.x.min() == 0.0
         assert graph.x.max() == 1.0
+
+        # Anchored scaling case: global max > per-tree height.
+        # Tips should remain at 1.0, and the root should be 1 - tree_height/global_max.
+        graph2 = parse_newick_to_tree(nwk, 0.7, tree_max_branch_length=0.5)
+        root_mask2 = graph2.parent_id == -1
+        assert sum(root_mask2) == 1
+        assert float(graph2.y[graph2.is_tip].max()) == pytest.approx(1.0)
+        assert float(graph2.y[root_mask2][0]) == pytest.approx(1.0 - 0.5 / 0.7)
 
     def test_build_csv_layout_response(self, temp_dir):
         """Test building layout response for CSV trees."""

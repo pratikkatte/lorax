@@ -15,6 +15,25 @@ from lorax.constants import (
     ENFORCE_CONNECTION_LIMITS,
 )
 
+def _is_https_request(request: Request) -> bool:
+    """
+    Determine whether the *original* request was HTTPS.
+
+    In production, Lorax typically runs behind an HTTPS load balancer / proxy.
+    In that setup, the app may see an internal hop as http://, but the proxy
+    sets X-Forwarded-Proto=https (or Forwarded: proto=https).
+    """
+    xf_proto = (request.headers.get("x-forwarded-proto") or "").split(",")[0].strip().lower()
+    if xf_proto:
+        return xf_proto == "https"
+
+    forwarded = request.headers.get("forwarded") or ""
+    # Minimal parse: look for "proto=https" token anywhere.
+    if "proto=https" in forwarded.lower():
+        return True
+
+    return request.url.scheme == "https"
+
 
 class Session:
     """Per-user session with socket connection tracking."""
@@ -141,7 +160,10 @@ class SessionManager:
     async def get_or_create_session(self, request: Request, response: Response):
         """Helper to handle cookie extraction and setting."""
         sid = request.cookies.get(SESSION_COOKIE)
-        secure = request.url.scheme == "https"
+        # Cross-site usage (e.g. lorax.ucsc.edu -> api.lorax.in) requires SameSite=None,
+        # and browsers require SameSite=None cookies to be Secure.
+        # Detect original HTTPS behind proxies via X-Forwarded-Proto / Forwarded.
+        secure = _is_https_request(request)
         
         session = None
         if sid:
@@ -150,11 +172,15 @@ class SessionManager:
         if not session:
             # Create new if missing or expired
             session = await self.create_session()
+            # SameSite=None is required for cross-site usage (e.g. lorax.ucsc.edu -> api.lorax.in),
+            # but browsers require SameSite=None cookies to be Secure (HTTPS).
+            # For local HTTP dev, fall back to Lax so the cookie is accepted.
+            samesite = "none" if secure else "lax"
             response.set_cookie(
                 key=SESSION_COOKIE, 
                 value=session.sid, 
                 httponly=True, 
-                samesite="Lax", 
+                samesite=samesite,
                 max_age=COOKIE_MAX_AGE, 
                 secure=secure
             )

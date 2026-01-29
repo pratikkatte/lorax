@@ -5,7 +5,8 @@ It mirrors the approach in tree_graph/tree_graph.py but sources data from Newick
 instead of tskit tables.
 
 Coordinate system:
-- y (time): cumulative distance from root, normalized to [0,1]
+- y (time): anchored time in [0,1] where tips are always 1.0 and the root is
+  1 - (tree_height / global_max_height)
 - x (layout): tips get sequential x, internal nodes get (min+max)/2 of children
 """
 
@@ -47,6 +48,8 @@ def parse_newick_to_tree(
     newick_str: str,
     max_branch_length: float,
     samples_order: Optional[List[str]] = None,
+    *,
+    tree_max_branch_length: float | None = None,
 ) -> NewickTreeGraph:
     """Parse Newick string and compute x,y coordinates.
 
@@ -57,7 +60,10 @@ def parse_newick_to_tree(
 
     Args:
         newick_str: Newick format tree string
-        max_branch_length: Global max for y normalization (from config times.values[1])
+        max_branch_length: Global max height for y anchoring (from config times.values[1])
+        tree_max_branch_length: Optional per-tree max height. If provided, this is
+            used to anchor the root at 1 - (tree_height / global_max). If omitted,
+            tree height is derived from the parsed tree (max cumulative root distance).
 
     Returns:
         NewickTreeGraph with layout coordinates normalized to [0,1]
@@ -110,22 +116,26 @@ def parse_newick_to_tree(
         name[idx] = node.name if node.name else ""
         node_id[idx] = assigned_ids[node]
 
-    # Compute y (time): cumulative distance from root, normalized
-    # Root at y=0, tips at y=max_cumulative_distance
-    y = np.zeros(num_nodes, dtype=np.float32)
+    # Compute y_raw (time): cumulative distance from root
+    # Root at 0, tips at tree_height
+    y_raw = np.zeros(num_nodes, dtype=np.float32)
     for node in tree.traverse("preorder"):  # Root first
         idx = node_index[node]
         if node.up is not None:
             parent_idx = node_index[node.up]
-            y[idx] = y[parent_idx] + branch_length[idx]
+            y_raw[idx] = y_raw[parent_idx] + branch_length[idx]
 
-    # Normalize y to [0,1] using max_branch_length
-    # This matches the tskit convention where max_time maps to x=0, min_time to x=1
-    # But for CSV we have branch lengths, so root=0, tips=max
+    # Anchor time so tips are always 1.0 and the root is 1 - tree_height/global_max.
+    #
+    # If the per-tree max height is known (e.g. CSV 'max_branch_length' column), use
+    # it; otherwise derive it from the parsed tree.
+    tree_height = float(tree_max_branch_length) if (tree_max_branch_length or 0.0) > 0 else float(y_raw.max())
     if max_branch_length > 0:
-        y = y / max_branch_length
-    # Clamp to [0, 1] in case individual tree exceeds global max
-    y = np.clip(y, 0.0, 1.0)
+        y = 1.0 - (tree_height - y_raw) / float(max_branch_length)
+        y = np.clip(y, 0.0, 1.0)
+    else:
+        # Degenerate case: no global height information. Keep tips at 1.
+        y = np.ones(num_nodes, dtype=np.float32)
 
     # Compute x (layout): tips get sequential x, internals = (min+max)/2
     x = np.zeros(num_nodes, dtype=np.float32)
