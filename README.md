@@ -76,6 +76,37 @@ After the volume is mounted, your files will be accessible by Lorax when you use
 
 ---
 
+## Monorepo Docker (single container, port 3000)
+
+This repo can also be built as a **single container** that includes:
+- `packages/backend` (FastAPI + Socket.IO) running internally on `127.0.0.1:8080`
+- `packages/website` served by **nginx on port 3000**
+- same-origin proxying so the browser only needs **port 3000**
+
+### Build
+
+```bash
+docker build -t lorax-monorepo .
+```
+
+### Run
+
+```bash
+docker run --rm -p 3000:3000 lorax-monorepo
+```
+
+Then open: `http://localhost:3000`
+
+### Mount local data (recommended)
+
+```bash
+docker run --rm -p 3000:3000 \
+  -v "$(pwd)/ts_files:/app/UPLOADS/ts_files" \
+  lorax-monorepo
+```
+
+---
+
 ## Maintainer
 
 **Pratik Katte** \

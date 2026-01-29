@@ -1,76 +1,60 @@
-# ===============================
-# 1️⃣ Backend Build Stage
-# ===============================
-FROM python:3.11-slim AS python-builder
-
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends build-essential && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
-
-RUN python -m venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
-
-WORKDIR /wheels
-COPY requirements.txt .
-
-RUN pip install --upgrade pip wheel && pip wheel --no-cache-dir -r requirements.txt
-
-# RUN pip install --upgrade pip setuptools wheel && \
-#     pip install --prefer-binary -r requirements.txt
-    
+#
+# Monorepo single-container image:
+# - Website (static) served by nginx on :3000
+# - Backend (FastAPI + Socket.IO) runs on 127.0.0.1:8080
+# - nginx proxies /api/* and /api/socket.io/* to backend
+#
 
 # ===============================
-# 2️⃣ Frontend Build Stage
+# 1) Website build stage
 # ===============================
-FROM node:22 AS frontend-builder
-WORKDIR /frontend
+FROM node:22 AS website-builder
+WORKDIR /repo
 
-COPY frontend/ .
+COPY package.json package-lock.json ./
+COPY packages/core ./packages/core
+COPY packages/website ./packages/website
 
-
-RUN yarn install --frozen-lockfile
-
-RUN yarn build
+RUN npm ci
+RUN VITE_API_BASE=/api npm --workspace packages/website run build
 
 # ===============================
-# 3️⃣ Final Runtime Stage
+# 2) Runtime stage (python + nginx)
 # ===============================
 FROM python:3.11-slim
 
-# Install runtime deps: Nginx + curl + certs
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    LORAX_MODE=local
+
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-    nginx curl ca-certificates && \
-    # Disable Debian's default site configs
-    sed -i 's|include /etc/nginx/sites-enabled/\*;|# include /etc/nginx/sites-enabled/*;|g' /etc/nginx/nginx.conf && \
-    rm -rf /etc/nginx/sites-available /etc/nginx/sites-enabled && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
+    apt-get install -y --no-install-recommends nginx ca-certificates curl && \
+    rm -rf /var/lib/apt/lists/*
 
-# Create directories
+# Ensure nginx uses our config only
+RUN rm -rf /etc/nginx/sites-enabled /etc/nginx/sites-available && \
+    mkdir -p /etc/nginx/conf.d
+
 WORKDIR /app
-RUN mkdir -p /app/uploads /var/www/html
 
-COPY --from=python-builder /wheels /wheels
-RUN find /wheels -name '*.whl' -print0 | xargs -0 pip install --no-cache-dir
-
-# Copy backend package and install it
-COPY packages/backend/ /app/backend/
+# Install backend
+COPY packages/backend ./backend
 WORKDIR /app/backend
-RUN pip install -e ".[prod]"
-WORKDIR /app
+RUN pip install --no-cache-dir ".[prod]"
 
-COPY entrypoint.sh /app/
+# Website static assets
+COPY --from=website-builder /repo/packages/website/dist /usr/share/nginx/html
+
+# Nginx config + entrypoint
+WORKDIR /app
+COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
+COPY docker/entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
 
-# Copy frontend built assets
-COPY --from=frontend-builder /frontend/dist /var/www/html/
+# Optional uploads mount point (recommended)
+RUN mkdir -p /app/UPLOADS
 
-# Copy Nginx config
-COPY nginx/nginx.conf /etc/nginx/conf.d/default.conf
-
-RUN rm -rf /etc/nginx/sites-enabled
-
-EXPOSE 80 8080
+EXPOSE 3000
 
 ENTRYPOINT ["/app/entrypoint.sh"]
 

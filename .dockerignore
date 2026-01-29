@@ -3,3 +3,9 @@
 Dockerfile
 .dockerignore
 uploads
+UPLOADS
+meta_butterfly
+packages/backend/UPLOADS
+packages/backend/notebooks
+packages/backend/tests
+scripts

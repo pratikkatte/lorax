@@ -17,8 +17,13 @@ export function useSocket({
       return;
     }
 
-    const url = new URL(apiBase);
-    const host = `${url.protocol}//${url.hostname}:${url.port}`;
+    // In production we may pass a relative apiBase like "/api" so the app can
+    // be deployed behind a same-origin reverse proxy.
+    const url = isProd && apiBase?.startsWith("/")
+      ? new URL(apiBase, window.location.origin)
+      : new URL(apiBase);
+
+    const host = url.origin;
     const path = `${url.pathname}/socket.io/`;
 
     const socket = io(host, {
