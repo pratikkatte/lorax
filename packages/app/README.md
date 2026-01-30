@@ -1,7 +1,8 @@
 # lorax-arg
 
 `lorax-arg` is a pip-installable distribution that runs Lorax as a **single-port app**.
-It vendors the backend package so the wheel does not depend on a separate `lorax` PyPI release.
+It ships the backend package in the same wheel so the install does not depend on a separate `lorax` PyPI release.
+CLI entrypoint: `lorax` (with `lorax-arg` as an alias).
 
 - React UI served at `/`
 - Backend API served at `/api/*`
@@ -9,7 +10,7 @@ It vendors the backend package so the wheel does not depend on a separate `lorax
 
 ## Development (monorepo)
 
-This package can run against the backend Python distribution `lorax` (from `packages/backend/`) during development.
+This package can run against the backend Python package from `packages/backend/` during development.
 
 ### Build + sync UI assets (for wheel builds)
 
@@ -25,15 +26,14 @@ python packages/app/scripts/sync_ui_assets.py
 
 ```bash
 export LORAX_APP_STATIC_DIR=packages/website/dist
-python -m pip install -e packages/backend
-python -m pip install -e packages/app
-lorax-arg
+python -m pip install -e .
+lorax
 ```
 
 ## Clean (remove build artifacts)
 
 ```bash
-rm -rf packages/app/build packages/app/dist packages/app/*.egg-info packages/app/lorax
+rm -rf build dist *.egg-info
 find packages/app -type d -name __pycache__ -prune -exec rm -rf {} +
 ```
 
@@ -45,10 +45,15 @@ Build the UI and bundle it into the Python package, then build the wheel/sdist:
 npm ci
 VITE_API_BASE=/api npm --workspace packages/website run build
 python packages/app/scripts/sync_ui_assets.py
-python packages/app/scripts/sync_backend_vendor.py
 
 python -m pip install -U build
-python -m build packages/app
+python -m build .
+```
+
+You can also run:
+
+```bash
+lorax build
 ```
 
 ## Production install
@@ -57,22 +62,21 @@ Install the built wheel locally (recommended for production verification):
 
 ```bash
 python -m pip install --force-reinstall dist/lorax_arg-*.whl
-lorax-arg
+lorax
 ```
 
 ## Publish online (PyPI)
 
-1) Update `version` in `packages/app/pyproject.toml`.
+1) Update `version` in the repo-root `pyproject.toml`.
 2) Build fresh artifacts:
 
 ```bash
-rm -rf packages/app/build packages/app/dist packages/app/*.egg-info
+rm -rf build dist *.egg-info
 npm ci
 VITE_API_BASE=/api npm --workspace packages/website run build
 python packages/app/scripts/sync_ui_assets.py
-python packages/app/scripts/sync_backend_vendor.py
 python -m pip install -U build twine
-python -m build packages/app
+python -m build .
 ```
 
 3) Upload to TestPyPI (recommended), then PyPI:

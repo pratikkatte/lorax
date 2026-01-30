@@ -107,6 +107,44 @@ docker run --rm -p 3000:3000 \
 
 ---
 
+## Pip (single-port app, port 3000)
+
+This repo also contains a pip-installable single-port app distribution at `packages/app/` (named `lorax-arg`).
+
+- **UI**: served at `/`
+- **Backend API**: served at `/api/*`
+- **Socket.IO**: served at `/api/socket.io/`
+
+### Run from source (developer workflow)
+
+```bash
+# Build website once (requires Node 20.19+ or 22.12+; Node 22 recommended)
+npm ci
+VITE_API_BASE=/api npm --workspace packages/website run build
+
+# Install python packages
+python -m pip install -e packages/backend
+python -m pip install -e packages/app
+
+# Run (uses packaged static assets by default)
+lorax --port 3000
+```
+
+### Build a self-contained wheel
+
+```bash
+# Build UI and sync into the Python package
+npm ci
+VITE_API_BASE=/api npm --workspace packages/website run build
+python packages/app/scripts/sync_ui_assets.py
+
+# Build wheel
+python -m pip install build
+python -m build .
+```
+
+---
+
 ## Maintainer
 
 **Pratik Katte** \
