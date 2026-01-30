@@ -34,7 +34,7 @@ from lorax.cache import get_file_context, get_file_cache_size
 
 def _get_tip_shift_project_prefixes() -> list[str]:
     """Return project name prefixes that should shift CSV tips to y=1."""
-    raw = os.getenv("LORAX_CSV_TIP_SHIFT_PROJECTS", "heliconius,meta_butterfly")
+    raw = os.getenv("LORAX_CSV_TIP_SHIFT_PROJECTS", "heliconius")
     parts = [p.strip().lower() for p in raw.split(",") if p.strip()]
     return parts
 

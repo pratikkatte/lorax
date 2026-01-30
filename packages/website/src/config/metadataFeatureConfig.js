@@ -2,9 +2,9 @@
 // Keep IDs unique and matches exact project + filename.
 export const metadataFeatureConfig = [
   {
-    id: "meta_butterfly_erato_sara_hdem",
+    id: "Heliconius_erato_sara_hdem",
     label: "Hdem sample lineage",
-    project: "meta_butterfly",
+    project: "Heliconius",
     filename: "erato-sara_chr0.csv",
     genomicCoords: [0, 1000],
     metadata: {
@@ -17,9 +17,9 @@ export const metadataFeatureConfig = [
     displayLineage: true
   },
   {
-    id: "meta_butterfly_erato_sara_hdem_chr2",
+    id: "Heliconius_erato_sara_hdem_chr2",
     label: "inversions on chr2",
-    project: "meta_butterfly",
+    project: "Heliconius",
     filename: "erato-sara_chr2.csv",
     genomicCoords: [8790771, 16465129],
     metadata: {

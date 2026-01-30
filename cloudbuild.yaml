@@ -53,6 +53,13 @@ steps:
           echo "false" > /workspace/website_changed
         fi
 
+        # Manual/override: force website build even if change detection doesn't trigger.
+        # NOTE: Use Cloud Build substitution syntax (e.g. $_FORCE_WEBSITE) so `--substitutions`
+        # keys are recognized by Cloud Build.
+        if [ "$_FORCE_WEBSITE" = "true" ]; then
+          echo "true" > /workspace/website_changed
+        fi
+
         if echo "$$CHANGED" | grep -q "packages/core"; then
           echo "true" > /workspace/core_changed
         else
@@ -145,7 +152,7 @@ steps:
     args:
       - '-c'
       - |
-        if [ "$(cat /workspace/website_changed)" = "true" ] && [ "$BRANCH_NAME" = "main" ]; then
+        if [ "$(cat /workspace/website_changed)" = "true" ] && { [ "$BRANCH_NAME" = "main" ] || [ "$_FORCE_DEPLOY_WEBSITE" = "true" ]; }; then
           echo "Deploying website to Cloud Storage..."
           gsutil -m rsync -r -d packages/website/dist/ gs://$_WEBSITE_BUCKET/
           echo "Website deployed successfully"
@@ -155,17 +162,22 @@ steps:
     waitFor: ['build-website']
 
 substitutions:
-  _BACKEND_ZONE: us-west1-c
+  _BACKEND_ZONE: us-west1-a
   # Artifact Registry (Docker) settings:
   # - Create repo: gcloud artifacts repositories create lorax --repository-format=docker --location=us-west1
   _AR_REGION: us-west1
   _AR_REPO: lorax
   # Compute Engine instance name to deploy to:
-  _BACKEND_INSTANCE: lorax-backend-test
+  _BACKEND_INSTANCE: lorax-backend
   _WEBSITE_BUCKET: lorax-website
-  _BACKEND_API_URL: https://api.lorax.example.com
+  _BACKEND_API_URL: https://api.lorax.in
   _GCS_BUCKET: lorax_projects
   _REDIS_HOST: 10.0.0.3  # Memorystore Redis IP - update after creating instance
+  # Manual/temporary overrides:
+  # - _FORCE_WEBSITE=true: build website even if change detection can't run/trigger
+  # - _FORCE_DEPLOY_WEBSITE=true: deploy website even if BRANCH_NAME != main
+  _FORCE_WEBSITE: "false"
+  _FORCE_DEPLOY_WEBSITE: "false"
 
 options:
   logging: CLOUD_LOGGING_ONLY

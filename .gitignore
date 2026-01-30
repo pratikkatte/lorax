@@ -1,12 +1,16 @@
 lorax/data/
 CLAUDE.md
-pg.ipynb
+scripts/
+AGENT.md
 
+packages/app/lorax_app/static/
+packages/backend/notebooks/
 # --- Python ---
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
+*.ipynb
 .Python
 build/
 develop-eggs/
