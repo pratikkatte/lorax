@@ -33,7 +33,6 @@ REDIS_URL = os.getenv("REDIS_URL", None)
 session_manager = SessionManager(REDIS_URL)
 
 # Common Environment Variables
-IS_VM = os.getenv("IS_VM", "").lower() in ("true", "1", "yes")
 BUCKET_NAME = os.getenv("BUCKET_NAME") or os.getenv("GCS_BUCKET_NAME") or 'lorax_projects'
 
 # Initialize Disk Cache Manager

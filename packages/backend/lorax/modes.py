@@ -89,11 +89,9 @@ def detect_mode() -> str:
     # Auto-detect based on environment
     has_redis = bool(os.getenv("REDIS_URL"))
     has_gcs = bool(os.getenv("GCS_BUCKET_NAME") or os.getenv("BUCKET_NAME"))
-    is_vm = os.getenv("IS_VM", "").lower() in ("true", "1", "yes")
-
     if has_redis and has_gcs:
         return "production"
-    elif has_gcs or is_vm:
+    elif has_gcs:
         return "development"
     else:
         return "local"

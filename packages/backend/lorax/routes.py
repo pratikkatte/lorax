@@ -7,9 +7,9 @@ import aiofiles
 from fastapi import APIRouter, Request, Response, UploadFile, File, Query
 from fastapi.responses import JSONResponse
 
-from lorax.context import session_manager, IS_VM, BUCKET_NAME
+from lorax.context import session_manager, BUCKET_NAME
 from lorax.constants import UPLOADS_DIR
-from lorax.cloud.gcs_utils import download_gcs_file, get_public_gcs_dict, upload_to_gcs
+from lorax.cloud.gcs_utils import upload_to_gcs
 from lorax.handlers import (
     handle_upload,
     get_projects,
@@ -42,11 +42,7 @@ async def init_session(request: Request, response: Response):
 @router.get("/projects")
 async def projects(request: Request, response: Response):
     sid, session = await session_manager.get_or_create_session(request, response)
-    projects = {}
-    if IS_VM:
-        projects = get_public_gcs_dict(BUCKET_NAME, sid=sid, projects=projects)
-    else:
-        projects = await get_projects(UPLOAD_DIR, BUCKET_NAME)
+    projects = await get_projects(UPLOAD_DIR, BUCKET_NAME, sid=sid)
     return {"projects": projects}
 
 @router.get("/memory_status")
@@ -66,7 +62,7 @@ async def get_file(
 ):
     sid, session = await session_manager.get_or_create_session(request, response)
     if file and file != "" and file != "ucgb":
-        if project == 'Uploads' and IS_VM:
+        if project == 'Uploads':
             target_sid = share_sid if share_sid else sid
             file_path = UPLOAD_DIR / project / target_sid / file
         else:
@@ -108,7 +104,7 @@ async def upload(request: Request, response: Response, file: UploadFile = File(.
     """
     sid, session = await session_manager.get_or_create_session(request, response)
 
-    user_dir = UPLOAD_DIR /"Uploads"/sid if IS_VM else UPLOAD_DIR /"Uploads"
+    user_dir = UPLOAD_DIR / "Uploads" / sid
     user_dir.mkdir(parents=True, exist_ok=True)
 
     file_path = user_dir / file.filename
@@ -119,7 +115,7 @@ async def upload(request: Request, response: Response, file: UploadFile = File(.
                 await f.write(chunk)
 
         # Upload to GCS asynchronously
-        if IS_VM:
+        if BUCKET_NAME:
             gcs_url = await upload_to_gcs(BUCKET_NAME, file_path, sid)
         
         return JSONResponse(

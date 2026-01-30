@@ -1,9 +1,11 @@
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { BsCloudUpload, BsGithub } from "react-icons/bs";
 import { LuFileText, LuFolder } from "react-icons/lu";
 import { BsChevronDown } from "react-icons/bs";
 import ErrorAlert from "./ErrorAlert.jsx";
 import DatasetFiles from "./landing/DatasetFiles.jsx";
+import TourOverlay from "./TourOverlay.jsx";
+import useTourState from "../hooks/useTourState.js";
 
 // Minimal Badge Component
 function Badge({ children, pill }) {
@@ -19,6 +21,32 @@ export default function LandingPage({
 
     const { projects } = upload;
     const [expandedId, setExpandedId] = useState(null);
+    const tourState = useTourState('landing');
+    const [tourOpen, setTourOpen] = useState(false);
+
+    useEffect(() => {
+        if (!tourState.hasSeen) {
+            setTourOpen(true);
+        }
+    }, [tourState.hasSeen]);
+
+    const tourSteps = useMemo(() => ([
+        {
+            target: '[data-tour="landing-hero"]',
+            title: 'Welcome to Lorax',
+            content: 'This is the main entry point. Upload data or open existing projects to explore ARGs.'
+        },
+        {
+            target: '[data-tour="landing-upload"]',
+            title: 'Load a file',
+            content: 'Upload a .trees, .tszip, or .csv file to start exploring. Drag and drop also works.'
+        },
+        {
+            target: '[data-tour="landing-library"]',
+            title: 'Project Library',
+            content: 'Browse inferred project files already available on this instance.'
+        }
+    ]), []);
 
     // We don't use navigate() here anymore because loadFile in useFileUpload handles redirection
     // via window.location.href to the Viewer app.
@@ -66,7 +94,10 @@ export default function LandingPage({
                 )}
 
                 {/* Hero Section */}
-                <section className="mx-auto max-w-7xl px-6 pt-8 pb-6 grid lg:grid-cols-2 gap-8 items-center">
+                <section
+                    className="mx-auto max-w-7xl px-6 pt-8 pb-6 grid lg:grid-cols-2 gap-8 items-center"
+                    data-tour="landing-hero"
+                >
                     <div className="max-w-xl">
                         <div className="inline-flex items-center gap-2 rounded-full border border-emerald-100 bg-emerald-50/50 px-3 py-1 text-xs font-medium text-emerald-800 backdrop-blur-sm mb-6">
                             <span className="flex h-2 w-2 rounded-full bg-emerald-500"></span>
@@ -83,6 +114,7 @@ export default function LandingPage({
                         <div className="flex flex-col sm:flex-row gap-4">
                             <button
                                 onClick={upload.browse}
+                                data-tour="landing-upload"
                                 className="group inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-900 px-6 py-4 text-white font-medium shadow-xl shadow-slate-900/10 hover:bg-slate-800 hover:shadow-2xl hover:shadow-slate-900/20 hover:-translate-y-0.5 transition-all duration-200 disabled:opacity-70 disabled:hover:translate-y-0"
                                 disabled={upload.isUploading}
                             >
@@ -106,7 +138,7 @@ export default function LandingPage({
                     </div>
 
                     {/* Lorax Logo - Drag & Drop Area */}
-                    <div className="relative group" {...upload.getDropzoneProps()}>
+                    <div className="relative group" {...upload.getDropzoneProps()} data-tour="landing-dropzone">
                         <div className="flex flex-col items-center justify-center p-6 bg-white rounded-3xl shadow-sm">
                             <img
                                 src="/lorax-logo.png"
@@ -123,7 +155,7 @@ export default function LandingPage({
                 </section>
 
                 {/* Existing Files Section */}
-                <section className="mx-auto max-w-7xl px-6 py-4">
+                <section className="mx-auto max-w-7xl px-6 py-4" data-tour="landing-library">
                     <div className="flex items-center justify-between mb-4">
                         <h2 className="font-display text-2xl font-bold text-slate-900">Inferred Project Library</h2>
                         <div className="h-px flex-1 bg-slate-200 ml-6"></div>
@@ -195,6 +227,16 @@ export default function LandingPage({
                     <p className="text-xs text-slate-400">© {new Date().getFullYear()} Lorax</p>
                 </div>
             </footer>
+
+            <TourOverlay
+                open={tourOpen}
+                steps={tourSteps}
+                onClose={() => setTourOpen(false)}
+                onFinish={() => {
+                    tourState.markSeen();
+                    setTourOpen(false);
+                }}
+            />
         </div>
     );
 }

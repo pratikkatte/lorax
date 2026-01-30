@@ -27,7 +27,6 @@ import numpy as np
 os.environ["LORAX_MODE"] = "local"
 os.environ["REDIS_URL"] = ""
 os.environ["GCS_BUCKET_NAME"] = ""
-os.environ["IS_VM"] = "false"
 
 # Add package to path
 BACKEND_DIR = Path(__file__).parent.parent
@@ -54,7 +53,6 @@ def force_local_mode(monkeypatch):
     monkeypatch.setenv("LORAX_MODE", "local")
     monkeypatch.setenv("REDIS_URL", "")
     monkeypatch.setenv("GCS_BUCKET_NAME", "")
-    monkeypatch.setenv("IS_VM", "false")
 
 
 @pytest.fixture

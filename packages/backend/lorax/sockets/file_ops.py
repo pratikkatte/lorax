@@ -9,7 +9,7 @@ import json
 import asyncio
 from pathlib import Path
 
-from lorax.context import session_manager, IS_VM, BUCKET_NAME, tree_graph_cache, csv_tree_graph_cache
+from lorax.context import session_manager, BUCKET_NAME, tree_graph_cache, csv_tree_graph_cache
 from lorax.constants import (
     UPLOADS_DIR, ERROR_SESSION_NOT_FOUND, ERROR_MISSING_SESSION, ERROR_NO_FILE_LOADED,
 )
@@ -58,7 +58,7 @@ def register_file_events(sio):
                 print("Missing file param")
                 return
 
-            if project == 'Uploads' and IS_VM:
+            if project == 'Uploads':
                 target_sid = share_sid if share_sid else lorax_sid
                 file_path = UPLOAD_DIR / project / target_sid / filename
                 blob_path = f"{project}/{target_sid}/{filename}"

@@ -24,6 +24,7 @@ const ViewportOverlay = React.memo(({
   resizable = true,
   treeIsLoading = false,
   timelineLabel,
+  dataTour,
 }) => {
   // Calculate divider positions based on view dimensions
   // genome-positions is at the top (y: 1%, height: 3%)
@@ -142,6 +143,7 @@ const ViewportOverlay = React.memo(({
           onResize={onViewportChange}
           minWidth={200}
           minHeight={100}
+          data-tour={dataTour}
           style={{
             zIndex: 1,
             backgroundColor: 'transparent',
@@ -151,6 +153,7 @@ const ViewportOverlay = React.memo(({
         </ResizableBox>
       ) : (
         <div
+          data-tour={dataTour}
           style={{
             position: 'absolute',
             top: viewport.top,

@@ -24,7 +24,8 @@ export function ResizableBox({
   style = {},
   className = '',
   disabled = false,
-  showHandles = false
+  showHandles = false,
+  ...rest
 }) {
   const boxRef = useRef(null);
   const [isResizing, setIsResizing] = useState(false);
@@ -140,6 +141,7 @@ export function ResizableBox({
     <div
       ref={boxRef}
       className={className}
+      {...rest}
       style={{
         position: 'absolute',
         top: dimensions.top,

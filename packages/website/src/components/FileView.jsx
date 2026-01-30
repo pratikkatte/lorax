@@ -6,6 +6,8 @@ import ViewportOverlay from './ViewportOverlay';
 import Info from './Info';
 import Settings from './Settings';
 import { useViewportDimensions } from '../hooks/useViewportDimensions';
+import TourOverlay from './TourOverlay';
+import useTourState from '../hooks/useTourState';
 
 /**
  * FileView component - displays loaded file with viewport and position controls.
@@ -38,6 +40,8 @@ function FileView() {
   const [showInfo, setShowInfo] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [treeIsLoading, setTreeIsLoading] = useState(false);
+  const tourState = useTourState('viewer');
+  const [tourOpen, setTourOpen] = useState(false);
 
   // Navigation state for mutation tab
   const [clickedGenomeInfo, setClickedGenomeInfo] = useState(null);
@@ -72,6 +76,33 @@ function FileView() {
   const [hoverTooltip, setHoverTooltip] = useState(null); // { kind, x, y, title, rows[] }
 
   const clearHoverTooltip = useCallback(() => setHoverTooltip(null), []);
+
+  const tourSteps = useMemo(() => ([
+    {
+      target: '[data-tour="viewer-position"]',
+      title: 'Genome window',
+      content: 'Pan and set the genomic range you want to explore. Click Go to apply edits.'
+    },
+    {
+      target: '[data-tour="viewer-viewport"]',
+      title: 'Main viewport',
+      content: 'Interact with trees in the viewport. Hover for details and click nodes or edges.'
+    },
+    {
+      target: '[data-tour="viewer-info-button"]',
+      title: 'Info & Filters',
+      content: 'Open metadata, mutations, and filtering controls for deeper inspection.',
+      offset: { x: -60, y: -60 },
+      arrowDir: 'right'
+    },
+    {
+      target: '[data-tour="viewer-settings-button"]',
+      title: 'Settings',
+      content: 'Customize display options like colors and view settings.',
+      offset: { x: -60, y: -60 },
+      arrowDir: 'right'
+    }
+  ]), []);
 
   const getSelectedMetadataValueForNode = useCallback((nodeId) => {
     const key = selectedColorBy;
@@ -171,6 +202,12 @@ function FileView() {
         });
     }
   }, [file, project, sid, genomiccoordstart, genomiccoordend, isConnected, tsconfig?.filename, queryFile, handleConfigUpdate]);
+
+  useEffect(() => {
+    if (!tourState.hasSeen && tsconfig && !loading && !error) {
+      setTourOpen(true);
+    }
+  }, [tourState.hasSeen, tsconfig, loading, error]);
 
   // Apply backend-provided per-tree defaults for edge/path colors (CSV only, optional).
   // Backend provides: tsconfig.tree_info = { [treeIndex]: "#RRGGBB" }
@@ -275,6 +312,7 @@ function FileView() {
           resizable={!loading && !error && tsconfig}
           treeIsLoading={treeIsLoading}
           timelineLabel={tsconfig?.times?.type}
+          dataTour="viewer-viewport"
         />
 
         {/* Error display */}
@@ -433,6 +471,7 @@ function FileView() {
               setShowSettings(false);
               setShowInfo(!showInfo);
             }}
+            data-tour="viewer-info-button"
             className={`group relative p-2 rounded-lg transition-colors ${
               showInfo
                 ? 'bg-emerald-600 text-white'
@@ -456,6 +495,7 @@ function FileView() {
               setShowInfo(false);
               setShowSettings(!showSettings);
             }}
+            data-tour="viewer-settings-button"
             className={`group relative p-2 rounded-lg transition-colors ${
               showSettings
                 ? 'bg-emerald-600 text-white'
@@ -532,6 +572,16 @@ function FileView() {
             setPolygonFillColor={setPolygonFillColor}
           />
         </div>
+
+        <TourOverlay
+          open={tourOpen}
+          steps={tourSteps}
+          onClose={() => setTourOpen(false)}
+          onFinish={() => {
+            tourState.markSeen();
+            setTourOpen(false);
+          }}
+        />
       </div>
     </div>
   );

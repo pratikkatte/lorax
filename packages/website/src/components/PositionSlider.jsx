@@ -130,7 +130,10 @@ export default function PositionSlider({
   }, [onResetY]);
 
   return (
-    <div className="flex items-center justify-center gap-2 px-4 py-2 bg-white border-b border-slate-200 relative">
+    <div
+      className="flex items-center justify-center gap-2 px-4 py-2 bg-white border-b border-slate-200 relative"
+      data-tour="viewer-position"
+    >
       {/* Lorax logo/home link */}
       <a
         href="/"
@@ -150,6 +153,7 @@ export default function PositionSlider({
         <div className="relative mr-4" ref={fileInfoRef}>
           <button
             onClick={() => setShowFileInfo(!showFileInfo)}
+            data-tour="viewer-fileinfo"
             className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium transition-colors ${
               showFileInfo
                 ? 'bg-emerald-100 text-emerald-700'

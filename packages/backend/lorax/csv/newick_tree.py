@@ -108,11 +108,25 @@ def parse_newick_to_tree(
     """
     # Parse with ete3 - format=1 includes branch lengths and internal node names
     tree = Tree(newick_str, format=1)
-    # TODO: to remove in feature.
+    # Prune the outgroup before any layout or time computation.
+    # TODO: remove in feature.
     prune_outgroup_sample(tree, outgroup="etal")
 
-    # Assign traversal order via post-order traversal
+    # Assign traversal order via post-order traversal (after pruning)
     nodes = list(tree.traverse("postorder"))
+    if not nodes:
+        empty_i32 = np.array([], dtype=np.int32)
+        empty_bool = np.array([], dtype=np.bool_)
+        empty_f32 = np.array([], dtype=np.float32)
+        return NewickTreeGraph(
+            node_id=empty_i32,
+            parent_id=empty_i32,
+            is_tip=empty_bool,
+            name=[],
+            branch_length=empty_f32,
+            x=empty_f32,
+            y=empty_f32,
+        )
     node_index = {node: idx for idx, node in enumerate(nodes)}
 
     num_nodes = len(nodes)

@@ -54,17 +54,30 @@ async def handle_upload(file_path, root_dir):
     return ctx
 
 
-async def get_projects(upload_dir, BUCKET_NAME):
+async def get_projects(upload_dir, BUCKET_NAME, sid=None):
     """List all projects and their files from local uploads and GCS bucket."""
     projects = {}
     upload_dir = str(upload_dir)
-    projects[upload_dir] = {
-        "folder": upload_dir,
-        "files": [],
-        "description": "",
-    }
     projects = list_project_files(upload_dir, projects, root=upload_dir)
-    projects = get_public_gcs_dict(BUCKET_NAME, sid=None, projects=projects)
+
+    # Prefer session-scoped Uploads/<sid> when available
+    if sid:
+        uploads_root = os.path.join(upload_dir, "Uploads", sid)
+        upload_files = []
+        if os.path.isdir(uploads_root):
+            for item in os.listdir(uploads_root):
+                if item.endswith((".trees", ".trees.tsz", ".csv")):
+                    upload_files.append(item)
+        projects["Uploads"] = {
+            "folder": "Uploads",
+            "files": sorted(set(upload_files)),
+            "description": "",
+        }
+        # Remove accidental project entry created from Uploads/<sid>
+        if sid in projects:
+            projects.pop(sid, None)
+
+    projects = get_public_gcs_dict(BUCKET_NAME, sid=sid, projects=projects)
     return projects
 
 def _build_sample_name_mapping(ts, sample_name_key="name"):

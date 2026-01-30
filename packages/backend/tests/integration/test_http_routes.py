@@ -214,8 +214,6 @@ class TestUploadEndpoint:
         # Setup uploads directory
         uploads_dir = temp_dir / "UPLOADS"
         monkeypatch.setattr("lorax.routes.UPLOAD_DIR", uploads_dir)
-        monkeypatch.setattr("lorax.context.IS_VM", False)
-
         # Create file content
         content = sample_csv_file.read_bytes()
 
@@ -233,8 +231,6 @@ class TestUploadEndpoint:
         """Test that upload returns owner_sid."""
         uploads_dir = temp_dir / "UPLOADS"
         monkeypatch.setattr("lorax.routes.UPLOAD_DIR", uploads_dir)
-        monkeypatch.setattr("lorax.context.IS_VM", False)
-
         content = sample_csv_file.read_bytes()
 
         response = await async_client.post(

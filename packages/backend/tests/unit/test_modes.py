@@ -20,7 +20,6 @@ class TestModeDetection:
         monkeypatch.delenv("REDIS_URL", raising=False)
         monkeypatch.delenv("GCS_BUCKET_NAME", raising=False)
         monkeypatch.delenv("BUCKET_NAME", raising=False)
-        monkeypatch.delenv("IS_VM", raising=False)
 
         from lorax.modes import detect_mode
         mode = detect_mode()
@@ -76,17 +75,6 @@ class TestModeDetection:
 
         assert mode == "development"
 
-    def test_detect_mode_auto_development_vm(self, monkeypatch):
-        """Test auto-detection of development mode with IS_VM."""
-        monkeypatch.delenv("LORAX_MODE", raising=False)
-        monkeypatch.delenv("REDIS_URL", raising=False)
-        monkeypatch.delenv("GCS_BUCKET_NAME", raising=False)
-        monkeypatch.setenv("IS_VM", "true")
-
-        from lorax.modes import detect_mode
-        mode = detect_mode()
-
-        assert mode == "development"
 
 
 class TestModeConfig:

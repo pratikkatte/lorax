@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.gzip import GZipMiddleware
 from dotenv import load_dotenv
 
-from lorax.context import REDIS_URL, IS_VM
+from lorax.context import REDIS_URL
 from lorax.constants import (
     SOCKET_PING_TIMEOUT, SOCKET_PING_INTERVAL, MAX_HTTP_BUFFER_SIZE
 )
@@ -25,7 +25,6 @@ load_dotenv()
 app = FastAPI(title="Lorax Backend", version="1.0.0")
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
-print("Running in VM:", IS_VM)
 
 ALLOWED_ORIGINS = [
     o.strip() for o in os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:3001,http://localhost:3000").split(",")
