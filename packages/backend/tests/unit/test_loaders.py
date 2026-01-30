@@ -281,6 +281,22 @@ class TestNewickTreeParsing:
         assert float(graph2.y[graph2.is_tip].max()) == pytest.approx(1.0)
         assert float(graph2.y[root_mask2][0]) == pytest.approx(1.0 - 0.5 / 0.7)
 
+    def test_parse_newick_shift_tips_to_one(self):
+        """Test shifting so tips sit at y=1 even with larger tree_max_branch_length."""
+        from lorax.csv.newick_tree import parse_newick_to_tree
+
+        nwk = "((A:0.1,B:0.2):0.3,C:0.5);"
+        graph = parse_newick_to_tree(
+            nwk,
+            1.0,
+            tree_max_branch_length=0.8,
+            shift_tips_to_one=True,
+        )
+
+        assert float(graph.y[graph.is_tip].max()) == pytest.approx(1.0)
+        root_mask = graph.parent_id == -1
+        assert float(graph.y[root_mask][0]) == pytest.approx(0.5)
+
     def test_build_csv_layout_response(self, temp_dir):
         """Test building layout response for CSV trees."""
         import struct

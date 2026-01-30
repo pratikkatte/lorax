@@ -53,6 +53,7 @@ def build_csv_layout_response(
     max_branch_length: float,
     samples_order: List[str] | None = None,
     pre_parsed_graphs: Dict[int, Any] | None = None,
+    shift_tips_to_one: bool = False,
 ) -> Dict[str, Any]:
     """Build PyArrow IPC buffer for CSV trees.
 
@@ -107,6 +108,7 @@ def build_csv_layout_response(
                     max_branch_length,
                     samples_order=samples_order,
                     tree_max_branch_length=tree_max_branch_length,
+                    shift_tips_to_one=shift_tips_to_one,
                 )
             except Exception as e:
                 # Log error but continue with other trees

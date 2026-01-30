@@ -8,7 +8,12 @@ import asyncio
 
 from lorax.context import tree_graph_cache, csv_tree_graph_cache
 from lorax.constants import ERROR_NO_FILE_LOADED
-from lorax.handlers import search_nodes_in_trees, get_highlight_positions, get_multi_value_highlight_positions
+from lorax.handlers import (
+    should_shift_csv_tips,
+    search_nodes_in_trees,
+    get_highlight_positions,
+    get_multi_value_highlight_positions,
+)
 from lorax.cache import get_file_context
 from lorax.sockets.decorators import require_session
 from lorax.sockets.utils import is_csv_session_file
@@ -44,6 +49,7 @@ async def _get_or_parse_csv_tree_graph(ctx, session_id: str, tree_idx: int):
     times_values = ctx.config.get("times", {}).get("values", [0.0, 1.0])
     max_branch_length = float(times_values[1]) if len(times_values) > 1 else 1.0
     samples_order = ctx.config.get("samples") or []
+    shift_tips_to_one = should_shift_csv_tips(ctx.file_path)
     tree_max_branch_length = None
     if "max_branch_length" in df.columns:
         try:
@@ -60,6 +66,7 @@ async def _get_or_parse_csv_tree_graph(ctx, session_id: str, tree_idx: int):
             max_branch_length,
             samples_order=samples_order,
             tree_max_branch_length=tree_max_branch_length,
+            shift_tips_to_one=shift_tips_to_one,
         )
     except Exception:
         return None

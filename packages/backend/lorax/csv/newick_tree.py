@@ -82,12 +82,25 @@ class NewickTreeGraph:
     y: np.ndarray  # float32, normalized time
 
 
+def shift_tree_tips_to_one(y: np.ndarray, is_tip: np.ndarray) -> np.ndarray:
+    """Shift y so the maximum tip height is exactly 1.0 (clipped to [0,1])."""
+    if y.size == 0:
+        return y
+    if is_tip is None or is_tip.size == 0:
+        return y
+    tip_max = float(y[is_tip].max()) if np.any(is_tip) else 1.0
+    if not np.isfinite(tip_max) or tip_max == 1.0:
+        return y
+    return np.clip(y + (1.0 - tip_max), 0.0, 1.0)
+
+
 def parse_newick_to_tree(
     newick_str: str,
     max_branch_length: float,
     samples_order: Optional[List[str]] = None,
     *,
     tree_max_branch_length: float | None = None,
+    shift_tips_to_one: bool = False,
 ) -> NewickTreeGraph:
     """Parse Newick string and compute x,y coordinates.
 
@@ -190,6 +203,9 @@ def parse_newick_to_tree(
     else:
         # Degenerate case: no global height information. Keep tips at 1.
         y = np.ones(num_nodes, dtype=np.float32)
+
+    if shift_tips_to_one:
+        y = shift_tree_tips_to_one(y, is_tip)
 
     # Compute x (layout): tips get sequential x, internals = (min+max)/2
     x = np.zeros(num_nodes, dtype=np.float32)

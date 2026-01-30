@@ -32,6 +32,41 @@ from lorax.buffer import mutations_to_arrow_buffer
 from lorax.cache import get_file_context, get_file_cache_size
 
 
+def _get_tip_shift_project_prefixes() -> list[str]:
+    """Return project name prefixes that should shift CSV tips to y=1."""
+    raw = os.getenv("LORAX_CSV_TIP_SHIFT_PROJECTS", "heliconius,meta_butterfly")
+    parts = [p.strip().lower() for p in raw.split(",") if p.strip()]
+    return parts
+
+
+def should_shift_csv_tips(file_path: str) -> bool:
+    """Return True when the file path matches a configured project prefix."""
+    if not file_path:
+        return False
+    prefixes = _get_tip_shift_project_prefixes()
+    if not prefixes:
+        return False
+    parts = re.split(r"[\\/]", str(file_path))
+    for part in parts:
+        if not part:
+            continue
+        part_l = str(part).lower()
+        if any(part_l.startswith(prefix) for prefix in prefixes):
+            return True
+    return False
+
+
+def _is_heliconius_project(file_path: str) -> bool:
+    """Return True when the file path indicates a Heliconius project (case-insensitive)."""
+    if not file_path:
+        return False
+    parts = re.split(r"[\\/]", str(file_path))
+    for part in parts:
+        if part and str(part).lower().startswith("heliconius"):
+            return True
+    return False
+
+
 async def cache_status():
     """Return current memory usage and cache statistics."""
     process = psutil.Process(os.getpid())
@@ -462,6 +497,7 @@ async def handle_tree_graph_query(
 
     # CSV support: parse Newick strings and build tree layout
     if isinstance(ts, pd.DataFrame):
+        shift_tips_to_one = should_shift_csv_tips(ctx.file_path or file_path)
         # Get max_branch_length from config (times.values[1])
         times_values = ctx.config.get("times", {}).get("values", [0.0, 1.0])
         max_branch_length = float(times_values[1]) if len(times_values) > 1 else 1.0
@@ -501,6 +537,7 @@ async def handle_tree_graph_query(
                         max_branch_length,
                         samples_order=samples_order,
                         tree_max_branch_length=tree_max_branch_length,
+                        shift_tips_to_one=shift_tips_to_one,
                     )
                 except Exception:
                     continue
@@ -517,6 +554,7 @@ async def handle_tree_graph_query(
             max_branch_length,
             samples_order=samples_order,
             pre_parsed_graphs=pre_parsed_graphs,
+            shift_tips_to_one=shift_tips_to_one,
         )
 
     # Collect pre-cached TreeGraphs
