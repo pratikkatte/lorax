@@ -77,7 +77,11 @@ function FileView() {
 
   const clearHoverTooltip = useCallback(() => setHoverTooltip(null), []);
 
-  const tourSteps = useMemo(() => ([
+  const tourSteps = useMemo(() => {
+    const panGestureMedia = '/gestures/gesture-flick.ogv';
+    const twoFingerScrollMedia = '/gestures/gesture-two-finger-scroll.ogv';
+
+    return ([
     {
       target: '[data-tour="viewer-position"]',
       title: 'Genome window',
@@ -87,6 +91,44 @@ function FileView() {
       target: '[data-tour="viewer-viewport"]',
       title: 'Main viewport',
       content: 'Interact with trees in the viewport. Hover for details and click nodes or edges.'
+    },
+    {
+      target: '[data-tour="viewer-viewport"]',
+      title: 'Pan left and right',
+      content: 'Drag horizontally on the viewport to pan across the genome.',
+      animation: {
+        label: 'Pan gesture',
+        mediaType: 'video',
+        mediaUrl: panGestureMedia,
+        mediaAlt: 'One finger swipe left and right',
+        attribution: 'Wikimedia Commons (CC BY-SA 3.0)'
+      }
+    },
+    {
+      target: '[data-tour="viewer-viewport"]',
+      title: 'Vertical zoom',
+      content: 'Use two fingers up or down to zoom vertically.',
+      animation: {
+        label: 'Two-finger vertical zoom',
+        mediaType: 'video',
+        mediaUrl: twoFingerScrollMedia,
+        mediaAlt: 'Two finger swipe up and down',
+        attribution: 'Wikimedia Commons (CC BY-SA 3.0)'
+      }
+    },
+    {
+      target: '[data-tour="viewer-viewport"]',
+      title: 'Horizontal zoom',
+      content: 'Hold Ctrl and use two fingers left or right to zoom horizontally.',
+      animation: {
+        label: 'Ctrl + two-finger zoom',
+        mediaType: 'video',
+        mediaUrl: twoFingerScrollMedia,
+        mediaAlt: 'Two finger swipe left and right',
+        rotate: 90,
+        showCtrl: true,
+        attribution: 'Wikimedia Commons (CC BY-SA 3.0)'
+      }
     },
     {
       target: '[data-tour="viewer-info-button"]',
@@ -102,7 +144,8 @@ function FileView() {
       offset: { x: -60, y: -60 },
       arrowDir: 'right'
     }
-  ]), []);
+  ]);
+  }, []);
 
   const getSelectedMetadataValueForNode = useCallback((nodeId) => {
     const key = selectedColorBy;

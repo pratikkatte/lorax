@@ -1,11 +1,9 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useState } from "react";
 import { BsCloudUpload, BsGithub } from "react-icons/bs";
 import { LuFileText, LuFolder } from "react-icons/lu";
 import { BsChevronDown } from "react-icons/bs";
 import ErrorAlert from "./ErrorAlert.jsx";
 import DatasetFiles from "./landing/DatasetFiles.jsx";
-import TourOverlay from "./TourOverlay.jsx";
-import useTourState from "../hooks/useTourState.js";
 
 // Minimal Badge Component
 function Badge({ children, pill }) {
@@ -21,32 +19,6 @@ export default function LandingPage({
 
     const { projects } = upload;
     const [expandedId, setExpandedId] = useState(null);
-    const tourState = useTourState('landing');
-    const [tourOpen, setTourOpen] = useState(false);
-
-    useEffect(() => {
-        if (!tourState.hasSeen) {
-            setTourOpen(true);
-        }
-    }, [tourState.hasSeen]);
-
-    const tourSteps = useMemo(() => ([
-        {
-            target: '[data-tour="landing-hero"]',
-            title: 'Welcome to Lorax',
-            content: 'This is the main entry point. Upload data or open existing projects to explore ARGs.'
-        },
-        {
-            target: '[data-tour="landing-upload"]',
-            title: 'Load a file',
-            content: 'Upload a .trees, .tszip, or .csv file to start exploring. Drag and drop also works.'
-        },
-        {
-            target: '[data-tour="landing-library"]',
-            title: 'Project Library',
-            content: 'Browse inferred project files already available on this instance.'
-        }
-    ]), []);
 
     // We don't use navigate() here anymore because loadFile in useFileUpload handles redirection
     // via window.location.href to the Viewer app.
@@ -228,15 +200,6 @@ export default function LandingPage({
                 </div>
             </footer>
 
-            <TourOverlay
-                open={tourOpen}
-                steps={tourSteps}
-                onClose={() => setTourOpen(false)}
-                onFinish={() => {
-                    tourState.markSeen();
-                    setTourOpen(false);
-                }}
-            />
         </div>
     );
 }

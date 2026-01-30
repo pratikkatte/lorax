@@ -126,7 +126,15 @@ export default function TourOverlay({
   const isLast = index === steps.length - 1;
 
   return (
-    <div className="fixed inset-0 z-[100000]">
+    <div className="fixed inset-0 z-[100000] pointer-events-none">
+      <style>{`
+        .tour-gesture-media {
+          display: block;
+          width: 100%;
+          height: 100%;
+          object-fit: contain;
+        }
+      `}</style>
       {/* Dim background */}
       <div className="absolute inset-0 bg-black/50" />
 
@@ -146,7 +154,7 @@ export default function TourOverlay({
       {/* Tooltip */}
       <div
         ref={tooltipRef}
-        className="fixed max-w-xs w-[320px] bg-white rounded-2xl shadow-2xl border border-slate-200 p-4"
+        className="fixed max-w-xs w-[320px] bg-white rounded-2xl shadow-2xl border border-slate-200 p-4 pointer-events-auto"
         style={tooltipPos}
       >
         {/* Speech-bubble caret */}
@@ -192,6 +200,49 @@ export default function TourOverlay({
         )}
         {step.content && (
           <p className="text-sm text-slate-600 leading-relaxed">{step.content}</p>
+        )}
+        {step.animation && (
+          <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-2">
+              {step.animation.label}
+            </div>
+            <div className="relative h-24 flex items-center justify-center">
+              <div className="relative w-full h-20 rounded-lg border border-slate-300 bg-white overflow-hidden">
+                {step.animation.showCtrl && (
+                  <div className="absolute left-2 top-2 px-2 py-0.5 text-[10px] font-semibold text-slate-500 bg-slate-100 rounded">
+                    Ctrl
+                  </div>
+                )}
+                {step.animation.mediaType === 'video' ? (
+                  <video
+                    className="tour-gesture-media"
+                    style={step.animation.rotate ? { transform: `rotate(${step.animation.rotate}deg)` } : undefined}
+                    autoPlay
+                    loop
+                    muted
+                    playsInline
+                    aria-label={step.animation.mediaAlt || step.animation.label}
+                  >
+                    <source src={step.animation.mediaUrl} type="video/ogg" />
+                    {step.animation.mediaAlt || step.animation.label}
+                  </video>
+                ) : (
+                  <img
+                    className="tour-gesture-media"
+                    src={step.animation.mediaUrl}
+                    alt={step.animation.mediaAlt || step.animation.label}
+                    style={step.animation.rotate ? { transform: `rotate(${step.animation.rotate}deg)` } : undefined}
+                    loading="lazy"
+                  />
+                )}
+              </div>
+            </div>
+            {step.animation.attribution && (
+              <div className="mt-2 text-[10px] text-slate-400">
+                Media: {step.animation.attribution}
+              </div>
+            )}
+          </div>
         )}
         <div className="mt-4 flex items-center justify-between">
           <button
