@@ -1,10 +1,11 @@
 import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
-import { useLorax, LoraxDeckGL } from '@lorax/core';
+import { useLorax, LoraxDeckGL, useMutations } from '@lorax/core';
 import PositionSlider from './PositionSlider';
 import ViewportOverlay from './ViewportOverlay';
 import Info from './Info';
 import Settings from './Settings';
+import ChatPanel from './ChatPanel';
 import { useViewportDimensions } from '../hooks/useViewportDimensions';
 import TourOverlay from './TourOverlay';
 import useTourState from '../hooks/useTourState';
@@ -28,9 +29,16 @@ function FileView() {
     genomeLength,
     isConnected,
     queryDetails,
+    queryMutationsWindow,
+    searchMutations,
     // For tip hover tooltip value computation
     selectedColorBy,
-    metadataArrays
+    metadataArrays,
+    searchTags,
+    searchTerm,
+    highlightedMetadataValue,
+    displayLineagePaths,
+    enabledValues
   } = useLorax();
 
   const [loading, setLoading] = useState(false);
@@ -39,6 +47,7 @@ function FileView() {
   const [statusMessage, setStatusMessage] = useState(null);
   const [showInfo, setShowInfo] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showChat, setShowChat] = useState(false);
   const [treeIsLoading, setTreeIsLoading] = useState(false);
   const tourState = useTourState('viewer');
   const [tourOpen, setTourOpen] = useState(false);
@@ -104,6 +113,13 @@ function FileView() {
     }
   ]), []);
 
+  const mutationsHook = useMutations({
+    genomicValues: genomicPosition,
+    queryMutationsWindow,
+    searchMutations,
+    isConnected
+  });
+
   const getSelectedMetadataValueForNode = useCallback((nodeId) => {
     const key = selectedColorBy;
     if (!key) return null;
@@ -158,6 +174,92 @@ function FileView() {
     updateViewport,
     updateView
   } = useViewportDimensions();
+
+  const chatContext = useMemo(() => {
+    const visibleTreeIds = Array.isArray(visibleTrees) ? visibleTrees.slice(0, 200) : [];
+    return {
+      file: filename || null,
+      project: tsconfig?.project || null,
+      genomicWindow: Array.isArray(genomicPosition) ? { start: genomicPosition[0], end: genomicPosition[1] } : null,
+      visibleTrees: visibleTreeIds,
+      visibleTreesCount: Array.isArray(visibleTrees) ? visibleTrees.length : 0,
+      metadataFilter: {
+        selectedColorBy,
+        searchTerm,
+        searchTags,
+        highlightedMetadataValue,
+        enabledValuesCount: enabledValues?.size ?? 0,
+        displayLineagePaths
+      },
+      selections: {
+        selectedTipMetadata,
+        highlightedMutationNode,
+        highlightedMutationTreeIndex,
+        clickedGenomeInfo
+      },
+      details: {
+        treeDetails,
+        nodeDetails,
+        individualDetails,
+        populationDetails,
+        nodeMutations,
+        nodeEdges
+      },
+      mutations: {
+        isSearchMode: mutationsHook.isSearchMode,
+        searchPosition: mutationsHook.searchPosition,
+        searchRange: mutationsHook.searchRange,
+        totalCount: mutationsHook.totalCount,
+        showingCount: mutationsHook.mutations?.length || 0,
+        hasMore: mutationsHook.hasMore,
+        error: mutationsHook.error
+      },
+      colors: {
+        treeColors,
+        treeEdgeColors,
+        colorByTree,
+        polygonFillColor
+      },
+      viewport: {
+        viewport,
+        views
+      }
+    };
+  }, [
+    filename,
+    tsconfig,
+    genomicPosition,
+    visibleTrees,
+    selectedColorBy,
+    searchTerm,
+    searchTags,
+    highlightedMetadataValue,
+    enabledValues,
+    displayLineagePaths,
+    selectedTipMetadata,
+    highlightedMutationNode,
+    highlightedMutationTreeIndex,
+    clickedGenomeInfo,
+    treeDetails,
+    nodeDetails,
+    individualDetails,
+    populationDetails,
+    nodeMutations,
+    nodeEdges,
+    mutationsHook.isSearchMode,
+    mutationsHook.searchPosition,
+    mutationsHook.searchRange,
+    mutationsHook.totalCount,
+    mutationsHook.mutations,
+    mutationsHook.hasMore,
+    mutationsHook.error,
+    treeColors,
+    treeEdgeColors,
+    colorByTree,
+    polygonFillColor,
+    viewport,
+    views
+  ]);
 
   // Get project and genomic coordinates from URL params
   const project = searchParams.get('project');
@@ -469,6 +571,7 @@ function FileView() {
           <button
             onClick={() => {
               setShowSettings(false);
+              setShowChat(false);
               setShowInfo(!showInfo);
             }}
             data-tour="viewer-info-button"
@@ -493,6 +596,7 @@ function FileView() {
           <button
             onClick={() => {
               setShowInfo(false);
+              setShowChat(false);
               setShowSettings(!showSettings);
             }}
             data-tour="viewer-settings-button"
@@ -511,6 +615,30 @@ function FileView() {
             {/* Tooltip */}
             <span className="absolute left-full ml-2 px-2 py-1 text-xs text-white bg-slate-800 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
               Settings
+            </span>
+          </button>
+
+          {/* Chat button */}
+          <button
+            onClick={() => {
+              setShowInfo(false);
+              setShowSettings(false);
+              setShowChat(!showChat);
+            }}
+            data-tour="viewer-chat-button"
+            className={`group relative p-2 rounded-lg transition-colors ${
+              showChat
+                ? 'bg-emerald-600 text-white'
+                : 'hover:bg-slate-800 hover:text-white'
+            }`}
+            title="Chat"
+          >
+            {/* Chat bubble icon */}
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h6m-6 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2H9l-2 4z" />
+            </svg>
+            <span className="absolute left-full ml-2 px-2 py-1 text-xs text-white bg-slate-800 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
+              Chat
             </span>
           </button>
 
@@ -558,6 +686,7 @@ function FileView() {
             setColorByTree={setColorByTree}
             hoveredTreeIndex={hoveredTreeIndex}
             setHoveredTreeIndex={setHoveredTreeIndex}
+            mutationsHook={mutationsHook}
           />
         </div>
 
@@ -570,6 +699,17 @@ function FileView() {
             setShowSettings={setShowSettings}
             polygonFillColor={polygonFillColor}
             setPolygonFillColor={setPolygonFillColor}
+          />
+        </div>
+
+        {/* Chat Panel - Right sidebar (offset for icon bar) */}
+        <div
+          className={`fixed top-0 right-8 w-[25%] min-w-[320px] h-full z-50 shadow-xl transition-transform duration-300 ease-in-out ${showChat ? 'translate-x-0' : 'translate-x-full'
+            }`}
+        >
+          <ChatPanel
+            onClose={() => setShowChat(false)}
+            context={chatContext}
           />
         </div>
 

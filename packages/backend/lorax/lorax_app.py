@@ -16,6 +16,7 @@ from lorax.constants import (
     SOCKET_PING_TIMEOUT, SOCKET_PING_INTERVAL, MAX_HTTP_BUFFER_SIZE
 )
 from lorax.routes import router
+from lorax.routes_chat import router as chat_router
 from lorax.sockets import register_socket_events
 
 load_dotenv()
@@ -64,6 +65,7 @@ sio_app = socketio.ASGIApp(sio, other_asgi_app=app)
 
 # Include Routes
 app.include_router(router)
+app.include_router(chat_router)
 
 # Register Socket Events
 register_socket_events(sio)

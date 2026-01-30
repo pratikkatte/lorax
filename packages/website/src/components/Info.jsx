@@ -25,7 +25,8 @@ const Info = ({
   colorByTree = false,
   setColorByTree,
   hoveredTreeIndex = null,
-  setHoveredTreeIndex
+  setHoveredTreeIndex,
+  mutationsHook: mutationsHookProp = null
 }) => {
   const [activeTab, setActiveTab] = useState('details');
 
@@ -46,7 +47,7 @@ const Info = ({
   const tsconfig = contextTsconfig || {};
 
   // Use mutations hook from core
-  const mutationsHook = useMutations({
+  const mutationsHook = mutationsHookProp || useMutations({
     genomicValues: genomicCoords,
     queryMutationsWindow,
     searchMutations: searchMutationsQuery,
