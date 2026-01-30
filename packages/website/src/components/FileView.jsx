@@ -9,6 +9,9 @@ import { useViewportDimensions } from '../hooks/useViewportDimensions';
 import TourOverlay from './TourOverlay';
 import useTourState from '../hooks/useTourState';
 
+// TODO: Re-enable when the tutorial is complete.
+const TOUR_ENABLED = false;
+
 /**
  * FileView component - displays loaded file with viewport and position controls.
  * Handles both navigation from LandingPage and direct URL access.
@@ -414,6 +417,7 @@ function FileView() {
   }, [file, project, sid, genomiccoordstart, genomiccoordend, isConnected, tsconfig?.filename, queryFile, handleConfigUpdate]);
 
   useEffect(() => {
+    if (!TOUR_ENABLED) return;
     if (!tourState.hasSeen && tsconfig && !loading && !error) {
       setTourOpen(true);
     }
