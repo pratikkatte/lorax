@@ -1,5 +1,6 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect, useMemo } from "react";
 import { useLorax } from "@lorax/core";
+import { metadataFeatureConfig } from "../../config/metadataFeatureConfig";
 
 const ITEMS_PER_PAGE = 100;
 
@@ -20,6 +21,26 @@ const hexToRgb = (hex) => {
   ] : [150, 150, 150];
 };
 
+const normalizeColor = (color) => {
+  if (Array.isArray(color)) {
+    const r = Number(color[0]);
+    const g = Number(color[1]);
+    const b = Number(color[2]);
+    const a = color.length > 3 ? Number(color[3]) : 255;
+    if ([r, g, b, a].every((val) => Number.isFinite(val))) {
+      return [r, g, b, a];
+    }
+    return null;
+  }
+  if (typeof color === 'string') {
+    const isHex = /^#?([a-fA-F0-9]{6})$/.test(color);
+    if (!isHex) return null;
+    const rgb = hexToRgb(color);
+    return [rgb[0], rgb[1], rgb[2], 255];
+  }
+  return null;
+};
+
 export default function InfoFilter({
   // FileView-specific props (not available via useLorax)
   visibleTrees = [],
@@ -28,7 +49,8 @@ export default function InfoFilter({
   colorByTree = false,
   setColorByTree,
   hoveredTreeIndex = null,
-  setHoveredTreeIndex
+  setHoveredTreeIndex,
+  onNavigateToCoords
 }) {
   // Get filter state from context (via useMetadataFilter in LoraxProvider)
   const {
@@ -51,10 +73,139 @@ export default function InfoFilter({
   } = useLorax();
   const [visibleCount, setVisibleCount] = useState(ITEMS_PER_PAGE);
   const [isTreesExpanded, setIsTreesExpanded] = useState(true);
+  const [activeFeatureId, setActiveFeatureId] = useState(null);
+  const [pendingFeature, setPendingFeature] = useState(null);
 
   const isCsvFile = Boolean(
     String(tsconfig?.filename || '').toLowerCase().endsWith('.csv') || tsconfig?.tree_info
   );
+
+  const matchedFeatures = useMemo(() => {
+    const project = tsconfig?.project;
+    const filename = tsconfig?.filename;
+    if (!project || !filename) return [];
+    return (metadataFeatureConfig || []).filter((feature) => {
+      if (!feature) return false;
+      return feature.project === project && feature.filename === filename;
+    });
+  }, [tsconfig?.project, tsconfig?.filename]);
+
+  useEffect(() => {
+    if (!activeFeatureId) return;
+    const stillValid = matchedFeatures.some((feature) => feature?.id === activeFeatureId);
+    if (!stillValid) {
+      setActiveFeatureId(null);
+      setPendingFeature(null);
+    }
+  }, [activeFeatureId, matchedFeatures]);
+
+  const applyPendingFeature = useCallback((feature) => {
+    if (!feature) return;
+    const key = feature?.metadata?.key;
+    const values = Array.isArray(feature?.metadata?.values)
+      ? feature.metadata.values.map(String)
+      : [];
+    if (!key) return;
+    if (!metadataColors?.[key]) return;
+    const colorOverrides = feature?.metadata?.colors;
+    if (colorOverrides && setMetadataColors) {
+      const normalized = {};
+      Object.entries(colorOverrides).forEach(([value, color]) => {
+        const nextColor = normalizeColor(color);
+        if (nextColor) {
+          normalized[String(value)] = nextColor;
+        }
+      });
+      if (Object.keys(normalized).length > 0) {
+        setMetadataColors((prev) => ({
+          ...prev,
+          [key]: {
+            ...(prev?.[key] || {}),
+            ...normalized
+          }
+        }));
+      }
+    }
+    if (setEnabledValues) {
+      setEnabledValues(new Set(values));
+    }
+    if (setSearchTags) {
+      setSearchTags(values);
+    }
+  }, [metadataColors, setEnabledValues, setSearchTags, setMetadataColors]);
+
+  useEffect(() => {
+    if (!pendingFeature) return;
+    applyPendingFeature(pendingFeature);
+    if (metadataColors?.[pendingFeature?.metadata?.key]) {
+      setPendingFeature(null);
+    }
+  }, [pendingFeature, applyPendingFeature, metadataColors]);
+
+  const handleFeatureToggle = useCallback((feature) => {
+    if (!feature?.id) return;
+
+    if (activeFeatureId === feature.id) {
+      setActiveFeatureId(null);
+      setPendingFeature(null);
+      if (setSearchTags) {
+        setSearchTags([]);
+      }
+      if (setEnabledValues && selectedColorBy && metadataColors?.[selectedColorBy]) {
+        setEnabledValues(new Set(Object.keys(metadataColors[selectedColorBy])));
+      }
+      return;
+    }
+
+    setActiveFeatureId(feature.id);
+    setPendingFeature(feature);
+
+    const key = feature?.metadata?.key;
+    const values = Array.isArray(feature?.metadata?.values)
+      ? feature.metadata.values.map(String)
+      : [];
+
+    if (key && setSelectedColorBy) {
+      setSelectedColorBy(key);
+    }
+    if (setSearchTags) {
+      setSearchTags(values);
+    }
+    if (feature?.displayLineage && setDisplayLineagePaths) {
+      setDisplayLineagePaths(true);
+    }
+    if (feature?.metadata?.colors && setMetadataColors) {
+      const normalized = {};
+      Object.entries(feature.metadata.colors).forEach(([value, color]) => {
+        const nextColor = normalizeColor(color);
+        if (nextColor) {
+          normalized[String(value)] = nextColor;
+        }
+      });
+      if (Object.keys(normalized).length > 0) {
+        setMetadataColors((prev) => ({
+          ...prev,
+          [key]: {
+            ...(prev?.[key] || {}),
+            ...normalized
+          }
+        }));
+      }
+    }
+    if (Array.isArray(feature?.genomicCoords) && onNavigateToCoords) {
+      onNavigateToCoords(feature.genomicCoords);
+    }
+  }, [
+    activeFeatureId,
+    metadataColors,
+    onNavigateToCoords,
+    selectedColorBy,
+    setDisplayLineagePaths,
+    setEnabledValues,
+    setMetadataColors,
+    setSearchTags,
+    setSelectedColorBy
+  ]);
 
   // Get filtered items
   const getFilteredItems = useCallback(() => {
@@ -202,6 +353,33 @@ export default function InfoFilter({
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {matchedFeatures.length > 0 && (
+          <div className="border border-gray-200 rounded-md p-2 bg-white">
+            <div className="text-xs font-medium text-gray-500 mb-2">Feature presets</div>
+            <div className="space-y-2">
+              {matchedFeatures.map((feature) => {
+                const isActive = activeFeatureId === feature.id;
+                return (
+                  <div key={feature.id} className="flex items-center justify-between gap-2">
+                    <span className="text-sm text-gray-700 truncate">
+                      {feature.label || feature.id}
+                    </span>
+                    <button
+                      type="button"
+                      className={`w-4 h-4 rounded-full border-2 transition-colors ${isActive
+                        ? 'bg-gray-700 border-gray-700'
+                        : 'bg-white border-gray-400'
+                      }`}
+                      onClick={() => handleFeatureToggle(feature)}
+                      title={isActive ? "Disable preset" : "Enable preset"}
+                    />
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
 

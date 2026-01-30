@@ -513,6 +513,18 @@ function FileView() {
     }
   }, []);
 
+  const handlePresetNavigate = useCallback((coords) => {
+    if (!Array.isArray(coords) || coords.length !== 2) return;
+    const start = Number(coords[0]);
+    const end = Number(coords[1]);
+    if (!Number.isFinite(start) || !Number.isFinite(end)) return;
+    const newPosition = [start, end];
+    setGenomicPosition(newPosition);
+    if (deckRef.current?.setGenomicCoords) {
+      deckRef.current.setGenomicCoords(newPosition);
+    }
+  }, []);
+
   // Handle tree loading state changes from LoraxDeckGL
   const handleTreeLoadingChange = useCallback((loading) => {
     setTreeIsLoading(loading);
@@ -841,6 +853,7 @@ function FileView() {
             setColorByTree={setColorByTree}
             hoveredTreeIndex={hoveredTreeIndex}
             setHoveredTreeIndex={setHoveredTreeIndex}
+            onNavigateToCoords={handlePresetNavigate}
           />
         </div>
 
