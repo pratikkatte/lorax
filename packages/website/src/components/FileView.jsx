@@ -39,9 +39,17 @@ function FileView() {
   const [statusMessage, setStatusMessage] = useState(null);
   const [showInfo, setShowInfo] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [infoActiveTab, setInfoActiveTab] = useState('details');
   const [treeIsLoading, setTreeIsLoading] = useState(false);
   const tourState = useTourState('viewer');
   const [tourOpen, setTourOpen] = useState(false);
+  const [tourActiveStepId, setTourActiveStepId] = useState(null);
+  const [tourPolygonClicked, setTourPolygonClicked] = useState(false);
+  const [tourEdgeClicked, setTourEdgeClicked] = useState(false);
+  const [tourSelectedTreeIndex, setTourSelectedTreeIndex] = useState(null);
+  const [tourCenterTreeIndex, setTourCenterTreeIndex] = useState(null);
+  const [tourTargetTick, setTourTargetTick] = useState(0);
+  const lastTourTargetUpdateRef = useRef(0);
 
   // Navigation state for mutation tab
   const [clickedGenomeInfo, setClickedGenomeInfo] = useState(null);
@@ -77,75 +85,234 @@ function FileView() {
 
   const clearHoverTooltip = useCallback(() => setHoverTooltip(null), []);
 
+  const getOrthoViewport = useCallback(() => {
+    const deck = deckRef.current?.getDeck?.();
+    const viewports = deck?.getViewports?.();
+    if (!Array.isArray(viewports)) return null;
+    return viewports.find((vp) => vp?.id === 'ortho') || null;
+  }, []);
+
+  const getPolygonBounds = useCallback((polygon) => {
+    const vertices = polygon?.vertices;
+    if (!Array.isArray(vertices) || vertices.length < 3) return null;
+
+    const deck = deckRef.current?.getDeck?.();
+    const canvas = deck?.canvas;
+    const canvasRect = canvas?.getBoundingClientRect?.();
+    const ortho = getOrthoViewport();
+    if (!canvasRect || !ortho) return null;
+
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+
+    for (const vertex of vertices) {
+      const x = vertex?.[0];
+      const y = vertex?.[1];
+      if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+      minX = Math.min(minX, x);
+      minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x);
+      maxY = Math.max(maxY, y);
+    }
+
+    if (!Number.isFinite(minX) || !Number.isFinite(maxX)) return null;
+
+    const left = canvasRect.left + (ortho.x ?? 0) + minX;
+    const top = canvasRect.top + (ortho.y ?? 0) + minY;
+    const width = Math.max(0, maxX - minX);
+    const height = Math.max(0, maxY - minY);
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width === 0 || height === 0) {
+      return null;
+    }
+
+    return {
+      left,
+      top,
+      width,
+      height,
+      right: left + width,
+      bottom: top + height
+    };
+  }, [getOrthoViewport]);
+
+  const getCenterPolygon = useCallback(() => {
+    const polygons = deckRef.current?.polygons;
+    if (!Array.isArray(polygons) || polygons.length === 0) return null;
+    const ortho = getOrthoViewport();
+    if (!ortho) return null;
+
+    const centerX = (ortho.width ?? 0) / 2;
+    const centerY = (ortho.height ?? 0) / 2;
+    let best = null;
+    let bestDist = Infinity;
+
+    for (const polygon of polygons) {
+      const vertices = polygon?.vertices;
+      if (!Array.isArray(vertices) || vertices.length < 3) continue;
+
+      let minX = Infinity;
+      let minY = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+      for (const vertex of vertices) {
+        const x = vertex?.[0];
+        const y = vertex?.[1];
+        if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+        minX = Math.min(minX, x);
+        minY = Math.min(minY, y);
+        maxX = Math.max(maxX, x);
+        maxY = Math.max(maxY, y);
+      }
+      if (!Number.isFinite(minX) || !Number.isFinite(maxX)) continue;
+
+      const cx = (minX + maxX) / 2;
+      const cy = (minY + maxY) / 2;
+      const dx = cx - centerX;
+      const dy = cy - centerY;
+      const dist = dx * dx + dy * dy;
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = polygon;
+      }
+    }
+
+    return best;
+  }, [getOrthoViewport]);
+
+  const getTourPolygonRect = useCallback((preferredTreeIndex) => {
+    const polygons = deckRef.current?.polygons;
+    if (!Array.isArray(polygons) || polygons.length === 0) return null;
+
+    let polygon = null;
+    if (preferredTreeIndex != null) {
+      polygon = polygons.find((p) => p?.treeIndex === preferredTreeIndex) || null;
+    }
+    if (!polygon) {
+      polygon = getCenterPolygon();
+    }
+    if (!polygon) return null;
+
+    return getPolygonBounds(polygon);
+  }, [getCenterPolygon, getPolygonBounds]);
+
   const tourSteps = useMemo(() => {
     const panGestureMedia = '/gestures/gesture-flick.ogv';
     const twoFingerScrollMedia = '/gestures/gesture-two-finger-scroll.ogv';
 
     return ([
-    {
-      target: '[data-tour="viewer-position"]',
-      title: 'Genome window',
-      content: 'Pan and set the genomic range you want to explore. Click Go to apply edits.'
-    },
-    {
-      target: '[data-tour="viewer-viewport"]',
-      title: 'Main viewport',
-      content: 'Interact with trees in the viewport. Hover for details and click nodes or edges.'
-    },
-    {
-      target: '[data-tour="viewer-viewport"]',
-      title: 'Pan left and right',
-      content: 'Drag horizontally on the viewport to pan across the genome.',
-      animation: {
-        label: 'Pan gesture',
-        mediaType: 'video',
-        mediaUrl: panGestureMedia,
-        mediaAlt: 'One finger swipe left and right',
-        attribution: 'Wikimedia Commons (CC BY-SA 3.0)'
+      {
+        id: 'viewer-position',
+        target: '[data-tour="viewer-position"]',
+        title: 'Genome window',
+        content: 'Pan and set the genomic range you want to explore. Click Go to apply edits.'
+      },
+      {
+        id: 'viewer-viewport',
+        target: '[data-tour="viewer-viewport"]',
+        title: 'Main viewport',
+        content: 'Interact with trees in the viewport. Hover for details and click nodes or edges.'
+      },
+      {
+        id: 'viewer-pan',
+        target: '[data-tour="viewer-viewport"]',
+        title: 'Pan left and right',
+        content: 'Drag horizontally on the viewport to pan across the genome.',
+        animation: {
+          label: 'Pan gesture',
+          mediaType: 'video',
+          mediaUrl: panGestureMedia,
+          mediaAlt: 'One finger swipe left and right',
+          attribution: 'Wikimedia Commons (CC BY-SA 3.0)'
+        }
+      },
+      {
+        id: 'viewer-zoom-y',
+        target: '[data-tour="viewer-viewport"]',
+        title: 'Vertical zoom',
+        content: 'Use two fingers up or down to zoom vertically.',
+        animation: {
+          label: 'Two-finger vertical zoom',
+          mediaType: 'video',
+          mediaUrl: twoFingerScrollMedia,
+          mediaAlt: 'Two finger swipe up and down',
+          attribution: 'Wikimedia Commons (CC BY-SA 3.0)'
+        }
+      },
+      {
+        id: 'viewer-zoom-x',
+        target: '[data-tour="viewer-viewport"]',
+        title: 'Horizontal zoom',
+        content: 'Hold Ctrl and use two fingers left or right to zoom horizontally.',
+        animation: {
+          label: 'Ctrl + two-finger zoom',
+          mediaType: 'video',
+          mediaUrl: twoFingerScrollMedia,
+          mediaAlt: 'Two finger swipe left and right',
+          rotate: 90,
+          showCtrl: true,
+          attribution: 'Wikimedia Commons (CC BY-SA 3.0)'
+        }
+      },
+      {
+        id: 'viewer-tree-polygon',
+        title: 'Pick a tree',
+        content: 'The center tree is highlighted. Hover it to see details, then click any tree to zoom in.',
+        getTargetRect: () => getTourPolygonRect(tourCenterTreeIndex),
+        targetKey: tourTargetTick,
+        disableNext: !tourPolygonClicked
+      },
+      {
+        id: 'viewer-tree-edge',
+        title: 'Open tree details',
+        content: 'Click any edge on the highlighted tree to open the Info panel.',
+        getTargetRect: () => getTourPolygonRect(tourSelectedTreeIndex ?? tourCenterTreeIndex),
+        targetKey: tourTargetTick,
+        disableNext: !tourEdgeClicked
+      },
+      {
+        id: 'viewer-info-button',
+        target: '[data-tour="viewer-info-button"]',
+        title: 'Info & Filters',
+        content: 'Open metadata, mutations, and filtering controls for deeper inspection.',
+        offset: { x: -60, y: -60 },
+        arrowDir: 'right'
+      },
+      {
+        id: 'viewer-info-details',
+        target: '[data-tour="viewer-info-details-tab"]',
+        title: 'Details',
+        content: 'Explore tree, node, and sample details for the selected tree.',
+        offset: { x: 10, y: 20 },
+        arrowDir: 'up'
+      },
+      {
+        id: 'viewer-info-mutations',
+        target: '[data-tour="viewer-info-mutations-tab"]',
+        title: 'Mutations',
+        content: 'Browse mutations for the current window or search by position.',
+        offset: { x: 0, y: 20 },
+        arrowDir: 'up'
+      },
+      {
+        id: 'viewer-info-filter',
+        target: '[data-tour="viewer-info-filter-tab"]',
+        title: 'Filters',
+        content: 'Color and filter trees to focus on specific structures.',
+        offset: { x: 0, y: 20 },
+        arrowDir: 'up'
+      },
+      {
+        id: 'viewer-settings-button',
+        target: '[data-tour="viewer-settings-button"]',
+        title: 'Settings',
+        content: 'Customize display options like colors and view settings.',
+        offset: { x: -60, y: -60 },
+        arrowDir: 'right'
       }
-    },
-    {
-      target: '[data-tour="viewer-viewport"]',
-      title: 'Vertical zoom',
-      content: 'Use two fingers up or down to zoom vertically.',
-      animation: {
-        label: 'Two-finger vertical zoom',
-        mediaType: 'video',
-        mediaUrl: twoFingerScrollMedia,
-        mediaAlt: 'Two finger swipe up and down',
-        attribution: 'Wikimedia Commons (CC BY-SA 3.0)'
-      }
-    },
-    {
-      target: '[data-tour="viewer-viewport"]',
-      title: 'Horizontal zoom',
-      content: 'Hold Ctrl and use two fingers left or right to zoom horizontally.',
-      animation: {
-        label: 'Ctrl + two-finger zoom',
-        mediaType: 'video',
-        mediaUrl: twoFingerScrollMedia,
-        mediaAlt: 'Two finger swipe left and right',
-        rotate: 90,
-        showCtrl: true,
-        attribution: 'Wikimedia Commons (CC BY-SA 3.0)'
-      }
-    },
-    {
-      target: '[data-tour="viewer-info-button"]',
-      title: 'Info & Filters',
-      content: 'Open metadata, mutations, and filtering controls for deeper inspection.',
-      offset: { x: -60, y: -60 },
-      arrowDir: 'right'
-    },
-    {
-      target: '[data-tour="viewer-settings-button"]',
-      title: 'Settings',
-      content: 'Customize display options like colors and view settings.',
-      offset: { x: -60, y: -60 },
-      arrowDir: 'right'
-    }
-  ]);
-  }, []);
+    ]);
+  }, [getTourPolygonRect, tourCenterTreeIndex, tourSelectedTreeIndex, tourTargetTick, tourPolygonClicked, tourEdgeClicked]);
 
   const getSelectedMetadataValueForNode = useCallback((nodeId) => {
     const key = selectedColorBy;
@@ -252,6 +419,46 @@ function FileView() {
     }
   }, [tourState.hasSeen, tsconfig, loading, error]);
 
+  useEffect(() => {
+    if (!tourOpen) return;
+    setTourActiveStepId(null);
+    setTourPolygonClicked(false);
+    setTourEdgeClicked(false);
+    setTourSelectedTreeIndex(null);
+    setTourCenterTreeIndex(null);
+    setTourTargetTick(0);
+    lastTourTargetUpdateRef.current = 0;
+  }, [tourOpen]);
+
+  const requestTourTargetUpdate = useCallback(() => {
+    const now = Date.now();
+    if (now - lastTourTargetUpdateRef.current < 50) return;
+    lastTourTargetUpdateRef.current = now;
+    setTourTargetTick((prev) => prev + 1);
+  }, []);
+
+  useEffect(() => {
+    if (!tourOpen) return;
+    if (tourActiveStepId === 'viewer-tree-polygon' || tourActiveStepId === 'viewer-tree-edge') {
+      requestTourTargetUpdate();
+    }
+  }, [tourOpen, tourActiveStepId, requestTourTargetUpdate]);
+
+  useEffect(() => {
+    if (!tourOpen) return;
+    if (tourActiveStepId !== 'viewer-tree-polygon' && tourActiveStepId !== 'viewer-tree-edge') return;
+
+    const polygons = deckRef.current?.polygons;
+    if (tourCenterTreeIndex != null) {
+      const stillVisible = Array.isArray(polygons) && polygons.some((p) => p?.treeIndex === tourCenterTreeIndex);
+      if (stillVisible) return;
+    }
+    const center = getCenterPolygon();
+    if (center?.treeIndex != null) {
+      setTourCenterTreeIndex(center.treeIndex);
+    }
+  }, [tourOpen, tourActiveStepId, tourCenterTreeIndex, getCenterPolygon, tourTargetTick]);
+
   // Apply backend-provided per-tree defaults for edge/path colors (CSV only, optional).
   // Backend provides: tsconfig.tree_info = { [treeIndex]: "#RRGGBB" }
   // Do not override if user already customized edge colors.
@@ -290,6 +497,13 @@ function FileView() {
     }
   }, []);
 
+  const handleDeckViewStateChange = useCallback(() => {
+    if (!tourOpen) return;
+    if (tourActiveStepId === 'viewer-tree-polygon' || tourActiveStepId === 'viewer-tree-edge') {
+      requestTourTargetUpdate();
+    }
+  }, [tourOpen, tourActiveStepId, requestTourTargetUpdate]);
+
   // Handle slider position change - syncs slider → deck
   const handlePositionChange = useCallback((newPosition) => {
     setGenomicPosition(newPosition);
@@ -302,7 +516,12 @@ function FileView() {
   // Handle tree loading state changes from LoraxDeckGL
   const handleTreeLoadingChange = useCallback((loading) => {
     setTreeIsLoading(loading);
-  }, []);
+    if (!loading && tourOpen) {
+      if (tourActiveStepId === 'viewer-tree-polygon' || tourActiveStepId === 'viewer-tree-edge') {
+        requestTourTargetUpdate();
+      }
+    }
+  }, [tourOpen, tourActiveStepId, requestTourTargetUpdate]);
 
   // Handle visible trees change from LoraxDeckGL
   const handleVisibleTreesChange = useCallback((trees) => {
@@ -312,6 +531,11 @@ function FileView() {
   const handlePolygonClick = useCallback(async (payload) => {
     const treeIndex = payload?.treeIndex;
     if (treeIndex == null) return;
+
+    if (tourOpen && tourActiveStepId === 'viewer-tree-polygon') {
+      setTourPolygonClicked(true);
+      setTourSelectedTreeIndex(treeIndex);
+    }
 
     try {
       const intervals = tsconfig?.intervals;
@@ -327,7 +551,30 @@ function FileView() {
     } catch (err) {
       console.error('[FileView] Failed to zoom to polygon interval:', err);
     }
-  }, [tsconfig?.intervals]);
+  }, [tsconfig?.intervals, tourOpen, tourActiveStepId]);
+
+  const handleEdgeClick = useCallback(async (edge) => {
+    if (!edge?.tree_idx && edge?.tree_idx !== 0) return;
+
+    if (tourOpen && tourActiveStepId === 'viewer-tree-polygon') {
+      await handlePolygonClick({ treeIndex: edge.tree_idx });
+    }
+
+    if (tourOpen && tourActiveStepId === 'viewer-tree-edge') {
+      if (tourSelectedTreeIndex == null || edge.tree_idx === tourSelectedTreeIndex) {
+        setTourEdgeClicked(true);
+      }
+    }
+
+    try {
+      setShowInfo(true);
+      resetDetails();
+      const details = await queryDetails({ treeIndex: edge.tree_idx });
+      applyDetailsResponse(details, edge.tree_idx);
+    } catch (e) {
+      console.error('[FileView] edge click queryDetails failed:', e);
+    }
+  }, [tourOpen, tourActiveStepId, tourSelectedTreeIndex, handlePolygonClick, queryDetails, applyDetailsResponse, resetDetails]);
 
   return (
     <div className="h-screen flex flex-col bg-slate-50">
@@ -399,6 +646,7 @@ function FileView() {
               highlightedMutationNode={highlightedMutationNode}
               highlightedMutationTreeIndex={highlightedMutationTreeIndex}
               onGenomicCoordsChange={handleGenomicCoordsChange}
+              onViewStateChange={handleDeckViewStateChange}
               onTreeLoadingChange={handleTreeLoadingChange}
               onVisibleTreesChange={handleVisibleTreesChange}
               hoveredTreeIndex={hoveredTreeIndex}
@@ -454,17 +702,7 @@ function FileView() {
                   ]
                 }, info, event);
               }}
-              onEdgeClick={async (edge) => {
-                if (!edge?.tree_idx && edge?.tree_idx !== 0) return;
-                try {
-                  setShowInfo(true);
-                  resetDetails();
-                  const details = await queryDetails({ treeIndex: edge.tree_idx });
-                  applyDetailsResponse(details, edge.tree_idx);
-                } catch (e) {
-                  console.error('[FileView] edge click queryDetails failed:', e);
-                }
-              }}
+              onEdgeClick={handleEdgeClick}
             />
 
             {/* Hover tooltip (website-owned UI) */}
@@ -581,6 +819,8 @@ function FileView() {
         >
           <Info
             setShowInfo={setShowInfo}
+            activeTab={infoActiveTab}
+            onTabChange={setInfoActiveTab}
             genomicCoords={genomicPosition}
             setClickedGenomeInfo={setClickedGenomeInfo}
             setHighlightedMutationNode={setHighlightedMutationNode}
@@ -623,6 +863,24 @@ function FileView() {
           onFinish={() => {
             tourState.markSeen();
             setTourOpen(false);
+          }}
+          onStepChange={(_, step) => {
+            const stepId = step?.id ?? null;
+            setTourActiveStepId(stepId);
+
+            if (stepId === 'viewer-info-details') {
+              setShowInfo(true);
+              setShowSettings(false);
+              setInfoActiveTab('details');
+            } else if (stepId === 'viewer-info-mutations') {
+              setShowInfo(true);
+              setShowSettings(false);
+              setInfoActiveTab('mutations');
+            } else if (stepId === 'viewer-info-filter') {
+              setShowInfo(true);
+              setShowSettings(false);
+              setInfoActiveTab('metadata');
+            }
           }}
         />
       </div>

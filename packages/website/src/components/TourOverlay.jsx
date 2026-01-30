@@ -17,7 +17,8 @@ export default function TourOverlay({
   steps = [],
   onClose,
   onFinish,
-  startAt = 0
+  startAt = 0,
+  onStepChange
 }) {
   const [index, setIndex] = useState(startAt);
   const [targetRect, setTargetRect] = useState(null);
@@ -37,14 +38,28 @@ export default function TourOverlay({
 
   useEffect(() => {
     if (!open || !step) return;
+    onStepChange?.(index, step);
     if (typeof step.onEnter === 'function') {
       step.onEnter();
     }
-  }, [open, step]);
+  }, [open, step, index, onStepChange]);
 
   const updateTarget = useMemo(() => {
     return () => {
-      if (!open || !step?.target) {
+      if (!open || !step) {
+        setTargetRect(null);
+        return;
+      }
+      if (typeof step.getTargetRect === 'function') {
+        const rect = step.getTargetRect();
+        setTargetRect(rect || null);
+        return;
+      }
+      if (step.targetRect) {
+        setTargetRect(step.targetRect);
+        return;
+      }
+      if (!step.target) {
         setTargetRect(null);
         return;
       }
@@ -56,11 +71,11 @@ export default function TourOverlay({
       const rect = el.getBoundingClientRect();
       setTargetRect(rect);
     };
-  }, [open, step?.target]);
+  }, [open, step, step?.target, step?.targetRect, step?.getTargetRect]);
 
   useEffect(() => {
     updateTarget();
-  }, [updateTarget, index, open]);
+  }, [updateTarget, index, open, step?.targetKey]);
 
   useEffect(() => {
     if (!open) return;
@@ -124,37 +139,40 @@ export default function TourOverlay({
   if (!open || !step) return null;
 
   const isLast = index === steps.length - 1;
+  const disableNext = step?.disableNext === true;
 
   return (
-    <div className="fixed inset-0 z-[100000] pointer-events-none">
-      <style>{`
-        .tour-gesture-media {
-          display: block;
-          width: 100%;
-          height: 100%;
-          object-fit: contain;
-        }
-      `}</style>
-      {/* Dim background */}
-      <div className="absolute inset-0 bg-black/50" />
+    <>
+      <div className="fixed inset-0 z-[100000] pointer-events-none">
+        <style>{`
+          .tour-gesture-media {
+            display: block;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+          }
+        `}</style>
+        {/* Dim background */}
+        <div className="absolute inset-0 bg-black/50 pointer-events-none" />
 
-      {/* Highlight box */}
-      {targetRect && (
-        <div
-          className="absolute rounded-xl border-2 border-emerald-300 shadow-[0_0_0_9999px_rgba(0,0,0,0.45)]"
-          style={{
-            top: targetRect.top - 6,
-            left: targetRect.left - 6,
-            width: targetRect.width + 12,
-            height: targetRect.height + 12
-          }}
-        />
-      )}
+        {/* Highlight box */}
+        {targetRect && (
+          <div
+            className="absolute rounded-xl border-2 border-emerald-300 shadow-[0_0_0_9999px_rgba(0,0,0,0.45)] pointer-events-none"
+            style={{
+              top: targetRect.top - 6,
+              left: targetRect.left - 6,
+              width: targetRect.width + 12,
+              height: targetRect.height + 12
+            }}
+          />
+        )}
+      </div>
 
       {/* Tooltip */}
       <div
         ref={tooltipRef}
-        className="fixed max-w-xs w-[320px] bg-white rounded-2xl shadow-2xl border border-slate-200 p-4 pointer-events-auto"
+        className="fixed max-w-xs w-[320px] bg-white rounded-2xl shadow-2xl border border-slate-200 p-4 pointer-events-auto z-[100001]"
         style={tooltipPos}
       >
         {/* Speech-bubble caret */}
@@ -263,8 +281,9 @@ export default function TourOverlay({
               Back
             </button>
             <button
-              className="text-sm px-3 py-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700"
+              className="text-sm px-3 py-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
               onClick={() => {
+                if (disableNext) return;
                 if (isLast) {
                   onClose?.();
                   onFinish?.();
@@ -272,12 +291,13 @@ export default function TourOverlay({
                   setIndex((prev) => Math.min(steps.length - 1, prev + 1));
                 }
               }}
+              disabled={disableNext}
             >
               {isLast ? 'Done' : 'Next'}
             </button>
           </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }

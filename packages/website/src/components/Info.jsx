@@ -6,6 +6,8 @@ import InfoMutations from "./info/InfoMutations";
 
 const Info = ({
   setShowInfo,
+  activeTab: activeTabProp,
+  onTabChange,
   genomicCoords,
   setClickedGenomeInfo,
   setHighlightedMutationNode,
@@ -27,7 +29,9 @@ const Info = ({
   hoveredTreeIndex = null,
   setHoveredTreeIndex
 }) => {
-  const [activeTab, setActiveTab] = useState('details');
+  const [activeTabInternal, setActiveTabInternal] = useState('details');
+  const activeTab = activeTabProp ?? activeTabInternal;
+  const setActiveTab = onTabChange ?? setActiveTabInternal;
 
   // Get state from context
   const {
@@ -76,6 +80,7 @@ const Info = ({
                 : "text-slate-500 hover:text-slate-700"}
             `}
             onClick={() => setActiveTab('details')}
+            data-tour="viewer-info-details-tab"
           >
             Details
           </button>
@@ -86,6 +91,7 @@ const Info = ({
                 : "text-slate-500 hover:text-slate-700"}
             `}
             onClick={() => setActiveTab('mutations')}
+            data-tour="viewer-info-mutations-tab"
           >
             Mutations
           </button>
@@ -96,6 +102,7 @@ const Info = ({
                 : "text-slate-500 hover:text-slate-700"}
             `}
             onClick={() => setActiveTab('metadata')}
+            data-tour="viewer-info-filter-tab"
           >
             Metadata
           </button>
