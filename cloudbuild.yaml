@@ -86,7 +86,7 @@ steps:
           # Fall back to BUILD_ID for a valid Docker tag.
           TAG="$(printf "%s" "${SHORT_SHA:-$BUILD_ID}" | cut -c1-12)"
           # NOTE: Use $$ to escape bash variables from Cloud Build substitutions.
-          docker build -t "$$IMAGE_URI:$$TAG" packages/backend
+          docker build -f Dockerfile --target backend -t "$$IMAGE_URI:$$TAG" .
           docker push "$$IMAGE_URI:$$TAG"
           docker tag "$$IMAGE_URI:$$TAG" "$$IMAGE_URI:latest"
           docker push "$$IMAGE_URI:latest"
