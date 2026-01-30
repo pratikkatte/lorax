@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Copy the built website assets into the `lorax-app` Python package.
+Copy the built website assets into the `lorax-arg` Python package.
 
 Source:  <repo>/packages/website/dist
 Dest:    <repo>/packages/app/lorax_app/static
@@ -38,4 +38,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
