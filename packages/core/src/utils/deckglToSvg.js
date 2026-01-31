@@ -189,6 +189,12 @@ function extractScatterData(layers) {
   const points = [];
 
   for (const layer of layers) {
+    const layerName = layer?.constructor?.layerName;
+    const isLabelLayer = layerName === 'TextLayer'
+      || (layerName === 'MultiIconLayer' && layer?.id?.includes('labels'));
+    if (isLabelLayer) {
+      continue;
+    }
     const data = layer?.props?.data;
     if (!data || !layer?.props?.getPosition) {
       // binary scatterplot data may not have getPosition accessor
