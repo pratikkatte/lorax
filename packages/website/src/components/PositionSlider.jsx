@@ -52,7 +52,8 @@ export default function PositionSlider({
   // Update URL params when value changes
   useEffect(() => {
     if (value && project) {
-      const updatedParams = new URLSearchParams(searchParams);
+      if (typeof window === 'undefined') return;
+      const updatedParams = new URLSearchParams(window.location.search);
       updatedParams.set('project', project);
       updatedParams.set('genomiccoordstart', value[0]);
       updatedParams.set('genomiccoordend', value[1]);

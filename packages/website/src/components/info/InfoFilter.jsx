@@ -1,8 +1,10 @@
-import React, { useState, useCallback, useEffect, useMemo } from "react";
+import React, { useState, useCallback, useEffect, useMemo, useRef } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useLorax } from "@lorax/core";
 import { metadataFeatureConfig } from "../../config/metadataFeatureConfig";
 
 const ITEMS_PER_PAGE = 100;
+const PRESET_FEATURE_PARAM = "presetfeature";
 
 // Helper to convert RGBA array to hex color
 const rgbaToHex = (rgba) => {
@@ -52,6 +54,7 @@ export default function InfoFilter({
   setHoveredTreeIndex,
   onNavigateToCoords
 }) {
+  const [searchParams, setSearchParams] = useSearchParams();
   // Get filter state from context (via useMetadataFilter in LoraxProvider)
   const {
     tsconfig,
@@ -64,6 +67,7 @@ export default function InfoFilter({
     coloryby = {},
     metadataColors = {},
     setMetadataColors,
+    loadedMetadata,
     enabledValues = new Set(),
     setEnabledValues,
     highlightedMetadataValue = null,
@@ -75,6 +79,7 @@ export default function InfoFilter({
   const [isTreesExpanded, setIsTreesExpanded] = useState(true);
   const [activeFeatureId, setActiveFeatureId] = useState(null);
   const [pendingFeature, setPendingFeature] = useState(null);
+  const lastPresetFeatureIdRef = useRef(null);
 
   const isCsvFile = Boolean(
     String(tsconfig?.filename || '').toLowerCase().endsWith('.csv') || tsconfig?.tree_info
@@ -90,8 +95,22 @@ export default function InfoFilter({
     });
   }, [tsconfig?.project, tsconfig?.filename]);
 
+  const presetFeatureId = useMemo(() => searchParams.get(PRESET_FEATURE_PARAM), [searchParams]);
+
+  const updatePresetInURL = useCallback((featureId) => {
+    if (typeof window === 'undefined') return;
+    const updatedParams = new URLSearchParams(window.location.search);
+    if (featureId) {
+      updatedParams.set(PRESET_FEATURE_PARAM, featureId);
+    } else {
+      updatedParams.delete(PRESET_FEATURE_PARAM);
+    }
+    setSearchParams(updatedParams, { replace: true });
+  }, [setSearchParams]);
+
   useEffect(() => {
     if (!activeFeatureId) return;
+    if (matchedFeatures.length === 0) return;
     const stillValid = matchedFeatures.some((feature) => feature?.id === activeFeatureId);
     if (!stillValid) {
       setActiveFeatureId(null);
@@ -99,66 +118,52 @@ export default function InfoFilter({
     }
   }, [activeFeatureId, matchedFeatures]);
 
-  const applyPendingFeature = useCallback((feature) => {
-    if (!feature) return;
+  const isMetadataReady = useCallback((key) => {
+    if (!key) return false;
+    const status = loadedMetadata?.get?.(key);
+    return status === 'pyarrow' || status === 'json';
+  }, [loadedMetadata]);
+
+  const applyFeatureColors = useCallback((feature) => {
     const key = feature?.metadata?.key;
-    const values = Array.isArray(feature?.metadata?.values)
-      ? feature.metadata.values.map(String)
-      : [];
-    if (!key) return;
-    if (!metadataColors?.[key]) return;
     const colorOverrides = feature?.metadata?.colors;
-    if (colorOverrides && setMetadataColors) {
-      const normalized = {};
-      Object.entries(colorOverrides).forEach(([value, color]) => {
-        const nextColor = normalizeColor(color);
-        if (nextColor) {
-          normalized[String(value)] = nextColor;
-        }
-      });
-      if (Object.keys(normalized).length > 0) {
-        setMetadataColors((prev) => ({
-          ...prev,
-          [key]: {
-            ...(prev?.[key] || {}),
-            ...normalized
-          }
-        }));
+    if (!key || !colorOverrides || !setMetadataColors) return;
+    const normalized = {};
+    Object.entries(colorOverrides).forEach(([value, color]) => {
+      const nextColor = normalizeColor(color);
+      if (nextColor) {
+        normalized[String(value)] = nextColor;
       }
-    }
-    if (setEnabledValues) {
-      setEnabledValues(new Set(values));
-    }
-    if (setSearchTags) {
-      setSearchTags(values);
-    }
-  }, [metadataColors, setEnabledValues, setSearchTags, setMetadataColors]);
+    });
+    if (Object.keys(normalized).length === 0) return;
+    setMetadataColors((prev) => ({
+      ...prev,
+      [key]: {
+        ...(prev?.[key] || {}),
+        ...normalized
+      }
+    }));
+  }, [setMetadataColors]);
 
   useEffect(() => {
     if (!pendingFeature) return;
-    applyPendingFeature(pendingFeature);
-    if (metadataColors?.[pendingFeature?.metadata?.key]) {
+    const key = pendingFeature?.metadata?.key;
+    if (!key) {
       setPendingFeature(null);
-    }
-  }, [pendingFeature, applyPendingFeature, metadataColors]);
-
-  const handleFeatureToggle = useCallback((feature) => {
-    if (!feature?.id) return;
-
-    if (activeFeatureId === feature.id) {
-      setActiveFeatureId(null);
-      setPendingFeature(null);
-      if (setSearchTags) {
-        setSearchTags([]);
-      }
-      if (setEnabledValues && selectedColorBy && metadataColors?.[selectedColorBy]) {
-        setEnabledValues(new Set(Object.keys(metadataColors[selectedColorBy])));
-      }
       return;
     }
+    if (!isMetadataReady(key)) return;
+    applyFeatureColors(pendingFeature);
+    setPendingFeature(null);
+  }, [applyFeatureColors, isMetadataReady, pendingFeature]);
+
+  const applyFeature = useCallback((feature, { syncUrl = true } = {}) => {
+    if (!feature?.id) return;
 
     setActiveFeatureId(feature.id);
-    setPendingFeature(feature);
+    if (syncUrl) {
+      updatePresetInURL(feature.id);
+    }
 
     const key = feature?.metadata?.key;
     const values = Array.isArray(feature?.metadata?.values)
@@ -171,41 +176,74 @@ export default function InfoFilter({
     if (setSearchTags) {
       setSearchTags(values);
     }
+    if (setEnabledValues) {
+      setEnabledValues(new Set(values));
+    }
     if (feature?.displayLineage && setDisplayLineagePaths) {
       setDisplayLineagePaths(true);
     }
-    if (feature?.metadata?.colors && setMetadataColors) {
-      const normalized = {};
-      Object.entries(feature.metadata.colors).forEach(([value, color]) => {
-        const nextColor = normalizeColor(color);
-        if (nextColor) {
-          normalized[String(value)] = nextColor;
-        }
-      });
-      if (Object.keys(normalized).length > 0) {
-        setMetadataColors((prev) => ({
-          ...prev,
-          [key]: {
-            ...(prev?.[key] || {}),
-            ...normalized
-          }
-        }));
+    if (feature?.metadata?.colors) {
+      if (isMetadataReady(key)) {
+        applyFeatureColors(feature);
+      } else {
+        setPendingFeature(feature);
       }
     }
     if (Array.isArray(feature?.genomicCoords) && onNavigateToCoords) {
       onNavigateToCoords(feature.genomicCoords);
     }
   }, [
-    activeFeatureId,
-    metadataColors,
+    applyFeatureColors,
+    isMetadataReady,
     onNavigateToCoords,
-    selectedColorBy,
     setDisplayLineagePaths,
     setEnabledValues,
-    setMetadataColors,
     setSearchTags,
-    setSelectedColorBy
+    setSelectedColorBy,
+    updatePresetInURL
   ]);
+
+  const handleFeatureToggle = useCallback((feature) => {
+    if (!feature?.id) return;
+
+    if (activeFeatureId === feature.id) {
+      setActiveFeatureId(null);
+      setPendingFeature(null);
+      updatePresetInURL(null);
+      if (setSearchTags) {
+        setSearchTags([]);
+      }
+      if (setEnabledValues && selectedColorBy && metadataColors?.[selectedColorBy]) {
+        setEnabledValues(new Set(Object.keys(metadataColors[selectedColorBy])));
+      }
+      return;
+    }
+
+    applyFeature(feature, { syncUrl: true });
+  }, [
+    activeFeatureId,
+    applyFeature,
+    metadataColors,
+    selectedColorBy,
+    setEnabledValues,
+    setSearchTags,
+    updatePresetInURL
+  ]);
+
+  useEffect(() => {
+    const currentId = presetFeatureId || null;
+    if (!currentId) {
+      setActiveFeatureId(null);
+      setPendingFeature(null);
+      lastPresetFeatureIdRef.current = null;
+      return;
+    }
+    if (lastPresetFeatureIdRef.current === currentId) return;
+    const feature = matchedFeatures.find((item) => item?.id === currentId);
+    if (!feature) return;
+    lastPresetFeatureIdRef.current = currentId;
+    applyFeature(feature, { syncUrl: false });
+  }, [applyFeature, matchedFeatures, presetFeatureId]);
 
   // Get filtered items
   const getFilteredItems = useCallback(() => {
@@ -225,13 +263,9 @@ export default function InfoFilter({
   const displayItems = allItems.slice(0, visibleCount);
   const hasMore = visibleCount < allItems.length;
 
-  // Debug: verify component is rendering with updated code
-  console.log('[InfoFilter] Rendering, items:', displayItems.length, 'hasSetHighlight:', !!setHighlightedMetadataValue);
-
   return (
     <div
       className="bg-white rounded-lg shadow-md border border-gray-200 p-4 mb-3"
-      onClick={(e) => console.log('[InfoFilter] Main container clicked, target:', e.target.tagName, 'class:', e.target.className?.slice?.(0, 50) || e.target.className)}
     >
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2 text-gray-600">

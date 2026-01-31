@@ -125,16 +125,24 @@ function useMetadataFilter({ enabled = false, config = {} }) {
 
     const valueToColor = metadataColors?.[selectedColorBy];
     if (valueToColor && Object.keys(valueToColor).length > 0) {
-      setEnabledValues(new Set(Object.keys(valueToColor)));
+      const keyChanged = prevSelectedColorByRef.current !== selectedColorBy;
+      const hasExplicitSelection = enabledValues.size > 0 || searchTags.length > 0;
 
-      // Only reset search state when the key actually changes
-      if (prevSelectedColorByRef.current !== selectedColorBy) {
+      if (!hasExplicitSelection) {
+        setEnabledValues(new Set(Object.keys(valueToColor)));
+      }
+
+      // Only reset search state when the key actually changes and nothing is explicitly selected
+      if (keyChanged && !hasExplicitSelection) {
         setSearchTags([]);
         setSearchTerm("");
+      }
+
+      if (keyChanged) {
         prevSelectedColorByRef.current = selectedColorBy;
       }
     }
-  }, [enabled, selectedColorBy, metadataColors]);
+  }, [enabled, selectedColorBy, metadataColors, enabledValues, searchTags]);
 
   // Handle key change - reset UI state
   const handleKeyChange = useCallback((newKey) => {

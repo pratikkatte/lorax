@@ -8,7 +8,6 @@ import Settings from './Settings';
 import { useViewportDimensions } from '../hooks/useViewportDimensions';
 import TourOverlay from './TourOverlay';
 import useTourState from '../hooks/useTourState';
-
 // TODO: Re-enable when the tutorial is complete.
 const TOUR_ENABLED = false;
 
@@ -20,7 +19,6 @@ function FileView() {
   const { file } = useParams();
   const [searchParams] = useSearchParams();
   const deckRef = useRef(null);
-  const appliedInitialTreeColorsRef = useRef(false);
   const appliedInitialTreeEdgeColorsRef = useRef(false);
 
   const {
@@ -361,9 +359,6 @@ function FileView() {
     setNodeEdges(data?.edges ?? null);
   }, []);
 
-  // Keep tooltip label stable for current selection
-  const selectedColorByLabel = useMemo(() => selectedColorBy || null, [selectedColorBy]);
-
   // Viewport and view dimensions with localStorage persistence
   const {
     viewport,
@@ -680,7 +675,7 @@ function FileView() {
                   rows: [
                     { k: 'Tree', v: tip.tree_idx },
                     { k: 'Node ID', v: tip.node_id || tip.node_id },
-                    ...(selectedColorByLabel ? [{ k: selectedColorByLabel, v: value ?? '-' }] : [])
+                    ...(selectedColorBy ? [{ k: selectedColorBy, v: value ?? '-' }] : [])
                   ]
                 }, info, event);
               }}
@@ -695,9 +690,9 @@ function FileView() {
                     comprehensive: true
                   });
                   applyDetailsResponse(details, tip.tree_idx);
-                  if (selectedColorByLabel) {
+                  if (selectedColorBy) {
                     const value = getSelectedMetadataValueForNode(tip.node_id);
-                    setSelectedTipMetadata({ key: selectedColorByLabel, value: value ?? '-' });
+                    setSelectedTipMetadata({ key: selectedColorBy, value: value ?? '-' });
                   }
                 } catch (e) {
                   console.error('[FileView] tip click queryDetails failed:', e);

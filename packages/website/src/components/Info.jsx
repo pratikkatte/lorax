@@ -147,7 +147,7 @@ const Info = ({
             setHighlightedMutationTreeIndex={setHighlightedMutationTreeIndex}
           />
         )}
-        {activeTab === 'metadata' && (
+        <div className={activeTab === 'metadata' ? '' : 'hidden'}>
           <InfoFilter
             visibleTrees={visibleTrees}
             treeColors={treeColors}
@@ -158,7 +158,7 @@ const Info = ({
             setHoveredTreeIndex={setHoveredTreeIndex}
             onNavigateToCoords={onNavigateToCoords}
           />
-        )}
+        </div>
       </div>
     </div>
   );
