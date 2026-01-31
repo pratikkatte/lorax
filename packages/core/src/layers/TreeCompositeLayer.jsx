@@ -1,5 +1,5 @@
 import { CompositeLayer, COORDINATE_SYSTEM } from '@deck.gl/core';
-import { PathLayer, ScatterplotLayer, IconLayer, TextLayer } from '@deck.gl/layers';
+import { PathLayer, ScatterplotLayer, IconLayer } from '@deck.gl/layers';
 
 /**
  * TreeCompositeLayer - Renders trees using pre-computed render data.
@@ -25,11 +25,6 @@ export class TreeCompositeLayer extends CompositeLayer {
     mutationColor: [255, 0, 0, 220],
     mutationRadius: 3,
     showMutations: true,
-    // Tip label props
-    showTipLabels: true,
-    tipLabelSize: 10,
-    tipLabelColor: [0, 0, 0, 255],
-    tipLabelOffset: [5, 0],
     // Interaction
     pickable: false,
     onTipClick: null,
@@ -85,10 +80,6 @@ export class TreeCompositeLayer extends CompositeLayer {
       mutationColor,
       mutationRadius,
       showMutations,
-      showTipLabels,
-      tipLabelSize,
-      tipLabelColor,
-      tipLabelOffset,
       pickable,
       onTipClick,
       onTipHover,
@@ -179,28 +170,6 @@ export class TreeCompositeLayer extends CompositeLayer {
         coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
         pickable: false
       }));
-    }
-
-    // Tip labels using TextLayer
-    if (showTipLabels && tipData && tipData.length > 0) {
-      // Filter to only tips with non-empty names
-      const labelData = tipData.filter(d => d.name && d.name.length > 0);
-      if (labelData.length > 0) {
-        layers.push(new TextLayer({
-          id: `${this.props.id}-tip-labels`,
-          data: labelData,
-          getPosition: d => d.position,
-          getText: d => d.name,
-          getSize: tipLabelSize,
-          getColor: tipLabelColor,
-          getPixelOffset: tipLabelOffset,
-          getTextAnchor: 'start',
-          getAlignmentBaseline: 'center',
-          fontFamily: 'Monaco, monospace',
-          coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
-          pickable: false
-        }));
-      }
     }
 
     // Pickable tip layer (invisible overlay for clicking)

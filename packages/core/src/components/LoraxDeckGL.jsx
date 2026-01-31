@@ -741,6 +741,84 @@ const LoraxDeckGL = forwardRef(({
     setHoveredPolygon(null);
   }, [clearPickingHover, setHoveredPolygon]);
 
+  const getSVGString = useCallback((polygonColor = [145, 194, 244, 46]) => {
+    const deck = deckRef.current?.deck;
+    if (!deck) {
+      console.warn('[getSVGString] No deck instance available');
+      return null;
+    }
+    const polygonVertices = polygons?.map(p => p.vertices) || [];
+    return getSVG(deck, polygonVertices, polygonColor);
+  }, [polygons]);
+
+  const getSVGSize = useCallback((svgString, fallbackWidth, fallbackHeight) => {
+    try {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(svgString, 'image/svg+xml');
+      const svg = doc.querySelector('svg');
+      const widthAttr = svg?.getAttribute('width');
+      const heightAttr = svg?.getAttribute('height');
+      const viewBox = svg?.getAttribute('viewBox');
+      let width = widthAttr ? parseFloat(widthAttr) : Number.NaN;
+      let height = heightAttr ? parseFloat(heightAttr) : Number.NaN;
+      if (!Number.isFinite(width) || !Number.isFinite(height)) {
+        if (viewBox) {
+          const parts = viewBox.split(/\s+/).map(Number);
+          if (parts.length === 4) {
+            width = parts[2];
+            height = parts[3];
+          }
+        }
+      }
+      if (!Number.isFinite(width)) width = fallbackWidth;
+      if (!Number.isFinite(height)) height = fallbackHeight;
+      return { width, height };
+    } catch (err) {
+      return { width: fallbackWidth, height: fallbackHeight };
+    }
+  }, []);
+
+  const getPNGBlob = useCallback(async (polygonColor = [145, 194, 244, 46]) => {
+    const svgString = getSVGString(polygonColor);
+    if (!svgString) return null;
+    const deck = deckRef.current?.deck;
+    const canvasEl = deck?.canvas;
+    const fallbackWidth = canvasEl?.width || canvasEl?.clientWidth || 0;
+    const fallbackHeight = canvasEl?.height || canvasEl?.clientHeight || 0;
+    const { width, height } = getSVGSize(svgString, fallbackWidth, fallbackHeight);
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+      return null;
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(width);
+    canvas.height = Math.round(height);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+
+    const blob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+
+    try {
+      await new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          resolve();
+        };
+        img.onerror = (event) => reject(event);
+        img.src = url;
+      });
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+
+    return await new Promise((resolve) => {
+      canvas.toBlob((pngBlob) => resolve(pngBlob), 'image/png');
+    });
+  }, [getSVGSize, getSVGString]);
+
   // 11. Ref forwarding - expose deck instance, viewState, and genomic coordinates
   useImperativeHandle(ref, () => ({
     getDeck: () => deckRef.current?.deck,
@@ -768,14 +846,7 @@ const LoraxDeckGL = forwardRef(({
     polygonsReady,
     // SVG capture for screenshot functionality
     captureSVG: (polygonColor = [145, 194, 244, 46]) => {
-      const deck = deckRef.current?.deck;
-      if (!deck) {
-        console.warn('[captureSVG] No deck instance available');
-        return;
-      }
-      // Extract polygon vertex arrays from current polygons state
-      const polygonVertices = polygons?.map(p => p.vertices) || [];
-      const svg = getSVG(deck, polygonVertices, polygonColor);
+      const svg = getSVGString(polygonColor);
       if (svg) {
         const blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
         const url = URL.createObjectURL(blob);
@@ -787,8 +858,10 @@ const LoraxDeckGL = forwardRef(({
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
       }
-    }
-  }), [viewState, views, viewReset, xzoom, yzoom, genomicCoords, setGenomicCoords, coordsReady, localBins, displayArray, showingAllTrees, treeData, treeDataLoading, treeDataError, polygons, hoveredPolygon, setHoveredPolygon, polygonsReady]);
+    },
+    getSVGString,
+    getPNGBlob
+  }), [viewState, views, viewReset, xzoom, yzoom, genomicCoords, setGenomicCoords, coordsReady, localBins, displayArray, showingAllTrees, treeData, treeDataLoading, treeDataError, polygons, hoveredPolygon, setHoveredPolygon, polygonsReady, getSVGString, getPNGBlob]);
 
   return (
     <div
