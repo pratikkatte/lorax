@@ -447,7 +447,7 @@ const LoraxDeckGL = forwardRef(({
     if (selectedTreeIdx != null && !Number.isFinite(selectedTreeIdx)) return [];
 
     const out = [];
-    const defaultColor = [255, 0, 0, 255];
+    const defaultColor = [0, 0, 0, 255];
     const defaultRadius = 7;
 
     // Use mutation marker coordinates (mutations are not sparsified, unlike nodes).

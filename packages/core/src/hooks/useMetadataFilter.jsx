@@ -53,6 +53,7 @@ function useMetadataFilter({ enabled = false, config = {} }) {
 
   // Ref to track loadedMetadata for use in timeout callbacks (avoids stale closure)
   const loadedMetadataRef = useRef(loadedMetadata);
+  const pendingSelectedKeyRef = useRef(null);
 
   // Sync ref with state
   useEffect(() => {
@@ -71,7 +72,7 @@ function useMetadataFilter({ enabled = false, config = {} }) {
 
       if (tsconfig?.project === "1000Genomes") {
         if (key === 'name') {
-          label = "Population";
+           label = "Population";
         }
         if (key === "other_comments" || key === "description") {
           // skip this metadata key
@@ -87,9 +88,19 @@ function useMetadataFilter({ enabled = false, config = {} }) {
   useEffect(() => {
     if (!enabled) return;
     if (metadataKeys?.length > 0 && !selectedColorBy) {
+      if (pendingSelectedKeyRef.current) {
+        return;
+      }
       setSelectedColorBy(metadataKeys[0]);
     }
   }, [enabled, metadataKeys, selectedColorBy]);
+
+  useEffect(() => {
+    if (!enabled) return;
+    if (pendingSelectedKeyRef.current && selectedColorBy === pendingSelectedKeyRef.current) {
+      pendingSelectedKeyRef.current = null;
+    }
+  }, [enabled, selectedColorBy, metadataKeys]);
 
   // Auto-fetch metadata values when key changes
   // Note: We intentionally exclude loadedMetadata from deps to avoid infinite loops.
@@ -158,13 +169,14 @@ function useMetadataFilter({ enabled = false, config = {} }) {
 
   // Handle key change - reset UI state
   const handleKeyChange = useCallback((newKey) => {
+    pendingSelectedKeyRef.current = newKey;
     setSelectedColorBy(newKey);
     setSearchTerm("");
     setSearchTags([]);
     setHighlightedMetadataValue(null);  // Clear highlight when key changes
     setEnabledValuesState(new Set());
     setHasManualSelection(false);
-  }, []);
+  }, [selectedColorBy]);
 
   const setEnabledValues = useCallback((next) => {
     setHasManualSelection(true);

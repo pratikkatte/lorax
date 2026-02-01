@@ -75,10 +75,14 @@ export default function InfoFilter({
     displayLineagePaths = false,
     setDisplayLineagePaths
   } = useLorax();
+
+  // Note: keep this component stateless at render time.
+
   const [visibleCount, setVisibleCount] = useState(ITEMS_PER_PAGE);
   const [isTreesExpanded, setIsTreesExpanded] = useState(true);
   const [activeFeatureId, setActiveFeatureId] = useState(null);
   const [pendingFeature, setPendingFeature] = useState(null);
+  const [pendingPreset, setPendingPreset] = useState(null);
   const lastPresetFeatureIdRef = useRef(null);
 
   const isCsvFile = Boolean(
@@ -94,7 +98,6 @@ export default function InfoFilter({
       return feature.project === project && feature.filename === filename;
     });
   }, [tsconfig?.project, tsconfig?.filename]);
-
   const presetFeatureId = useMemo(() => searchParams.get(PRESET_FEATURE_PARAM), [searchParams]);
 
   const updatePresetInURL = useCallback((featureId) => {
@@ -157,22 +160,12 @@ export default function InfoFilter({
     setPendingFeature(null);
   }, [applyFeatureColors, isMetadataReady, pendingFeature]);
 
-  const applyFeature = useCallback((feature, { syncUrl = true } = {}) => {
-    if (!feature?.id) return;
-
-    setActiveFeatureId(feature.id);
-    if (syncUrl) {
-      updatePresetInURL(feature.id);
-    }
-
+  const applyPresetValues = useCallback((feature) => {
     const key = feature?.metadata?.key;
     const values = Array.isArray(feature?.metadata?.values)
       ? feature.metadata.values.map(String)
       : [];
 
-    if (key && setSelectedColorBy) {
-      setSelectedColorBy(key);
-    }
     if (setSearchTags) {
       setSearchTags(values);
     }
@@ -198,10 +191,39 @@ export default function InfoFilter({
     onNavigateToCoords,
     setDisplayLineagePaths,
     setEnabledValues,
-    setSearchTags,
+    setSearchTags
+  ]);
+
+  const applyFeature = useCallback((feature, { syncUrl = true } = {}) => {
+    if (!feature?.id) return;
+
+    setActiveFeatureId(feature.id);
+    if (syncUrl) {
+      updatePresetInURL(feature.id);
+    }
+
+    const key = feature?.metadata?.key;
+    if (key && setSelectedColorBy && selectedColorBy !== key) {
+      setSelectedColorBy(key);
+      setPendingPreset(feature);
+      return;
+    }
+
+    applyPresetValues(feature);
+  }, [
+    applyPresetValues,
+    selectedColorBy,
     setSelectedColorBy,
     updatePresetInURL
   ]);
+
+  useEffect(() => {
+    if (!pendingPreset) return;
+    const key = pendingPreset?.metadata?.key;
+    if (key && selectedColorBy !== key) return;
+    applyPresetValues(pendingPreset);
+    setPendingPreset(null);
+  }, [applyPresetValues, pendingPreset, selectedColorBy]);
 
   const handleFeatureToggle = useCallback((feature) => {
     if (!feature?.id) return;

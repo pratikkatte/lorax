@@ -116,6 +116,8 @@ export class TreeCompositeLayer extends CompositeLayer {
               }
       }));
 
+
+
       // Hover highlight (render only the hovered edge, thicker)
       if (hoveredEdgeIndex != null && hoveredEdgeIndex >= 0 && hoveredEdgeIndex < pathStartIndices.length - 1) {
         const start = pathStartIndices[hoveredEdgeIndex] * 2;
@@ -187,6 +189,45 @@ export class TreeCompositeLayer extends CompositeLayer {
     }
 
     // Mutation markers using IconLayer with X icon
+    
+    // Lineage paths (ancestry from tips to root)
+    if (lineageData && lineageData.length > 0) {
+      layers.push(new PathLayer({
+        id: `${this.props.id}-lineages`,
+        data: lineageData,
+        getPath: d => d.path,
+        getColor: d => d.color || [255, 200, 0, 200],
+        getWidth: 2,
+        fp64: true,
+        widthUnits: 'pixels',
+        coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+        parameters: { depthTest: false },
+        pickable: false,
+        capRounded: false,
+        jointRounded: false
+      }));
+    }
+
+    // Highlight circles for metadata value selection (render above lineages)
+    if (highlightData && highlightData.length > 0) {
+      layers.push(new ScatterplotLayer({
+        id: `${this.props.id}-highlights`,
+        data: highlightData,
+        getPosition: d => d.position,
+        getFillColor: [0, 0, 0, 0],  // Transparent fill (hollow)
+        getLineColor: d => d.color || [255, 200, 0, 255],
+        // Allow per-highlight radius override (e.g. mutation/node highlight)
+        getRadius: d => (d?.radius ?? (tipRadius + 1)),
+        radiusUnits: 'pixels',
+        stroked: true,
+        filled: false,
+        lineWidthUnits: 'pixels',
+        getLineWidth: 2,
+        coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+        pickable: false
+      }));
+    }
+
     if (showMutations && mutCount > 0 && mutPositions?.length > 0) {
       // Convert Float64Array positions to array of objects for IconLayer
       const mutationData = [];
@@ -210,44 +251,6 @@ export class TreeCompositeLayer extends CompositeLayer {
         },
         coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
         pickable: false
-      }));
-    }
-
-    // Highlight circles for metadata value selection
-    if (highlightData && highlightData.length > 0) {
-      layers.push(new ScatterplotLayer({
-        id: `${this.props.id}-highlights`,
-        data: highlightData,
-        getPosition: d => d.position,
-        getFillColor: [0, 0, 0, 0],  // Transparent fill (hollow)
-        getLineColor: d => d.color || [255, 200, 0, 255],
-        // Allow per-highlight radius override (e.g. mutation/node highlight)
-        getRadius: d => (d?.radius ?? (tipRadius + 1)),
-        radiusUnits: 'pixels',
-        stroked: true,
-        filled: false,
-        lineWidthUnits: 'pixels',
-        getLineWidth: 2,
-        coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
-        pickable: false
-      }));
-    }
-
-    // Lineage paths (ancestry from tips to root)
-    if (lineageData && lineageData.length > 0) {
-      layers.push(new PathLayer({
-        id: `${this.props.id}-lineages`,
-        data: lineageData,
-        getPath: d => d.path,
-        getColor: d => d.color || [255, 200, 0, 200],
-        getWidth: 2,
-        fp64: true,
-        widthUnits: 'pixels',
-        coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
-        parameters: { depthTest: false },
-        pickable: false,
-        capRounded: false,
-        jointRounded: false
       }));
     }
 

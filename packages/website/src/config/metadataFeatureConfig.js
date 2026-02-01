@@ -35,5 +35,21 @@ export const metadataFeatureConfig = [
       }
     },
     displayLineage: true
+  },
+  {
+    id: "1000Genomes_chr2",
+    label: "1000Genomes chr2",
+    project: "1000Genomes",
+    filename: "1kg_chr2.trees.tsz",
+    genomicCoords: [136608644, 136608651],
+    metadata: {
+      key: "name",
+      values: [ "GBR", "CHS"],
+      colors: {
+        GBR: "#18b938",
+        CHS: "#d80e0e"
+      }
+    },
+    displayLineage: true
   }
 ];
