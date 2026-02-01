@@ -83,6 +83,9 @@ export default function InfoFilter({
   const [activeFeatureId, setActiveFeatureId] = useState(null);
   const [pendingFeature, setPendingFeature] = useState(null);
   const [pendingPreset, setPendingPreset] = useState(null);
+  const [expandedDescriptions, setExpandedDescriptions] = useState(() => new Set());
+  const [overflowDescriptions, setOverflowDescriptions] = useState(() => new Set());
+  const descriptionRefs = useRef(new Map());
   const lastPresetFeatureIdRef = useRef(null);
 
   const isCsvFile = Boolean(
@@ -120,6 +123,57 @@ export default function InfoFilter({
       setPendingFeature(null);
     }
   }, [activeFeatureId, matchedFeatures]);
+
+  useEffect(() => {
+    if (matchedFeatures.length === 0) return undefined;
+
+    let frameId = null;
+    const measureOverflow = () => {
+      const next = new Set();
+      descriptionRefs.current.forEach((node, id) => {
+        if (!node) return;
+
+        const computed = window.getComputedStyle(node);
+        const lineHeight = Number.parseFloat(computed.lineHeight);
+        const clampHeight = Number.isFinite(lineHeight) ? lineHeight * 2 : node.clientHeight;
+        const width = node.clientWidth;
+
+        if (!width) return;
+
+        const clone = node.cloneNode(true);
+        clone.style.position = 'absolute';
+        clone.style.visibility = 'hidden';
+        clone.style.pointerEvents = 'none';
+        clone.style.height = 'auto';
+        clone.style.maxHeight = 'none';
+        clone.style.overflow = 'visible';
+        clone.style.display = 'block';
+        clone.style.WebkitLineClamp = 'unset';
+        clone.style.WebkitBoxOrient = 'initial';
+        clone.style.width = `${width}px`;
+        document.body.appendChild(clone);
+        const fullHeight = clone.scrollHeight;
+        document.body.removeChild(clone);
+
+        if (fullHeight > clampHeight + 1) {
+          next.add(id);
+        }
+      });
+      setOverflowDescriptions(next);
+    };
+
+    frameId = requestAnimationFrame(measureOverflow);
+    const handleResize = () => {
+      if (frameId) cancelAnimationFrame(frameId);
+      frameId = requestAnimationFrame(measureOverflow);
+    };
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+      if (frameId) cancelAnimationFrame(frameId);
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [matchedFeatures]);
 
   const isMetadataReady = useCallback((key) => {
     if (!key) return false;
@@ -418,20 +472,75 @@ export default function InfoFilter({
             <div className="space-y-2">
               {matchedFeatures.map((feature) => {
                 const isActive = activeFeatureId === feature.id;
+                const description = feature.description || "";
+                const isDescriptionExpanded = expandedDescriptions.has(feature.id);
+                const shouldShowToggle = overflowDescriptions.has(feature.id) || isDescriptionExpanded;
+
                 return (
-                  <div key={feature.id} className="flex items-center justify-between gap-2">
-                    <span className="text-sm text-gray-700 truncate">
-                      {feature.label || feature.id}
-                    </span>
-                    <button
-                      type="button"
-                      className={`w-4 h-4 rounded-full border-2 transition-colors ${isActive
-                        ? 'bg-gray-700 border-gray-700'
-                        : 'bg-white border-gray-400'
-                      }`}
-                      onClick={() => handleFeatureToggle(feature)}
-                      title={isActive ? "Disable preset" : "Enable preset"}
-                    />
+                  <div key={feature.id} className="flex flex-col gap-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm text-gray-700 truncate block min-w-0">
+                        {feature.label || feature.id}
+                      </span>
+                      <button
+                        type="button"
+                        className={`w-4 h-4 rounded-full border-2 transition-colors ${isActive
+                          ? 'bg-gray-700 border-gray-700'
+                          : 'bg-white border-gray-400'
+                        }`}
+                        onClick={() => handleFeatureToggle(feature)}
+                        title={isActive ? "Disable preset" : "Enable preset"}
+                      />
+                    </div>
+                    <div className="min-w-0">
+                      {description && (
+                        <div className="text-xs text-gray-500">
+                          <span
+                            ref={(node) => {
+                              if (node) {
+                                descriptionRefs.current.set(feature.id, node);
+                              } else {
+                                descriptionRefs.current.delete(feature.id);
+                              }
+                            }}
+                            className="block"
+                            style={
+                              isDescriptionExpanded
+                                ? undefined
+                                : {
+                                    display: '-webkit-box',
+                                    WebkitBoxOrient: 'vertical',
+                                    WebkitLineClamp: 2,
+                                    overflow: 'hidden',
+                                    lineHeight: '1.25rem',
+                                    maxHeight: '2.5rem'
+                                  }
+                            }
+                          >
+                            {description}
+                          </span>
+                          {shouldShowToggle && (
+                            <button
+                              type="button"
+                              className="text-xs text-blue-600 hover:text-blue-800"
+                              onClick={() => {
+                                setExpandedDescriptions((prev) => {
+                                  const next = new Set(prev);
+                                  if (next.has(feature.id)) {
+                                    next.delete(feature.id);
+                                  } else {
+                                    next.add(feature.id);
+                                  }
+                                  return next;
+                                });
+                              }}
+                            >
+                              {isDescriptionExpanded ? "Show less" : "Show more"}
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 );
               })}

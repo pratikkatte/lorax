@@ -2,22 +2,8 @@
 // Keep IDs unique and matches exact project + filename.
 export const metadataFeatureConfig = [
   {
-    id: "Heliconius_erato_sara_hdem",
-    label: "Hdem sample lineage",
-    project: "Heliconius",
-    filename: "erato-sara_chr0.csv",
-    genomicCoords: [0, 1000],
-    metadata: {
-      key: "sample",
-      values: ["Hdem"],
-      colors: {
-        Hdem: "#2b6cb0"
-      }
-    },
-    displayLineage: true
-  },
-  {
     id: "Heliconius_erato_sara_hdem_chr2",
+    description: "inversions on chr2",
     label: "inversions on chr2",
     project: "Heliconius",
     filename: "erato-sara_chr2.csv",
@@ -37,8 +23,9 @@ export const metadataFeatureConfig = [
     displayLineage: true
   },
   {
-    id: "1000Genomes_chr2",
-    label: "1000Genomes chr2",
+    id: "lactase_persistence",
+    label: "Lactase Persistence",
+    description: "Genomic locus associated with lactase persistence in humans.",
     project: "1000Genomes",
     filename: "1kg_chr2.trees.tsz",
     genomicCoords: [136608644, 136608651],
