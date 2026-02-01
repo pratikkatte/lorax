@@ -227,7 +227,7 @@ export class TreeCompositeLayer extends CompositeLayer {
         stroked: true,
         filled: false,
         lineWidthUnits: 'pixels',
-        getLineWidth: 1,
+        getLineWidth: 2,
         coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
         pickable: false
       }));

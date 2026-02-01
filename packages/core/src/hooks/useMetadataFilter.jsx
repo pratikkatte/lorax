@@ -44,7 +44,8 @@ function useMetadataFilter({ enabled = false, config = {} }) {
 
   // Filter UI state
   const [selectedColorBy, setSelectedColorBy] = useState(null);
-  const [enabledValues, setEnabledValues] = useState(new Set());
+  const [enabledValues, setEnabledValuesState] = useState(new Set());
+  const [hasManualSelection, setHasManualSelection] = useState(false);
   const [searchTags, setSearchTags] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [highlightedMetadataValue, setHighlightedMetadataValue] = useState(null);
@@ -72,7 +73,7 @@ function useMetadataFilter({ enabled = false, config = {} }) {
         if (key === 'name') {
           label = "Population";
         }
-        if (key === "other comments" || key === "Description") {
+        if (key === "other_comments" || key === "description") {
           // skip this metadata key
           return;
         }
@@ -137,10 +138,10 @@ function useMetadataFilter({ enabled = false, config = {} }) {
     const valueToColor = metadataColors?.[selectedColorBy];
     if (valueToColor && Object.keys(valueToColor).length > 0) {
       const keyChanged = prevSelectedColorByRef.current !== selectedColorBy;
-      const hasExplicitSelection = enabledValues.size > 0 || searchTags.length > 0;
+      const hasExplicitSelection = hasManualSelection || searchTags.length > 0;
 
-      if (!hasExplicitSelection) {
-        setEnabledValues(new Set(Object.keys(valueToColor)));
+      if (!hasExplicitSelection && enabledValues.size === 0) {
+        setEnabledValuesState(new Set(Object.keys(valueToColor)));
       }
 
       // Only reset search state when the key actually changes and nothing is explicitly selected
@@ -153,7 +154,7 @@ function useMetadataFilter({ enabled = false, config = {} }) {
         prevSelectedColorByRef.current = selectedColorBy;
       }
     }
-  }, [enabled, selectedColorBy, metadataColors, enabledValues, searchTags]);
+  }, [enabled, selectedColorBy, metadataColors, enabledValues, searchTags, hasManualSelection]);
 
   // Handle key change - reset UI state
   const handleKeyChange = useCallback((newKey) => {
@@ -161,7 +162,13 @@ function useMetadataFilter({ enabled = false, config = {} }) {
     setSearchTerm("");
     setSearchTags([]);
     setHighlightedMetadataValue(null);  // Clear highlight when key changes
-    // enabledValues will be auto-set by the effect above
+    setEnabledValuesState(new Set());
+    setHasManualSelection(false);
+  }, []);
+
+  const setEnabledValues = useCallback((next) => {
+    setHasManualSelection(true);
+    setEnabledValuesState((prev) => (typeof next === 'function' ? next(prev) : next));
   }, []);
 
   // Return memoized state
@@ -201,6 +208,7 @@ function useMetadataFilter({ enabled = false, config = {} }) {
     enabled,
     selectedColorBy,
     handleKeyChange,
+    setEnabledValues,
     enabledValues,
     searchTags,
     searchTerm,
