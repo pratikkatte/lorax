@@ -38,7 +38,8 @@ function useMetadataFilter({ enabled = false, config = {} }) {
     fetchMetadataArrayForKey,
     registerJsonFallback,    // Register timer for cancellation on PyArrow success
     clearJsonFallback,       // Clear timer on unmount/key change
-    isConnected
+    isConnected,
+    tsconfig
   } = config;
 
   // Filter UI state
@@ -64,7 +65,20 @@ function useMetadataFilter({ enabled = false, config = {} }) {
     const options = {};
     metadataKeys.forEach(key => {
       // Convert key to display label (capitalize, replace underscores)
-      const label = key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+
+      let label = key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+
+      console.log("key", key, tsconfig?.project, label);
+
+      if (tsconfig?.project === "1000Genomes") {
+        if (key === 'name') {
+          label = "Population";
+        }
+        if (key === "other comments" || key === "Description") {
+          // skip this metadata key
+          return;
+        }
+      }
       options[key] = label;
     });
     return options;

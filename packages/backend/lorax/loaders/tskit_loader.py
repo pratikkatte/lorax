@@ -2,6 +2,21 @@ import os
 import tskit
 from lorax.metadata.loader import get_metadata_schema
 
+
+def _get_project_name(file_path, root_dir):
+    """Return the immediate parent directory name for the file."""
+    if not file_path:
+        return None
+    try:
+        parent_dir = os.path.basename(os.path.dirname(str(file_path)))
+    except Exception:
+        parent_dir = None
+    if parent_dir:
+        return parent_dir
+    if root_dir:
+        return os.path.basename(os.path.normpath(str(root_dir)))
+    return None
+
 def get_config_tskit(ts, file_path, root_dir):
     """Extract configuration and metadata from a tree sequence file.
 
@@ -29,12 +44,15 @@ def get_config_tskit(ts, file_path, root_dir):
         metadata_schema = get_metadata_schema(ts, sources=("individual", "node", "population"))
 
         filename = os.path.basename(file_path)
+        project_name = _get_project_name(file_path, root_dir)
+
         config = {
             'genome_length': genome_length,
             'initial_position': [int(start), int(end)],
             'times': {'type': timeline_type, 'values': times},
             'intervals': intervals,
             'filename': str(filename),
+            'project': project_name,
             # node_times removed - now sent per-query from handle_layout_query for efficiency
             # 'mutations': extract_node_mutations_tables(ts),
             # 'mutations_by_node': extract_mutations_by_node(ts),
