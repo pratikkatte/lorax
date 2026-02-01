@@ -435,12 +435,37 @@ export function getSVG(deck, polygonVertices = [], polygonColor = [145, 194, 244
   // Find the main ortho viewport
   const orthoViewport = viewports.find(vp => vp.id === 'ortho') || viewports[0];
 
+  const viewportBounds = viewports.reduce((acc, vp) => {
+    if (!vp || !Number.isFinite(vp.width) || !Number.isFinite(vp.height)) return acc;
+    if (vp.width <= 0 || vp.height <= 0) return acc;
+    const x = Number.isFinite(vp.x) ? vp.x : 0;
+    const y = Number.isFinite(vp.y) ? vp.y : 0;
+    const maxX = x + vp.width;
+    const maxY = y + vp.height;
+    return {
+      minX: Math.min(acc.minX, x),
+      minY: Math.min(acc.minY, y),
+      maxX: Math.max(acc.maxX, maxX),
+      maxY: Math.max(acc.maxY, maxY)
+    };
+  }, { minX: Number.POSITIVE_INFINITY, minY: Number.POSITIVE_INFINITY, maxX: 0, maxY: 0 });
+
+  const hasViewportBounds = Number.isFinite(viewportBounds.minX)
+    && Number.isFinite(viewportBounds.minY)
+    && viewportBounds.maxX > viewportBounds.minX
+    && viewportBounds.maxY > viewportBounds.minY;
+
+  const svgMinX = hasViewportBounds ? viewportBounds.minX : 0;
+  const svgMinY = hasViewportBounds ? viewportBounds.minY : 0;
+  const svgWidth = hasViewportBounds ? (viewportBounds.maxX - viewportBounds.minX) : width;
+  const svgHeight = hasViewportBounds ? (viewportBounds.maxY - viewportBounds.minY) : height;
+
   // Start building SVG
   const svgParts = [];
-  svgParts.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`);
+  svgParts.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${svgWidth}" height="${svgHeight}" viewBox="${svgMinX} ${svgMinY} ${svgWidth} ${svgHeight}">`);
 
   // Add background
-  svgParts.push(`<rect width="${width}" height="${height}" fill="white"/>`);
+  svgParts.push(`<rect x="${svgMinX}" y="${svgMinY}" width="${svgWidth}" height="${svgHeight}" fill="white"/>`);
 
   // Create clip paths for each viewport
   svgParts.push('<defs>');
