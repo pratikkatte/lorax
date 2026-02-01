@@ -79,7 +79,7 @@ def detect_mode() -> str:
 
     Priority:
     1. Explicit LORAX_MODE environment variable
-    2. Auto-detect based on REDIS_URL and GCS_BUCKET_NAME
+    2. Auto-detect based on REDIS_CLUSTER and GCS_BUCKET_NAME
     3. Default to 'local' for conda package usage
     """
     explicit_mode = os.getenv("LORAX_MODE", "").lower()
@@ -87,7 +87,7 @@ def detect_mode() -> str:
         return explicit_mode
 
     # Auto-detect based on environment
-    has_redis = bool(os.getenv("REDIS_URL"))
+    has_redis = bool(os.getenv("REDIS_CLUSTER"))
     has_gcs = bool(os.getenv("GCS_BUCKET_NAME") or os.getenv("BUCKET_NAME"))
     if has_redis and has_gcs:
         return "production"
@@ -172,8 +172,8 @@ def validate_mode_requirements(mode_config: ModeConfig) -> list:
     """
     errors = []
 
-    if mode_config.require_redis and not os.getenv("REDIS_URL"):
-        errors.append(f"{mode_config.mode} mode requires REDIS_URL environment variable")
+    if mode_config.require_redis and not os.getenv("REDIS_CLUSTER"):
+        errors.append(f"{mode_config.mode} mode requires REDIS_CLUSTER environment variable")
 
     if mode_config.require_gcs:
         bucket = os.getenv("GCS_BUCKET_NAME") or os.getenv("BUCKET_NAME")

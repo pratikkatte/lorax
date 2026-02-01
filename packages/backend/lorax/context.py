@@ -12,6 +12,7 @@ from lorax.modes import (
     validate_mode_requirements,
 )
 from lorax.session_manager import SessionManager
+from lorax.redis_utils import create_redis_client, get_redis_config
 from lorax.cache import DiskCacheManager, TreeGraphCache, CsvTreeGraphCache
 from lorax.constants import (
     DISK_CACHE_ENABLED,
@@ -29,8 +30,8 @@ if validation_errors:
 # We initialize these singletons here to ensure all modules share the same instances
 # This is critical for in-memory mode so routes and sockets share the same stores
 
-REDIS_URL = os.getenv("REDIS_URL", None)
-session_manager = SessionManager(REDIS_URL)
+REDIS_CLUSTER_URL, REDIS_CLUSTER = get_redis_config()
+session_manager = SessionManager(redis_url=REDIS_CLUSTER_URL, redis_cluster=REDIS_CLUSTER)
 
 # Common Environment Variables
 BUCKET_NAME = os.getenv("BUCKET_NAME") or os.getenv("GCS_BUCKET_NAME") or 'lorax_projects'
@@ -38,11 +39,14 @@ BUCKET_NAME = os.getenv("BUCKET_NAME") or os.getenv("GCS_BUCKET_NAME") or 'lorax
 # Initialize Disk Cache Manager
 # Uses Redis for distributed locking if available, falls back to file locks
 _redis_client = None
-if REDIS_URL and DISK_CACHE_ENABLED:
+if REDIS_CLUSTER_URL and DISK_CACHE_ENABLED:
     try:
-        import redis.asyncio as aioredis
-        _redis_client = aioredis.from_url(REDIS_URL, decode_responses=True)
-        print(f"DiskCacheManager using Redis for distributed locking")
+        _redis_client = create_redis_client(
+            REDIS_CLUSTER_URL,
+            decode_responses=True,
+            cluster=REDIS_CLUSTER,
+        )
+        print("DiskCacheManager using Redis for distributed locking")
     except Exception as e:
         print(f"Warning: Failed to connect Redis for disk cache: {e}")
 
@@ -56,12 +60,15 @@ disk_cache_manager = DiskCacheManager(
 # Initialize TreeGraph Cache for per-session tree caching
 # Uses Redis in production for distributed caching, in-memory for local mode
 _tree_graph_redis = None
-if REDIS_URL:
+if REDIS_CLUSTER_URL:
     try:
-        import redis.asyncio as aioredis
         # Create a separate connection for binary data (decode_responses=False)
-        _tree_graph_redis = aioredis.from_url(REDIS_URL, decode_responses=False)
-        print(f"TreeGraphCache using Redis at {REDIS_URL}")
+        _tree_graph_redis = create_redis_client(
+            REDIS_CLUSTER_URL,
+            decode_responses=False,
+            cluster=REDIS_CLUSTER,
+        )
+        print(f"TreeGraphCache using Redis at {REDIS_CLUSTER_URL}")
     except Exception as e:
         print(f"Warning: Failed to connect Redis for TreeGraphCache: {e}")
 

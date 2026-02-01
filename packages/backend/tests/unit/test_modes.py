@@ -17,7 +17,7 @@ class TestModeDetection:
     def test_detect_mode_local_default(self, monkeypatch):
         """Test that local mode is default when no env vars set."""
         monkeypatch.delenv("LORAX_MODE", raising=False)
-        monkeypatch.delenv("REDIS_URL", raising=False)
+        monkeypatch.delenv("REDIS_CLUSTER", raising=False)
         monkeypatch.delenv("GCS_BUCKET_NAME", raising=False)
         monkeypatch.delenv("BUCKET_NAME", raising=False)
 
@@ -56,7 +56,7 @@ class TestModeDetection:
     def test_detect_mode_auto_production(self, monkeypatch):
         """Test auto-detection of production mode."""
         monkeypatch.delenv("LORAX_MODE", raising=False)
-        monkeypatch.setenv("REDIS_URL", "redis://localhost:6379")
+        monkeypatch.setenv("REDIS_CLUSTER", "redis://localhost:6379")
         monkeypatch.setenv("GCS_BUCKET_NAME", "test-bucket")
 
         from lorax.modes import detect_mode
@@ -67,7 +67,7 @@ class TestModeDetection:
     def test_detect_mode_auto_development_gcs(self, monkeypatch):
         """Test auto-detection of development mode with GCS."""
         monkeypatch.delenv("LORAX_MODE", raising=False)
-        monkeypatch.delenv("REDIS_URL", raising=False)
+        monkeypatch.delenv("REDIS_CLUSTER", raising=False)
         monkeypatch.setenv("GCS_BUCKET_NAME", "test-bucket")
 
         from lorax.modes import detect_mode
@@ -185,7 +185,7 @@ class TestModeValidation:
 
     def test_validate_local_mode(self, monkeypatch):
         """Test local mode validation always passes."""
-        monkeypatch.delenv("REDIS_URL", raising=False)
+        monkeypatch.delenv("REDIS_CLUSTER", raising=False)
         monkeypatch.delenv("GCS_BUCKET_NAME", raising=False)
 
         from lorax.modes import get_mode_config, validate_mode_requirements
@@ -196,7 +196,7 @@ class TestModeValidation:
 
     def test_validate_production_missing_redis(self, monkeypatch):
         """Test production mode fails without Redis."""
-        monkeypatch.delenv("REDIS_URL", raising=False)
+        monkeypatch.delenv("REDIS_CLUSTER", raising=False)
         monkeypatch.setenv("GCS_BUCKET_NAME", "test-bucket")
 
         from lorax.modes import get_mode_config, validate_mode_requirements
@@ -204,11 +204,11 @@ class TestModeValidation:
         errors = validate_mode_requirements(config)
 
         assert len(errors) == 1
-        assert "REDIS_URL" in errors[0]
+        assert "REDIS_CLUSTER" in errors[0]
 
     def test_validate_production_missing_gcs(self, monkeypatch):
         """Test production mode fails without GCS."""
-        monkeypatch.setenv("REDIS_URL", "redis://localhost")
+        monkeypatch.setenv("REDIS_CLUSTER", "redis://localhost")
         monkeypatch.delenv("GCS_BUCKET_NAME", raising=False)
         monkeypatch.delenv("BUCKET_NAME", raising=False)
 
@@ -221,7 +221,7 @@ class TestModeValidation:
 
     def test_validate_production_all_present(self, monkeypatch):
         """Test production mode passes with all requirements."""
-        monkeypatch.setenv("REDIS_URL", "redis://localhost")
+        monkeypatch.setenv("REDIS_CLUSTER", "redis://localhost")
         monkeypatch.setenv("GCS_BUCKET_NAME", "test-bucket")
 
         from lorax.modes import get_mode_config, validate_mode_requirements

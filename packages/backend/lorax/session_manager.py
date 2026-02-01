@@ -5,7 +5,7 @@ from uuid import uuid4
 from datetime import datetime, timezone
 from typing import Optional, Dict, Tuple
 
-import redis.asyncio as aioredis
+from lorax.redis_utils import create_redis_client
 from fastapi import Request, Response
 
 from lorax.constants import (
@@ -113,13 +113,26 @@ class Session:
         return len(self.socket_connections) >= MAX_SOCKETS_PER_SESSION
 
 class SessionManager:
-    def __init__(self, redis_url: Optional[str] = None):
+    def __init__(
+        self,
+        redis_url: Optional[str] = None,
+        *,
+        redis_client=None,
+        redis_cluster: bool = False,
+    ):
         self.redis_url = redis_url
-        self.redis_client = None
+        self.redis_client = redis_client
+        self.redis_cluster = redis_cluster
         self.memory_sessions: Dict[str, Session] = {}
-        
-        if self.redis_url:
-            self.redis_client = aioredis.from_url(self.redis_url, decode_responses=True)
+
+        if self.redis_client is None and self.redis_url:
+            self.redis_client = create_redis_client(
+                self.redis_url,
+                decode_responses=True,
+                cluster=self.redis_cluster,
+            )
+
+        if self.redis_client:
             print(f"✅ SessionManager using Redis at {self.redis_url}")
         else:
             print("⚠️ SessionManager running in in-memory mode")

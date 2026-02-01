@@ -15,7 +15,7 @@ from lorax.constants import (
     SOCKET_PING_INTERVAL,
     SOCKET_PING_TIMEOUT,
 )
-from lorax.context import REDIS_URL
+from lorax.context import REDIS_CLUSTER_URL, REDIS_CLUSTER
 from lorax.routes import router as backend_router
 from lorax.sockets import register_socket_events
 
@@ -116,11 +116,17 @@ def create_asgi_app() -> socketio.ASGIApp:
     """
     fastapi_app = create_fastapi_app()
 
-    if REDIS_URL:
+    client_manager = None
+    if REDIS_CLUSTER_URL and not REDIS_CLUSTER:
+        client_manager = socketio.AsyncRedisManager(REDIS_CLUSTER_URL)
+    elif REDIS_CLUSTER_URL and REDIS_CLUSTER:
+        print("Warning: Socket.IO Redis manager does not support Redis Cluster; running without shared manager.")
+
+    if client_manager:
         sio = socketio.AsyncServer(
             async_mode="asgi",
             cors_allowed_origins="*",
-            client_manager=socketio.AsyncRedisManager(REDIS_URL),
+            client_manager=client_manager,
             logger=False,
             engineio_logger=False,
             ping_timeout=SOCKET_PING_TIMEOUT,

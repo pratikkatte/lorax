@@ -131,7 +131,7 @@ steps:
             docker rm lorax-backend 2>/dev/null || true && \
             docker run -d --name lorax-backend --restart always \
               -p 8080:8080 \
-              -e REDIS_URL=redis://$_REDIS_HOST:6379 \
+              -e REDIS_CLUSTER=redis://$_REDIS_HOST:6379 \
               -e GCS_BUCKET_NAME=$_GCS_BUCKET \
               -e LORAX_MODE=production \
               -e DISK_CACHE_DIR=/cache \

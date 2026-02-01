@@ -48,11 +48,11 @@ class TreeGraphCache:
 
     def _redis_key(self, session_id: str, tree_index: int) -> str:
         """Generate Redis key for a cached TreeGraph."""
-        return f"treegraph:{session_id}:{tree_index}"
+        return f"treegraph:{{{session_id}}}:{tree_index}"
 
     def _redis_session_pattern(self, session_id: str) -> str:
         """Generate Redis pattern to match all trees for a session."""
-        return f"treegraph:{session_id}:*"
+        return f"treegraph:{{{session_id}}}:*"
 
     async def get(self, session_id: str, tree_index: int) -> Optional["TreeGraph"]:
         """

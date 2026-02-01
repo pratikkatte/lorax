@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.gzip import GZipMiddleware
 from dotenv import load_dotenv
 
-from lorax.context import REDIS_URL
+from lorax.context import REDIS_CLUSTER_URL, REDIS_CLUSTER
 from lorax.constants import (
     SOCKET_PING_TIMEOUT, SOCKET_PING_INTERVAL, MAX_HTTP_BUFFER_SIZE
 )
@@ -38,11 +38,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-if REDIS_URL:
+_client_manager = None
+if REDIS_CLUSTER_URL and not REDIS_CLUSTER:
+    _client_manager = socketio.AsyncRedisManager(REDIS_CLUSTER_URL)
+elif REDIS_CLUSTER_URL and REDIS_CLUSTER:
+    print("Warning: Socket.IO Redis manager does not support Redis Cluster; running without shared manager.")
+
+if _client_manager:
     sio = socketio.AsyncServer(
         async_mode="asgi",
         cors_allowed_origins="*",
-        client_manager=socketio.AsyncRedisManager(REDIS_URL),
+        client_manager=_client_manager,
         logger=False,
         engineio_logger=False,
         ping_timeout=SOCKET_PING_TIMEOUT,

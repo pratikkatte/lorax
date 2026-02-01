@@ -3,7 +3,7 @@ set -e
 
 # Lorax Backend VM Startup Script
 # This script is run on VM startup to install Docker and start the backend container.
-# Uses GCP Memorystore for Redis (managed service).
+# Uses GCP Memorystore for Valkey/Redis Cluster (managed service).
 #
 # Usage: Set this script as the startup-script metadata when creating the VM:
 #   --metadata-from-file startup-script=scripts/backend-startup.sh
@@ -12,7 +12,8 @@ set -e
 #   - PROJECT_ID: Your GCP project ID
 #   - AR_REGION: Artifact Registry region where your Docker repo exists (e.g., us-west1)
 #   - AR_REPO: Artifact Registry repository name (docker format), e.g. "lorax"
-#   - REDIS_HOST: Memorystore Redis instance IP (e.g., 10.0.0.3)
+#   - REDIS_HOST: Memorystore Valkey/Redis cluster IP (e.g., 10.0.0.3)
+#   - REDIS_CLUSTER: uses REDIS_HOST for the cluster endpoint
 #   - GCS_BUCKET_NAME: Your GCS bucket name for tree files
 #   - ALLOWED_ORIGINS: Your frontend domain(s)
 #
@@ -75,7 +76,7 @@ docker rm lorax-backend 2>/dev/null || true
 
 docker run -d --name lorax-backend --restart always \
   -p 8080:8080 \
-  -e REDIS_URL="redis://${REDIS_HOST}:6379" \
+  -e REDIS_CLUSTER="redis://${REDIS_HOST}:6379" \
   -e GCS_BUCKET_NAME="${GCS_BUCKET_NAME}" \
   -e LORAX_MODE=production \
   -e ALLOWED_ORIGINS="${ALLOWED_ORIGINS}" \

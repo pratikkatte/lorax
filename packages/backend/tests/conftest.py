@@ -25,7 +25,7 @@ import numpy as np
 
 # Set environment BEFORE importing lorax modules
 os.environ["LORAX_MODE"] = "local"
-os.environ["REDIS_URL"] = ""
+os.environ["REDIS_CLUSTER"] = ""
 os.environ["GCS_BUCKET_NAME"] = ""
 
 # Add package to path
@@ -51,7 +51,7 @@ def event_loop():
 def force_local_mode(monkeypatch):
     """Force local mode for all tests."""
     monkeypatch.setenv("LORAX_MODE", "local")
-    monkeypatch.setenv("REDIS_URL", "")
+    monkeypatch.setenv("REDIS_CLUSTER", "")
     monkeypatch.setenv("GCS_BUCKET_NAME", "")
 
 
