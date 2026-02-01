@@ -1,16 +1,34 @@
-# React + Vite
+# Lorax Website
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+## Development
 
-Currently, two official plugins are available:
+```bash
+yarn dev
+```
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## Tests
 
-## React Compiler
+### Unit tests (Vitest)
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+```bash
+yarn test
+```
 
-## Expanding the ESLint configuration
+### E2E tests (Playwright)
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+E2E tests are opt-in and expect a running backend plus the 1000Genomes chr2 dataset.
+
+Prerequisites:
+- Backend running on `http://127.0.0.1:8080`
+- Vite dev server runs on `http://127.0.0.1:3001` (Playwright starts it automatically)
+- Data file available at `/1kg_chr2.trees.tsz` and project metadata matches `1000Genomes`
+
+Run:
+```bash
+LORAX_E2E=1 yarn test:e2e
+```
+
+First-time setup (installs Playwright browsers):
+```bash
+npx playwright install
+```

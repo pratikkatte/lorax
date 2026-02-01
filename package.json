@@ -9,7 +9,11 @@
     "dev:core": "yarn workspace @lorax/core dev",
     "build:website": "yarn workspace website build",
     "build:core": "yarn workspace @lorax/core build",
-    "build:all": "yarn workspaces run build"
+    "build:all": "yarn workspaces run build",
+    "test:e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0"
   }
 }
 
