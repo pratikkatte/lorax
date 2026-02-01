@@ -47,6 +47,14 @@ def register_file_events(sio):
                 }, to=sid)
                 return
 
+            if share_sid and share_sid != lorax_sid:
+                print(f"⚠️ share_sid denied for sid={lorax_sid} target={share_sid}")
+                await sio.emit("error", {
+                    "code": "share_sid_denied",
+                    "message": "Access denied for shared upload."
+                }, to=sid)
+                return
+
             project = str(data.get("project"))
             filename = str(data.get("file"))
 

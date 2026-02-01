@@ -88,26 +88,32 @@ def max_branch_length_from_newick(nwk):
     return max(map(float, values))
 
 
-def list_project_files(directory, projects, root):
+def list_project_files(directory, projects, root, exclude_dirs=None):
         """
         Recursively list files and folders for the given directory.
         If subdirectories are found, they are added as keys and populated similarly.
         """
+        exclude = set(exclude_dirs or [])
         for item in os.listdir(directory):
             item_path = os.path.join(directory, item)
             if os.path.isdir(item_path):
-                # Recursive call for subdirectory
                 directory_name = os.path.relpath(item_path, root)
                 directory_basename = os.path.basename(item_path)
+                if directory_basename in exclude:
+                    continue
                 if directory_basename not in projects:
                     projects[str(directory_basename)] = {
                         "folder": str(directory_name),
                         "files": [],
                         "description": "",
                     }
-                    list_project_files(item_path, projects, root=root)
+                    list_project_files(
+                        item_path,
+                        projects,
+                        root=root,
+                        exclude_dirs=exclude,
+                    )
             else:
-                # Get the relative path from root to directory
                 directory_name = os.path.relpath(directory, root)
                 directory_basename = os.path.basename(directory)
                 if os.path.isfile(item_path) and (

@@ -132,7 +132,6 @@ export default function useFileUpload({
                     const payload = {
                         project: "Uploads",
                         file: response?.data?.filename,
-                        share_sid: response?.data?.sid
                     }
                     setFileUploaded(true);
 

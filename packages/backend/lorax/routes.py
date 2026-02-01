@@ -61,6 +61,12 @@ async def get_file(
     share_sid: Optional[str] = Query(None),
 ):
     sid, session = await session_manager.get_or_create_session(request, response)
+    if project == "Uploads" and share_sid and share_sid != sid:
+        print(f"⚠️ share_sid denied for sid={sid} target={share_sid}")
+        return JSONResponse(
+            status_code=403,
+            content={"error": "Access denied for shared upload."},
+        )
     if file and file != "" and file != "ucgb":
         if project == 'Uploads':
             target_sid = share_sid if share_sid else sid

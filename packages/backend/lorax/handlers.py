@@ -93,7 +93,12 @@ async def get_projects(upload_dir, BUCKET_NAME, sid=None):
     """List all projects and their files from local uploads and GCS bucket."""
     projects = {}
     upload_dir = str(upload_dir)
-    projects = list_project_files(upload_dir, projects, root=upload_dir)
+    projects = list_project_files(
+        upload_dir,
+        projects,
+        root=upload_dir,
+        exclude_dirs={"Uploads"},
+    )
 
     # Prefer session-scoped Uploads/<sid> when available
     if sid:
