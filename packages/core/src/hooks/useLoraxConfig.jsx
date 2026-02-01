@@ -89,13 +89,10 @@ function useLoraxConfig({ backend, enabled = true, onConfigLoaded, setStatusMess
       return;
     }
 
-    console.log("Config data received:", data);
-
     // Resolve value priority: explicit param > backend initial_position > null
     let resolvedValue = value;
     if (!resolvedValue && data.initial_position) {
       resolvedValue = data.initial_position;
-      console.log("Using backend-computed initial_position:", resolvedValue);
     }
 
     // Parse to integers if present
@@ -154,11 +151,9 @@ function useLoraxConfig({ backend, enabled = true, onConfigLoaded, setStatusMess
     // Skip if already loaded (but allow if still 'loading' - this is the fallback)
     const status = loadedMetadataRef.current.get(key);
     if (status === 'pyarrow' || status === 'json') {
-      console.log(`Metadata for key "${key}" already loaded as ${status}`);
       return;
     }
 
-    console.log(`Fetching metadata (JSON) for key: ${key}`);
     setMetadataLoading(true);
 
     try {
@@ -168,15 +163,12 @@ function useLoraxConfig({ backend, enabled = true, onConfigLoaded, setStatusMess
       // Skip if already loaded as PyArrow (higher priority format) during async operation
       setLoadedMetadata(prev => {
         if (prev.get(key) === 'pyarrow') {
-          console.log(`Skipping JSON result for "${key}" - already loaded as PyArrow`);
           return prev;
         }
         const next = new Map(prev);
         next.set(key, 'json');
         return next;
       });
-
-      console.log(`Received metadata (JSON) for key "${key}":`, Object.keys(sampleToValue).length, "samples");
 
       // Extract unique values and assign colors
       const uniqueValues = [...new Set(Object.values(sampleToValue))].sort();
@@ -221,7 +213,6 @@ function useLoraxConfig({ backend, enabled = true, onConfigLoaded, setStatusMess
     // Skip if already loaded or loading (use ref to get current value)
     const status = loadedMetadataRef.current.get(key);
     if (status === 'pyarrow' || status === 'json' || status === 'loading') {
-      console.log(`Metadata for key "${key}" already ${status}`);
       return;
     }
 
@@ -232,13 +223,10 @@ function useLoraxConfig({ backend, enabled = true, onConfigLoaded, setStatusMess
       return next;
     });
 
-    console.log(`Fetching metadata (PyArrow) for key: ${key}`);
     setMetadataLoading(true);
 
     try {
       const result = await backend.queryMetadataArray(key);
-
-      console.log(`Received metadata (PyArrow) for key "${result.key}":`, result.sampleNodeIds.length, "samples,", result.uniqueValues.length, "unique values");
 
       setMetadataArrays(prev => ({
         ...prev,
@@ -271,7 +259,6 @@ function useLoraxConfig({ backend, enabled = true, onConfigLoaded, setStatusMess
       if (pendingTimer) {
         clearTimeout(pendingTimer);
         pendingJsonFallbacksRef.current.delete(key);
-        console.log(`Cancelled pending JSON fallback for "${key}" - PyArrow succeeded`);
       }
     } catch (err) {
       console.error("Error fetching metadata array:", err);

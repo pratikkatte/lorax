@@ -20,7 +20,6 @@ export function useSession({ apiBase }) {
         if (storedSid) {
           sidRef.current = storedSid;
           setLoraxSid(storedSid);
-          console.log("Session restored from localStorage:", storedSid);
         }
 
         const sid = await initSession(apiBase);
@@ -28,7 +27,6 @@ export function useSession({ apiBase }) {
           sidRef.current = sid;
           setLoraxSid(sid);
           localStorage.setItem(SESSION_KEY, sid);
-          console.log("Session initialized:", sid);
           return sid;
         } else {
           console.warn("No SID received during session init");

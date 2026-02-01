@@ -68,8 +68,6 @@ function useMetadataFilter({ enabled = false, config = {} }) {
 
       let label = key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
-      console.log("key", key, tsconfig?.project, label);
-
       if (tsconfig?.project === "1000Genomes") {
         if (key === 'name') {
           label = "Population";
@@ -109,7 +107,6 @@ function useMetadataFilter({ enabled = false, config = {} }) {
       // Use ref to get current state (avoids stale closure)
       const currentStatus = loadedMetadataRef.current?.get(selectedColorBy);
       if (currentStatus !== 'pyarrow' && currentStatus !== 'json' && fetchMetadataForKey) {
-        console.log(`PyArrow fetch didn't complete for "${selectedColorBy}", falling back to JSON`);
         fetchMetadataForKey(selectedColorBy);
       }
     }, 2000);

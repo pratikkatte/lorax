@@ -78,7 +78,6 @@ export function useLoraxConnection({ apiBase, isProd = false }) {
         }
         const handleResult = (message) => {
           off("load-file-result", handleResult);
-          console.log('[LoraxConnection] File loaded config:', message.config);
           resolve(message);
         };
 
@@ -261,8 +260,6 @@ export function useLoraxConnection({ apiBase, isProd = false }) {
         reject(new Error("Socket not available"));
         return;
       }
-      console.log("queryHighlightPositions", metadataKey, metadataValue, treeIndices);
-
 
       if (!metadataKey || metadataValue === null || metadataValue === undefined) {
         resolve({ positions: [] });
@@ -278,23 +275,15 @@ export function useLoraxConnection({ apiBase, isProd = false }) {
         off("highlight-positions-result", handleResult);
 
         if (message.error) {
-          console.log("message error", message.error);
           reject(new Error(message.error));
           return;
         }
 
-        console.log("message", message);
         resolve({ positions: message.positions || [] });
       };
 
       once("highlight-positions-result", handleResult);
 
-      console.log("emit get_highlight_positions_event", {
-        lorax_sid: sidRef.current,
-        metadata_key: metadataKey,
-        metadata_value: String(metadataValue),
-        tree_indices: treeIndices
-      });
       emit("get_highlight_positions_event", {
         lorax_sid: sidRef.current,
         metadata_key: metadataKey,

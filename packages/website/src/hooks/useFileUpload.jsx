@@ -24,10 +24,8 @@ export default function useFileUpload({
     // Fetch projects once session is established and connected
     useEffect(() => {
         if (loraxSid && isConnected) {
-            console.log("Session ready, fetching projects with SID:", loraxSid);
             getProjects()
                 .then(projectsData => {
-                    console.log("projectsData", projectsData);
                     setProjects((prev) => ({ ...prev, ...projectsData }));
                 })
                 .catch(error => {
@@ -89,7 +87,6 @@ export default function useFileUpload({
     const loadFile = useCallback(
         (project) => {
             if (!project) return;
-            console.log("Loading project/file:", project);
 
             const filename = project.file;
             const projName = project.project;

@@ -249,10 +249,7 @@ export function useTreeData({
 
         // Evict trees outside visible genomic window (with margin)
         if (genomicCoords && tsconfig?.intervals) {
-          const evictedCount = evictOutOfViewTrees(cache, tsconfig.intervals, genomicCoords);
-          if (evictedCount > 0) {
-            console.log(`[useTreeData] Evicted ${evictedCount} trees, cache size: ${cache.size}`);
-          }
+          evictOutOfViewTrees(cache, tsconfig.intervals, genomicCoords);
         }
 
         // Cache time bounds on first fetch (they're file-level constants)

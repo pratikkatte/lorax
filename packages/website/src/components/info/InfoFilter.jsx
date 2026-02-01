@@ -417,10 +417,7 @@ export default function InfoFilter({
           </div>
         )}
 
-        <div
-          className="max-h-64 overflow-auto border border-gray-200 rounded-md divide-y divide-gray-100"
-          onClick={(e) => console.log('[InfoFilter] Scrollable container clicked, target:', e.target.tagName, 'class:', e.target.className?.slice?.(0, 50) || e.target.className)}
-        >
+        <div className="max-h-64 overflow-auto border border-gray-200 rounded-md divide-y divide-gray-100">
           {allItems.length > 0 ? (
             <>
               {displayItems.map(([val, color]) => {
@@ -434,9 +431,6 @@ export default function InfoFilter({
                         ? 'bg-yellow-100 ring-1 ring-inset ring-yellow-400'
                         : 'hover:bg-gray-50'
                     }`}
-                    onClick={(e) => {
-                      console.log('[InfoFilter] Row clicked, target:', e.target.tagName, e.target.className);
-                    }}
                   >
                     <div className={`flex-1 flex items-center px-2 py-1 ${isEnabled ? '' : 'opacity-40'}`}>
                       {/* Color picker - clickable swatch */}
@@ -468,17 +462,9 @@ export default function InfoFilter({
                         type="button"
                         className="flex-1 text-left"
                         onClick={() => {
-                          console.log('[InfoFilter] Metadata value clicked:', val);
                           // Toggle highlight on click
                           if (setHighlightedMetadataValue) {
-                            console.log('[InfoFilter] Calling setHighlightedMetadataValue');
-                            setHighlightedMetadataValue(prev => {
-                              const newVal = prev === val ? null : val;
-                              console.log('[InfoFilter] highlightedMetadataValue changing:', prev, '→', newVal);
-                              return newVal;
-                            });
-                          } else {
-                            console.log('[InfoFilter] setHighlightedMetadataValue is NOT available!');
+                            setHighlightedMetadataValue(prev => (prev === val ? null : val));
                           }
                         }}
                         onDoubleClick={() => {
@@ -502,18 +488,13 @@ export default function InfoFilter({
                         disabled={!isEnabled}
                         onClick={(e) => {
                           e.stopPropagation();
-                          console.log('[InfoFilter] Magnifying glass clicked:', val);
                           // Add to search tags (original behavior)
                           if (!searchTags.includes(val) && setSearchTags) {
                             setSearchTags(prev => [...prev, val]);
                           }
                           // Also trigger highlight on tree
                           if (setHighlightedMetadataValue) {
-                            setHighlightedMetadataValue(prev => {
-                              const newVal = prev === val ? null : val;
-                              console.log('[InfoFilter] highlightedMetadataValue changing:', prev, '→', newVal);
-                              return newVal;
-                            });
+                            setHighlightedMetadataValue(prev => (prev === val ? null : val));
                           }
                         }}
                       >

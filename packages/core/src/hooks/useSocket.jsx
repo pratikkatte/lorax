@@ -13,7 +13,6 @@ export function useSocket({
 
   const connect = useCallback(() => {
     if (socketRef.current) {
-      console.log("Socket already connected");
       return;
     }
 
@@ -55,17 +54,14 @@ export function useSocket({
     socketRef.current = socket;
 
     socket.on("connect", () => {
-      console.log("Socket.IO connected");
       setIsConnected(true);
     });
 
     socket.on("disconnect", (reason) => {
-      console.log("Socket.IO disconnected:", reason);
       setIsConnected(false);
     });
 
     socket.on("status", (msg) => {
-      console.log("status", msg);
       setStatusMessage(msg);
       websocketEvents.emit("status", msg);
     });
@@ -84,7 +80,6 @@ export function useSocket({
     });
 
     socket.on("session-restored", (data) => {
-      console.log("Session restored:", data);
       setStatusMessage({ message: `Session restored. File: ${data.file_path?.split('/').pop() || 'unknown'}` });
       websocketEvents.emit("session-restored", data);
     });

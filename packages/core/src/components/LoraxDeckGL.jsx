@@ -282,7 +282,6 @@ const LoraxDeckGL = forwardRef(({
       // Track this request to avoid race conditions
       const requestId = ++highlightRequestRef.current;
 
-      console.log('[LoraxDeckGL] Fetching highlight positions for', visibleTreeIndices.length, 'trees');
       queryHighlightPositions(selectedColorBy, highlightedMetadataValue, visibleTreeIndices)
         .then(result => {
           // Ignore stale responses
@@ -367,8 +366,6 @@ const LoraxDeckGL = forwardRef(({
     multiHighlightDebounceRef.current = setTimeout(() => {
       // Track this request to avoid race conditions
       const requestId = ++multiHighlightRequestRef.current;
-
-      console.log('[LoraxDeckGL] Fetching multi-value highlight positions for', searchTags.length, 'values,', visibleTreeIndices.length, 'trees');
 
       queryMultiValueSearch(selectedColorBy, searchTags, visibleTreeIndices, displayLineagePaths)
         .then(result => {

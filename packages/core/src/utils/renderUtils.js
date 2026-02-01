@@ -40,10 +40,6 @@ export function groupNodesByTree(node_id, parent_id, is_tip, tree_idx, x, y, nam
     });
   }
 
-  // Diagnostic logging
-  console.log('[groupNodesByTree] Trees with data:', Array.from(treeMap.keys()));
-  console.log('[groupNodesByTree] displayArray:', displayArray);
-
   return treeMap;
 }
 
