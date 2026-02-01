@@ -89,6 +89,7 @@ function extractLineData(layers) {
     const viewportId = resolveViewportId(layer);
     const modelMatrix = layer.props.modelMatrix || null;
     const data = layer.props.data;
+    const layerId = layer?.id;
 
     // Handle LineLayer or similar layers with getSourcePosition/getTargetPosition
     if (layer.props.getSourcePosition && layer.props.getTargetPosition) {
@@ -130,27 +131,51 @@ function extractLineData(layers) {
     // Handle PathLayer with array data
     if (layer.props.getPath) {
       const list = Array.isArray(data) ? data : [];
+      let segmentsAdded = 0;
+      let invalidPathCount = 0;
+      const isLineageLayer = (layerId || '').includes('lineages');
+      let lineageSample = null;
       for (const d of list) {
         try {
           const path = typeof layer.props.getPath === 'function'
             ? layer.props.getPath(d)
             : d.path;
+          if (isLineageLayer && !lineageSample) {
+            const first = path ? path[0] : null;
+            lineageSample = {
+              pathType: path?.constructor?.name || null,
+              pathIsArray: Array.isArray(path),
+              pathLength: path?.length ?? null,
+              firstType: first == null ? null : typeof first,
+              firstIsArray: Array.isArray(first),
+              firstValue: Array.isArray(first) ? first.slice(0, 2) : (typeof first === 'number' ? first : null)
+            };
+          }
           const color = typeof layer.props.getColor === 'function'
             ? layer.props.getColor(d)
             : layer.props.getColor || [0, 0, 0, 255];
 
           if (path && path.length >= 2) {
             // Convert path to line segments
+            const width = typeof layer.props.getWidth === 'function'
+              ? layer.props.getWidth(d)
+              : (typeof layer.props.getWidth === 'number'
+                ? layer.props.getWidth
+                : (typeof layer.props.width === 'number' ? layer.props.width : 1));
             for (let i = 0; i < path.length - 1; i++) {
               lines.push({
                 source: path[i],
                 target: path[i + 1],
                 color,
-                width: layer.props.getWidth?.(d) || 1,
+                width,
                 viewportId,
-                modelMatrix
+                modelMatrix,
+                layerId
               });
+              segmentsAdded += 1;
             }
+          } else {
+            invalidPathCount += 1;
           }
         } catch (e) {
           // Skip invalid data points

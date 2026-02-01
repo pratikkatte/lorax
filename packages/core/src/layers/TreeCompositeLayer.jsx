@@ -67,12 +67,6 @@ export class TreeCompositeLayer extends CompositeLayer {
       lineageData
     } = processedData;
 
-    // Console.log when highlightData is present
-    if (highlightData && highlightData.length > 0) {
-      console.log('[TreeCompositeLayer] highlightData:', highlightData);
-      console.log('[TreeCompositeLayer] highlightData count:', highlightData.length);
-    }
-
     const {
       edgeColor,
       edgeWidth,
