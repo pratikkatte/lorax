@@ -61,7 +61,7 @@ export default function useFileUpload({
             const params = new URLSearchParams();
             params.set('project', project);
             if (file.share_sid) params.set('sid', file.share_sid);
-            navigate(`/${encodeURIComponent(filename)}?${params.toString()}`);
+            navigate(`/view/${encodeURIComponent(filename)}?${params.toString()}`);
         },
         [navigate]
     );
@@ -98,7 +98,7 @@ export default function useFileUpload({
             const params = new URLSearchParams();
             params.set('project', projName);
             if (project.share_sid) params.set('sid', project.share_sid);
-            navigate(`/${encodeURIComponent(filename)}?${params.toString()}`);
+            navigate(`/view/${encodeURIComponent(filename)}?${params.toString()}`);
         },
         [navigate]
     );
