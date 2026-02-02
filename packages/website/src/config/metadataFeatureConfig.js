@@ -3,8 +3,8 @@
 export const metadataFeatureConfig = [
   {
     id: "Heliconius_erato_sara_hdem_chr2",
-    description: "inversions on chr2",
-    label: "inversions on chr2",
+    description: "Highlights lineage structure within the chromosome 2 inversion, revealing increased relatedness among inversion-carrying Heliconius samples relative to flanking genomic regions",
+    label: "Inversion associated ancestry (Heliconius)",
     project: "Heliconius",
     filename: "erato-sara_chr2.csv",
     genomicCoords: [8790771, 16465129],

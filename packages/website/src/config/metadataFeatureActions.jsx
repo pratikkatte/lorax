@@ -1,5 +1,6 @@
 export const metadataFeatureActions = {
   adjustView: ({ deckRef }) => {
-    deckRef?.current?.viewAdjustY?.();
+    const applied = deckRef?.current?.viewAdjustY?.();
+    return applied;
   }
 };

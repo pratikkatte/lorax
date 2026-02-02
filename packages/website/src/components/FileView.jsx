@@ -49,6 +49,7 @@ function FileView() {
   const presetLoadResolversRef = useRef([]);
   const pendingPresetLoadRef = useRef(false);
   const presetLoadTimeoutRef = useRef(null);
+  const pendingPresetActionsRef = useRef([]);
   const tourState = useTourState('viewer');
   const [tourOpen, setTourOpen] = useState(false);
   const [tourActiveStepId, setTourActiveStepId] = useState(null);
@@ -584,10 +585,32 @@ function FileView() {
     actions.forEach((action) => {
       const handler = metadataFeatureActions?.[action];
       if (typeof handler === 'function') {
-        handler({ deckRef, feature });
+        const applied = handler({ deckRef, feature });
+        if (applied === false) {
+          pendingPresetActionsRef.current.push({ action, feature });
+        }
       }
     });
   }, []);
+
+  useEffect(() => {
+    if (treeIsLoading) return;
+    if (!Array.isArray(visibleTrees) || visibleTrees.length === 0) return;
+    if (pendingPresetActionsRef.current.length === 0) return;
+    const pending = pendingPresetActionsRef.current.splice(0);
+    const retry = [];
+    pending.forEach(({ action, feature }) => {
+      const handler = metadataFeatureActions?.[action];
+      if (typeof handler !== 'function') return;
+      const applied = handler({ deckRef, feature });
+      if (applied === false) {
+        retry.push({ action, feature });
+      }
+    });
+    if (retry.length > 0) {
+      pendingPresetActionsRef.current.push(...retry);
+    }
+  }, [treeIsLoading, visibleTrees]);
 
   const handlePresetMutationHighlight = useCallback((feature) => {
     const mutationEntry = Array.isArray(feature?.mutation) ? feature.mutation[0] : null;
