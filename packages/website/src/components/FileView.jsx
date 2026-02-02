@@ -589,6 +589,19 @@ function FileView() {
     });
   }, []);
 
+  const handlePresetMutationHighlight = useCallback((feature) => {
+    const mutationEntry = Array.isArray(feature?.mutation) ? feature.mutation[0] : null;
+    if (!mutationEntry) return;
+    const nodeId = mutationEntry?.nodeId ?? mutationEntry?.nodeid ?? mutationEntry?.node_id;
+    if (nodeId === null || nodeId === undefined || nodeId === '') return;
+    const treeIndexRaw = mutationEntry?.treeIndex ?? mutationEntry?.treeindx ?? mutationEntry?.tree_idx;
+    const treeIndex = (treeIndexRaw === null || treeIndexRaw === undefined || treeIndexRaw === '')
+      ? null
+      : treeIndexRaw;
+    setHighlightedMutationNode(String(nodeId));
+    setHighlightedMutationTreeIndex(treeIndex);
+  }, [setHighlightedMutationNode, setHighlightedMutationTreeIndex]);
+
   // Handle visible trees change from LoraxDeckGL
   const handleVisibleTreesChange = useCallback((trees) => {
     setVisibleTrees(trees || []);
@@ -912,6 +925,7 @@ function FileView() {
             setHoveredTreeIndex={setHoveredTreeIndex}
             onNavigateToCoords={handlePresetNavigate}
             onPresetAction={handlePresetAction}
+            onPresetMutationHighlight={handlePresetMutationHighlight}
           />
         </div>
 

@@ -29,6 +29,7 @@ export function useInterval({
   const [visibleIntervals, setVisibleIntervals] = useState([]);
   const [allIntervalsInView, setAllIntervalsInView] = useState([]); // Pre-decimation intervals for useLocalData
   const [intervalBounds, setIntervalBounds] = useState({ lo: 0, hi: 0 }); // Global index bounds
+  const [intervalsCoords, setIntervalsCoords] = useState(null); // Genomic coords used to fetch intervals
 
   // For request cancellation
   const latestRequestIdRef = useRef(0);
@@ -58,11 +59,15 @@ export function useInterval({
         const lo = result?.lo ?? 0;
         const hi = result?.hi ?? 0;
 
+
         // Store global index bounds for useLocalData
         setIntervalBounds({ lo, hi });
 
         // Store pre-decimation intervals for useLocalData
         setAllIntervalsInView(intervals);
+
+        // Store genomic coords used for these intervals
+        setIntervalsCoords(genomicCoords);
 
         // Apply LOD decimation if too many intervals (for display only)
         if (intervals.length > maxIntervals) {
@@ -101,7 +106,8 @@ export function useInterval({
     visibleIntervals,      // Decimated intervals for display (max 2000)
     allIntervalsInView,    // Pre-decimation intervals for useLocalData
     intervalBounds,        // { lo, hi } - global index bounds for useLocalData
+    intervalsCoords,       // Genomic coords for interval request
     isReady: workerConfigReady,
     reset
-  }), [visibleIntervals, allIntervalsInView, intervalBounds, workerConfigReady, reset]);
+  }), [visibleIntervals, allIntervalsInView, intervalBounds, intervalsCoords, workerConfigReady, reset]);
 }

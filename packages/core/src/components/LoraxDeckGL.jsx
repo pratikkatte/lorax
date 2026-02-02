@@ -198,7 +198,7 @@ const LoraxDeckGL = forwardRef(({
   }, [genomicCoords, externalOnGenomicCoordsChange]);
 
   // 6. Worker-based interval computation
-  const { visibleIntervals, allIntervalsInView, intervalBounds } = useInterval({
+  const { visibleIntervals, allIntervalsInView, intervalBounds, intervalsCoords } = useInterval({
     worker,
     workerConfigReady,
     genomicCoords
@@ -210,6 +210,7 @@ const LoraxDeckGL = forwardRef(({
     workerConfigReady,
     allIntervalsInView,
     intervalBounds,  // { lo, hi } global index bounds
+    intervalsCoords,
     genomicCoords,
     viewState,
     tsconfig,  // Pass full tsconfig (has genome_length, intervals)

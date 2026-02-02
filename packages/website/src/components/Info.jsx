@@ -29,7 +29,8 @@ const Info = ({
   hoveredTreeIndex = null,
   setHoveredTreeIndex,
   onNavigateToCoords,
-  onPresetAction
+  onPresetAction,
+  onPresetMutationHighlight
 }) => {
   const [activeTabInternal, setActiveTabInternal] = useState('details');
   const activeTab = activeTabProp ?? activeTabInternal;
@@ -159,6 +160,7 @@ const Info = ({
             setHoveredTreeIndex={setHoveredTreeIndex}
             onNavigateToCoords={onNavigateToCoords}
             onPresetAction={onPresetAction}
+            onPresetMutationHighlight={onPresetMutationHighlight}
           />
         </div>
       </div>

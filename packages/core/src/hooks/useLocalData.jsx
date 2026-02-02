@@ -64,6 +64,7 @@ export function useLocalData({
   workerConfigReady,
   allIntervalsInView,
   intervalBounds = { lo: 0, hi: 0 },
+  intervalsCoords = null,
   genomicCoords,
   viewState,
   tsconfig,
@@ -110,6 +111,7 @@ export function useLocalData({
     if (effectiveMode !== 'worker') return;
     if (!workerConfigReady || !genomicCoords || !worker || !globalBpPerUnit || !new_globalBp) return;
     if (!allIntervalsInView || allIntervalsInView.length === 0) return;
+    if (!intervalsCoords || intervalsCoords[0] !== genomicCoords[0] || intervalsCoords[1] !== genomicCoords[1]) return;
 
     const [start, end] = genomicCoords;
     const requestId = ++latestRequestId.current;
@@ -146,6 +148,7 @@ export function useLocalData({
     if (effectiveMode !== 'main-thread') return;
     if (!genomicCoords || !globalBpPerUnit || !new_globalBp) return;
     if (!allIntervalsInView || allIntervalsInView.length === 0) return;
+    if (!intervalsCoords || intervalsCoords[0] !== genomicCoords[0] || intervalsCoords[1] !== genomicCoords[1]) return;
 
     const [start, end] = genomicCoords;
     const requestId = ++latestRequestId.current;
@@ -175,7 +178,7 @@ export function useLocalData({
     } catch (error) {
       console.error('Failed to compute local data:', error);
     }
-  }, [effectiveMode, genomicCoords, globalBpPerUnit, new_globalBp, allIntervalsInView, intervalBounds, displayOptionsKey, tsconfig]);
+  }, [effectiveMode, genomicCoords, globalBpPerUnit, new_globalBp, allIntervalsInView, intervalBounds, intervalsCoords, displayOptionsKey, tsconfig]);
 
   const reset = useCallback(() => {
     setLocalBins(null);

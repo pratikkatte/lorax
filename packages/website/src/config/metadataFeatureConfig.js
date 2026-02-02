@@ -21,6 +21,7 @@ export const metadataFeatureConfig = [
         HeraRef: "#dd2727"
       }
     },
+    mutation: [],
     displayLineage: true
   },
   {
@@ -38,6 +39,7 @@ export const metadataFeatureConfig = [
         CHS: "#d80e0e"
       }
     },
+    mutation: [{ nodeId: 2461020, treeIndex: 1196082}],
     displayLineage: true
   }
 ];

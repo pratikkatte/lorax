@@ -53,7 +53,8 @@ export default function InfoFilter({
   hoveredTreeIndex = null,
   setHoveredTreeIndex,
   onNavigateToCoords,
-  onPresetAction
+  onPresetAction,
+  onPresetMutationHighlight
 }) {
   const [searchParams, setSearchParams] = useSearchParams();
   // Get filter state from context (via useMetadataFilter in LoraxProvider)
@@ -232,6 +233,12 @@ export default function InfoFilter({
         console.warn('Preset navigation did not complete cleanly.', error);
       }
     }
+    if (onPresetMutationHighlight) {
+      const firstMutation = Array.isArray(feature?.mutation) ? feature.mutation[0] : null;
+      if (firstMutation) {
+        onPresetMutationHighlight(feature);
+      }
+    }
 
     if (setSearchTags) {
       setSearchTags(values);
@@ -257,6 +264,7 @@ export default function InfoFilter({
     isMetadataReady,
     onNavigateToCoords,
     onPresetAction,
+    onPresetMutationHighlight,
     setDisplayLineagePaths,
     setEnabledValues,
     setSearchTags
