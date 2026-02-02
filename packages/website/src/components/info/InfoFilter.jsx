@@ -54,7 +54,8 @@ export default function InfoFilter({
   setHoveredTreeIndex,
   onNavigateToCoords,
   onPresetAction,
-  onPresetMutationHighlight
+  onPresetMutationHighlight,
+  isVisible = true
 }) {
   const [searchParams, setSearchParams] = useSearchParams();
   // Get filter state from context (via useMetadataFilter in LoraxProvider)
@@ -127,6 +128,7 @@ export default function InfoFilter({
   }, [activeFeatureId, matchedFeatures]);
 
   useEffect(() => {
+    if (!isVisible) return undefined;
     if (matchedFeatures.length === 0) return undefined;
 
     let frameId = null;
@@ -175,7 +177,7 @@ export default function InfoFilter({
       if (frameId) cancelAnimationFrame(frameId);
       window.removeEventListener('resize', handleResize);
     };
-  }, [matchedFeatures]);
+  }, [isVisible, matchedFeatures]);
 
   const isMetadataReady = useCallback((key) => {
     if (!key) return false;

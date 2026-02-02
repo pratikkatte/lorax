@@ -161,6 +161,7 @@ const Info = ({
             onNavigateToCoords={onNavigateToCoords}
             onPresetAction={onPresetAction}
             onPresetMutationHighlight={onPresetMutationHighlight}
+            isVisible={activeTab === 'metadata'}
           />
         </div>
       </div>
