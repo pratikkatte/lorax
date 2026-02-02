@@ -361,10 +361,10 @@ export function useDeckViews({
    * Fit vertical (Y) zoom to bounds, keep X unchanged.
    * Returns true when applied, false when bounds/inputs are invalid.
    */
-  const fitYToBounds = useCallback(({ minY, maxY, viewHeightPx, padding = 0.9 }) => {
+  const fitYToBounds = useCallback(({ minY, maxY, viewHeightPx, padding = 0.5 }) => {
     if (!Number.isFinite(minY) || !Number.isFinite(maxY)) return false;
     if (!Number.isFinite(viewHeightPx) || viewHeightPx <= 0) return false;
-    const span = maxY - minY;
+    const span = (maxY - minY);
     if (!Number.isFinite(span) || span <= 0) return false;
 
     const paddedHeight = viewHeightPx * padding;
