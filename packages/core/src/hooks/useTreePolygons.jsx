@@ -17,6 +17,7 @@ import {
  * @param {boolean} options.animate - Enable animation transitions (default: true)
  * @param {number} options.animationDuration - Animation duration in ms (default: 300)
  * @param {string} options.easing - Easing function name: 'linear'|'easeOut'|'easeInOut' (default: 'easeOut')
+ * @param {number} options.viewStateUpdateThrottleMs - Throttle ms for pan/zoom updates (0 = every frame)
  * @param {Function} options.onPolygonHover - Callback when polygon is hovered
  * @param {Function} options.onPolygonClick - Callback when polygon is clicked
  *
@@ -35,6 +36,7 @@ export function useTreePolygons({
   animate = true,
   animationDuration = 300,
   easing = 'easeOut',
+  viewStateUpdateThrottleMs = 0,
   onPolygonHover,
   onPolygonClick
 } = {}) {
@@ -64,12 +66,19 @@ export function useTreePolygons({
   const globalBpPerUnitRef = useRef(globalBpPerUnit);
   const hoveredPolygonRef = useRef(hoveredPolygon);
   const enabledRef = useRef(enabled);
+  const viewStateRef = useRef(viewState);
+  const isReadyRef = useRef(isReady);
   const polygonsRef = useRef(polygons);
+  const lastViewStateKeyRef = useRef(null);
+  const lastViewStateUpdateRef = useRef(0);
+  const pendingRafRef = useRef(null);
 
   useEffect(() => { localBinsRef.current = localBins; }, [localBins]);
   useEffect(() => { globalBpPerUnitRef.current = globalBpPerUnit; }, [globalBpPerUnit]);
   useEffect(() => { hoveredPolygonRef.current = hoveredPolygon; }, [hoveredPolygon]);
   useEffect(() => { enabledRef.current = enabled; }, [enabled]);
+  useEffect(() => { viewStateRef.current = viewState; }, [viewState]);
+  useEffect(() => { isReadyRef.current = isReady; }, [isReady]);
   useEffect(() => { polygonsRef.current = polygons; }, [polygons]);
 
   /**
@@ -180,6 +189,53 @@ export function useTreePolygons({
     animationRef.current.rafId = requestAnimationFrame(runAnimation);
   }, [animate, computeTargetPolygons, runAnimation]);
 
+  const computeViewStateKey = useCallback((state) => {
+    if (!state?.ortho) return null;
+    const { target, zoom } = state.ortho;
+    const t0 = Number.isFinite(target?.[0]) ? target[0].toFixed(4) : '0';
+    const t1 = Number.isFinite(target?.[1]) ? target[1].toFixed(4) : '0';
+    const z0 = Array.isArray(zoom)
+      ? (Number.isFinite(zoom[0]) ? zoom[0].toFixed(4) : '0')
+      : (Number.isFinite(zoom) ? zoom.toFixed(4) : '0');
+    const z1 = Array.isArray(zoom)
+      ? (Number.isFinite(zoom[1]) ? zoom[1].toFixed(4) : z0)
+      : z0;
+    return `${t0}-${t1}-${z0}-${z1}`;
+  }, []);
+
+  const runViewStateUpdate = useCallback(() => {
+    if (!enabledRef.current || !isReadyRef.current) return;
+    const nextKey = computeViewStateKey(viewStateRef.current);
+    if (!nextKey || nextKey === lastViewStateKeyRef.current) return;
+    lastViewStateKeyRef.current = nextKey;
+    lastViewStateUpdateRef.current = performance.now();
+    updatePolygons(true);
+  }, [computeViewStateKey, updatePolygons]);
+
+  const scheduleViewStateUpdate = useCallback(() => {
+    if (!enabledRef.current || !isReadyRef.current) return;
+    if (viewStateUpdateThrottleMs <= 0) {
+      runViewStateUpdate();
+      return;
+    }
+
+    const now = performance.now();
+    const elapsed = now - lastViewStateUpdateRef.current;
+    if (elapsed >= viewStateUpdateThrottleMs) {
+      runViewStateUpdate();
+      return;
+    }
+
+    if (pendingRafRef.current) return;
+    pendingRafRef.current = requestAnimationFrame(() => {
+      pendingRafRef.current = null;
+      const nowRaf = performance.now();
+      if (nowRaf - lastViewStateUpdateRef.current >= viewStateUpdateThrottleMs) {
+        runViewStateUpdate();
+      }
+    });
+  }, [runViewStateUpdate, viewStateUpdateThrottleMs]);
+
   /**
    * Cache viewports - call from onAfterRender
    * Only caches viewport refs, does NOT trigger state updates to avoid render loops
@@ -207,6 +263,11 @@ export function useTreePolygons({
     }
   }, [isReady]);
 
+  const onAfterRender = useCallback((deckInstance) => {
+    _cacheViewports(deckInstance);
+    scheduleViewStateUpdate();
+  }, [_cacheViewports, scheduleViewStateUpdate]);
+
   /**
    * Handle hover with callback
    */
@@ -220,24 +281,6 @@ export function useTreePolygons({
     if (!enabled || !isReady) return;
     updatePolygons(false);
   }, [localBins, enabled, isReady, updatePolygons]);
-
-  // Update polygons when viewState changes (instant update for pan/zoom)
-  // Use a simple key derived from viewState to detect changes
-  const viewStateKey = useMemo(() => {
-    if (!viewState?.ortho) return null;
-    const { target, zoom } = viewState.ortho;
-    const t0 = target?.[0]?.toFixed?.(2) ?? '0';
-    const t1 = target?.[1]?.toFixed?.(2) ?? '0';
-    const z0 = Array.isArray(zoom) ? zoom[0]?.toFixed?.(2) : zoom?.toFixed?.(2);
-    const z1 = Array.isArray(zoom) ? zoom[1]?.toFixed?.(2) : z0;
-    return `${t0}-${t1}-${z0}-${z1}`;
-  }, [viewState?.ortho?.target?.[0], viewState?.ortho?.target?.[1], viewState?.ortho?.zoom]);
-
-  useEffect(() => {
-    if (!enabled || !isReady || !viewStateKey) return;
-    // Instant update for viewport changes (no animation)
-    updatePolygons(true);
-  }, [viewStateKey, enabled, isReady, updatePolygons]);
 
   // Update hover state in polygons
   useEffect(() => {
@@ -253,6 +296,9 @@ export function useTreePolygons({
       if (animationRef.current.rafId) {
         cancelAnimationFrame(animationRef.current.rafId);
       }
+      if (pendingRafRef.current) {
+        cancelAnimationFrame(pendingRafRef.current);
+      }
     };
   }, []);
 
@@ -261,7 +307,8 @@ export function useTreePolygons({
     hoveredPolygon,
     setHoveredPolygon,
     isReady,
-    _cacheViewports
+    _cacheViewports,
+    onAfterRender
   };
 }
 

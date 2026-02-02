@@ -719,7 +719,7 @@ const LoraxDeckGL = forwardRef(({
     hoveredPolygon,
     setHoveredPolygon,
     isReady: polygonsReady,
-    _cacheViewports
+    onAfterRender: onPolygonsAfterRender
   } = useTreePolygons({
     localBins,
     globalBpPerUnit,
@@ -728,6 +728,7 @@ const LoraxDeckGL = forwardRef(({
     animate: polygonOptions?.animate ?? true,
     animationDuration: polygonOptions?.animationDuration ?? 300,
     easing: polygonOptions?.easing ?? 'easeOut',
+    viewStateUpdateThrottleMs: polygonOptions?.viewStateUpdateThrottleMs ?? 0,
     onPolygonHover,
     onPolygonClick
   });
@@ -755,10 +756,10 @@ const LoraxDeckGL = forwardRef(({
   }, [internalHandleViewStateChange, externalOnViewStateChange]);
 
   const handleAfterRender = useCallback(() => {
-    if (showPolygons && _cacheViewports && deckRef.current?.deck) {
-      _cacheViewports(deckRef.current.deck);
+    if (showPolygons && onPolygonsAfterRender && deckRef.current?.deck) {
+      onPolygonsAfterRender(deckRef.current.deck);
     }
-  }, [showPolygons, _cacheViewports]);
+  }, [showPolygons, onPolygonsAfterRender]);
 
   // Enable deck.gl picking loop for layer-level onHover/onClick and
   // implement polygon hover/click without letting the SVG overlay intercept pointer events.
