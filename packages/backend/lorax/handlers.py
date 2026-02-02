@@ -30,8 +30,6 @@ from lorax.metadata.mutations import (
 )
 from lorax.buffer import mutations_to_arrow_buffer
 from lorax.cache import get_file_context, get_file_cache_size
-
-
 def _get_tip_shift_project_prefixes() -> list[str]:
     """Return project name prefixes that should shift CSV tips to y=1."""
     raw = os.getenv("LORAX_CSV_TIP_SHIFT_PROJECTS", "heliconius")
@@ -93,7 +91,13 @@ async def get_projects(upload_dir, BUCKET_NAME, sid=None):
     """List all projects and their files from local uploads and GCS bucket."""
     projects = {}
     upload_dir = str(upload_dir)
-    projects = list_project_files(upload_dir, projects, root=upload_dir)
+    # Avoid listing Uploads/<sid> as separate projects; add session-scoped uploads below.
+    projects = list_project_files(
+        upload_dir,
+        projects,
+        root=upload_dir,
+        exclude_dirs=["Uploads"],
+    )
 
     # Prefer session-scoped Uploads/<sid> when available
     if sid:
