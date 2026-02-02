@@ -9,6 +9,7 @@ import ScreenshotModal from './ScreenshotModal';
 import { useViewportDimensions } from '../hooks/useViewportDimensions';
 import TourOverlay from './TourOverlay';
 import useTourState from '../hooks/useTourState';
+import { metadataFeatureActions } from '../config/metadataFeatureActions';
 // TODO: Re-enable when the tutorial is complete.
 const TOUR_ENABLED = false;
 
@@ -44,6 +45,10 @@ function FileView() {
   const [showScreenshotModal, setShowScreenshotModal] = useState(false);
   const [infoActiveTab, setInfoActiveTab] = useState('details');
   const [treeIsLoading, setTreeIsLoading] = useState(false);
+  const treeIsLoadingRef = useRef(false);
+  const presetLoadResolversRef = useRef([]);
+  const pendingPresetLoadRef = useRef(false);
+  const presetLoadTimeoutRef = useRef(null);
   const tourState = useTourState('viewer');
   const [tourOpen, setTourOpen] = useState(false);
   const [tourActiveStepId, setTourActiveStepId] = useState(null);
@@ -520,21 +525,69 @@ function FileView() {
     const end = Number(coords[1]);
     if (!Number.isFinite(start) || !Number.isFinite(end)) return;
     const newPosition = [start, end];
+    pendingPresetLoadRef.current = true;
     setGenomicPosition(newPosition);
     if (deckRef.current?.setGenomicCoords) {
       deckRef.current.setGenomicCoords(newPosition);
     }
+    return new Promise((resolve) => {
+      if (presetLoadTimeoutRef.current) {
+        clearTimeout(presetLoadTimeoutRef.current);
+      }
+      presetLoadTimeoutRef.current = setTimeout(() => {
+        if (!pendingPresetLoadRef.current) return;
+        pendingPresetLoadRef.current = false;
+        presetLoadResolversRef.current.splice(0).forEach((resolver) => resolver());
+      }, 1500);
+      if (!treeIsLoadingRef.current) {
+        setTimeout(() => {
+          if (!pendingPresetLoadRef.current) return;
+          if (!treeIsLoadingRef.current) {
+            pendingPresetLoadRef.current = false;
+            presetLoadResolversRef.current.splice(0).forEach((resolver) => resolver());
+            resolve();
+            return;
+          }
+          presetLoadResolversRef.current.push(resolve);
+        }, 0);
+        return;
+      }
+      presetLoadResolversRef.current.push(resolve);
+    });
   }, []);
 
   // Handle tree loading state changes from LoraxDeckGL
   const handleTreeLoadingChange = useCallback((loading) => {
     setTreeIsLoading(loading);
+    treeIsLoadingRef.current = loading;
     if (!loading && tourOpen) {
       if (tourActiveStepId === 'viewer-tree-polygon' || tourActiveStepId === 'viewer-tree-edge') {
         requestTourTargetUpdate();
       }
     }
+    if (!loading && pendingPresetLoadRef.current) {
+      pendingPresetLoadRef.current = false;
+      if (presetLoadTimeoutRef.current) {
+        clearTimeout(presetLoadTimeoutRef.current);
+        presetLoadTimeoutRef.current = null;
+      }
+      presetLoadResolversRef.current.splice(0).forEach((resolver) => resolver());
+    }
   }, [tourOpen, tourActiveStepId, requestTourTargetUpdate]);
+
+  useEffect(() => {
+    treeIsLoadingRef.current = treeIsLoading;
+  }, [treeIsLoading]);
+
+  const handlePresetAction = useCallback((actions, feature) => {
+    if (!Array.isArray(actions)) return;
+    actions.forEach((action) => {
+      const handler = metadataFeatureActions?.[action];
+      if (typeof handler === 'function') {
+        handler({ deckRef, feature });
+      }
+    });
+  }, []);
 
   // Handle visible trees change from LoraxDeckGL
   const handleVisibleTreesChange = useCallback((trees) => {
@@ -858,6 +911,7 @@ function FileView() {
             hoveredTreeIndex={hoveredTreeIndex}
             setHoveredTreeIndex={setHoveredTreeIndex}
             onNavigateToCoords={handlePresetNavigate}
+            onPresetAction={handlePresetAction}
           />
         </div>
 

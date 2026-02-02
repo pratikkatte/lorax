@@ -52,7 +52,8 @@ export default function InfoFilter({
   setColorByTree,
   hoveredTreeIndex = null,
   setHoveredTreeIndex,
-  onNavigateToCoords
+  onNavigateToCoords,
+  onPresetAction
 }) {
   const [searchParams, setSearchParams] = useSearchParams();
   // Get filter state from context (via useMetadataFilter in LoraxProvider)
@@ -214,11 +215,23 @@ export default function InfoFilter({
     setPendingFeature(null);
   }, [applyFeatureColors, isMetadataReady, pendingFeature]);
 
-  const applyPresetValues = useCallback((feature) => {
+  const applyPresetValues = useCallback(async (feature) => {
     const key = feature?.metadata?.key;
     const values = Array.isArray(feature?.metadata?.values)
       ? feature.metadata.values.map(String)
       : [];
+
+    let navigatePromise = null;
+    if (Array.isArray(feature?.genomicCoords) && onNavigateToCoords) {
+      navigatePromise = onNavigateToCoords(feature.genomicCoords);
+    }
+    if (navigatePromise && typeof navigatePromise.then === 'function') {
+      try {
+        await navigatePromise;
+      } catch (error) {
+        console.warn('Preset navigation did not complete cleanly.', error);
+      }
+    }
 
     if (setSearchTags) {
       setSearchTags(values);
@@ -236,13 +249,14 @@ export default function InfoFilter({
         setPendingFeature(feature);
       }
     }
-    if (Array.isArray(feature?.genomicCoords) && onNavigateToCoords) {
-      onNavigateToCoords(feature.genomicCoords);
+    if (Array.isArray(feature?.actions) && onPresetAction) {
+      onPresetAction(feature.actions, feature);
     }
   }, [
     applyFeatureColors,
     isMetadataReady,
     onNavigateToCoords,
+    onPresetAction,
     setDisplayLineagePaths,
     setEnabledValues,
     setSearchTags

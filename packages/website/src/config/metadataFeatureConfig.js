@@ -8,6 +8,7 @@ export const metadataFeatureConfig = [
     project: "Heliconius",
     filename: "erato-sara_chr2.csv",
     genomicCoords: [8790771, 16465129],
+    actions: ["adjustView"],
     metadata: {
       key: "sample",
       values: ["Hsar", "Hhsa", "Hhim", "Hdem", "Htel", "HeraRef"],

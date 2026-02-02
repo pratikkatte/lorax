@@ -20,6 +20,14 @@ const TEST_CONFIG = {
   filename: '1kg_chr2.trees.tsz',
 };
 
+const createDeferred = () => {
+  let resolve;
+  const promise = new Promise((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
+};
+
 const LocationDisplay = () => {
   const location = useLocation();
   return <div data-testid="location-search">{location.search}</div>;
@@ -153,5 +161,32 @@ describe('InfoFilter presetFeature', () => {
     expect(screen.getByTestId('enabledValues')).toHaveTextContent(
       'CHS,FIN,GBR'
     );
+  });
+
+  it('waits for navigation before firing preset actions', async () => {
+    const loadedMetadata = new Map([['name', 'pyarrow']]);
+    const deferred = createDeferred();
+    const onNavigateToCoords = vi.fn(() => deferred.promise);
+    const onPresetAction = vi.fn();
+    const { user } = renderWithLorax({
+      initialEntries: ['/file'],
+      loraxOverrides: { loadedMetadata },
+      propsOverrides: { onNavigateToCoords, onPresetAction }
+    });
+
+    const enableButton = await screen.findByTitle('Enable preset');
+    await user.click(enableButton);
+
+    expect(onNavigateToCoords).toHaveBeenCalledWith([136608644, 136608651]);
+    expect(onPresetAction).not.toHaveBeenCalled();
+
+    deferred.resolve();
+
+    await waitFor(() => {
+      expect(onPresetAction).toHaveBeenCalledWith(
+        ['adjustView'],
+        expect.objectContaining({ id: 'lactase_persistence' })
+      );
+    });
   });
 });

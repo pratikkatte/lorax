@@ -28,7 +28,8 @@ const Info = ({
   setColorByTree,
   hoveredTreeIndex = null,
   setHoveredTreeIndex,
-  onNavigateToCoords
+  onNavigateToCoords,
+  onPresetAction
 }) => {
   const [activeTabInternal, setActiveTabInternal] = useState('details');
   const activeTab = activeTabProp ?? activeTabInternal;
@@ -157,6 +158,7 @@ const Info = ({
             hoveredTreeIndex={hoveredTreeIndex}
             setHoveredTreeIndex={setHoveredTreeIndex}
             onNavigateToCoords={onNavigateToCoords}
+            onPresetAction={onPresetAction}
           />
         </div>
       </div>
