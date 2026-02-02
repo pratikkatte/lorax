@@ -357,6 +357,51 @@ export function useDeckViews({
     setYzoom(INITIAL_VIEW_STATE['ortho'].zoom[1]);
   }, []);
 
+  /**
+   * Fit vertical (Y) zoom to bounds, keep X unchanged.
+   * Returns true when applied, false when bounds/inputs are invalid.
+   */
+  const fitYToBounds = useCallback(({ minY, maxY, viewHeightPx, padding = 0.9 }) => {
+    if (!Number.isFinite(minY) || !Number.isFinite(maxY)) return false;
+    if (!Number.isFinite(viewHeightPx) || viewHeightPx <= 0) return false;
+    const span = maxY - minY;
+    if (!Number.isFinite(span) || span <= 0) return false;
+
+    const paddedHeight = viewHeightPx * padding;
+    const rawZoomY = Math.log2(paddedHeight / span);
+    if (!Number.isFinite(rawZoomY)) return false;
+
+    const MIN_ZOOM_Y = -10;
+    const MAX_ZOOM_Y = 20;
+    const zoomY = Math.max(MIN_ZOOM_Y, Math.min(MAX_ZOOM_Y, rawZoomY));
+    const targetY = Math.max(0, Math.min(1, (minY + maxY) / 2));
+
+    setViewState(prev => {
+      const newState = { ...prev };
+
+      if (prev['ortho']) {
+        newState['ortho'] = {
+          ...prev['ortho'],
+          zoom: [prev['ortho'].zoom[0], zoomY],
+          target: [prev['ortho'].target[0], targetY]
+        };
+      }
+
+      if (prev['tree-time']) {
+        newState['tree-time'] = {
+          ...prev['tree-time'],
+          zoom: [prev['tree-time'].zoom?.[0], zoomY],
+          target: [prev['tree-time'].target?.[0], targetY]
+        };
+      }
+
+      return newState;
+    });
+
+    setYzoom(zoomY);
+    return true;
+  }, []);
+
   return {
     // Existing view management
     views,
@@ -369,6 +414,7 @@ export function useDeckViews({
     yzoom,
     setYzoom,
     viewReset,
+    fitYToBounds,
 
     // Genomic coordinates (new)
     genomicCoords,          // [startBp, endBp] | null

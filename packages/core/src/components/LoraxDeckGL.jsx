@@ -175,6 +175,7 @@ const LoraxDeckGL = forwardRef(({
     xzoom,
     yzoom,
     viewReset,
+    fitYToBounds,
     // Genomic coordinates
     genomicCoords,
     setGenomicCoords,
@@ -639,6 +640,62 @@ const LoraxDeckGL = forwardRef(({
     viewHeight: treeTimeHeight
   });
 
+  const getOrthoViewHeightPx = useCallback(() => {
+    if (!decksize?.height) return null;
+    const heightStr = viewConfig?.ortho?.height;
+    if (!heightStr) return null;
+    const percent = parseFloat(heightStr) / 100;
+    if (!Number.isFinite(percent)) return null;
+    return decksize.height * percent;
+  }, [decksize?.height, viewConfig?.ortho?.height]);
+
+  const getVisibleYBounds = useCallback(() => {
+    let minY = Infinity;
+    let maxY = -Infinity;
+
+    const updateFromArray = (arr) => {
+      if (!arr || arr.length < 2) return;
+      for (let i = 1; i < arr.length; i += 2) {
+        const y = arr[i];
+        if (!Number.isFinite(y)) continue;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+    };
+
+    updateFromArray(renderData?.pathPositions);
+    updateFromArray(renderData?.tipPositions);
+
+    if (!Number.isFinite(minY) || !Number.isFinite(maxY)) {
+      const xs = treeData?.x;
+      if (Array.isArray(xs) && xs.length > 0) {
+        for (const v of xs) {
+          if (!Number.isFinite(v)) continue;
+          if (v < minY) minY = v;
+          if (v > maxY) maxY = v;
+        }
+      }
+    }
+
+    if (!Number.isFinite(minY) || !Number.isFinite(maxY)) return null;
+    return { minY, maxY };
+  }, [renderData, treeData]);
+
+  const viewAdjustY = useCallback(() => {
+    const bounds = getVisibleYBounds();
+    const viewHeightPx = getOrthoViewHeightPx();
+    if (bounds && Number.isFinite(viewHeightPx)) {
+      const applied = fitYToBounds({
+        minY: bounds.minY,
+        maxY: bounds.maxY,
+        viewHeightPx
+      });
+      if (applied) return true;
+    }
+    viewReset();
+    return false;
+  }, [getVisibleYBounds, getOrthoViewHeightPx, fitYToBounds, viewReset]);
+
   // 8. Layers for enabled views
   const { layers, layerFilter, clearHover: clearPickingHover } = useDeckLayers({
     enabledViews,
@@ -822,6 +879,7 @@ const LoraxDeckGL = forwardRef(({
     getViewState: () => viewState,
     getViews: () => views,
     viewReset,
+    viewAdjustY,
     xzoom,
     yzoom,
     // Genomic coordinates

@@ -597,7 +597,7 @@ function FileView() {
         genomeLength={genomeLength}
         value={genomicPosition}
         onChange={handlePositionChange}
-        onResetY={() => deckRef.current?.viewReset?.()}
+        onResetY={() => deckRef.current?.viewAdjustY?.()}
         project={project}
         tsconfig={tsconfig}
       />
