@@ -72,7 +72,7 @@ if REDIS_CLUSTER_URL:
     except Exception as e:
         print(f"Warning: Failed to connect Redis for TreeGraphCache: {e}")
 
-tree_graph_cache = TreeGraphCache(redis_client=_tree_graph_redis)
+tree_graph_cache = TreeGraphCache(redis_client=None)
 
 # CSV mode: cache parsed Newick trees per session (in-memory only)
 csv_tree_graph_cache = CsvTreeGraphCache()
