@@ -4,7 +4,7 @@ import { useLorax } from "@lorax/core";
 
 export default function useFileUpload({
     onError,
-    accept = ".trees,.tsz",
+    accept = ".trees,.tsz,.tszip,.csv",
     autoClearOnError = true,
     statusMessage,
     setStatusMessage

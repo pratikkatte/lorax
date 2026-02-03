@@ -4,10 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lorax-arg"
-version = "0.1.2"
+version = "0.1"
 description = "Lorax single-port app (bundled UI + backend)"
 readme = "packages/app/README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [{name = "Lorax Team"}]
 keywords = ["lorax", "arg", "visualization", "evolution", "genomics", "biology"]
@@ -31,6 +31,7 @@ dependencies = [
   "psutil>=5.0.0",
   "ete3>=3.1.0",
   "numba>0.57.1",
+  "python-multipart>=0.0.10",
 ]
 
 [project.optional-dependencies]
