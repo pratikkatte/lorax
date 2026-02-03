@@ -19,7 +19,6 @@ export default function LandingPage({
 
     const { projects } = upload;
     const [expandedId, setExpandedId] = useState(null);
-
     // We don't use navigate() here anymore because loadFile in useFileUpload handles redirection
     // via window.location.href to the Viewer app.
 
@@ -91,6 +90,12 @@ export default function LandingPage({
                                 disabled={upload.isUploading}
                             >
                                 <BsCloudUpload className="text-lg group-hover:scale-110 transition-transform" />
+                                {upload.isUploading && (
+                                    <span
+                                        className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-white/70 border-t-transparent"
+                                        aria-hidden="true"
+                                    />
+                                )}
                                 {upload.isUploading ? upload.uploadStatus : "Load File"}
                             </button>
                         </div>
@@ -117,11 +122,6 @@ export default function LandingPage({
                                 alt="Lorax - Genome Analysis"
                                 className="w-[22rem] h-auto object-contain"
                             />
-                            {upload.isUploading && (
-                                <div className="mt-4 text-sm font-medium text-emerald-600 bg-emerald-50 px-4 py-2 rounded-lg">
-                                    {upload.uploadStatus}
-                                </div>
-                            )}
                         </div>
                     </div>
                 </section>

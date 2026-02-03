@@ -1,13 +1,15 @@
-import React from "react";
+import React, { useRef } from "react";
+import { createPortal } from "react-dom";
 
 /**
  * ErrorAlert component
  * Renders a dismissible alert for a message.
  */
 const ErrorAlert = ({ message, onDismiss }) => {
+    const rootRef = useRef(null);
     if (!message) return null;
-    return (
-        <div className="fixed top-5 left-1/2 z-50 -translate-x-1/2 w-[95vw] max-w-xl">
+    const content = (
+        <div ref={rootRef} className="fixed top-16 left-1/2 z-[9999] -translate-x-1/2 w-[95vw] max-w-xl pointer-events-auto">
             <div className="flex items-center justify-between px-4 py-2 rounded-xl shadow-xl border border-rose-200 bg-rose-50 text-rose-900 transition-all animate-fade-in">
                 <span className="truncate text-sm font-medium" title={String(message)}>
                     {message instanceof Error ? message.message : String(message)}
@@ -27,6 +29,9 @@ const ErrorAlert = ({ message, onDismiss }) => {
             </div>
         </div>
     );
+
+    if (typeof document === "undefined") return content;
+    return createPortal(content, document.body);
 };
 
 export default ErrorAlert;

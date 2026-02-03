@@ -121,9 +121,23 @@ async def get_projects(upload_dir, BUCKET_NAME, sid=None):
     if sid and sid in projects:
         projects.pop(sid, None)
 
-    # In non-local modes, merge public GCS contents (including session uploads)
-    if CURRENT_MODE != "local":
-        projects = get_public_gcs_dict(BUCKET_NAME, sid=sid, projects=projects)
+    # Merge GCS projects: always include non-Uploads; Uploads only per mode rules
+    if CURRENT_MODE == "local":
+        projects = get_public_gcs_dict(
+            BUCKET_NAME,
+            sid=sid,
+            projects=projects,
+            include_uploads=False,
+            uploads_sid=None,
+        )
+    else:
+        projects = get_public_gcs_dict(
+            BUCKET_NAME,
+            sid=sid,
+            projects=projects,
+            include_uploads=True,
+            uploads_sid=sid,
+        )
 
     return projects
 

@@ -150,9 +150,10 @@ export default function useFileUpload({
         async (e) => {
             const file = e?.target?.files?.[0];
 
-            const maxSize = 50 * 1024 * 1024; // 50 MB
-            if (file.size > maxSize) {
-                setError(`File "${file.name}" exceeds 50 MB limit.`);
+            const maxSize = 25 * 1024 * 1024; // 25 MB
+            if (file?.size > maxSize) {
+                setError(`File "${file.name}" exceeds 25 MB limit.`);
+                if (inputRef.current) inputRef.current.value = "";
                 return;
             }
             await uploadFile(file);
@@ -173,9 +174,9 @@ export default function useFileUpload({
             e.preventDefault();
             setDragOver(false);
             const file = e.dataTransfer?.files?.[0];
-            const maxSize = 50 * 1024 * 1024;
-            if (file.size > maxSize) {
-                setError(`File "${file.name}" exceeds 50 MB limit.`);
+            const maxSize = 25 * 1024 * 1024;
+            if (file?.size > maxSize) {
+                setError(`File "${file.name}" exceeds 25 MB limit.`);
                 return;
             }
             if (file) await uploadFile(file);
