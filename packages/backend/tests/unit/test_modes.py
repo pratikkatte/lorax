@@ -169,6 +169,16 @@ class TestDirectoryPaths:
 
         assert cache_dir == Path("/tmp/lorax_cache")
 
+    def test_get_uploads_dir_local_projects(self, monkeypatch, temp_dir):
+        """Uploads dir should live under projects in local mode."""
+        monkeypatch.setenv("LORAX_DATA_DIR", str(temp_dir / "root"))
+
+        from lorax.modes import get_mode_config, get_uploads_dir
+        config = get_mode_config("local")
+        uploads_dir = get_uploads_dir(config)
+
+        assert uploads_dir == temp_dir / "root" / "projects"
+
     def test_get_cache_dir_custom(self, monkeypatch, temp_dir):
         """Test custom cache directory."""
         monkeypatch.setenv("DISK_CACHE_DIR", str(temp_dir / "cache"))

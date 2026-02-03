@@ -79,8 +79,8 @@ def detect_mode() -> str:
 
     Priority:
     1. Explicit LORAX_MODE environment variable
-    2. Auto-detect based on REDIS_CLUSTER and GCS_BUCKET_NAME
-    3. Default to 'local' for conda package usage
+    2. Auto-detect: production only when both Redis and GCS are configured
+    3. Otherwise default to 'local' (never implicitly select development)
     """
     explicit_mode = os.getenv("LORAX_MODE", "").lower()
     if explicit_mode in MODE_CONFIGS:
@@ -91,10 +91,9 @@ def detect_mode() -> str:
     has_gcs = bool(os.getenv("GCS_BUCKET_NAME") or os.getenv("BUCKET_NAME"))
     if has_redis and has_gcs:
         return "production"
-    elif has_gcs:
-        return "development"
-    else:
-        return "local"
+
+    # Fall back to local to avoid accidentally running builds in development mode
+    return "local"
 
 
 def get_mode_config(mode: Optional[str] = None) -> ModeConfig:
@@ -139,7 +138,7 @@ def get_data_dir(mode_config: Optional[ModeConfig] = None) -> Path:
 def get_uploads_dir(mode_config: Optional[ModeConfig] = None) -> Path:
     """Get the uploads directory for the current mode."""
     data_dir = get_data_dir(mode_config)
-    uploads_dir = data_dir / "uploads" if mode_config and mode_config.mode == "local" else data_dir
+    uploads_dir = data_dir / "projects" if mode_config and mode_config.mode == "local" else data_dir
     uploads_dir.mkdir(parents=True, exist_ok=True)
     return uploads_dir
 
