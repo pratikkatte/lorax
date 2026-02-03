@@ -7,18 +7,18 @@ export const metadataFeatureConfig = [
     label: "Inversion associated ancestry (Heliconius)",
     project: "Heliconius",
     filename: "erato-sara_chr2.csv",
-    genomicCoords: [8790771, 16465129],
+    genomicCoords: [9094204, 15709066],
     actions: ["adjustView"],
     metadata: {
       key: "sample",
       values: ["Hsar", "Hhsa", "Hhim", "Hdem", "Htel", "HeraRef"],
       colors: {
-        Hsar: "#18b938",
-        Hhsa: "#d80e0e",
-        Hhim: "#c20a0a",
-        Hdem: "#33993a",
-        Htel: "#08d92b",
-        HeraRef: "#dd2727"
+        Hsar: "#349A88",
+        Hhsa: "#E76F51",
+        Hhim: "#E17354",
+        Hdem: "#2F9C8A",
+        Htel: "#2A9D8F",
+        HeraRef: "#DB7757"
       }
     },
     mutation: [],
@@ -35,8 +35,8 @@ export const metadataFeatureConfig = [
       key: "name",
       values: [ "GBR", "CHS"],
       colors: {
-        GBR: "#18b938",
-        CHS: "#d80e0e"
+        GBR: "#4FB6C1",
+        CHS: "#9A9459"
       }
     },
     mutation: [{ nodeId: 2461020, treeIndex: 1196082}],
