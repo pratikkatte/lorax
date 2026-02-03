@@ -30,7 +30,6 @@ def prune_outgroup_sample(tree: Tree, outgroup: str = "etal") -> None:
     Behavior:
     - If outgroup is missing, do nothing.
     - Otherwise, reroot on outgroup, delete it, and clear the root branch lengths
-      (mirrors logic in `lorax.viz.trees_to_taxonium.remove_outgroup`).
     """
     try:
         leaf_names = tree.get_leaf_names()

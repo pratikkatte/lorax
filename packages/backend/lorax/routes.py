@@ -8,6 +8,7 @@ from fastapi import APIRouter, Request, Response, UploadFile, File, Query
 from fastapi.responses import JSONResponse
 
 from lorax.context import session_manager, BUCKET_NAME
+from lorax.modes import CURRENT_MODE
 from lorax.constants import UPLOADS_DIR
 from lorax.cloud.gcs_utils import upload_to_gcs
 from lorax.handlers import (
@@ -104,13 +105,16 @@ async def get_file(
 @router.post("/upload")
 async def upload(request: Request, response: Response, file: UploadFile = File(...)):
     """
-    Upload a file to the server. 
-    
-    ## TODO for local uploads, we need to upload the file to the local directory and not upload it to GCS. 
+    Upload a file to the server. Stores locally for all modes; uploads to GCS
+    only when not running in local mode.
     """
     sid, session = await session_manager.get_or_create_session(request, response)
 
-    user_dir = UPLOAD_DIR / "Uploads" / sid
+    # Local mode: flat under Uploads; Non-local: session-scoped folder
+    if CURRENT_MODE == "local":
+        user_dir = UPLOAD_DIR / "Uploads"
+    else:
+        user_dir = UPLOAD_DIR / "Uploads" / sid
     user_dir.mkdir(parents=True, exist_ok=True)
 
     file_path = user_dir / file.filename
@@ -120,9 +124,9 @@ async def upload(request: Request, response: Response, file: UploadFile = File(.
             while chunk := await file.read(1024 * 1024):
                 await f.write(chunk)
 
-        # Upload to GCS asynchronously
-        if BUCKET_NAME:
-            gcs_url = await upload_to_gcs(BUCKET_NAME, file_path, sid)
+        # Upload to GCS asynchronously when allowed
+        if CURRENT_MODE != "local" and BUCKET_NAME:
+            await upload_to_gcs(BUCKET_NAME, file_path, sid)
         
         return JSONResponse(
             status_code=200,

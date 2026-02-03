@@ -10,6 +10,7 @@ import asyncio
 from pathlib import Path
 
 from lorax.context import session_manager, BUCKET_NAME, tree_graph_cache, csv_tree_graph_cache
+from lorax.modes import CURRENT_MODE
 from lorax.constants import (
     UPLOADS_DIR, ERROR_SESSION_NOT_FOUND, ERROR_MISSING_SESSION, ERROR_NO_FILE_LOADED,
 )
@@ -68,21 +69,24 @@ def register_file_events(sio):
 
             if project == 'Uploads':
                 target_sid = share_sid if share_sid else lorax_sid
-                file_path = UPLOAD_DIR / project / target_sid / filename
-                blob_path = f"{project}/{target_sid}/{filename}"
+                if CURRENT_MODE == "local":
+                    file_path = UPLOAD_DIR / project / filename
+                    blob_path = f"{project}/{filename}"
+                else:
+                    file_path = UPLOAD_DIR / project / target_sid / filename
+                    blob_path = f"{project}/{target_sid}/{filename}"
             else:
                 file_path = UPLOAD_DIR / project / filename
                 blob_path = f"{project}/{filename}"
 
-            if BUCKET_NAME:
+            if BUCKET_NAME and CURRENT_MODE != "local":
                 if file_path.exists():
                     print(f"File {file_path} already exists, skipping download.")
                 else:
                     print(f"Downloading file {file_path} from {BUCKET_NAME}")
                     await download_gcs_file(BUCKET_NAME, f"{blob_path}", str(file_path))
             else:
-                print("using gcs mount point")
-                file_path = UPLOAD_DIR / project / filename
+                print("local mode or no bucket; using local uploads only")
 
             if not file_path.exists():
                 print("File not found")

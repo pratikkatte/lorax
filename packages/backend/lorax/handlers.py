@@ -9,7 +9,7 @@ import pandas as pd
 import psutil
 import tskit
 
-from lorax.viz.trees_to_taxonium import process_csv
+from lorax.modes import CURRENT_MODE
 from lorax.cloud.gcs_utils import get_public_gcs_dict
 from lorax.tree_graph import construct_trees_batch, construct_tree, TreeGraph
 from lorax.csv.layout import build_empty_layout_response, build_csv_layout_response
@@ -99,24 +99,32 @@ async def get_projects(upload_dir, BUCKET_NAME, sid=None):
         exclude_dirs=["Uploads"],
     )
 
-    # Prefer session-scoped Uploads/<sid> when available
-    if sid:
-        uploads_root = os.path.join(upload_dir, "Uploads", sid)
-        upload_files = []
-        if os.path.isdir(uploads_root):
-            for item in os.listdir(uploads_root):
-                if item.endswith((".trees", ".trees.tsz", ".csv")):
-                    upload_files.append(item)
-        projects["Uploads"] = {
-            "folder": "Uploads",
-            "files": sorted(set(upload_files)),
-            "description": "",
-        }
-        # Remove accidental project entry created from Uploads/<sid>
-        if sid in projects:
-            projects.pop(sid, None)
+    # Prefer session-scoped Uploads/<sid> when available (non-local); local uses flat Uploads
+    upload_files = []
+    uploads_root = None
+    if CURRENT_MODE == "local":
+        uploads_root = os.path.join(upload_dir, "Uploads")
+    else:
+        uploads_root = os.path.join(upload_dir, "Uploads", sid) if sid else None
 
-    projects = get_public_gcs_dict(BUCKET_NAME, sid=sid, projects=projects)
+    if uploads_root and os.path.isdir(uploads_root):
+        for item in os.listdir(uploads_root):
+            if item.endswith((".trees", ".trees.tsz", ".csv")):
+                upload_files.append(item)
+
+    projects["Uploads"] = {
+        "folder": "Uploads",
+        "files": sorted(set(upload_files)),
+        "description": "",
+    }
+    # Remove accidental project entry created from Uploads/<sid>
+    if sid and sid in projects:
+        projects.pop(sid, None)
+
+    # In non-local modes, merge public GCS contents (including session uploads)
+    if CURRENT_MODE != "local":
+        projects = get_public_gcs_dict(BUCKET_NAME, sid=sid, projects=projects)
+
     return projects
 
 def _build_sample_name_mapping(ts, sample_name_key="name"):
