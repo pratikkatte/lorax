@@ -55,6 +55,7 @@ def _wait_for_health(base_url: str, timeout_s: float = 20.0, interval_s: float =
 @click.option("--file", "file_path", type=click.Path(dir_okay=False, path_type=Path))
 @click.option("--host", default="127.0.0.1", show_default=True)
 @click.option("--port", default=3000, type=int, show_default=True)
+@click.version_option(package_name="lorax-arg", prog_name="lorax")
 @click.pass_context
 def main(
     ctx: click.Context,
@@ -63,10 +64,7 @@ def main(
     port: int,
 ):
     """
-    Run Lorax as a single-port app (UI + backend).
-
-    If FILE is provided, it is copied into Lorax uploads and the browser opens
-    directly to the viewer route for that file.
+    Lorax — interactive ARG viewer. Provide FILE to view trees directly.
     """
     if ctx.invoked_subcommand is None:
         file = file_path

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lorax-arg"
-version = "0.1.1"
+version = "0.1.3"
 description = "Interactive ARG visualization for genomics"
 readme = "packages/app/README.md"
 requires-python = ">=3.10"
