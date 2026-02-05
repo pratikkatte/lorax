@@ -18,6 +18,9 @@ from typing import Literal
 # Import our custom vector store
 from vector_store import DocumentVectorStore
 
+# Import API navigator for code generation
+from api_navigator import APINavigator
+
 # Load environment variables
 load_dotenv()
 
@@ -141,6 +144,90 @@ def generate_answer(state: MessagesState):
 # Code Generation Tool
 ######################
 
+# Prompt for API navigation
+API_NAVIGATOR_PROMPT = (
+    "You are helping to generate Python code using the tskit library.\n\n"
+    "User request: {question}\n\n"
+    "Here is the table of contents for the tskit Python API documentation:\n\n"
+    "{toc}\n\n"
+    "Based on the user's request, select the section IDs that would be most helpful "
+    "for generating the code. Return ONLY a comma-separated list of section IDs, "
+    "for example: treesequence-api,tskit.TreeSequence.diversity,loading-and-saving\n\n"
+    "Section IDs to retrieve:"
+)
+
+# Prompt for code generation
+CODE_GENERATION_PROMPT = (
+    "You are generating Python code using the tskit library.\n\n"
+    "User request: {question}\n\n"
+    "Relevant API Documentation:\n"
+    "{api_docs}\n\n"
+    "Generate clean, working Python code (20-50 lines) that:\n"
+    "- Uses exact method signatures from the API documentation above\n"
+    "- Includes appropriate imports (import tskit, etc.)\n"
+    "- Has basic error handling where appropriate\n"
+    "- Is well-commented to explain what each section does\n"
+    "- Follows Python best practices\n\n"
+    "Output ONLY the Python code in a code block, with no additional explanation."
+)
+
+def api_navigator(state: MessagesState):
+    """Navigate API documentation and retrieve relevant sections."""
+    messages = state["messages"]
+
+    # Get the most recent human question
+    human_messages = [m for m in messages if m.type == "human"]
+    question = human_messages[-1].content if human_messages else messages[0].content
+
+    # Initialize API navigator with full path
+    import os
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    api_doc_path = os.path.join(script_dir, "python-api.md")
+    navigator = APINavigator(api_doc_path)
+
+    # Get table of contents
+    toc = navigator.get_toc(max_level=4)
+
+    # Ask LLM to select relevant sections
+    prompt = API_NAVIGATOR_PROMPT.format(question=question, toc=toc)
+    response = response_model.invoke([{"role": "user", "content": prompt}])
+
+    # Parse section IDs from response
+    section_ids_str = response.content.strip()
+    # Clean up the response - remove any markdown formatting
+    section_ids_str = section_ids_str.replace("```", "").strip()
+    section_ids = [sid.strip() for sid in section_ids_str.split(",")]
+
+    # Retrieve sections
+    api_docs = navigator.get_sections(section_ids)
+
+    # Add API docs to message history
+    from langchain_core.messages import AIMessage
+    api_message = AIMessage(content=f"Retrieved API documentation:\n\n{api_docs}")
+
+    return {"messages": messages + [api_message]}
+
+def generate_code(state: MessagesState):
+    """Generate Python code using retrieved API documentation."""
+    messages = state["messages"]
+
+    # Get the original user question
+    human_messages = [m for m in messages if m.type == "human"]
+    question = human_messages[-1].content if human_messages else ""
+
+    # Get the API documentation (last AI message should contain it)
+    api_docs = ""
+    for msg in reversed(messages):
+        if msg.type == "ai" and "Retrieved API documentation" in msg.content:
+            api_docs = msg.content.replace("Retrieved API documentation:\n\n", "")
+            break
+
+    # Generate code
+    prompt = CODE_GENERATION_PROMPT.format(question=question, api_docs=api_docs)
+    response = response_model.invoke([{"role": "user", "content": prompt}])
+
+    return {"messages": [response]}
+
 
 
 
@@ -159,11 +246,14 @@ def run_interactive(graph):
         print("="*70)
 
     print("="*70)
-    print("Welcome to the tskit Documentation Retrieval Agent!")
-    print("Ask questions about tskit and get answers from the documentation.")
+    print("Welcome to the tskit Documentation Retrieval & Code Generation Agent!")
+    print("Ask questions about tskit or request code generation.")
     print("="*70)
+    print("\nCapabilities:")
+    print("  - Answer questions about tskit documentation")
+    print("  - Generate Python code using the tskit API")
     print("\nCommands:")
-    print("  - Type your question naturally")
+    print("  - Type your question or code request naturally")
     print("  - Type 'quit' or 'exit' to end the session")
     print("  - Type 'clear' to start a new conversation")
     print("="*70 + "\n")
@@ -199,12 +289,18 @@ def run_interactive(graph):
             # Stream through the graph and collect final result
             final_state = None
             used_retriever = False
+            used_code_gen = False
             for chunk in graph.stream(conversation_state):
-                # Check if retriever tool was called
+                # Check which node is being executed and display status
                 for node, update in chunk.items():
                     if node == "retrieve":
                         used_retriever = True
                         print("[Searching documentation...]")
+                    elif node == "api_navigator":
+                        used_code_gen = True
+                        print("[Browsing API documentation...]")
+                    elif node == "generate_code":
+                        print("[Generating code...]")
                     final_state = update
 
             # Update conversation state with all messages from the final state
@@ -233,15 +329,22 @@ def run_interactive(graph):
 def main():
     # Initialize vector store using DocumentVectorStore class
     print("Initializing vector store...")
+
+    # Get full paths for data files
+    import os
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    data_path = os.path.join(script_dir, "data-new.txt")
+    store_path = os.path.join(script_dir, "tskit_vectorstore_class")
+
     vector_store = DocumentVectorStore(
-        store_path="tskit_vectorstore_class",
+        store_path=store_path,
         embedding_model="text-embedding-3-small",
         chunk_size=1000,
         chunk_overlap=200
     )
 
     # Load existing or create new vector store
-    vector_store.load_or_create(document_path="data-new.txt")
+    vector_store.load_or_create(document_path=data_path)
     print("✓ Vector store ready")
 
     # Create retriever
@@ -255,6 +358,19 @@ def main():
         retriever=retriever,
     )
 
+    # Create code generator tool (simple tool to signal code generation intent)
+    from langchain_core.tools import tool
+
+    @tool
+    def code_generator_tool(query: str) -> str:
+        """Use this tool when the user explicitly requests Python code generation using tskit.
+        This will retrieve relevant API documentation and generate working code.
+
+        Args:
+            query: The user's code generation request
+        """
+        return f"Initiating code generation for: {query}"
+
     ################
     # Generate Agent
     ################
@@ -262,11 +378,12 @@ def main():
 
     def generate_query_or_respond(state: MessagesState):
         """Call the model to generate a response based on the current state. Given
-        the question, it will decide to retrieve using the retriever tool, or simply respond to the user.
+        the question, it will decide to retrieve using the retriever tool, generate code,
+        or simply respond to the user.
         """
         response = (
             chat_model
-            .bind_tools([retriever_tool]).invoke(state["messages"])  
+            .bind_tools([retriever_tool, code_generator_tool]).invoke(state["messages"])
         )
         return {"messages": [response]}
     
@@ -293,31 +410,45 @@ def main():
     # Define the state graph
     workflow = StateGraph(MessagesState)
 
+    # Combined router function to decide tool path or end
+    def route_after_generate(state: MessagesState):
+        """Route to retrieve, api_navigator, or END based on tool calls."""
+        messages = state["messages"]
+        last_message = messages[-1]
+
+        # Check if there are tool calls
+        if hasattr(last_message, 'tool_calls') and last_message.tool_calls:
+            tool_name = last_message.tool_calls[0]["name"]
+            if tool_name == "code_generator_tool":
+                return "api_navigator"
+            else:
+                return "retrieve"
+
+        # No tool calls means end
+        return END
+
     # Define the nodes we will cycle between
     workflow.add_node(generate_query_or_respond)
     workflow.add_node("retrieve", ToolNode([retriever_tool]))
+    workflow.add_node("api_navigator", api_navigator)
+    workflow.add_node("generate_code", generate_code)
     workflow.add_node(rewrite_question)
     workflow.add_node(generate_answer)
 
     workflow.add_edge(START, "generate_query_or_respond")
 
-    # Decide whether to retrieve
+    # Decide whether to retrieve for Q&A, navigate API for code, or end
     workflow.add_conditional_edges(
-        # Source Node
         "generate_query_or_respond",
-
-        # Condition function (Assess LLM decision (call `retriever_tool` tool or respond to the user)
-        tools_condition,
-
-        # Route mapping
+        route_after_generate,
         {
-            # Translate the condition outputs to nodes in our graph
-            "tools": "retrieve",
+            "retrieve": "retrieve",
+            "api_navigator": "api_navigator",
             END: END,
         },
     )
 
-    # Grade retrieved documents and decide next step
+    # Grade retrieved documents and decide next step (Q&A path)
     workflow.add_conditional_edges(
         # Source Node
         "retrieve",
@@ -332,7 +463,11 @@ def main():
         }
     )
 
-    # Non-conditional Edges (source_node, dest_node)
+    # Code generation path edges
+    workflow.add_edge("api_navigator", "generate_code")
+    workflow.add_edge("generate_code", END)
+
+    # Q&A path edges
     workflow.add_edge("generate_answer", END)
     workflow.add_edge("rewrite_question", "generate_query_or_respond")
 
