@@ -4,13 +4,41 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lorax-arg"
-version = "0.1"
-description = "Lorax single-port app (bundled UI + backend)"
+version = "0.1.1"
+description = "Interactive ARG visualization for genomics"
 readme = "packages/app/README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [{name = "Lorax Team"}]
-keywords = ["lorax", "arg", "visualization", "evolution", "genomics", "biology"]
+keywords = [
+  "lorax",
+  "arg",
+  "ancestral recombination graph",
+  "tree sequence",
+  "visualization",
+  "genomics",
+  "evolution",
+  "phylogenetics",
+  "bioinformatics",
+]
+urls = {
+  Homepage = "https://lorax.in",
+  Documentation = "https://lorax.in",
+  Source = "https://github.com/pratikkatte/lorax",
+  Issues = "https://github.com/pratikkatte/lorax/issues",
+}
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Topic :: Scientific/Engineering :: Bio-Informatics",
+  "Topic :: Scientific/Engineering :: Visualization",
+  "Environment :: Console",
+]
 
 dependencies = [
   "fastapi>=0.100.0",

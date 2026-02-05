@@ -1,92 +1,21 @@
 # lorax-arg
 
-`lorax-arg` is a pip-installable distribution that runs Lorax as a **single-port app**.
-It ships the backend package in the same wheel so the install does not depend on a separate `lorax` PyPI release.
-CLI entrypoint: `lorax` (with `lorax-arg` as an alias).
+**Lorax**—an interactive visualization stack for **ancestral recombination graphs (ARGs)** and **tree sequences** used by genomics and evolutionary biology teams. 
 
-- React UI served at `/`
-- Backend API served at `/api/*`
-- Socket.IO served at `/api/socket.io/`
+- CLI entrypoint: `lorax` (alias: `lorax-arg`)
 
-## Development (monorepo)
+## Key features
+- Interactive ARG visualization for `.trees` / `.tsz` (tskit) and `.csv` metadata
+- GPU-accelerated deck.gl rendering with pan/zoom and genome/time grids
+- Single-port deployment: UI + API + websockets on the same origin
+- Works for local datasets (simple upload) and lab/server deployments
 
-This package can run against the backend Python package from `packages/backend/` during development.
-
-### Build + sync UI assets (for wheel builds)
-
-Build the website with `VITE_API_BASE=/api`, then copy the `dist/` output into the Python package:
+## Quick start (pip)
 
 ```bash
-npm ci
-VITE_API_BASE=/api npm --workspace packages/website run build
-python packages/app/scripts/sync_ui_assets.py
+python -m pip install "lorax-arg>=0.1.1"
+lorax --port 3000
+# open http://localhost:3000
 ```
 
-### Run from source without copying assets
-
-```bash
-export LORAX_APP_STATIC_DIR=packages/website/dist
-python -m pip install -e .
-lorax
-```
-
-## Clean (remove build artifacts)
-
-```bash
-rm -rf build dist *.egg-info
-find packages/app -type d -name __pycache__ -prune -exec rm -rf {} +
-```
-
-## Production build (bundled UI)
-
-Build the UI and bundle it into the Python package, then build the wheel/sdist:
-
-```bash
-npm ci
-VITE_API_BASE=/api npm --workspace packages/website run build
-python packages/app/scripts/sync_ui_assets.py
-
-python -m pip install -U build
-python -m build .
-```
-
-You can also run:
-
-```bash
-lorax build
-```
-
-## Production install
-
-Install the built wheel locally (recommended for production verification):
-
-```bash
-python -m pip install --force-reinstall dist/lorax_arg-*.whl
-lorax
-```
-
-## Publish online (PyPI)
-
-1) Update `version` in the repo-root `pyproject.toml`.
-2) Build fresh artifacts:
-
-```bash
-rm -rf build dist *.egg-info
-npm ci
-VITE_API_BASE=/api npm --workspace packages/website run build
-python packages/app/scripts/sync_ui_assets.py
-python -m pip install -U build twine
-python -m build .
-```
-
-3) Upload to TestPyPI (recommended), then PyPI:
-
-```bash
-python -m twine upload --repository testpypi dist/*
-# verify: python -m pip install -i https://test.pypi.org/simple lorax-arg
-python -m twine upload dist/*
-```
-
-Notes:
-- You need PyPI credentials (or a token) configured in `~/.pypirc` or via `TWINE_USERNAME`/`TWINE_PASSWORD`.
-- Keep `README.md` and metadata in sync with what you want on PyPI.
+From the UI, upload your ARG (`.trees`, `.tsz`) or CSV metadata file. For larger datasets, mount a host directory when running via Docker, or pre-load a file with `lorax --file <path>`.
