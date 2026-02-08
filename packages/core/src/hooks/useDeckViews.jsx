@@ -64,8 +64,23 @@ export function useDeckViews({
   // Genomic Coordinates Integration
   // =========================================================================
 
+  const orthoWidthPx = useMemo(() => {
+    if (!decksize?.width) return null;
+    const widthSpec = viewConfig?.ortho?.width;
+    if (typeof widthSpec === 'string') {
+      const match = widthSpec.match(/^(\d+(?:\.\d+)?)%$/);
+      if (match) {
+        const ratio = Number.parseFloat(match[1]) / 100;
+        if (Number.isFinite(ratio) && ratio > 0) {
+          return decksize.width * ratio;
+        }
+      }
+    }
+    return decksize.width;
+  }, [decksize?.width, viewConfig?.ortho?.width]);
+
   // Check if coordinate management is enabled
-  const coordsEnabled = !!(globalBpPerUnit && genomeLength && decksize?.width);
+  const coordsEnabled = !!(globalBpPerUnit && genomeLength && orthoWidthPx);
 
   // Use the genomic coordinates hook
   const {
@@ -77,7 +92,7 @@ export function useDeckViews({
     isReady: coordsReady
   } = useGenomicCoordinates({
     viewState: viewState?.ortho,
-    deckWidth: decksize?.width,
+    deckWidth: orthoWidthPx,
     globalBpPerUnit,
     genomeLength,
     tsconfigValue,
