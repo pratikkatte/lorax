@@ -24,6 +24,7 @@ export function useDeckLayers({
   genomePositions = [],
   timePositions = [],
   renderData = null,
+  xzoom = null,
   // Optional: per-tree edge coloring (CSV "color by tree")
   colorEdgesByTree = false,
   treeEdgeColors = null,
@@ -159,6 +160,7 @@ export function useDeckLayers({
       result.push(new TreeCompositeLayer({
         id: 'main-trees',
         renderData: renderData || null,
+        xzoom,
         edgeColor,
         edgeWidth: 1,
         tipRadius: 2,
@@ -176,7 +178,7 @@ export function useDeckLayers({
     }
 
     return result;
-  }, [enabledViews, globalBpPerUnit, visibleIntervals, genomePositions, timePositions, renderData, hoveredEdgeIndex, onTipHover, onTipClick, onEdgeHover, onEdgeClick, colorEdgesByTree, treeEdgeColors]);
+  }, [enabledViews, globalBpPerUnit, visibleIntervals, genomePositions, timePositions, renderData, xzoom, hoveredEdgeIndex, onTipHover, onTipClick, onEdgeHover, onEdgeClick, colorEdgesByTree, treeEdgeColors]);
 
   return { layers, layerFilter, clearHover };
 }

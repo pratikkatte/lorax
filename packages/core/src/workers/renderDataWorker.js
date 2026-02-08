@@ -196,6 +196,7 @@ function computeRenderArrays(data) {
       tipPositions: new Float64Array(0),
       tipColors: new Uint8Array(0),
       tipData: [],
+      treeLabelMeta: [],
       edgeData: [],
       edgeCount: 0,
       tipCount: 0,
@@ -246,6 +247,7 @@ function computeRenderArrays(data) {
   pathStartIndicesBuffer[pathStartIndexCount++] = 0;
 
   const tipData = [];
+  const treeLabelMeta = [];
   const edgeData = [];
 
   // Process each tree that has a modelMatrix
@@ -283,6 +285,12 @@ function computeRenderArrays(data) {
     const m = modelMatrix;
     const scaleX = m[0];
     const translateX = m[12];
+
+    treeLabelMeta.push({
+      tree_idx: treeIdx,
+      nodeCount: treeNodes.length,
+      scaleX
+    });
 
     // Generate L-shaped edges
     for (const node of nodeMap.values()) {
@@ -370,6 +378,7 @@ function computeRenderArrays(data) {
     tipPositions: tipBuffer.slice(0, tipOffset),
     tipColors: colorBuffer.slice(0, colorOffset),
     tipData,
+    treeLabelMeta,
     edgeData,
     edgeCount,
     tipCount: tipOffset / 2,

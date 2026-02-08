@@ -6,7 +6,7 @@ import { parseTreeLayoutBuffer, EMPTY_TREE_LAYOUT } from '../utils/arrowUtils.js
  * Groups nodes and mutations by tree_idx and stores in cache.
  */
 function updateCacheFromResponse(cache, parsed) {
-  const { node_id, parent_id, is_tip, tree_idx, x, y, time, mut_x, mut_y, mut_tree_idx, mut_node_id } = parsed;
+  const { node_id, parent_id, is_tip, tree_idx, x, y, time, name, mut_x, mut_y, mut_tree_idx, mut_node_id } = parsed;
 
   // Group node data by tree_idx
   const treeIndices = [...new Set(tree_idx)];
@@ -18,7 +18,8 @@ function updateCacheFromResponse(cache, parsed) {
       is_tip: [],
       x: [],
       y: [],
-      time: []
+      time: [],
+      name: []
     };
 
     for (let i = 0; i < tree_idx.length; i++) {
@@ -29,6 +30,7 @@ function updateCacheFromResponse(cache, parsed) {
         nodeData.x.push(x[i]);
         nodeData.y.push(y[i]);
         nodeData.time.push(time[i]);
+        nodeData.name.push(name?.[i] ?? '');
       }
     }
 
@@ -98,6 +100,7 @@ function buildTreeDataFromCache(cache, displayArray) {
     x: [],
     y: [],
     time: [],
+    name: [],
     mut_x: [],
     mut_y: [],
     mut_tree_idx: [],
@@ -114,6 +117,7 @@ function buildTreeDataFromCache(cache, displayArray) {
       result.x.push(...cached.x);
       result.y.push(...cached.y);
       result.time.push(...cached.time);
+      result.name.push(...(cached.name || []));
       // Fill tree_idx array with the index for each node
       for (let i = 0; i < cached.node_id.length; i++) {
         result.tree_idx.push(idx);

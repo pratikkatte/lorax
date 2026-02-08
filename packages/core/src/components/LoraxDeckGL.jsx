@@ -705,6 +705,7 @@ const LoraxDeckGL = forwardRef(({
     genomePositions,
     timePositions,
     renderData,
+    xzoom,
     colorEdgesByTree,
     treeEdgeColors,
     // Tree interactions
