@@ -1,5 +1,5 @@
 import { CompositeLayer, COORDINATE_SYSTEM } from '@deck.gl/core';
-import { PathLayer, ScatterplotLayer, IconLayer, TextLayer } from '@deck.gl/layers';
+import { PathLayer, ScatterplotLayer, IconLayer } from '@deck.gl/layers';
 
 /**
  * TreeCompositeLayer - Renders trees using pre-computed render data.
@@ -25,9 +25,6 @@ export class TreeCompositeLayer extends CompositeLayer {
     mutationColor: [255, 0, 0, 220],
     mutationRadius: 3,
     showMutations: true,
-    // Text label props
-    xzoom: null,
-    labelVisibilityThreshold: 0.2,
     // Interaction
     pickable: false,
     onTipClick: null,
@@ -67,8 +64,7 @@ export class TreeCompositeLayer extends CompositeLayer {
       // Highlight data for metadata value clicks
       highlightData,
       // Lineage path data
-      lineageData,
-      treeLabelMeta
+      lineageData
     } = processedData;
 
     const {
@@ -78,8 +74,6 @@ export class TreeCompositeLayer extends CompositeLayer {
       mutationColor,
       mutationRadius,
       showMutations,
-      xzoom,
-      labelVisibilityThreshold,
       pickable,
       onTipClick,
       onTipHover,
@@ -258,48 +252,6 @@ export class TreeCompositeLayer extends CompositeLayer {
         coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
         pickable: false
       }));
-    }
-
-    if (tipData?.length > 0 && treeLabelMeta?.length > 0 && Number.isFinite(xzoom)) {
-      const treeDisplayMap = new Map();
-      for (const meta of treeLabelMeta) {
-        const denom = (2 ** xzoom) * meta.scaleX;
-        if (denom > 0) {
-          const proportion = meta.nodeCount / denom;
-          treeDisplayMap.set(meta.tree_idx, proportion < labelVisibilityThreshold);
-        }
-      }
-
-      const labelData = tipData.filter(d => treeDisplayMap.get(d.tree_idx));
-      if (labelData.length > 0) {
-        layers.push(new TextLayer({
-          id: `${this.props.id}-tip-labels`,
-          data: labelData,
-          getPosition: d => d.position,
-          getText: d => d.name,
-          fontFamily: "'Inter', 'Roboto', 'Arial', sans-serif",
-          getColor: [10, 10, 10, 255],
-          getBackgroundColor: [255, 255, 255, 230],
-          getPixelOffset: [0, 6],
-          backgroundPadding: [4, 2],
-          shadowColor: [100, 100, 100, 180],
-          shadowBlur: 2,
-          sizeUnits: 'pixels',
-          getSize: 6 + Math.log2(Math.max(xzoom, 1)),
-          getAlignmentBaseline: 'center',
-          getTextAnchor: 'end',
-          getAngle: 90,
-          coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
-          pickable: false,
-          parameters: { depthTest: false },
-          updateTriggers: {
-            data: [labelData, xzoom, treeLabelMeta],
-            getText: [labelData],
-            getPosition: [labelData],
-            getSize: [xzoom]
-          }
-        }));
-      }
     }
 
     return layers;
