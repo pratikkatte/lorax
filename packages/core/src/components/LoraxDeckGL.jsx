@@ -133,7 +133,7 @@ const LoraxDeckGL = forwardRef(({
   const enabledViews = getEnabledViews(viewConfig);
 
   // 2. Controller setup (zoom axis and pan direction state)
-  const { zoomAxis, panDirection } = useDeckController();
+  const { zoomAxis, panDirection, wheelPanDeltaX } = useDeckController();
 
   // 3. Get config + filter values from context
   const {
@@ -185,6 +185,7 @@ const LoraxDeckGL = forwardRef(({
     enabledViews,
     zoomAxis,
     panDirection,
+    wheelPanDeltaX,
     globalBpPerUnit,
     genomeLength,
     tsconfigValue: tsconfig?.value

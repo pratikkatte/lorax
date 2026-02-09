@@ -10,16 +10,18 @@ import { setGlobalControllers } from '../controllers/MyOrthographicController.js
 export function useDeckController() {
   const [zoomAxis, setZoomAxis] = useState('Y');
   const [panDirection, setPanDirection] = useState(null);
+  const [wheelPanDeltaX, setWheelPanDeltaX] = useState(0);
 
   // Set global controllers on mount
   useEffect(() => {
-    setGlobalControllers(setZoomAxis, setPanDirection);
+    setGlobalControllers(setZoomAxis, setPanDirection, setWheelPanDeltaX);
   }, []);
 
   return {
     zoomAxis,
     setZoomAxis,
     panDirection,
-    setPanDirection
+    setPanDirection,
+    wheelPanDeltaX
   };
 }

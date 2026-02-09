@@ -1,8 +1,7 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { OrthographicView } from '@deck.gl/core';
-import { MyOrthographicController } from '../controllers/MyOrthographicController.js';
+import { MyOrthographicController, getWheelPanDeltaX, getWheelPanDeltaY } from '../controllers/MyOrthographicController.js';
 import { INITIAL_VIEW_STATE, VIEW_ID_MAP, CONFIG_KEY_MAP } from '../constants/deckViews.js';
-import { getPanStep } from '../utils/viewStateUtils.js';
 import { useGenomicCoordinates } from './useGenomicCoordinates.jsx';
 
 /**
@@ -13,6 +12,7 @@ import { useGenomicCoordinates } from './useGenomicCoordinates.jsx';
  * @param {string[]} params.enabledViews - Array of enabled view IDs
  * @param {string} params.zoomAxis - Current zoom axis ('X', 'Y', or 'all')
  * @param {string|null} params.panDirection - Current pan direction ('L', 'R', or null)
+ * @param {number} params.wheelPanDeltaX - Latest wheel horizontal delta (trackpad)
  * @param {number} params.globalBpPerUnit - Base pairs per world unit (from config)
  * @param {number} params.genomeLength - Total genome length in base pairs (from config)
  * @param {[number, number]} params.tsconfigValue - Backend's initial_position [startBp, endBp]
@@ -23,6 +23,7 @@ export function useDeckViews({
   enabledViews,
   zoomAxis,
   panDirection,
+  wheelPanDeltaX,
   globalBpPerUnit = null,
   genomeLength = null,
   tsconfigValue = null
@@ -235,8 +236,6 @@ export function useDeckViews({
    */
   const handleViewStateChange = useCallback(({ viewState: newViewState, viewId, oldViewState }) => {
     if (!viewId || !newViewState || !oldViewState) return;
-
-
     setViewState((prev) => {
       let zoom = [...(oldViewState?.zoom || [0, 0])];
       let target = [...(oldViewState?.target || [0, 0])];
@@ -249,33 +248,42 @@ export function useDeckViews({
           zoom[0] = oldViewState.zoom[0];
           target[0] = oldViewState.target[0];
         } else if (zoomAxis === 'X') {
-          zoom[0] = newViewState.zoom[0];
-          target[0] = newViewState.target[0];
-          zoom[1] = oldViewState.zoom[1];
-          target[1] = oldViewState.target[1];
+          const liveDeltaX = getWheelPanDeltaX();
+          const liveDeltaY = getWheelPanDeltaY();
+          const absDeltaX = Math.abs(liveDeltaX || 0);
+          const absDeltaY = Math.abs(liveDeltaY || 0);
+          if (absDeltaX > 0 && absDeltaX >= absDeltaY) {
+            // Treat as horizontal pan: keep zoom, move target X
+            const zoomX = oldViewState.zoom?.[0] ?? 0;
+            const worldDeltaX = (liveDeltaX || 0) / Math.pow(2, zoomX || 0);
+            target[0] = oldViewState.target[0] + worldDeltaX;
+            target[1] = oldViewState.target[1];
+            zoom = oldViewState.zoom;
+          } else {
+            // Treat as X zoom
+            zoom[0] = newViewState.zoom[0];
+            target[0] = newViewState.target[0];
+            zoom[1] = oldViewState.zoom[1];
+            target[1] = oldViewState.target[1];
+          }
+        } else {
+          zoom = newViewState.zoom;
+          target = newViewState.target;
         }
-      } else if (panDirection === 'L') {
-        // Pan left
-        const panStep = getPanStep({
-          zoomX: zoom[0],
-          baseStep: 8,
-          sensitivity: zoom[0] >= 8 || zoom[0] < 0 ? 0.9 : 0.7
-        });
-        target[0] = target[0] - panStep;
-      } else if (panDirection === 'R') {
-        // Pan right
-        const panStep = getPanStep({
-          zoomX: zoom[0],
-          baseStep: 8,
-          sensitivity: zoom[0] >= 8 || zoom[0] < 0 ? 0.9 : 0.7
-        });
-        target[0] = target[0] + panStep;
+      } else if (panDirection === 'L' || panDirection === 'R') {
+        // Horizontal pan: use wheel delta, lock Y and zoom
+        const zoomX = oldViewState.zoom?.[0] ?? 0;
+        const liveDeltaX = getWheelPanDeltaX();
+        const deltaX = Number.isFinite(wheelPanDeltaX) ? wheelPanDeltaX : liveDeltaX;
+        const worldDeltaX = deltaX / Math.pow(2, zoomX || 0);
+        target[0] = oldViewState.target[0] + worldDeltaX;
+        target[1] = oldViewState.target[1];
+        zoom = oldViewState.zoom;
       } else {
-        // Default: use new values
+        // Default: use new values, keep Y locked
         zoom = newViewState.zoom;
         target = [newViewState.target[0], oldViewState.target[1]];
       }
-
       // Bound y-limit to [0, 1]
       if (target[1] < 0 || target[1] > 1) {
         target[1] = oldViewState.target[1];
@@ -325,7 +333,7 @@ export function useDeckViews({
 
       return newViewStates;
     });
-  }, [zoomAxis, panDirection]);
+  }, [zoomAxis, panDirection, wheelPanDeltaX]);
 
   /**
    * Reset view to initial Y position (keep X position)
