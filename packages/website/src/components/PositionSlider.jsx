@@ -40,6 +40,8 @@ export default function PositionSlider({
   const [hasChanges, setHasChanges] = useState(false);
   const [showFileInfo, setShowFileInfo] = useState(false);
   const fileInfoRef = useRef(null);
+  const valueRef = useRef(value);
+  const panIntervalRef = useRef(null);
 
   // Sync local state with prop value
   useEffect(() => {
@@ -47,6 +49,7 @@ export default function PositionSlider({
       setStart(value[0]);
       setEnd(value[1]);
     }
+    valueRef.current = value;
   }, [value]);
 
   // Update URL params when value changes
@@ -107,23 +110,62 @@ export default function PositionSlider({
     }
   };
 
-  const handlePan = useCallback((direction) => {
-    if (!value || !genomeLength) return;
+  const getPannedRange = useCallback(
+    (currentValue, direction) => {
+      if (!currentValue || !genomeLength) return null;
 
-    const range = value[1] - value[0];
-    const panAmount = Math.floor(range * 0.2); // Pan 20% of current view
+      const range = currentValue[1] - currentValue[0];
+      const panAmount = Math.floor(range * 0.01); // Pan 20% of current view
 
-    let newStart, newEnd;
-    if (direction === 'L') {
-      newStart = Math.max(0, value[0] - panAmount);
-      newEnd = newStart + range;
-    } else {
-      newEnd = Math.min(genomeLength, value[1] + panAmount);
-      newStart = newEnd - range;
-    }
+      let newStart, newEnd;
+      if (direction === 'L') {
+        newStart = Math.max(0, currentValue[0] - panAmount);
+        newEnd = newStart + range;
+      } else {
+        newEnd = Math.min(genomeLength, currentValue[1] + panAmount);
+        newStart = newEnd - range;
+      }
 
-    onChange?.([newStart, newEnd]);
-  }, [value, genomeLength, onChange]);
+      return [newStart, newEnd];
+    },
+    [genomeLength]
+  );
+
+  const handlePan = useCallback(
+    (direction) => {
+      const currentValue = valueRef.current;
+      const nextRange = getPannedRange(currentValue, direction);
+      if (!nextRange) return;
+      onChange?.(nextRange);
+    },
+    [getPannedRange, onChange]
+  );
+
+  const startPan = useCallback(
+    (direction) => {
+      if (panIntervalRef.current) return;
+      handlePan(direction);
+      panIntervalRef.current = setInterval(() => {
+        handlePan(direction);
+      }, 16); // ~60 FPS
+    },
+    [handlePan]
+  );
+
+  const stopPan = useCallback(() => {
+    if (!panIntervalRef.current) return;
+    clearInterval(panIntervalRef.current);
+    panIntervalRef.current = null;
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (panIntervalRef.current) {
+        clearInterval(panIntervalRef.current);
+        panIntervalRef.current = null;
+      }
+    };
+  }, []);
 
   // Reset ONLY the vertical (Y) view, keeping the current genomic window (X) intact.
   const handleReset = useCallback(() => {
@@ -202,6 +244,12 @@ export default function PositionSlider({
       {/* Pan left button */}
       <button
         onClick={() => handlePan('L')}
+        onMouseDown={() => startPan('L')}
+        onMouseUp={stopPan}
+        onMouseLeave={stopPan}
+        onTouchStart={() => startPan('L')}
+        onTouchEnd={stopPan}
+        onTouchCancel={stopPan}
         className="px-2 py-1 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded transition-colors"
         title="Pan left"
       >
@@ -248,6 +296,12 @@ export default function PositionSlider({
       {/* Pan right button */}
       <button
         onClick={() => handlePan('R')}
+        onMouseDown={() => startPan('R')}
+        onMouseUp={stopPan}
+        onMouseLeave={stopPan}
+        onTouchStart={() => startPan('R')}
+        onTouchEnd={stopPan}
+        onTouchCancel={stopPan}
         className="px-2 py-1 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded transition-colors"
         title="Pan right"
       >
