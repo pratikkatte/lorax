@@ -176,8 +176,8 @@ substitutions:
   # Manual/temporary overrides:
   # - _FORCE_WEBSITE=true: build website even if change detection can't run/trigger
   # - _FORCE_DEPLOY_WEBSITE=true: deploy website even if BRANCH_NAME != main
-  _FORCE_WEBSITE: "false"
-  _FORCE_DEPLOY_WEBSITE: "false"
+  _FORCE_WEBSITE: "true"
+  _FORCE_DEPLOY_WEBSITE: "true"
 
 options:
   logging: CLOUD_LOGGING_ONLY

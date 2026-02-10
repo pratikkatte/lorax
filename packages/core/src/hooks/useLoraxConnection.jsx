@@ -1,4 +1,4 @@
-import { useEffect, useRef, useMemo, useCallback } from "react";
+import { useEffect, useRef, useMemo, useCallback, useState } from "react";
 import * as arrow from "apache-arrow";
 import { getProjects as getProjectsApi, uploadFileToBackend as uploadFileApi } from "../services/api.js";
 import { useSession } from "./useSession.jsx";
@@ -67,6 +67,18 @@ export function useLoraxConnection({ apiBase, isProd = false }) {
     }, 5000);
     return () => clearInterval(interval);
   }, [isConnected, emit]);
+
+  // Compare-trees-result: fire-and-forget responses from compare_trees_event
+  const [compareTreesResult, setCompareTreesResult] = useState(null);
+  useEffect(() => {
+    if (!isConnected || !socketRef.current) return;
+    const handler = (msg) => {
+      console.log('compareTreesResult', msg);
+      setCompareTreesResult(msg);
+    };
+    on("compare-trees-result", handler);
+    return () => off("compare-trees-result", handler);
+  }, [isConnected, on, off]);
 
   // Query file loading
   const queryFile = useCallback((payload) => {
@@ -352,6 +364,20 @@ export function useLoraxConnection({ apiBase, isProd = false }) {
   }, [emit, once, off, socketRef, sidRef]);
 
   /**
+   * Emit visible tree indices to backend when compare mode is enabled.
+   * Fire-and-forget; no response handler.
+   * @param {number[]} treeIndices - Tree indices to send
+   */
+  const emitCompareTrees = useCallback((treeIndices) => {
+    console.log('emitCompareTrees', treeIndices);
+    if (!socketRef.current) return;
+    emit("compare_trees_event", {
+      lorax_sid: sidRef.current,
+      tree_indices: Array.isArray(treeIndices) ? treeIndices : []
+    });
+  }, [emit, socketRef, sidRef]);
+
+  /**
    * Search mutations by position with configurable range.
    * Returns mutations sorted by distance from the searched position.
    * @param {number} position - Center position to search around (bp)
@@ -588,7 +614,9 @@ export function useLoraxConnection({ apiBase, isProd = false }) {
       queryMetadataSearch,
       loraxSid,
       getProjects,
-      uploadFileToBackend
+      uploadFileToBackend,
+      emitCompareTrees,
+      compareTreesResult
     }),
     [
       statusMessage,
@@ -606,7 +634,9 @@ export function useLoraxConnection({ apiBase, isProd = false }) {
       queryMetadataSearch,
       loraxSid,
       getProjects,
-      uploadFileToBackend
+      uploadFileToBackend,
+      emitCompareTrees,
+      compareTreesResult
     ]
   );
 }

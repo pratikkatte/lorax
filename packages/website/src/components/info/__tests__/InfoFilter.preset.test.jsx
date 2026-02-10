@@ -54,6 +54,7 @@ const renderWithLorax = ({
       loraxOverrides.metadataColors ?? {}
     );
     const [displayLineagePaths, setDisplayLineagePaths] = React.useState(false);
+    const [compareMode, setCompareMode] = React.useState(false);
 
     const value = {
       tsconfig: loraxOverrides.tsconfig ?? TEST_CONFIG,
@@ -68,6 +69,8 @@ const renderWithLorax = ({
       loadedMetadata: loraxOverrides.loadedMetadata ?? new Map(),
       displayLineagePaths,
       setDisplayLineagePaths,
+      compareMode,
+      setCompareMode,
       searchTerm: '',
       setSearchTerm: vi.fn(),
       highlightedMetadataValue: null,

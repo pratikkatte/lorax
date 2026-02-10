@@ -64,7 +64,9 @@ export class TreeCompositeLayer extends CompositeLayer {
       // Highlight data for metadata value clicks
       highlightData,
       // Lineage path data
-      lineageData
+      lineageData,
+      // Compare edges (inserted/removed between trees)
+      compareEdgesData
     } = processedData;
 
     const {
@@ -197,6 +199,24 @@ export class TreeCompositeLayer extends CompositeLayer {
         data: lineageData,
         getPath: d => d.path,
         getColor: d => d.color || [255, 200, 0, 200],
+        getWidth: 2,
+        fp64: true,
+        widthUnits: 'pixels',
+        coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+        parameters: { depthTest: false },
+        pickable: false,
+        capRounded: false,
+        jointRounded: false
+      }));
+    }
+
+    // Compare edges (inserted=green, removed=red)
+    if (compareEdgesData && compareEdgesData.length > 0) {
+      layers.push(new PathLayer({
+        id: `${this.props.id}-compare-edges`,
+        data: compareEdgesData,
+        getPath: d => d.path,
+        getColor: d => d.color || [0, 255, 0, 200],
         getWidth: 2,
         fp64: true,
         widthUnits: 'pixels',

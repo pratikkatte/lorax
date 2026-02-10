@@ -13,6 +13,7 @@ from lorax.handlers import (
     search_nodes_in_trees,
     get_highlight_positions,
     get_multi_value_highlight_positions,
+    get_compare_trees_diff,
 )
 from lorax.cache import get_file_context
 from lorax.sockets.decorators import require_session
@@ -533,3 +534,41 @@ def register_node_search_events(sio):
         except Exception as e:
             print(f"❌ Search metadata multi error: {e}")
             await sio.emit("search-metadata-multi-result", {"error": str(e)}, to=sid)
+
+    @sio.event
+    async def compare_trees_event(sid, data):
+        """Socket event for compare mode: receive visible tree indices from frontend.
+
+        data: {
+            lorax_sid: str,
+            tree_indices: [int]   # Visible tree indices
+        }
+        """
+        try:
+            lorax_sid = data.get("lorax_sid")
+            session = await require_session(lorax_sid, sid, sio)
+            if not session:
+                return
+            tree_indices = data.get("tree_indices", [])
+            if not session.file_path:
+                await sio.emit(
+                    "compare-trees-result",
+                    {"comparisons": [], "error": ERROR_NO_FILE_LOADED},
+                    to=sid,
+                )
+                return
+
+            result = await get_compare_trees_diff(
+                session.file_path,
+                tree_indices,
+                lorax_sid,
+                tree_graph_cache,
+            )
+            await sio.emit("compare-trees-result", result, to=sid)
+        except Exception as e:
+            print(f"❌ Compare trees event error: {e}")
+            await sio.emit(
+                "compare-trees-result",
+                {"comparisons": [], "error": str(e)},
+                to=sid,
+            )

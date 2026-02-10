@@ -76,7 +76,9 @@ export default function InfoFilter({
     highlightedMetadataValue = null,
     setHighlightedMetadataValue,
     displayLineagePaths = false,
-    setDisplayLineagePaths
+    setDisplayLineagePaths,
+    compareMode = false,
+    setCompareMode
   } = useLorax();
 
   // Note: keep this component stateless at render time.
@@ -389,6 +391,22 @@ export default function InfoFilter({
                 }
               }}
               title="Display Lineage Paths"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-500">Compare</span>
+            <button
+              type="button"
+              className={`w-4 h-4 rounded-full border-2 transition-colors ${compareMode
+                ? 'bg-gray-700 border-gray-700'
+                : 'bg-white border-gray-400'
+              }`}
+              onClick={() => {
+                if (setCompareMode) {
+                  setCompareMode(prev => !prev);
+                }
+              }}
+              title="Compare"
             />
           </div>
         </div>

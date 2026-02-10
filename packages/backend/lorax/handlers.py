@@ -678,6 +678,98 @@ async def get_or_construct_tree_graph(
     return tree_graph
 
 
+def _edges_from_tree_graph(tg) -> set:
+    """Extract (parent, child) edge set from TreeGraph."""
+    edges = set()
+    for n in np.where(tg.in_tree)[0]:
+        p = int(tg.parent[n])
+        if p >= 0:
+            edges.add((p, int(n)))
+    return edges
+
+
+def _edge_with_coords(tg, parent: int, child: int) -> dict:
+    """Get edge dict with x,y coordinates (frontend convention: x=time, y=layout)."""
+    return {
+        "parent": parent,
+        "child": child,
+        "parent_x": float(tg.y[parent]),
+        "parent_y": float(tg.x[parent]),
+        "child_x": float(tg.y[child]),
+        "child_y": float(tg.x[child]),
+    }
+
+
+async def get_compare_trees_diff(
+    file_path: str,
+    tree_indices: list,
+    session_id: str,
+    tree_graph_cache,
+) -> dict:
+    """
+    Compare consecutive trees and return inserted/removed edges with coordinates.
+
+    Args:
+        file_path: Path to tree sequence file
+        tree_indices: List of visible tree indices
+        session_id: Session ID for cache key
+        tree_graph_cache: TreeGraphCache instance
+
+    Returns:
+        dict with comparisons: [{prev_idx, next_idx, inserted: [...], removed: [...]}]
+    """
+    from lorax.sockets.utils import is_csv_session_file
+
+    if not tree_indices or len(tree_indices) < 2:
+        return {"comparisons": []}
+
+    ctx = await get_file_context(file_path)
+    if ctx is None:
+        return {"comparisons": [], "error": "No file loaded"}
+
+    ts = ctx.tree_sequence
+    if is_csv_session_file(file_path) or isinstance(ts, pd.DataFrame):
+        return {"comparisons": [], "error": "CSV not supported"}
+
+    comparisons = []
+    indices = [int(i) for i in tree_indices if 0 <= int(i) < ts.num_trees]
+
+    for i in range(len(indices) - 1):
+        prev_idx = indices[i]
+        next_idx = indices[i + 1]
+
+        tg_prev = await get_or_construct_tree_graph(
+            file_path, prev_idx, session_id, tree_graph_cache
+        )
+        tg_next = await get_or_construct_tree_graph(
+            file_path, next_idx, session_id, tree_graph_cache
+        )
+        if tg_prev is None or tg_next is None:
+            continue
+
+        edges_prev = _edges_from_tree_graph(tg_prev)
+        edges_next = _edges_from_tree_graph(tg_next)
+
+        inserted = edges_next - edges_prev
+        removed = edges_prev - edges_next
+
+        inserted_list = [
+            _edge_with_coords(tg_next, p, c) for p, c in inserted
+        ]
+        removed_list = [
+            _edge_with_coords(tg_prev, p, c) for p, c in removed
+        ]
+
+        comparisons.append({
+            "prev_idx": prev_idx,
+            "next_idx": next_idx,
+            "inserted": inserted_list,
+            "removed": removed_list,
+        })
+
+    return {"comparisons": comparisons}
+
+
 async def ensure_trees_cached(
     file_path: str,
     tree_indices: list,

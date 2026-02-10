@@ -145,6 +145,8 @@ const LoraxDeckGL = forwardRef(({
     queryTreeLayout,
     queryHighlightPositions,
     queryMultiValueSearch,
+    emitCompareTrees,
+    compareTreesResult,
     isConnected,
     // Metadata + filter (when enableMetadataFilter=true)
     metadataArrays,
@@ -153,7 +155,8 @@ const LoraxDeckGL = forwardRef(({
     enabledValues,
     highlightedMetadataValue,
     searchTags,  // Multi-value search tags
-    displayLineagePaths  // Lineage display toggle
+    displayLineagePaths,  // Lineage display toggle
+    compareMode,
   } = useLorax();
 
   // Stabilize population filter to avoid rerunning downstream effects every render
@@ -346,6 +349,7 @@ const LoraxDeckGL = forwardRef(({
   const [multiHighlightData, setMultiHighlightData] = useState(null);
   const multiHighlightRequestRef = useRef(0);
   const multiHighlightDebounceRef = useRef(null);
+  const compareDebounceRef = useRef(null);
 
   // Fetch multi-value highlight positions when searchTags or visible trees change
   useEffect(() => {
@@ -370,7 +374,7 @@ const LoraxDeckGL = forwardRef(({
       // Track this request to avoid race conditions
       const requestId = ++multiHighlightRequestRef.current;
 
-      queryMultiValueSearch(selectedColorBy, searchTags, visibleTreeIndices, displayLineagePaths)
+      queryMultiValueSearch(selectedColorBy, searchTags, displayArray, displayLineagePaths)
         .then(result => {
           // Ignore stale responses
           if (requestId !== multiHighlightRequestRef.current) return;
@@ -389,6 +393,28 @@ const LoraxDeckGL = forwardRef(({
       }
     };
   }, [searchTags, selectedColorBy, visibleTreeIndices, queryMultiValueSearch, isConnected, displayLineagePaths]);
+
+  // Emit visible tree indices when compare mode is enabled (debounced)
+  useEffect(() => {
+    if (compareDebounceRef.current) {
+      clearTimeout(compareDebounceRef.current);
+      compareDebounceRef.current = null;
+    }
+    if (!compareMode || !isConnected || !emitCompareTrees) {
+      return;
+    }
+    if (visibleTreeIndices.length === 0) {
+      return;
+    }
+    compareDebounceRef.current = setTimeout(() => {
+      emitCompareTrees(displayArray);
+    }, 150);
+    return () => {
+      if (compareDebounceRef.current) {
+        clearTimeout(compareDebounceRef.current);
+      }
+    };
+  }, [compareMode, visibleTreeIndices, displayArray, emitCompareTrees, isConnected]);
 
   // Compute multi-highlight data with world coordinates and per-value colors
   const computedMultiHighlightData = useMemo(() => {
@@ -590,6 +616,65 @@ const LoraxDeckGL = forwardRef(({
     return lineages;
   }, [displayLineagePaths, multiHighlightData, localBins, nodePositionsLookup, metadataColors, selectedColorBy]);
 
+  // Compute compare edges (inserted/removed) from compare_trees result
+  const computedCompareEdgesData = useMemo(() => {
+    if (!compareMode || !compareTreesResult?.comparisons?.length || !localBins) {
+      return [];
+    }
+
+    const edges = [];
+    const insertedColor = [0, 255, 0, 200];
+    const removedColor = [255, 0, 0, 200];
+
+    for (const comp of compareTreesResult.comparisons) {
+      const { prev_idx: prevIdx, next_idx: nextIdx, inserted = [], removed = [] } = comp;
+
+      // Inserted edges: use next_idx modelMatrix
+      const nextBin = localBins.get(nextIdx);
+      if (nextBin?.modelMatrix) {
+        const m = nextBin.modelMatrix;
+        const scaleX = m[0];
+        const scaleY = m[5];
+        const translateX = m[12];
+        const translateY = m[13];
+
+        for (const e of inserted) {
+          const parentWorldX = e.parent_y * scaleX + translateX;
+          const parentWorldY = e.parent_x * scaleY + translateY;
+          const childWorldX = e.child_y * scaleX + translateX;
+          const childWorldY = e.child_x * scaleY + translateY;
+          edges.push({
+            path: [[parentWorldX, parentWorldY], [childWorldX, parentWorldY], [childWorldX, childWorldY]],
+            color: insertedColor
+          });
+        }
+      }
+
+      // Removed edges: use prev_idx modelMatrix
+      const prevBin = localBins.get(prevIdx);
+      if (prevBin?.modelMatrix) {
+        const m = prevBin.modelMatrix;
+        const scaleX = m[0];
+        const scaleY = m[5];
+        const translateX = m[12];
+        const translateY = m[13];
+
+        for (const e of removed) {
+          const parentWorldX = e.parent_y * scaleX + translateX;
+          const parentWorldY = e.parent_x * scaleY + translateY;
+          const childWorldX = e.child_y * scaleX + translateX;
+          const childWorldY = e.child_x * scaleY + translateY;
+          edges.push({
+            path: [[parentWorldX, parentWorldY], [childWorldX, parentWorldY], [childWorldX, childWorldY]],
+            color: removedColor
+          });
+        }
+      }
+    }
+
+    return edges;
+  }, [compareMode, compareTreesResult, localBins]);
+
   // Merge highlight data into render data
   // Multi-value search takes priority over single-value highlight
   const renderData = useMemo(() => {
@@ -620,8 +705,13 @@ const LoraxDeckGL = forwardRef(({
       result.lineageData = computedLineageData;
     }
 
+    // Add compare edges when compare mode is on
+    if (computedCompareEdgesData && computedCompareEdgesData.length > 0) {
+      result.compareEdgesData = computedCompareEdgesData;
+    }
+
     return result;
-  }, [baseRenderData, computedHighlightData, computedMultiHighlightData, computedMutationHighlightData, computedLineageData]);
+  }, [baseRenderData, computedHighlightData, computedMultiHighlightData, computedMutationHighlightData, computedLineageData, computedCompareEdgesData]);
 
   // 7. Compute genome position tick marks
   const genomePositions = useGenomePositions(genomicCoords);
