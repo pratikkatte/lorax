@@ -73,9 +73,12 @@ const Settings: React.FC<SettingsProps> = ({
 
       {/* Content area */}
       <div className="flex-1 overflow-y-auto p-4 custom-scrollbar space-y-4">
-        <div className="bg-white rounded-lg p-4 border border-slate-200">
-          <label className="flex items-center gap-2">
-            <span className="text-sm font-semibold text-slate-700">Tree Background</span>
+        <div className="bg-white rounded-lg overflow-hidden border border-slate-200 shadow-sm">
+          <div className="border-l-4 border-slate-400 flex items-center justify-between gap-4 pl-3 pr-4 py-3">
+            <div>
+              <h3 className="text-sm font-semibold text-slate-700 tracking-tight">Tree Background</h3>
+              <p className="text-xs text-slate-500 mt-1 leading-relaxed">Color of the area behind tree nodes.</p>
+            </div>
             <input
               type="color"
               value={rgbToHex(polygonFillColor[0], polygonFillColor[1], polygonFillColor[2])}
@@ -83,13 +86,16 @@ const Settings: React.FC<SettingsProps> = ({
                 const [r, g, b] = hexToRgb(e.target.value);
                 setPolygonFillColor([r, g, b, polygonFillColor[3]]);
               }}
-              className="w-6 h-6 cursor-pointer rounded border-0 p-0 bg-transparent [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:rounded [&::-moz-color-swatch]:rounded [&::-moz-color-swatch]:border-0"
+              className="shrink-0 w-6 h-6 cursor-pointer rounded-full border border-slate-300 p-0.5 bg-white shadow-inner [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:rounded-full [&::-moz-color-swatch]:rounded-full [&::-moz-color-swatch]:border-0"
             />
-          </label>
+          </div>
         </div>
-        <div className="bg-white rounded-lg p-4 border border-slate-200">
-          <label className="flex items-center gap-2">
-            <span className="text-sm font-semibold text-slate-700">Edges</span>
+        <div className="bg-white rounded-lg overflow-hidden border border-slate-200 shadow-sm">
+          <div className="border-l-4 border-slate-400 flex items-center justify-between gap-4 pl-3 pr-4 py-3">
+            <div>
+              <h3 className="text-sm font-semibold text-slate-700 tracking-tight">Tree Edges</h3>
+              <p className="text-xs text-slate-500 mt-1 leading-relaxed">Color of the edges connecting nodes.</p>
+            </div>
             <input
               type="color"
               value={rgbToHex(edgeColor[0], edgeColor[1], edgeColor[2])}
@@ -97,21 +103,24 @@ const Settings: React.FC<SettingsProps> = ({
                 const [r, g, b] = hexToRgb(e.target.value);
                 setEdgeColor([r, g, b, edgeColor[3]]);
               }}
-              className="w-6 h-6 cursor-pointer rounded border-0 p-0 bg-transparent [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:rounded [&::-moz-color-swatch]:rounded [&::-moz-color-swatch]:border-0"
+              className="shrink-0 w-6 h-6 cursor-pointer rounded-full border border-slate-300 p-0.5 bg-white shadow-inner [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:rounded-full [&::-moz-color-swatch]:rounded-full [&::-moz-color-swatch]:border-0"
             />
-          </label>
+          </div>
         </div>
-        <div className="bg-white rounded-lg p-4 border border-slate-200">
-          <h3 className="text-sm font-semibold text-slate-700 mb-3">Compare Topology</h3>
-          <div className="flex gap-6">
-            <label className="flex items-center gap-2">
+        <div className="bg-white rounded-lg overflow-hidden border border-slate-200 shadow-sm">
+          <div className="border-l-4 border-slate-400 pl-3 pr-4 pt-4 pb-3">
+            <h3 className="text-sm font-semibold text-slate-700 tracking-tight">Compare Topology</h3>
+            <p className="text-xs text-slate-500 mt-1 leading-relaxed">Control visibility of added and removed edges during topology comparison.</p>
+          </div>
+          <div className="flex gap-3 px-4 pb-4 pt-1">
+            <label className="flex flex-1 items-center gap-3 rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2.5 transition-colors hover:bg-slate-100/80 cursor-pointer">
               <input
                 type="checkbox"
                 checked={showCompareInsertion}
                 onChange={(e) => setShowCompareInsertion(e.target.checked)}
-                className="rounded border-slate-300"
+                className="rounded border-slate-300 text-slate-700 focus:ring-slate-400"
               />
-              <span className="text-sm text-slate-600">Insertion</span>
+              <span className="text-sm font-medium text-slate-600">Added Edges</span>
               <input
                 type="color"
                 value={rgbToHex(compareInsertionColor[0], compareInsertionColor[1], compareInsertionColor[2])}
@@ -119,17 +128,17 @@ const Settings: React.FC<SettingsProps> = ({
                   const [r, g, b] = hexToRgb(e.target.value);
                   setCompareInsertionColor([r, g, b, compareInsertionColor[3]]);
                 }}
-                className="w-6 h-6 cursor-pointer rounded border-0 p-0 bg-transparent [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:rounded [&::-moz-color-swatch]:rounded [&::-moz-color-swatch]:border-0"
+                className="ml-auto w-6 h-6 cursor-pointer rounded-full border border-slate-300 p-0.5 bg-white shadow-inner [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:rounded-full [&::-moz-color-swatch]:rounded-full [&::-moz-color-swatch]:border-0"
               />
             </label>
-            <label className="flex items-center gap-2">
+            <label className="flex flex-1 items-center gap-3 rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2.5 transition-colors hover:bg-slate-100/80 cursor-pointer">
               <input
                 type="checkbox"
                 checked={showCompareDeletion}
                 onChange={(e) => setShowCompareDeletion(e.target.checked)}
-                className="rounded border-slate-300"
+                className="rounded border-slate-300 text-slate-700 focus:ring-slate-400"
               />
-              <span className="text-sm text-slate-600">Deletion</span>
+              <span className="text-sm font-medium text-slate-600">Removed Edges</span>
               <input
                 type="color"
                 value={rgbToHex(compareDeletionColor[0], compareDeletionColor[1], compareDeletionColor[2])}
@@ -137,7 +146,7 @@ const Settings: React.FC<SettingsProps> = ({
                   const [r, g, b] = hexToRgb(e.target.value);
                   setCompareDeletionColor([r, g, b, compareDeletionColor[3]]);
                 }}
-                className="w-6 h-6 cursor-pointer rounded border-0 p-0 bg-transparent [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:rounded [&::-moz-color-swatch]:rounded [&::-moz-color-swatch]:border-0"
+                className="ml-auto w-6 h-6 cursor-pointer rounded-full border border-slate-300 p-0.5 bg-white shadow-inner [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:rounded-full [&::-moz-color-swatch]:rounded-full [&::-moz-color-swatch]:border-0"
               />
             </label>
           </div>
