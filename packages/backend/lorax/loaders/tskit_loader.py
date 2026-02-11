@@ -53,6 +53,7 @@ def get_config_tskit(ts, file_path, root_dir):
             'intervals': intervals,
             'filename': str(filename),
             'project': project_name,
+            'num_individuals': ts.num_individuals,
             # node_times removed - now sent per-query from handle_layout_query for efficiency
             # 'mutations': extract_node_mutations_tables(ts),
             # 'mutations_by_node': extract_mutations_by_node(ts),

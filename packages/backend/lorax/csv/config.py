@@ -233,6 +233,7 @@ def build_csv_config(
         "times": {"type": "branch length", "values": [0.0, float(max_branch_length_all)]},
         "intervals": intervals,
         "filename": str(file_path).split("/")[-1],
+        "num_samples": len(samples_order),
         "sample_names": sample_names_map,
         "samples": samples_order,
         # Present but empty for compatibility; CSV doesn’t have these yet.

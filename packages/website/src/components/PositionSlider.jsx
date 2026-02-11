@@ -264,17 +264,29 @@ export default function PositionSlider({
 
           {/* File info dropdown */}
           {showFileInfo && (
-            <div className="absolute top-full left-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg p-3 text-xs min-w-[200px] z-50">
+            <div className="absolute top-full left-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg p-3 text-xs w-fit whitespace-nowrap z-50">
               <h4 className="font-semibold text-slate-800 mb-2">File Info</h4>
               <div className="space-y-1 text-slate-600">
                 <p>
-                  <span className="text-slate-400">Genome:</span>{' '}
+                  <span className="text-slate-400">sequence length:</span>{' '}
                   {genomeLength?.toLocaleString()} bp
                 </p>
                 <p>
-                  <span className="text-slate-400">Intervals:</span>{' '}
+                  <span className="text-slate-400">Recombination Intervals:</span>{' '}
                   {tsconfig?.intervals?.length?.toLocaleString() || '-'}
                 </p>
+                {tsconfig?.num_individuals != null && (
+                  <p>
+                    <span className="text-slate-400">Individuals:</span>{' '}
+                    {tsconfig.num_individuals.toLocaleString()}
+                  </p>
+                )}
+                {tsconfig?.num_samples != null && (
+                  <p>
+                    <span className="text-slate-400">Samples:</span>{' '}
+                    {tsconfig.num_samples.toLocaleString()}
+                  </p>
+                )}
                 {tsconfig?.project && (
                   <p>
                     <span className="text-slate-400">Project:</span>{' '}
@@ -328,14 +340,16 @@ export default function PositionSlider({
         <button
           onClick={handleSubmit}
           disabled={!hasChanges}
-          className={`px-2 py-1 text-sm rounded border border-slate-200 transition-colors ${
+          className={`p-1.5 rounded border border-slate-200 transition-colors inline-flex items-center justify-center ${
             hasChanges
               ? 'text-slate-600 hover:bg-slate-50 cursor-pointer'
               : 'text-slate-300 cursor-not-allowed'
           }`}
           title="Apply changes"
         >
-          Go
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
         </button>
       </div>
 
