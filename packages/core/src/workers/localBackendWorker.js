@@ -105,6 +105,8 @@ function getLocalData(data) {
     local_bins.set(globalIndex, {  // Key = global index
       s,
       e,
+      span: e - s,
+      midpoint: (s + e) / 2,
       path: null,
       global_index: globalIndex,   // GLOBAL tree index for backend
       precision: null
@@ -116,7 +118,7 @@ function getLocalData(data) {
     local_bins,
     globalBpPerUnit,
     new_globalBp,
-    { selectionStrategy, viewportStart: start, viewportEnd: end, prevLocalBins: prevLocalBinsCache}
+    { selectionStrategy, viewportStart: start, viewportEnd: end, prevLocalBins: prevLocalBinsCache, minStart: intervals[0], maxEnd: intervals[intervals.length - 1]}
   );
 
   // Cache for next frame's position locking

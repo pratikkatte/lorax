@@ -185,12 +185,19 @@ export function new_complete_experiment_map(localBins, globalBpPerUnit, new_glob
     selectionStrategy = 'largestSpan',
     viewportStart = null,
     viewportEnd = null,
-    prevLocalBins = null  // Previous frame's localBins Map for position locking
+    prevLocalBins = null,  // Previous frame's localBins Map for position locking
+    minStart: inputMinStart = null,
+    maxEnd: inputMaxEnd = null
   } = options;
 
   const invisibleKeys = new Set();
   const spacing = 1.05;
   const displayArray = [];
+
+  const numTrees = localBins.size;
+  if (numTrees === 0) {
+    return { return_local_bins: localBins, displayArray, showingAllTrees: false };
+  }
 
   const scaleFactor = new_globalBp / globalBpPerUnit;
   const approxEqual = scaleFactor < 1;
@@ -200,56 +207,35 @@ export function new_complete_experiment_map(localBins, globalBpPerUnit, new_glob
   // Preallocate a reusable Matrix4 to avoid GC churn
   const tempMatrix = new Matrix4();
 
-  // ────────────────────────────────────────────────────────────────────────
-  // STEP 1: Collect all trees and compute their properties
-  // ────────────────────────────────────────────────────────────────────────
-  const allTrees = [];
-  let minStart = Infinity;
-  let maxEnd = -Infinity;
-
-  for (const [key, bin] of localBins.entries()) {
-    const { s, e } = bin;
-    const span = e - s;
-    const midpoint = (s + e) / 2;
-
-    allTrees.push({
-      idx: Number(key),
-      s,
-      e,
-      span,
-      midpoint,
-      bin
-    });
-
-    minStart = Math.min(minStart, s);
-    maxEnd = Math.max(maxEnd, e);
+  // Use provided bounds or fall back to scan
+  // localBins is inserted in sorted order, so first/last entries give min/max
+  let minStart = inputMinStart;
+  let maxEnd = inputMaxEnd;
+  if (minStart === null || maxEnd === null) {
+    minStart = Infinity;
+    maxEnd = -Infinity;
+    for (const bin of localBins.values()) {
+      if (bin.s < minStart) minStart = bin.s;
+      if (bin.e > maxEnd) maxEnd = bin.e;
+    }
   }
 
-  if (allTrees.length === 0) {
-    return { return_local_bins: localBins, displayArray, showingAllTrees: false };
-  }
-
-  // Sort trees by genomic position
-  allTrees.sort((a, b) => a.s - b.s);
-
-  const viewportSpan = maxEnd - minStart;
-
   // ────────────────────────────────────────────────────────────────────────
-  // STEP 2: Calculate fixed visual width and slot count
+  // Calculate fixed visual width and slot count
   // ────────────────────────────────────────────────────────────────────────
 
   const maxVisibleTrees = 10;
   const effectiveMaxTrees = approxEqual
-    ? allTrees.length
-    : Math.max(1, Math.max(maxVisibleTrees, Math.ceil(allTrees.length / scaleFactor)));
+    ? numTrees
+    : Math.max(1, Math.max(maxVisibleTrees, Math.ceil(numTrees / scaleFactor)));
 
-  const numSlots = Math.min(allTrees.length, effectiveMaxTrees);
-  const slotWidth = viewportSpan / numSlots;
+  const numSlots = Math.min(numTrees, effectiveMaxTrees);
 
   const showingAllTrees = approxEqual;
 
   // ────────────────────────────────────────────────────────────────────────
-  // STEP 3: When scaleFactor ≈ 1, show ALL trees with uniform width
+  // When scaleFactor ≈ 1, show ALL trees with uniform width
+  // Iterates Map directly with a counter (already sorted by insertion order)
   // ────────────────────────────────────────────────────────────────────────
   if (approxEqual) {
     const fullZoomGapFill = 0.9;
@@ -257,17 +243,16 @@ export function new_complete_experiment_map(localBins, globalBpPerUnit, new_glob
     const effectiveStart = viewportStart ?? minStart;
     const effectiveEnd = viewportEnd ?? maxEnd;
     const visibleUnits = (effectiveEnd - effectiveStart) / globalBpPerUnit;
-    const uniformTreeWidth = (visibleUnits / allTrees.length) * fullZoomGapFill;
+    const uniformTreeWidth = (visibleUnits / numTrees) * fullZoomGapFill;
 
-    const slotWidth = (effectiveEnd - effectiveStart) / allTrees.length;
+    const slotWidth = (effectiveEnd - effectiveStart) / numTrees;
 
-    for (let i = 0; i < allTrees.length; i++) {
-      const tree = allTrees[i];
-
+    let i = 0;
+    for (const [key, bin] of localBins.entries()) {
       // Single tree position lock: reuse cached position if available
-      if (allTrees.length === 1 && prevLocalBins && prevLocalBins.has(tree.idx)) {
-        const prevBin = prevLocalBins.get(tree.idx);
-        localBins.set(tree.idx, { ...prevBin });
+      if (numTrees === 1 && prevLocalBins && prevLocalBins.has(key)) {
+        const prevBin = prevLocalBins.get(key);
+        localBins.set(key, { ...prevBin });
       } else {
         // Calculate new position
         const slotCenter = effectiveStart + (i + 0.5) * slotWidth;
@@ -277,12 +262,12 @@ export function new_complete_experiment_map(localBins, globalBpPerUnit, new_glob
           .translate([translateX, 0, 0])
           .scale([uniformTreeWidth, 1, 1]);
 
-        localBins.set(tree.idx, {
-          ...tree.bin,
+        localBins.set(key, {
+          ...bin,
           modelMatrix,
           visible: true,
-          position: tree.s,
-          span: tree.span,
+          position: bin.s,
+          span: bin.span,
           precision: 2,
           slotIndex: i,
           isRepresentative: true,
@@ -290,14 +275,15 @@ export function new_complete_experiment_map(localBins, globalBpPerUnit, new_glob
         });
       }
 
-      displayArray.push(tree.idx);
+      displayArray.push(key);
+      i++;
     }
 
     return { return_local_bins: localBins, displayArray, showingAllTrees };
   }
 
   // ────────────────────────────────────────────────────────────────────────
-  // STEP 3b: Assign trees to slots based on their midpoint (zoomed out)
+  // Assign trees to slots based on their midpoint (zoomed out)
   // Use viewport bounds for positioning so trees fill the visible area
   // ────────────────────────────────────────────────────────────────────────
   const effectiveStart = viewportStart ?? minStart;
@@ -307,23 +293,23 @@ export function new_complete_experiment_map(localBins, globalBpPerUnit, new_glob
 
   const slots = new Map();
 
-  for (const tree of allTrees) {
+  for (const bin of localBins.values()) {
     // Assign slot based on tree position relative to viewport
     const slotIndex = Math.min(
       numSlots - 1,
-      Math.max(0, Math.floor((tree.midpoint - effectiveStart) / effectiveSlotWidth))
+      Math.max(0, Math.floor((bin.midpoint - effectiveStart) / effectiveSlotWidth))
     );
 
     if (!slots.has(slotIndex)) {
       slots.set(slotIndex, []);
     }
-    slots.get(slotIndex).push(tree);
+    slots.get(slotIndex).push(bin);
   }
 
   // ────────────────────────────────────────────────────────────────────────
-  // STEP 4: Select representative tree for each slot and compute transforms
+  // Select representative tree for each slot and compute transforms
   // ────────────────────────────────────────────────────────────────────────
-  const selectedTrees = new Set();
+  const selectedKeys = new Set();
 
   const slotVisualWidth = effectiveSlotWidth / globalBpPerUnit;
   const treeVisualWidth = slotVisualWidth / spacing;
@@ -332,15 +318,16 @@ export function new_complete_experiment_map(localBins, globalBpPerUnit, new_glob
     const slotStart = effectiveStart + slotIndex * effectiveSlotWidth;
     const slotMidpoint = slotStart + effectiveSlotWidth / 2;
 
-    let selectedTree;
+    let selectedBin;
     if (selectionStrategy === 'centerWeighted') {
-      selectedTree = selectFn(treesInSlot, slotMidpoint);
+      selectedBin = selectFn(treesInSlot, slotMidpoint);
     } else {
-      selectedTree = selectFn(treesInSlot);
+      selectedBin = selectFn(treesInSlot);
     }
 
-    if (selectedTree) {
-      selectedTrees.add(selectedTree.idx);
+    if (selectedBin) {
+      const selectedKey = selectedBin.global_index;
+      selectedKeys.add(selectedKey);
 
       const precision = computePrecisionFromGroupSize(treesInSlot.length, scaleFactor);
 
@@ -351,27 +338,27 @@ export function new_complete_experiment_map(localBins, globalBpPerUnit, new_glob
         .translate([translateX, 0, 0])
         .scale([treeVisualWidth, 1, 1]);
 
-      localBins.set(selectedTree.idx, {
-        ...selectedTree.bin,
+      localBins.set(selectedKey, {
+        ...selectedBin,
         modelMatrix,
         visible: true,
-        position: selectedTree.s,
-        span: selectedTree.span,
+        position: selectedBin.s,
+        span: selectedBin.span,
         precision,
         slotIndex,
         isRepresentative: true,
         groupSize: treesInSlot.length
       });
 
-      displayArray.push(selectedTree.idx);
+      displayArray.push(selectedKey);
     }
 
     // Mark non-selected trees as invisible
-    for (const tree of treesInSlot) {
-      if (!selectedTrees.has(tree.idx)) {
-        invisibleKeys.add(tree.idx);
-        localBins.set(tree.idx, {
-          ...tree.bin,
+    for (const bin of treesInSlot) {
+      if (!selectedKeys.has(bin.global_index)) {
+        invisibleKeys.add(bin.global_index);
+        localBins.set(bin.global_index, {
+          ...bin,
           modelMatrix: null,
           visible: false,
           position: null,

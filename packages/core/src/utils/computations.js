@@ -115,6 +115,8 @@ export function queryLocalDataSync({
     local_bins.set(globalIndex, {
       s,
       e,
+      span: e - s,
+      midpoint: (s + e) / 2,
       path: null,
       global_index: globalIndex,
       precision: null
