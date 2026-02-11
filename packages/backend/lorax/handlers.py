@@ -700,11 +700,45 @@ def _edge_with_coords(tg, parent: int, child: int) -> dict:
     }
 
 
+def _edges_from_newick_tree_graph(ng) -> set:
+    """Extract (parent, child) edge set from NewickTreeGraph."""
+    edges = set()
+    for i in range(len(ng.parent_id)):
+        p = int(ng.parent_id[i])
+        if p >= 0:
+            c = int(ng.node_id[i])
+            edges.add((p, c))
+    return edges
+
+
+def _newick_node_id_to_index(ng, node_id: int) -> int | None:
+    """Map node_id to array index in NewickTreeGraph (node_id can differ from index)."""
+    idxs = np.where(ng.node_id == int(node_id))[0]
+    return int(idxs[0]) if idxs.size > 0 else None
+
+
+def _edge_with_coords_newick(ng, parent: int, child: int) -> dict | None:
+    """Edge dict with x,y (frontend convention: x=time, y=layout) for NewickTreeGraph."""
+    pi = _newick_node_id_to_index(ng, parent)
+    ci = _newick_node_id_to_index(ng, child)
+    if pi is None or ci is None:
+        return None
+    return {
+        "parent": parent,
+        "child": child,
+        "parent_x": float(ng.y[pi]),
+        "parent_y": float(ng.x[pi]),
+        "child_x": float(ng.y[ci]),
+        "child_y": float(ng.x[ci]),
+    }
+
+
 async def get_compare_trees_diff(
     file_path: str,
     tree_indices: list,
     session_id: str,
     tree_graph_cache,
+    csv_tree_graph_cache=None,
 ) -> dict:
     """
     Compare consecutive trees and return inserted/removed edges with coordinates.
@@ -713,11 +747,13 @@ async def get_compare_trees_diff(
         file_path: Path to tree sequence file
         tree_indices: List of visible tree indices
         session_id: Session ID for cache key
-        tree_graph_cache: TreeGraphCache instance
+        tree_graph_cache: TreeGraphCache instance (tskit)
+        csv_tree_graph_cache: CsvTreeGraphCache instance (for CSV)
 
     Returns:
         dict with comparisons: [{prev_idx, next_idx, inserted: [...], removed: [...]}]
     """
+    from lorax.csv.cache import get_or_parse_csv_tree_graph
     from lorax.sockets.utils import is_csv_session_file
 
     if not tree_indices or len(tree_indices) < 2:
@@ -728,8 +764,54 @@ async def get_compare_trees_diff(
         return {"comparisons": [], "error": "No file loaded"}
 
     ts = ctx.tree_sequence
-    if is_csv_session_file(file_path) or isinstance(ts, pd.DataFrame):
-        return {"comparisons": [], "error": "CSV not supported"}
+    is_csv = is_csv_session_file(file_path) or isinstance(ts, pd.DataFrame)
+
+    if is_csv:
+        if not csv_tree_graph_cache:
+            return {"comparisons": [], "error": "CSV compare requires csv_tree_graph_cache"}
+        num_trees = len(ts)
+        indices = [int(i) for i in tree_indices if 0 <= int(i) < num_trees]
+        shift_tips_to_one = should_shift_csv_tips(file_path)
+
+        comparisons = []
+        for i in range(len(indices) - 1):
+            prev_idx = indices[i]
+            next_idx = indices[i + 1]
+
+            ng_prev = await get_or_parse_csv_tree_graph(
+                ctx, session_id, prev_idx, csv_tree_graph_cache, shift_tips_to_one
+            )
+            ng_next = await get_or_parse_csv_tree_graph(
+                ctx, session_id, next_idx, csv_tree_graph_cache, shift_tips_to_one
+            )
+            if ng_prev is None or ng_next is None:
+                continue
+
+            edges_prev = _edges_from_newick_tree_graph(ng_prev)
+            edges_next = _edges_from_newick_tree_graph(ng_next)
+
+            inserted = edges_next - edges_prev
+            removed = edges_prev - edges_next
+
+            inserted_list = []
+            for p, c in inserted:
+                e = _edge_with_coords_newick(ng_next, p, c)
+                if e is not None:
+                    inserted_list.append(e)
+            removed_list = []
+            for p, c in removed:
+                e = _edge_with_coords_newick(ng_prev, p, c)
+                if e is not None:
+                    removed_list.append(e)
+
+            comparisons.append({
+                "prev_idx": prev_idx,
+                "next_idx": next_idx,
+                "inserted": inserted_list,
+                "removed": removed_list,
+            })
+
+        return {"comparisons": comparisons}
 
     comparisons = []
     indices = [int(i) for i in tree_indices if 0 <= int(i) < ts.num_trees]

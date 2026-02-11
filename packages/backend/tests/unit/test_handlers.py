@@ -391,3 +391,79 @@ class TestMutationsHandlers:
         assert "as_child" in edges
         assert isinstance(edges["as_parent"], list)
         assert isinstance(edges["as_child"], list)
+
+
+class TestCompareTreesDiff:
+    """Tests for get_compare_trees_diff (compare topology)."""
+
+    @pytest.mark.asyncio
+    async def test_get_compare_trees_diff_csv(self, temp_dir):
+        """Test compare topology with CSV file (different Newick topologies)."""
+        from lorax.cache import CsvTreeGraphCache, get_file_context
+        from lorax.handlers import get_compare_trees_diff
+
+        # Create CSV with genomic_positions and newick (different topologies)
+        csv_content = """genomic_positions,newick
+0,((A:0.1,B:0.2):0.3,C:0.4);
+1000,((A:0.1,C:0.2):0.3,B:0.4);
+2000,((B:0.1,C:0.2):0.3,A:0.4);
+"""
+        csv_path = temp_dir / "compare_test.csv"
+        csv_path.write_text(csv_content)
+
+        ctx = await get_file_context(str(csv_path))
+        assert ctx is not None
+        assert ctx.is_csv
+
+        csv_cache = CsvTreeGraphCache()
+        session_id = "test-session-compare"
+        result = await get_compare_trees_diff(
+            str(csv_path),
+            tree_indices=[0, 1, 2],
+            session_id=session_id,
+            tree_graph_cache=None,
+            csv_tree_graph_cache=csv_cache,
+        )
+
+        assert "comparisons" in result
+        assert "error" not in result
+        # Two consecutive pairs: (0,1) and (1,2)
+        assert len(result["comparisons"]) == 2
+        for comp in result["comparisons"]:
+            assert "prev_idx" in comp
+            assert "next_idx" in comp
+            assert "inserted" in comp
+            assert "removed" in comp
+            # Different topologies should yield some inserted/removed edges
+            assert isinstance(comp["inserted"], list)
+            assert isinstance(comp["removed"], list)
+            # Each edge should have coordinates
+            for e in comp["inserted"] + comp["removed"]:
+                assert "parent_x" in e
+                assert "parent_y" in e
+                assert "child_x" in e
+                assert "child_y" in e
+
+    @pytest.mark.asyncio
+    async def test_get_compare_trees_diff_csv_single_tree(self, temp_dir):
+        """Test compare topology with CSV returns empty when fewer than 2 trees."""
+        from lorax.cache import CsvTreeGraphCache, get_file_context
+        from lorax.handlers import get_compare_trees_diff
+
+        csv_content = """genomic_positions,newick
+0,((A:0.1,B:0.2):0.3,C:0.4);
+"""
+        csv_path = temp_dir / "single.csv"
+        csv_path.write_text(csv_content)
+
+        await get_file_context(str(csv_path))
+        csv_cache = CsvTreeGraphCache()
+        result = await get_compare_trees_diff(
+            str(csv_path),
+            tree_indices=[0],
+            session_id="test",
+            tree_graph_cache=None,
+            csv_tree_graph_cache=csv_cache,
+        )
+
+        assert result["comparisons"] == []
