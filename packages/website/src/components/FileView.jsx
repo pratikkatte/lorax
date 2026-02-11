@@ -686,8 +686,8 @@ function FileView() {
   }, [tourOpen, tourActiveStepId, tourSelectedTreeIndex, handlePolygonClick, queryDetails, applyDetailsResponse, resetDetails]);
 
   return (
-    <div className="h-screen flex min-h-0 overflow-hidden bg-slate-50">
-      {/* Left: main content column (PositionSlider + viewport) - shrinks when sidebar open */}
+    <div className="h-screen flex min-h-0 overflow-hidden bg-slate-50 relative">
+      {/* Main content column (PositionSlider + viewport) - full width, panels overlay */}
       <div className="flex-1 min-w-0 flex flex-col">
         {/* Position Slider - Header bar */}
         <PositionSlider
@@ -898,9 +898,9 @@ function FileView() {
       </div>
       </div>
 
-      {/* Info Panel - side-by-side when open (between main content and icon bar) */}
+      {/* Info Panel - overlay when open */}
       {showInfo && (
-        <div className="flex-shrink-0 w-[25%] min-w-[320px] max-w-[480px] h-full overflow-auto bg-white border-l border-slate-200 shadow-xl z-50">
+        <div className="absolute top-0 right-8 bottom-0 w-[25%] min-w-[320px] max-w-[480px] overflow-auto bg-white border-l border-slate-200 shadow-xl z-50">
           <Info
             setShowInfo={setShowInfo}
             activeTab={infoActiveTab}
@@ -932,9 +932,9 @@ function FileView() {
         </div>
       )}
 
-      {/* Settings Panel - side-by-side when open */}
+      {/* Settings Panel - overlay when open */}
       {showSettings && (
-        <div className="flex-shrink-0 w-[25%] min-w-[320px] max-w-[480px] h-full overflow-auto bg-white border-l border-slate-200 shadow-xl z-50">
+        <div className="absolute top-0 right-8 bottom-0 w-[25%] min-w-[320px] max-w-[480px] overflow-auto bg-white border-l border-slate-200 shadow-xl z-50">
           <Settings
             setShowSettings={setShowSettings}
             polygonFillColor={polygonFillColor}
