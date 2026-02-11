@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useLorax } from '@lorax/core';
+import ErrorAlert from './ErrorAlert.jsx';
 
 /**
  * Format base pairs with appropriate Kb/Mb units
@@ -41,6 +42,7 @@ export default function PositionSlider({
   const [end, setEnd] = useState(value?.[1] || genomeLength || 0);
   const [hasChanges, setHasChanges] = useState(false);
   const [showFileInfo, setShowFileInfo] = useState(false);
+  const [showCompareTopologyInfo, setShowCompareTopologyInfo] = useState(false);
   const fileInfoRef = useRef(null);
   const valueRef = useRef(value);
   const panIntervalRef = useRef(null);
@@ -112,6 +114,7 @@ export default function PositionSlider({
     }
   };
 
+
   const getPannedRange = useCallback(
     (currentValue, direction) => {
       if (!currentValue || !genomeLength) return null;
@@ -179,6 +182,14 @@ export default function PositionSlider({
       className="flex items-center justify-center gap-2 px-4 py-2 bg-white border-b border-slate-200 relative"
       data-tour="viewer-position"
     >
+      {showCompareTopologyInfo && (
+        <ErrorAlert
+          message="Compares consecutive genealogies, highlighting inserted and removed edges; configure colors in Settings."
+          onDismiss={() => setShowCompareTopologyInfo(false)}
+          variant="info"
+          fullText
+        />
+      )}
       {/* Lorax logo/home link */}
       <a
         href="/"
@@ -199,7 +210,14 @@ export default function PositionSlider({
           type="button"
           role="switch"
           aria-checked={compareMode}
-          onClick={() => setCompareMode?.(prev => !prev)}
+          onClick={() => {
+            if (compareMode) {
+              setCompareMode?.(false);
+            } else {
+              setCompareMode?.(true);
+              setShowCompareTopologyInfo(true);
+            }
+          }}
           title="Compare topology of local genealogies shown in the ortho view"
           className="flex items-center gap-2 cursor-pointer group"
         >
