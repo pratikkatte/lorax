@@ -498,7 +498,7 @@ async def handle_tree_graph_query(
     Args:
         file_path: Path to tree sequence file
         tree_indices: List of tree indices to process
-        sparsification: Enable tip-only sparsification (default False)
+        sparsification: Enable sparsification (default False). Uses edge-midpoint grid deduplication.
         session_id: Session ID for cache lookup/storage
         tree_graph_cache: TreeGraphCache instance for caching TreeGraph objects
 

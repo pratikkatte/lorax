@@ -114,7 +114,7 @@ export function useLoraxConnection({ apiBase, isProd = false }) {
    * Returns raw socket response - parsing done by caller.
    * Uses Socket.IO acknowledgement callbacks for request-response correlation.
    * @param {number[]} displayArray - Tree indices to fetch
-   * @param {boolean} sparsification - Enable tip-only sparsification (default false)
+   * @param {boolean} sparsification - Enable sparsification (default false). Uses edge-midpoint grid deduplication.
    * @param {number[]} actualDisplayArray - All visible tree indices for backend cache eviction (defaults to displayArray)
    * @returns {Promise<{buffer, global_min_time, global_max_time, tree_indices}>}
    */
@@ -128,6 +128,7 @@ export function useLoraxConnection({ apiBase, isProd = false }) {
       // Generate unique request ID for this request
       const requestId = ++requestIdRef.current;
 
+      
       // Use callback-based emit - Socket.IO handles correlation
       // This guarantees the callback receives the response for this specific request
       socketRef.current.emit(

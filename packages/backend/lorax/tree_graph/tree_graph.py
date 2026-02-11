@@ -273,7 +273,7 @@ def construct_trees_batch(
     Args:
         ts: tskit TreeSequence object
         tree_indices: List of tree indices to process
-        sparsification: Enable tip-only sparsification (default False)
+        sparsification: Enable sparsification (default False). Uses edge-midpoint grid deduplication.
         include_mutations: Whether to include mutation data in buffer
         pre_cached_graphs: Optional dict mapping tree_idx -> TreeGraph for cache hits
 
@@ -392,10 +392,10 @@ def construct_trees_batch(
         x = graph.y[indices]  # SWAP: time -> x
         y = graph.x[indices]  # SWAP: layout -> y
 
-        # Apply sparsification if requested
+        # Apply sparsification if requested (edge-midpoint grid deduplication)
         if sparsification:
             resolution = int(1.0 / DEFAULT_SPARSIFY_CELL_SIZE)
-            keep_mask = _sparsify_tips_only(
+            keep_mask = _sparsify_edges(
                 node_ids.astype(np.int32),
                 x.astype(np.float32),
                 y.astype(np.float32),
@@ -411,6 +411,8 @@ def construct_trees_batch(
             n = len(node_ids)
 
             if n > 0:
+                # Preserve original tip status before collapse (for correct is_tip after recompute)
+                original_is_tip = is_tip.copy()
                 # Collapse unary internal nodes (keep roots even if unary).
                 order = np.argsort(node_ids)
                 sorted_ids = node_ids[order]
@@ -452,7 +454,7 @@ def construct_trees_batch(
                         valid = (parent_ids != -1) & (pos < n) & (sorted_ids[pos] == parent_ids)
                         parent_local[valid] = order[pos[valid]]
                         child_counts = np.bincount(parent_local[parent_local >= 0], minlength=n)
-                        is_tip = child_counts == 0
+                        is_tip = (child_counts == 0) & original_is_tip[collapse_mask]
                     else:
                         is_tip = is_tip[:0]
 
@@ -614,19 +616,20 @@ def construct_trees_batch(
 
 
 @njit(cache=True)
-def _sparsify_tips_only(node_ids, x, y, is_tip, parent_ids, resolution):
+def _sparsify_edges(node_ids, x, y, is_tip, parent_ids, resolution):
     """
-    Optimized sparsification: only grid-dedupe tips, then trace ancestors.
+    Edge-centric sparsification: grid-deduplicate edges by midpoint position.
 
     Algorithm:
-    1. Grid-dedupe ONLY tip nodes (skip internal nodes in grid phase)
-    2. Trace path to root for each kept tip
-    3. Keep all ancestors along the path
+    1. Always keep root nodes
+    2. For each non-root node (= edge to parent), compute edge midpoint
+    3. Grid-dedupe by midpoint: first edge per cell survives
+    4. Trace path to root for each kept node
 
-    This is faster because tips are ~90% of nodes and we skip
-    the grid computation for internal nodes. Some internal nodes
-    may appear "dangling" (no children visible) - this is correct
-    behavior showing the true ancestry path.
+    Long root-level edges have midpoints spread across the x range,
+    occupying unique cells. Short tip-level edges cluster near x≈1
+    and get deduplicated. This naturally preserves visually significant
+    edges based on their length and position.
 
     Args:
         node_ids: int32 array of node IDs
@@ -645,7 +648,7 @@ def _sparsify_tips_only(node_ids, x, y, is_tip, parent_ids, resolution):
     if n == 0:
         return keep
 
-    # Build node_to_idx mapping first (needed for ancestor tracing)
+    # Build node_to_idx mapping
     max_node_id = 0
     for i in range(n):
         if node_ids[i] > max_node_id:
@@ -655,25 +658,36 @@ def _sparsify_tips_only(node_ids, x, y, is_tip, parent_ids, resolution):
     for i in range(n):
         node_to_idx[node_ids[i]] = i
 
-    # --- Phase 1: Grid-dedupe ONLY tips ---
     seen_cells = Dict.empty(key_type=types.int64, value_type=types.int32)
 
+    # Always keep root nodes
     for i in range(n):
-        if not is_tip[i]:
-            continue  # Skip internal nodes in grid phase
+        if parent_ids[i] == -1:
+            keep[i] = True
 
-        # Compute grid cell for this tip
-        cx = min(int(x[i] * resolution), resolution - 1)
-        cy = min(int(y[i] * resolution), resolution - 1)
+    # Grid-dedupe edges by midpoint position
+    for i in range(n):
+        if parent_ids[i] == -1:
+            continue  # Root — no edge to parent
+        if parent_ids[i] > max_node_id:
+            continue
+        parent_idx = node_to_idx[parent_ids[i]]
+        if parent_idx < 0:
+            continue
+
+        mid_x = (x[i] + x[parent_idx]) / 2.0
+        mid_y = (y[i] + y[parent_idx]) / 2.0
+        cx = min(int(mid_x * resolution), resolution - 1)
+        cy = min(int(mid_y * resolution), resolution - 1)
         key = cx * (resolution + 1) + cy
 
         if key not in seen_cells:
             seen_cells[key] = i
             keep[i] = True
 
-    # --- Phase 2: Trace ancestors for each kept tip ---
+    # Trace ancestors for connectivity
     for i in range(n):
-        if keep[i] and is_tip[i]:  # Only trace from kept tips
+        if keep[i]:
             parent = parent_ids[i]
             while parent != -1:
                 if parent > max_node_id:
@@ -682,7 +696,7 @@ def _sparsify_tips_only(node_ids, x, y, is_tip, parent_ids, resolution):
                 if parent_idx < 0:
                     break
                 if keep[parent_idx]:
-                    break  # Already kept, path is connected
+                    break
                 keep[parent_idx] = True
                 parent = parent_ids[parent_idx]
 

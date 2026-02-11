@@ -151,7 +151,7 @@ function buildTreeDataFromCache(cache, displayArray) {
  * @param {number[]} params.displayArray - Tree indices to fetch (from useLocalData)
  * @param {Function} params.queryTreeLayout - Socket method from useLorax
  * @param {boolean} params.isConnected - Socket connection status
- * @param {boolean} params.sparsification - Enable tip-only sparsification (default false)
+ * @param {boolean} params.sparsification - Enable sparsification (default false)
  * @param {Object} params.tsconfig - Tree sequence config (for cache invalidation on file change)
  * @param {number[]} params.genomicCoords - Viewport bounds [startBp, endBp] for cache eviction
  * @returns {Object} { treeData, isLoading, error, clearCache }
@@ -178,7 +178,7 @@ export function useTreeData({
   // Time bounds (file-level constants, cached from first fetch)
   const timeBoundsRef = useRef(null);
 
-  // Cache key for invalidation (file identity + sparsification mode)
+  // Cache key for invalidation (file identity + sparsification)
   const cacheKeyRef = useRef({ tsconfigId: null, sparsification: null });
 
   // Derive stable file identity from tsconfig
