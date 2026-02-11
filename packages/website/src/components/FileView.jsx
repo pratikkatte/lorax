@@ -88,6 +88,13 @@ function FileView() {
   const [hoveredTreeIndex, setHoveredTreeIndex] = useState(null);
   // Polygon fill color [r, g, b, a]
   const [polygonFillColor, setPolygonFillColor] = useState([145, 194, 244, 46]);
+  // Compare topology edge colors [r, g, b, a]
+  const [compareInsertionColor, setCompareInsertionColor] = useState([0, 255, 0, 200]);
+  const [compareDeletionColor, setCompareDeletionColor] = useState([255, 0, 0, 200]);
+  const [showCompareInsertion, setShowCompareInsertion] = useState(true);
+  const [showCompareDeletion, setShowCompareDeletion] = useState(true);
+  // Tree edge color [r, g, b, a] (used when colorEdgesByTree is false)
+  const [edgeColor, setEdgeColor] = useState([100, 100, 100, 255]);
 
   // Hover tooltip state (rendered in website, not in core)
   const [hoverTooltip, setHoverTooltip] = useState(null); // { kind, x, y, title, rows[] }
@@ -679,20 +686,22 @@ function FileView() {
   }, [tourOpen, tourActiveStepId, tourSelectedTreeIndex, handlePolygonClick, queryDetails, applyDetailsResponse, resetDetails]);
 
   return (
-    <div className="h-screen flex flex-col bg-slate-50">
-      {/* Position Slider - Header bar */}
-      <PositionSlider
-        filename={filename || file}
-        genomeLength={genomeLength}
-        value={genomicPosition}
-        onChange={handlePositionChange}
-        onResetY={() => deckRef.current?.viewAdjustY?.()}
-        project={project}
-        tsconfig={tsconfig}
-      />
+    <div className="h-screen flex min-h-0 overflow-hidden bg-slate-50">
+      {/* Left: main content column (PositionSlider + viewport) - shrinks when sidebar open */}
+      <div className="flex-1 min-w-0 flex flex-col">
+        {/* Position Slider - Header bar */}
+        <PositionSlider
+          filename={filename || file}
+          genomeLength={genomeLength}
+          value={genomicPosition}
+          onChange={handlePositionChange}
+          onResetY={() => deckRef.current?.viewAdjustY?.()}
+          project={project}
+          tsconfig={tsconfig}
+        />
 
-      {/* Main viewport area */}
-      <div className="flex-1 relative bg-white">
+        {/* Main viewport area */}
+        <div className="flex-1 relative bg-white">
         {/* ViewportOverlay - Container box with loading state */}
         <ViewportOverlay
           statusMessage={loading ? { status: 'loading', message: 'Loading config...' } : statusMessage}
@@ -753,6 +762,11 @@ function FileView() {
               onVisibleTreesChange={handleVisibleTreesChange}
               hoveredTreeIndex={hoveredTreeIndex}
               polygonOptions={{ treeColors, fillColor: polygonFillColor }}
+              compareInsertionColor={compareInsertionColor}
+              compareDeletionColor={compareDeletionColor}
+              showCompareInsertion={showCompareInsertion}
+              showCompareDeletion={showCompareDeletion}
+              edgeColor={edgeColor}
               onPolygonClick={handlePolygonClick}
               onTipHover={(tip, info, event) => {
                 if (!tip) {
@@ -846,8 +860,101 @@ function FileView() {
           </div>
         )}
 
-        {/* Right icon bar */}
-        <div className="fixed top-0 right-0 h-full w-8 hover:w-12 bg-slate-900 border-l border-slate-800 text-slate-400 z-[101] flex flex-col items-center py-4 space-y-4 shadow-2xl transition-all duration-200">
+        {showScreenshotModal && (
+          <ScreenshotModal
+            deckRef={deckRef}
+            polygonFillColor={polygonFillColor}
+            onClose={() => setShowScreenshotModal(false)}
+          />
+        )}
+
+        <TourOverlay
+          open={tourOpen}
+          steps={tourSteps}
+          onClose={() => setTourOpen(false)}
+          onFinish={() => {
+            tourState.markSeen();
+            setTourOpen(false);
+          }}
+          onStepChange={(_, step) => {
+            const stepId = step?.id ?? null;
+            setTourActiveStepId(stepId);
+
+            if (stepId === 'viewer-info-details') {
+              setShowInfo(true);
+              setShowSettings(false);
+              setInfoActiveTab('details');
+            } else if (stepId === 'viewer-info-mutations') {
+              setShowInfo(true);
+              setShowSettings(false);
+              setInfoActiveTab('mutations');
+            } else if (stepId === 'viewer-info-filter') {
+              setShowInfo(true);
+              setShowSettings(false);
+              setInfoActiveTab('metadata');
+            }
+          }}
+        />
+      </div>
+      </div>
+
+      {/* Info Panel - side-by-side when open (between main content and icon bar) */}
+      {showInfo && (
+        <div className="flex-shrink-0 w-[25%] min-w-[320px] max-w-[480px] h-full overflow-auto bg-white border-l border-slate-200 shadow-xl z-50">
+          <Info
+            setShowInfo={setShowInfo}
+            activeTab={infoActiveTab}
+            onTabChange={setInfoActiveTab}
+            genomicCoords={genomicPosition}
+            setClickedGenomeInfo={setClickedGenomeInfo}
+            setHighlightedMutationNode={setHighlightedMutationNode}
+            setHighlightedMutationTreeIndex={setHighlightedMutationTreeIndex}
+            treeDetails={treeDetails}
+            nodeDetails={nodeDetails}
+            individualDetails={individualDetails}
+            populationDetails={populationDetails}
+            nodeMutations={nodeMutations}
+            nodeEdges={nodeEdges}
+            selectedTipMetadata={selectedTipMetadata}
+            visibleTrees={visibleTrees}
+            treeColors={treeColors}
+            setTreeColors={setTreeColors}
+            treeEdgeColors={treeEdgeColors}
+            setTreeEdgeColors={setTreeEdgeColors}
+            colorByTree={colorByTree}
+            setColorByTree={setColorByTree}
+            hoveredTreeIndex={hoveredTreeIndex}
+            setHoveredTreeIndex={setHoveredTreeIndex}
+            onNavigateToCoords={handlePresetNavigate}
+            onPresetAction={handlePresetAction}
+            onPresetMutationHighlight={handlePresetMutationHighlight}
+          />
+        </div>
+      )}
+
+      {/* Settings Panel - side-by-side when open */}
+      {showSettings && (
+        <div className="flex-shrink-0 w-[25%] min-w-[320px] max-w-[480px] h-full overflow-auto bg-white border-l border-slate-200 shadow-xl z-50">
+          <Settings
+            setShowSettings={setShowSettings}
+            polygonFillColor={polygonFillColor}
+            setPolygonFillColor={setPolygonFillColor}
+            compareInsertionColor={compareInsertionColor}
+            setCompareInsertionColor={setCompareInsertionColor}
+            compareDeletionColor={compareDeletionColor}
+            setCompareDeletionColor={setCompareDeletionColor}
+            showCompareInsertion={showCompareInsertion}
+            setShowCompareInsertion={setShowCompareInsertion}
+            showCompareDeletion={showCompareDeletion}
+            setShowCompareDeletion={setShowCompareDeletion}
+            edgeColor={edgeColor}
+            setEdgeColor={setEdgeColor}
+          />
+        </div>
+      )}
+
+      {/* Right: icon bar - always visible, side-by-side */}
+      <div className="flex-shrink-0 w-8 bg-slate-900 border-l border-slate-800 text-slate-400 z-[101] flex flex-col items-center py-4 space-y-4 shadow-2xl">
           {/* Info button */}
           <button
             onClick={() => {
@@ -916,90 +1023,6 @@ function FileView() {
             </span>
           </button>
         </div>
-
-        {/* Info Panel - Right sidebar (offset for icon bar) */}
-        <div
-          className={`fixed top-0 right-8 w-[25%] min-w-[320px] h-full z-50 shadow-xl transition-transform duration-300 ease-in-out ${showInfo ? 'translate-x-0' : 'translate-x-full'
-            }`}
-        >
-          <Info
-            setShowInfo={setShowInfo}
-            activeTab={infoActiveTab}
-            onTabChange={setInfoActiveTab}
-            genomicCoords={genomicPosition}
-            setClickedGenomeInfo={setClickedGenomeInfo}
-            setHighlightedMutationNode={setHighlightedMutationNode}
-            setHighlightedMutationTreeIndex={setHighlightedMutationTreeIndex}
-            treeDetails={treeDetails}
-            nodeDetails={nodeDetails}
-            individualDetails={individualDetails}
-            populationDetails={populationDetails}
-            nodeMutations={nodeMutations}
-            nodeEdges={nodeEdges}
-            selectedTipMetadata={selectedTipMetadata}
-            visibleTrees={visibleTrees}
-            treeColors={treeColors}
-            setTreeColors={setTreeColors}
-            treeEdgeColors={treeEdgeColors}
-            setTreeEdgeColors={setTreeEdgeColors}
-            colorByTree={colorByTree}
-            setColorByTree={setColorByTree}
-            hoveredTreeIndex={hoveredTreeIndex}
-            setHoveredTreeIndex={setHoveredTreeIndex}
-            onNavigateToCoords={handlePresetNavigate}
-            onPresetAction={handlePresetAction}
-            onPresetMutationHighlight={handlePresetMutationHighlight}
-          />
-        </div>
-
-        {/* Settings Panel - Right sidebar (offset for icon bar) */}
-        <div
-          className={`fixed top-0 right-8 w-[25%] min-w-[320px] h-full z-50 shadow-xl transition-transform duration-300 ease-in-out ${showSettings ? 'translate-x-0' : 'translate-x-full'
-            }`}
-        >
-          <Settings
-            setShowSettings={setShowSettings}
-            polygonFillColor={polygonFillColor}
-            setPolygonFillColor={setPolygonFillColor}
-          />
-        </div>
-
-        {showScreenshotModal && (
-          <ScreenshotModal
-            deckRef={deckRef}
-            polygonFillColor={polygonFillColor}
-            onClose={() => setShowScreenshotModal(false)}
-          />
-        )}
-
-        <TourOverlay
-          open={tourOpen}
-          steps={tourSteps}
-          onClose={() => setTourOpen(false)}
-          onFinish={() => {
-            tourState.markSeen();
-            setTourOpen(false);
-          }}
-          onStepChange={(_, step) => {
-            const stepId = step?.id ?? null;
-            setTourActiveStepId(stepId);
-
-            if (stepId === 'viewer-info-details') {
-              setShowInfo(true);
-              setShowSettings(false);
-              setInfoActiveTab('details');
-            } else if (stepId === 'viewer-info-mutations') {
-              setShowInfo(true);
-              setShowSettings(false);
-              setInfoActiveTab('mutations');
-            } else if (stepId === 'viewer-info-filter') {
-              setShowInfo(true);
-              setShowSettings(false);
-              setInfoActiveTab('metadata');
-            }
-          }}
-        />
-      </div>
     </div>
   );
 }

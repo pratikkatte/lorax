@@ -1,9 +1,21 @@
 import React from 'react';
 
+type RgbaColor = [number, number, number, number];
+
 interface SettingsProps {
   setShowSettings: (show: boolean) => void;
-  polygonFillColor: [number, number, number, number];
-  setPolygonFillColor: (color: [number, number, number, number]) => void;
+  polygonFillColor: RgbaColor;
+  setPolygonFillColor: (color: RgbaColor) => void;
+  compareInsertionColor: RgbaColor;
+  setCompareInsertionColor: (color: RgbaColor) => void;
+  compareDeletionColor: RgbaColor;
+  setCompareDeletionColor: (color: RgbaColor) => void;
+  showCompareInsertion: boolean;
+  setShowCompareInsertion: (show: boolean) => void;
+  showCompareDeletion: boolean;
+  setShowCompareDeletion: (show: boolean) => void;
+  edgeColor: RgbaColor;
+  setEdgeColor: (color: RgbaColor) => void;
 }
 
 // Convert RGB array to hex string
@@ -30,23 +42,18 @@ function hexToRgb(hex: string): [number, number, number] {
 const Settings: React.FC<SettingsProps> = ({
   setShowSettings,
   polygonFillColor,
-  setPolygonFillColor
+  setPolygonFillColor,
+  compareInsertionColor,
+  setCompareInsertionColor,
+  compareDeletionColor,
+  setCompareDeletionColor,
+  showCompareInsertion,
+  setShowCompareInsertion,
+  showCompareDeletion,
+  setShowCompareDeletion,
+  edgeColor,
+  setEdgeColor
 }) => {
-  const [r, g, b, a] = polygonFillColor;
-  const hexColor = rgbToHex(r, g, b);
-  const opacity = Math.round((a / 255) * 100);
-
-  const handleColorChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const [newR, newG, newB] = hexToRgb(e.target.value);
-    setPolygonFillColor([newR, newG, newB, polygonFillColor[3]]);
-  };
-
-  const handleOpacityChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newOpacity = parseInt(e.target.value, 10);
-    const newAlpha = Math.round((newOpacity / 100) * 255);
-    setPolygonFillColor([r, g, b, newAlpha]);
-  };
-
   return (
     <div className="w-full h-full bg-slate-50 flex flex-col font-sans">
       {/* Header */}
@@ -65,54 +72,74 @@ const Settings: React.FC<SettingsProps> = ({
       </div>
 
       {/* Content area */}
-      <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+      <div className="flex-1 overflow-y-auto p-4 custom-scrollbar space-y-4">
         <div className="bg-white rounded-lg p-4 border border-slate-200">
-          <h3 className="text-sm font-semibold text-slate-700 mb-4">Polygon Color</h3>
-
-          {/* Color preview swatch */}
-          <div className="mb-4">
-            <div
-              className="w-full h-12 rounded-lg border border-slate-300"
-              style={{
-                backgroundColor: `rgba(${r}, ${g}, ${b}, ${a / 255})`
+          <label className="flex items-center gap-2">
+            <span className="text-sm font-semibold text-slate-700">Tree Background</span>
+            <input
+              type="color"
+              value={rgbToHex(polygonFillColor[0], polygonFillColor[1], polygonFillColor[2])}
+              onChange={(e) => {
+                const [r, g, b] = hexToRgb(e.target.value);
+                setPolygonFillColor([r, g, b, polygonFillColor[3]]);
               }}
+              className="w-6 h-6 cursor-pointer rounded border-0 p-0 bg-transparent [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:rounded [&::-moz-color-swatch]:rounded [&::-moz-color-swatch]:border-0"
             />
-          </div>
-
-          {/* Color picker */}
-          <div className="space-y-4">
-            <label className="flex items-center justify-between">
-              <span className="text-sm text-slate-600">Color</span>
+          </label>
+        </div>
+        <div className="bg-white rounded-lg p-4 border border-slate-200">
+          <label className="flex items-center gap-2">
+            <span className="text-sm font-semibold text-slate-700">Edges</span>
+            <input
+              type="color"
+              value={rgbToHex(edgeColor[0], edgeColor[1], edgeColor[2])}
+              onChange={(e) => {
+                const [r, g, b] = hexToRgb(e.target.value);
+                setEdgeColor([r, g, b, edgeColor[3]]);
+              }}
+              className="w-6 h-6 cursor-pointer rounded border-0 p-0 bg-transparent [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:rounded [&::-moz-color-swatch]:rounded [&::-moz-color-swatch]:border-0"
+            />
+          </label>
+        </div>
+        <div className="bg-white rounded-lg p-4 border border-slate-200">
+          <h3 className="text-sm font-semibold text-slate-700 mb-3">Compare Topology</h3>
+          <div className="flex gap-6">
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={showCompareInsertion}
+                onChange={(e) => setShowCompareInsertion(e.target.checked)}
+                className="rounded border-slate-300"
+              />
+              <span className="text-sm text-slate-600">Insertion</span>
               <input
                 type="color"
-                value={hexColor}
-                onChange={handleColorChange}
-                className="w-8 h-8 cursor-pointer rounded-none border-0 p-0 bg-transparent [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:rounded [&::-webkit-color-swatch]:border-0 [&::-moz-color-swatch]:rounded [&::-moz-color-swatch]:border-0"
+                value={rgbToHex(compareInsertionColor[0], compareInsertionColor[1], compareInsertionColor[2])}
+                onChange={(e) => {
+                  const [r, g, b] = hexToRgb(e.target.value);
+                  setCompareInsertionColor([r, g, b, compareInsertionColor[3]]);
+                }}
+                className="w-6 h-6 cursor-pointer rounded border-0 p-0 bg-transparent [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:rounded [&::-moz-color-swatch]:rounded [&::-moz-color-swatch]:border-0"
               />
             </label>
-
-            {/* Opacity slider */}
-            <label className="block">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm text-slate-600">Opacity</span>
-                <span className="text-sm text-slate-500">{opacity}%</span>
-              </div>
+            <label className="flex items-center gap-2">
               <input
-                type="range"
-                min="0"
-                max="100"
-                value={opacity}
-                onChange={handleOpacityChange}
-                className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-emerald-600"
+                type="checkbox"
+                checked={showCompareDeletion}
+                onChange={(e) => setShowCompareDeletion(e.target.checked)}
+                className="rounded border-slate-300"
+              />
+              <span className="text-sm text-slate-600">Deletion</span>
+              <input
+                type="color"
+                value={rgbToHex(compareDeletionColor[0], compareDeletionColor[1], compareDeletionColor[2])}
+                onChange={(e) => {
+                  const [r, g, b] = hexToRgb(e.target.value);
+                  setCompareDeletionColor([r, g, b, compareDeletionColor[3]]);
+                }}
+                className="w-6 h-6 cursor-pointer rounded border-0 p-0 bg-transparent [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:rounded [&::-moz-color-swatch]:rounded [&::-moz-color-swatch]:border-0"
               />
             </label>
-          </div>
-
-          {/* RGBA values display */}
-          <div className="mt-4 pt-4 border-t border-slate-100">
-            <p className="text-xs text-slate-400 font-mono">
-              RGBA: [{r}, {g}, {b}, {a}]
-            </p>
           </div>
         </div>
       </div>

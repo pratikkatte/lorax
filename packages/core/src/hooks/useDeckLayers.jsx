@@ -28,6 +28,8 @@ export function useDeckLayers({
   // Optional: per-tree edge coloring (CSV "color by tree")
   colorEdgesByTree = false,
   treeEdgeColors = null,
+  // Default edge color [r, g, b, a] when colorEdgesByTree is false
+  edgeColor = null,
   // Tree interactions (UI handled by packages/website)
   onTipHover,
   onTipClick,
@@ -98,7 +100,8 @@ export function useDeckLayers({
     if (enabledViews.includes('ortho')) {
       const wantsPicking = Boolean(onTipHover || onTipClick || onEdgeHover || onEdgeClick);
 
-      const edgeColor = (colorEdgesByTree && treeEdgeColors && renderData?.edgeData)
+      const defaultEdgeColor = edgeColor ?? [100, 100, 100, 255];
+      const resolvedEdgeColor = (colorEdgesByTree && treeEdgeColors && renderData?.edgeData)
         ? (d, { index }) => {
           const edge = renderData.edgeData?.[index];
           const t = edge?.tree_idx;
@@ -112,9 +115,9 @@ export function useDeckLayers({
             const b = parseInt(h.slice(4, 6), 16);
             return [r, g, b, 255];
           }
-          return [100, 100, 100, 255];
+          return defaultEdgeColor;
         }
-        : [100, 100, 100, 255];
+        : defaultEdgeColor;
 
       // CompositeLayer sublayer callbacks are not always invoked directly by deck.gl.
       // We dispatch from the *top-level* layer using sourceLayer id + picking info.
@@ -161,7 +164,7 @@ export function useDeckLayers({
         id: 'main-trees',
         renderData: renderData || null,
         xzoom,
-        edgeColor,
+        edgeColor: resolvedEdgeColor,
         edgeWidth: 1,
         tipRadius: 2,
         pickable: wantsPicking,
@@ -178,7 +181,7 @@ export function useDeckLayers({
     }
 
     return result;
-  }, [enabledViews, globalBpPerUnit, visibleIntervals, genomePositions, timePositions, renderData, xzoom, hoveredEdgeIndex, onTipHover, onTipClick, onEdgeHover, onEdgeClick, colorEdgesByTree, treeEdgeColors]);
+  }, [enabledViews, globalBpPerUnit, visibleIntervals, genomePositions, timePositions, renderData, xzoom, hoveredEdgeIndex, onTipHover, onTipClick, onEdgeHover, onEdgeClick, colorEdgesByTree, treeEdgeColors, edgeColor]);
 
   return { layers, layerFilter, clearHover };
 }

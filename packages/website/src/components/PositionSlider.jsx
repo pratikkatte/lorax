@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { useLorax } from '@lorax/core';
 
 /**
  * Format base pairs with appropriate Kb/Mb units
@@ -34,6 +35,7 @@ export default function PositionSlider({
   project,
   tsconfig
 }) {
+  const { compareMode = false, setCompareMode } = useLorax();
   const [searchParams, setSearchParams] = useSearchParams();
   const [start, setStart] = useState(value?.[0] || 0);
   const [end, setEnd] = useState(value?.[1] || genomeLength || 0);
@@ -190,6 +192,32 @@ export default function PositionSlider({
         />
         <span className="font-bold text-slate-800">Lorax</span>
       </a>
+
+      {/* Topology comparison toggle - right corner */}
+      <div className="absolute right-4 flex items-center gap-2">
+        <button
+          type="button"
+          role="switch"
+          aria-checked={compareMode}
+          onClick={() => setCompareMode?.(prev => !prev)}
+          title="Compare topology of local genealogies shown in the ortho view"
+          className="flex items-center gap-2 cursor-pointer group"
+        >
+          <span className="text-xs text-slate-500 group-hover:text-slate-600 tracking-wide select-none transition-colors">
+            Compare topology
+          </span>
+          <span
+            className={`relative block w-8 h-4 rounded-full transition-colors flex-shrink-0 ${compareMode
+              ? 'bg-slate-600'
+              : 'bg-slate-200'
+            }`}
+          >
+            <span
+              className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow-sm transition-transform ${compareMode ? 'left-[18px]' : 'left-0.5'}`}
+            />
+          </span>
+        </button>
+      </div>
 
       {/* Filename badge with file info dropdown */}
       {filename && (

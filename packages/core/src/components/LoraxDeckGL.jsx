@@ -123,6 +123,13 @@ const LoraxDeckGL = forwardRef(({
   highlightedMutationNode = null,
   // Optional: tree index to restrict mutation highlight to (e.g. Info→Mutations click)
   highlightedMutationTreeIndex = null,
+  // Compare topology edge colors [r, g, b, a]
+  compareInsertionColor = null,
+  compareDeletionColor = null,
+  showCompareInsertion = true,
+  showCompareDeletion = true,
+  // Tree edge color [r, g, b, a] (used when colorEdgesByTree is false)
+  edgeColor = null,
   ...otherProps
 }, ref) => {
   const deckRef = useRef(null);
@@ -623,15 +630,15 @@ const LoraxDeckGL = forwardRef(({
     }
 
     const edges = [];
-    const insertedColor = [0, 255, 0, 200];
-    const removedColor = [255, 0, 0, 200];
+    const insertedColor = compareInsertionColor ?? [0, 255, 0, 200];
+    const removedColor = compareDeletionColor ?? [255, 0, 0, 200];
 
     for (const comp of compareTreesResult.comparisons) {
       const { prev_idx: prevIdx, next_idx: nextIdx, inserted = [], removed = [] } = comp;
 
       // Inserted edges: use next_idx modelMatrix
       const nextBin = localBins.get(nextIdx);
-      if (nextBin?.modelMatrix) {
+      if (showCompareInsertion && nextBin?.modelMatrix) {
         const m = nextBin.modelMatrix;
         const scaleX = m[0];
         const scaleY = m[5];
@@ -652,7 +659,7 @@ const LoraxDeckGL = forwardRef(({
 
       // Removed edges: use prev_idx modelMatrix
       const prevBin = localBins.get(prevIdx);
-      if (prevBin?.modelMatrix) {
+      if (showCompareDeletion && prevBin?.modelMatrix) {
         const m = prevBin.modelMatrix;
         const scaleX = m[0];
         const scaleY = m[5];
@@ -673,7 +680,7 @@ const LoraxDeckGL = forwardRef(({
     }
 
     return edges;
-  }, [compareMode, compareTreesResult, localBins]);
+  }, [compareMode, compareTreesResult, localBins, compareInsertionColor, compareDeletionColor, showCompareInsertion, showCompareDeletion]);
 
   // Merge highlight data into render data
   // Multi-value search takes priority over single-value highlight
@@ -799,6 +806,7 @@ const LoraxDeckGL = forwardRef(({
     xzoom,
     colorEdgesByTree,
     treeEdgeColors,
+    edgeColor,
     // Tree interactions
     onTipHover,
     onTipClick,
