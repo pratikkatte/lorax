@@ -4,6 +4,26 @@ import { supportsWebWorkers } from '../utils/computations.js';
 import { useWorker } from './useWorker.jsx';
 import { getRenderDataWorker } from '../workers/workerSpecs.js';
 
+const EMPTY_DISPLAY_ARRAY = [];
+
+/**
+ * Check if we should skip render computation (missing data or no visible trees).
+ * @returns {{ skip: boolean, visibleCount?: number }}
+ */
+function shouldSkipRender(localBins, treeData) {
+  if (!localBins || !treeData || !treeData.node_id || treeData.node_id.length === 0) {
+    return { skip: true };
+  }
+  let visibleCount = 0;
+  for (const [, value] of localBins.entries()) {
+    if (value.modelMatrix && value.visible !== false) visibleCount++;
+  }
+  if (visibleCount === 0) {
+    return { skip: true };
+  }
+  return { skip: false, visibleCount };
+}
+
 /**
  * Hook to compute render data (typed arrays) for tree visualization.
  * Sends tree data + localBins to worker, receives typed arrays for deck.gl layers.
@@ -57,19 +77,8 @@ export function useRenderData({
   useEffect(() => {
     if (effectiveMode !== 'worker' || !worker.isReady) return;
 
-    // Skip if missing required data
-    if (!localBins || !treeData || !treeData.node_id || treeData.node_id.length === 0) {
-      setRenderData(null);
-      return;
-    }
-
-    // Count visible trees
-    let visibleCount = 0;
-    for (const [, value] of localBins.entries()) {
-      if (value.modelMatrix && value.visible !== false) visibleCount++;
-    }
-
-    if (visibleCount === 0) {
+    const { skip } = shouldSkipRender(localBins, treeData);
+    if (skip) {
       setRenderData(null);
       return;
     }
@@ -121,19 +130,8 @@ export function useRenderData({
   useEffect(() => {
     if (effectiveMode !== 'main-thread') return;
 
-    // Skip if missing required data
-    if (!localBins || !treeData || !treeData.node_id || treeData.node_id.length === 0) {
-      setRenderData(null);
-      return;
-    }
-
-    // Count visible trees
-    let visibleCount = 0;
-    for (const [, value] of localBins.entries()) {
-      if (value.modelMatrix && value.visible !== false) visibleCount++;
-    }
-
-    if (visibleCount === 0) {
+    const { skip } = shouldSkipRender(localBins, treeData);
+    if (skip) {
       setRenderData(null);
       return;
     }
@@ -159,7 +157,7 @@ export function useRenderData({
         mut_y: treeData.mut_y,
         mut_tree_idx: treeData.mut_tree_idx,
         modelMatrices: modelMatricesMap,
-        displayArray: displayArray || [],
+        displayArray: displayArray ?? EMPTY_DISPLAY_ARRAY,
         metadataArrays,
         metadataColors,
         populationFilter

@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
 # Default cell size for sparsification (0.2% of normalized [0,1] space)
-DEFAULT_SPARSIFY_CELL_SIZE = 0.002
+DEFAULT_SPARSIFY_CELL_SIZE = 0.00002
 
 
 @njit(cache=True)
@@ -262,6 +262,7 @@ def construct_trees_batch(
     ts,
     tree_indices: List[int],
     sparsification: bool = False,
+    sparsify_mutations: bool = True,
     include_mutations: bool = True,
     pre_cached_graphs: Optional[dict] = None
 ) -> Tuple[bytes, float, float, List[int], dict]:
@@ -274,6 +275,7 @@ def construct_trees_batch(
         ts: tskit TreeSequence object
         tree_indices: List of tree indices to process
         sparsification: Enable sparsification (default False). Uses edge-midpoint grid deduplication.
+        sparsify_mutations: When True, grid-deduplicate mutations by (x,y) per tree. Default follows sparsification.
         include_mutations: Whether to include mutation data in buffer
         pre_cached_graphs: Optional dict mapping tree_idx -> TreeGraph for cache hits
 
@@ -558,6 +560,17 @@ def construct_trees_batch(
         all_mut_y = all_mut_y[:mut_offset]
         all_mut_node_id = all_mut_node_id[:mut_offset]
 
+        # Apply mutation sparsification when requested (grid-deduplicate by x,y per tree)
+        if sparsify_mutations:
+            resolution = int(1.0 / DEFAULT_SPARSIFY_CELL_SIZE)
+            keep_mask = _sparsify_mutations(
+                all_mut_x, all_mut_y, all_mut_tree_idx, all_mut_node_id, resolution
+            )
+            all_mut_tree_idx = all_mut_tree_idx[keep_mask]
+            all_mut_x = all_mut_x[keep_mask]
+            all_mut_y = all_mut_y[keep_mask]
+            all_mut_node_id = all_mut_node_id[keep_mask]
+
     # Build separate node table
     if offset == 0:
         node_table = pa.table({
@@ -613,6 +626,46 @@ def construct_trees_batch(
     combined = struct.pack('<I', len(node_bytes)) + node_bytes + mut_bytes
 
     return combined, min_time, max_time, processed_indices, newly_built_graphs
+
+
+@njit(cache=True)
+def _sparsify_mutations(mut_x, mut_y, mut_tree_idx, mut_node_id, resolution):
+    """
+    Grid-deduplicate mutations by (mut_x, mut_y) per tree.
+
+    Mutations in the same grid cell keep one representative. Preserves spatial
+    distribution while reducing payload when many mutations cluster.
+
+    Args:
+        mut_x: float32 array of x coordinates (time, normalized [0,1])
+        mut_y: float32 array of y coordinates (layout, normalized [0,1])
+        mut_tree_idx: int32 array of tree indices
+        mut_node_id: int32 array of node IDs (unused for dedup, kept for output)
+        resolution: Grid resolution (e.g., 500 for cell_size=0.002)
+
+    Returns:
+        keep: bool array indicating which mutations to keep
+    """
+    n = len(mut_x)
+    keep = np.zeros(n, dtype=np.bool_)
+
+    if n == 0:
+        return keep
+
+    seen_cells = Dict.empty(key_type=types.int64, value_type=types.int32)
+    stride = resolution + 1
+
+    for i in range(n):
+        cx = min(int(mut_x[i] * resolution), resolution - 1)
+        cy = min(int(mut_y[i] * resolution), resolution - 1)
+        tree_idx = mut_tree_idx[i]
+        key = tree_idx * stride * stride + cx * stride + cy
+
+        if key not in seen_cells:
+            seen_cells[key] = np.int32(i)
+            keep[i] = True
+
+    return keep
 
 
 @njit(cache=True)

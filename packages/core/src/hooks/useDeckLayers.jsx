@@ -1,5 +1,7 @@
 import { useMemo, useCallback, useState } from 'react';
 import { GenomeGridLayer } from '../layers/GenomeGridLayer.jsx';
+
+const DEFAULT_EDGE_COLOR = [100, 100, 100, 255];
 import { GenomeInfoLayer } from '../layers/GenomeInfoLayer.jsx';
 import { TimeGridLayer } from '../layers/TimeGridLayer.jsx';
 import { TreeCompositeLayer } from '../layers/TreeCompositeLayer.jsx';
@@ -45,6 +47,64 @@ export function useDeckLayers({
     onTipHover?.(null, null, null);
     onEdgeHover?.(null, null, null);
   }, [onTipHover, onEdgeHover]);
+
+  const defaultEdgeColor = edgeColor ?? DEFAULT_EDGE_COLOR;
+  const resolvedEdgeColor = useMemo(() => {
+    if (colorEdgesByTree && treeEdgeColors && renderData?.edgeData) {
+      return (d, { index }) => {
+        const edge = renderData.edgeData?.[index];
+        const t = edge?.tree_idx;
+        const hex = (t != null)
+          ? (treeEdgeColors[String(t)] ?? treeEdgeColors[t])
+          : null;
+        if (typeof hex === 'string' && /^#?[0-9a-fA-F]{6}$/.test(hex)) {
+          const h = hex.startsWith('#') ? hex.slice(1) : hex;
+          const r = parseInt(h.slice(0, 2), 16);
+          const g = parseInt(h.slice(2, 4), 16);
+          const b = parseInt(h.slice(4, 6), 16);
+          return [r, g, b, 255];
+        }
+        return defaultEdgeColor;
+      };
+    }
+    return defaultEdgeColor;
+  }, [colorEdgesByTree, treeEdgeColors, renderData?.edgeData, defaultEdgeColor]);
+
+  const dispatchHover = useCallback((info, event) => {
+    const sourceLayerId = info?.sourceLayer?.id || '';
+    if (sourceLayerId.includes('tips-pickable')) {
+      setHoveredEdgeIndex(null);
+      onTipHover?.(info?.object || null, info, event);
+      return;
+    }
+    if (sourceLayerId.includes('edges')) {
+      setHoveredEdgeIndex(info?.index ?? null);
+      const edge = (renderData?.edgeData && info?.index != null && info.index >= 0)
+        ? renderData.edgeData[info.index]
+        : null;
+      onEdgeHover?.(edge || null, info, event);
+      return;
+    }
+    setHoveredEdgeIndex(null);
+    onTipHover?.(null, info, event);
+    onEdgeHover?.(null, info, event);
+  }, [renderData?.edgeData, onTipHover, onEdgeHover]);
+
+  const dispatchClick = useCallback((info, event) => {
+    const sourceLayerId = info?.sourceLayer?.id || '';
+    if (sourceLayerId.includes('tips-pickable')) {
+      onTipClick?.(info?.object || null, info, event);
+      return;
+    }
+    if (sourceLayerId.includes('edges')) {
+      const edge = (renderData?.edgeData && info?.index != null && info.index >= 0)
+        ? renderData.edgeData[info.index]
+        : null;
+      onEdgeClick?.(edge || null, info, event);
+      return;
+    }
+  }, [renderData?.edgeData, onTipClick, onEdgeClick]);
+
   /**
    * Layer filter function - maps layer IDs to view IDs
    * Ensures only relevant layers render in each viewport
@@ -100,66 +160,6 @@ export function useDeckLayers({
     if (enabledViews.includes('ortho')) {
       const wantsPicking = Boolean(onTipHover || onTipClick || onEdgeHover || onEdgeClick);
 
-      const defaultEdgeColor = edgeColor ?? [100, 100, 100, 255];
-      const resolvedEdgeColor = (colorEdgesByTree && treeEdgeColors && renderData?.edgeData)
-        ? (d, { index }) => {
-          const edge = renderData.edgeData?.[index];
-          const t = edge?.tree_idx;
-          const hex = (t != null)
-            ? (treeEdgeColors[String(t)] ?? treeEdgeColors[t])
-            : null;
-          if (typeof hex === 'string' && /^#?[0-9a-fA-F]{6}$/.test(hex)) {
-            const h = hex.startsWith('#') ? hex.slice(1) : hex;
-            const r = parseInt(h.slice(0, 2), 16);
-            const g = parseInt(h.slice(2, 4), 16);
-            const b = parseInt(h.slice(4, 6), 16);
-            return [r, g, b, 255];
-          }
-          return defaultEdgeColor;
-        }
-        : defaultEdgeColor;
-
-      // CompositeLayer sublayer callbacks are not always invoked directly by deck.gl.
-      // We dispatch from the *top-level* layer using sourceLayer id + picking info.
-      const dispatchHover = (info, event) => {
-        const sourceLayerId = info?.sourceLayer?.id || '';
-        if (sourceLayerId.includes('tips-pickable')) {
-          setHoveredEdgeIndex(null);
-          onTipHover?.(info?.object || null, info, event);
-          return;
-        }
-        // if (sourceLayerId.includes('edges-pickable')) {
-        if (sourceLayerId.includes('edges')) {
-          setHoveredEdgeIndex(info?.index ?? null);
-          const edge = (renderData?.edgeData && info?.index != null && info.index >= 0)
-            ? renderData.edgeData[info.index]
-            : null;
-          onEdgeHover?.(edge || null, info, event);
-          return;
-        }
-
-        // Nothing pickable hovered
-        setHoveredEdgeIndex(null);
-        onTipHover?.(null, info, event);
-        onEdgeHover?.(null, info, event);
-      };
-
-      const dispatchClick = (info, event) => {
-        const sourceLayerId = info?.sourceLayer?.id || '';
-        if (sourceLayerId.includes('tips-pickable')) {
-          onTipClick?.(info?.object || null, info, event);
-          return;
-        }
-        // if (sourceLayerId.includes('edges-pickable')) {
-        if (sourceLayerId.includes('edges')) {
-          const edge = (renderData?.edgeData && info?.index != null && info.index >= 0)
-            ? renderData.edgeData[info.index]
-            : null;
-          onEdgeClick?.(edge || null, info, event);
-          return;
-        }
-      };
-
       result.push(new TreeCompositeLayer({
         id: 'main-trees',
         renderData: renderData || null,
@@ -181,7 +181,7 @@ export function useDeckLayers({
     }
 
     return result;
-  }, [enabledViews, globalBpPerUnit, visibleIntervals, genomePositions, timePositions, renderData, xzoom, hoveredEdgeIndex, onTipHover, onTipClick, onEdgeHover, onEdgeClick, colorEdgesByTree, treeEdgeColors, edgeColor]);
+  }, [enabledViews, globalBpPerUnit, visibleIntervals, genomePositions, timePositions, renderData, xzoom, hoveredEdgeIndex, resolvedEdgeColor, dispatchHover, dispatchClick]);
 
   return { layers, layerFilter, clearHover };
 }

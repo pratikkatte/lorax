@@ -189,6 +189,20 @@ def search_samples_by_metadata(
     return matching_samples
 
 
+def _build_metadata_array_result(sample_ids, unique_values, indices):
+    """Build the result dict with Arrow IPC serialized indices."""
+    table = pa.table({'idx': pa.array(indices, type=pa.uint32())})
+    sink = pa.BufferOutputStream()
+    writer = pa.ipc.new_stream(sink, table.schema)
+    writer.write_table(table)
+    writer.close()
+    return {
+        'unique_values': unique_values,
+        'sample_node_ids': [int(x) for x in sample_ids],
+        'arrow_buffer': sink.getvalue().to_pybytes()
+    }
+
+
 def _get_sample_metadata_value(ts, node_id, key, sources, sample_name_key="name"):
     """
     Helper to get a specific metadata value for a sample node.
@@ -274,12 +288,12 @@ def get_metadata_array_for_key(
     cache_key = f"{key}:array"
     cached = ctx.get_metadata(cache_key)
     if cached is not None:
-        print(f"✅ Using cached metadata array for key: {key}")
         return cached
 
     ts = ctx.tree_sequence
     sample_ids = list(ts.samples())
     n_samples = len(sample_ids)
+    nodes = ts.tables.nodes
 
     # Special handling for "sample" key - each sample's name is its own unique value
     if key == "sample":
@@ -288,8 +302,8 @@ def get_metadata_array_for_key(
         indices = np.zeros(n_samples, dtype=np.uint32)
 
         for i, node_id in enumerate(sample_ids):
-            node = ts.node(node_id)
-            node_meta = node.metadata or {}
+            row = nodes[node_id]
+            node_meta = row.metadata or {}
             try:
                 node_meta = ensure_json_dict(node_meta)
             except (TypeError, json.JSONDecodeError):
@@ -302,20 +316,8 @@ def get_metadata_array_for_key(
 
             indices[i] = value_to_idx[sample_name]
 
-        # Serialize to Arrow IPC format
-        table = pa.table({'idx': pa.array(indices, type=pa.uint32())})
-        sink = pa.BufferOutputStream()
-        writer = pa.ipc.new_stream(sink, table.schema)
-        writer.write_table(table)
-        writer.close()
-
-        result = {
-            'unique_values': unique_values,
-            'sample_node_ids': [int(x) for x in sample_ids],
-            'arrow_buffer': sink.getvalue().to_pybytes()
-        }
+        result = _build_metadata_array_result(sample_ids, unique_values, indices)
         ctx.set_metadata(cache_key, result)
-        print(f"✅ Built sample metadata array ({n_samples} samples, {len(unique_values)} unique values)")
         return result
 
     unique_values = []
@@ -323,11 +325,39 @@ def get_metadata_array_for_key(
     indices = np.zeros(n_samples, dtype=np.uint32)
 
     for i, node_id in enumerate(sample_ids):
-        sample_name, value = _get_sample_metadata_value(ts, node_id, key, sources, sample_name_key)
+        row = nodes[node_id]
+        node_meta = row.metadata or {}
+        node_meta = ensure_json_dict(node_meta)
+        sample_name = node_meta.get(sample_name_key, f"{node_id}")
+
+        value = None
+        for source in sources:
+            if source == "individual":
+                if row.individual == tskit.NULL:
+                    continue
+                meta = ts.individual(row.individual).metadata or {}
+                meta = ensure_json_dict(meta)
+            elif source == "node":
+                meta = node_meta
+            elif source == "population":
+                if row.population == tskit.NULL:
+                    continue
+                meta = ts.population(row.population).metadata or {}
+                meta = ensure_json_dict(meta)
+            else:
+                continue
+
+            if not meta:
+                continue
+
+            if key in meta:
+                value = meta[key]
+                if isinstance(value, (list, dict)):
+                    value = repr(value)
+                break
 
         if value is None:
-            value = ""  # Handle missing values
-
+            value = ""
         value_str = str(value)
 
         if value_str not in value_to_idx:
@@ -336,21 +366,8 @@ def get_metadata_array_for_key(
 
         indices[i] = value_to_idx[value_str]
 
-    # Serialize to Arrow IPC format
-    table = pa.table({'idx': pa.array(indices, type=pa.uint32())})
-    sink = pa.BufferOutputStream()
-    writer = pa.ipc.new_stream(sink, table.schema)
-    writer.write_table(table)
-    writer.close()
-
-    result = {
-        'unique_values': unique_values,
-        'sample_node_ids': [int(x) for x in sample_ids],  # Convert to Python int for JSON
-        'arrow_buffer': sink.getvalue().to_pybytes()
-    }
-
+    result = _build_metadata_array_result(sample_ids, unique_values, indices)
     ctx.set_metadata(cache_key, result)
-    print(f"✅ Built metadata array for key: {key} ({n_samples} samples, {len(unique_values)} unique values)")
     return result
 
 

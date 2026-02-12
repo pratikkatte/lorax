@@ -615,6 +615,7 @@ async def handle_tree_graph_query(
             ts,
             tree_indices,
             sparsification=sparsification,
+            sparsify_mutations=sparsification,  # When nodes are sparsified, sparsify mutations too
             pre_cached_graphs=pre_cached_graphs
         )
 

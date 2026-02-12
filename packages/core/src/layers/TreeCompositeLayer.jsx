@@ -1,12 +1,15 @@
 import { CompositeLayer, COORDINATE_SYSTEM } from '@deck.gl/core';
 import { PathLayer, ScatterplotLayer, IconLayer } from '@deck.gl/layers';
 
+const X_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128"><line x1="16" y1="16" x2="112" y2="112" stroke="white" stroke-width="12" stroke-linecap="round"/><line x1="112" y1="16" x2="16" y2="112" stroke="white" stroke-width="12" stroke-linecap="round"/></svg>';
+const X_ICON_DATA_URL = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(X_ICON_SVG)));
+
 /**
  * TreeCompositeLayer - Renders trees using pre-computed render data.
  *
  * Consumes typed arrays from useRenderData hook:
  * - pathPositions: Float64Array of L-shaped edge coordinates
- * - pathStartIndices: Array of indices for PathLayer binary format
+ * - pathStartIndices: Uint32Array of indices for PathLayer binary format
  * - tipPositions: Float64Array of tip node coordinates
  * - tipColors: Uint8Array of RGBA per tip
  * - tipData: Array of { node_id, tree_idx, position } for picking
@@ -90,7 +93,7 @@ export class TreeCompositeLayer extends CompositeLayer {
     if (edgeCount > 0) {
       const edgeBinaryData = {
         length: pathStartIndices.length - 1,
-        startIndices: new Uint32Array(pathStartIndices),
+        startIndices: pathStartIndices,
         attributes: {
           getPath: { value: pathPositions, size: 2 }
         }
@@ -99,6 +102,7 @@ export class TreeCompositeLayer extends CompositeLayer {
       layers.push(new PathLayer({
         id: `${this.props.id}-edges`,
         data: edgeBinaryData,
+        _pathType: 'open',
         getColor: edgeColor,
         getWidth: edgeWidth,
         fp64: true,
@@ -138,6 +142,7 @@ export class TreeCompositeLayer extends CompositeLayer {
           layers.push(new PathLayer({
             id: `${this.props.id}-edge-hover-highlight`,
             data: highlightBinary,
+            _pathType: 'open',
             getColor: edgeColor,
             getWidth: Math.max(edgeWidth + 2, 3),
             fp64: true,
@@ -249,26 +254,26 @@ export class TreeCompositeLayer extends CompositeLayer {
     }
 
     if (showMutations && mutCount > 0 && mutPositions?.length > 0) {
-      // Convert Float64Array positions to array of objects for IconLayer
-      const mutationData = [];
-      for (let i = 0; i < mutCount; i++) {
-        mutationData.push({
-          position: [mutPositions[i * 2], mutPositions[i * 2 + 1]]
-        });
+      if (!this._iconIdsCache || this._iconIdsCache.length < mutCount) {
+        this._iconIdsCache = new Uint8Array(mutCount).fill(0);
       }
-
+      const iconIds = this._iconIdsCache.subarray(0, mutCount);
       layers.push(new IconLayer({
         id: `${this.props.id}-mutations`,
-        data: mutationData,
-        getPosition: d => d.position,
-        getIcon: () => 'marker',
-        getColor: mutationColor,
-        getSize: mutationRadius * 4,  // IconLayer uses different sizing
-        sizeUnits: 'pixels',
-        iconAtlas: '/X.png',
-        iconMapping: {
-          marker: { x: 0, y: 0, width: 128, height: 128, mask: true }
+        data: {
+          length: mutCount,
+          attributes: {
+            getPosition: { value: mutPositions, size: 2 },
+            getIcon: { value: iconIds, size: 1 }
+          }
         },
+        iconAtlas: X_ICON_DATA_URL,
+        iconMapping: {
+          0: { x: 0, y: 0, width: 128, height: 128, mask: true }
+        },
+        getColor: mutationColor,
+        getSize: mutationRadius * 4,
+        sizeUnits: 'pixels',
         coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
         pickable: false
       }));
