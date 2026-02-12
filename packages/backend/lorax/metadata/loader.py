@@ -10,8 +10,7 @@ import numpy as np
 import tskit
 import pyarrow as pa
 from collections import defaultdict
-from lorax.utils import ensure_json_dict, make_json_safe, make_json_serializable
-
+from lorax.utils import ensure_json_dict
 
 def get_metadata_for_key(
     ctx,
@@ -354,6 +353,18 @@ def get_metadata_array_for_key(
     return result
 
 
+def _keys_from_schema(schema):
+    """Extract metadata keys from tskit MetadataSchema, or None if schema has no properties."""
+    try:
+        d = schema.asdict()
+        props = d.get("properties") or {}
+        if props:
+            return set(props.keys())
+    except Exception:
+        pass
+    return None
+
+
 def get_metadata_schema(
     ts,
     sources=("individual", "node", "population"),
@@ -364,6 +375,9 @@ def get_metadata_schema(
 
     Also includes "sample" as the first key, where each sample's name/ID is its
     own unique value (for coloring samples individually).
+
+    Uses schema-first: when tskit tables have explicit metadata schema properties,
+    keys are extracted in O(1). Otherwise falls back to sampling one row per table.
 
     Parameters
     ----------
@@ -383,44 +397,57 @@ def get_metadata_schema(
     """
     keys = set()
 
-    for node_id in ts.samples():
-        node = ts.node(node_id)
+    # Early return for empty tree sequence
+    if not ts.num_samples:
+        return {"metadata_keys": ["sample"]}
 
-        # Parse node metadata
-        node_meta = node.metadata or {}
-        try:
-            node_meta = ensure_json_dict(node_meta)
-        except (TypeError, json.JSONDecodeError):
-            node_meta = {}
+    tables = ts.tables
 
-        for source in sources:
-            if source == "individual":
-                if node.individual == tskit.NULL:
-                    continue
-                meta = ts.individual(node.individual).metadata
-                meta = meta or {}
-                meta = ensure_json_dict(meta)
-
-            elif source == "node":
-                meta = node_meta  # Reuse already parsed node metadata
-
-            elif source == "population":
-                if node.population == tskit.NULL:
-                    continue
-                meta = ts.population(node.population).metadata
-                meta = meta or {}
-                meta = ensure_json_dict(meta)
-
+    for source in sources:
+        if source == "individual":
+            schema_keys = _keys_from_schema(tables.individuals.metadata_schema)
+            if schema_keys is not None:
+                keys.update(schema_keys)
             else:
-                raise ValueError(f"Unknown source: {source}")
+                for i in range(ts.num_individuals):
+                    meta = ts.individual(i).metadata or {}
+                    meta = ensure_json_dict(meta)
+                    if meta:
+                        keys.update(meta.keys())
+                        break
 
-            if not meta:
-                continue
+        elif source == "node":
+            schema_keys = _keys_from_schema(tables.nodes.metadata_schema)
+            if schema_keys is not None:
+                keys.update(schema_keys)
+            else:
+                node = ts.node(next(iter(ts.samples())))
+                node_meta = node.metadata or {}
+                try:
+                    node_meta = ensure_json_dict(node_meta)
+                except (TypeError, json.JSONDecodeError):
+                    node_meta = {}
+                if node_meta:
+                    keys.update(node_meta.keys())
 
-            for key in meta.keys():
-                keys.add(key)
+        elif source == "population":
+            schema_keys = _keys_from_schema(tables.populations.metadata_schema)
+            if schema_keys is not None:
+                keys.update(schema_keys)
+            else:
+                for p in range(ts.num_populations):
+                    meta = ts.population(p).metadata or {}
+                    meta = ensure_json_dict(meta)
+                    if meta:
+                        keys.update(meta.keys())
+                        break
+
+        else:
+            raise ValueError(f"Unknown source: {source}")
 
     # Prepend "sample" to keys - this makes it the default colorBy option
+
+
     return {
         "metadata_keys": ["sample"] + sorted(list(keys))
     }

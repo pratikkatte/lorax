@@ -275,12 +275,6 @@ export default function PositionSlider({
                   <span className="text-slate-400">Recombination Intervals:</span>{' '}
                   {tsconfig?.intervals?.length?.toLocaleString() || '-'}
                 </p>
-                {tsconfig?.num_individuals != null && (
-                  <p>
-                    <span className="text-slate-400">Individuals:</span>{' '}
-                    {tsconfig.num_individuals.toLocaleString()}
-                  </p>
-                )}
                 {tsconfig?.num_samples != null && (
                   <p>
                     <span className="text-slate-400">Samples:</span>{' '}

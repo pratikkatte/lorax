@@ -41,8 +41,8 @@ ENV PYTHONPATH=/app/backend
 
 EXPOSE 8080
 
-CMD ["python", "-m", "lorax.cli", "serve", "--gunicorn", "--workers", "2", "--host", "0.0.0.0", "--port", "8080"]
-
+# CMD ["python", "-m", "lorax.cli", "serve", "--gunicorn", "--workers", "1", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["python", "-m", "lorax.cli", "serve", "--host", "0.0.0.0", "--port", "8080"]
 # ===============================
 # 3) Full runtime stage (default target)
 # ===============================
