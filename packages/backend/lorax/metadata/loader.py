@@ -270,6 +270,7 @@ def get_metadata_array_for_key(
             'arrow_buffer': bytes  # PyArrow IPC serialized indices
         }
     """
+
     cache_key = f"{key}:array"
     cached = ctx.get_metadata(cache_key)
     if cached is not None:

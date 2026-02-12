@@ -361,36 +361,51 @@ def get_population_details(ts, population_id):
 
 
 def get_mutations_for_node(ts, node_id, tree_index=None):
-    """Get all mutations on a specific node, optionally filtered by tree interval."""
-    mutations = []
+    """Get all mutations on a specific node, optionally filtered by tree interval.
 
-    # Get tree interval if tree_index is specified
-    tree_interval = None
+    Uses vectorized numpy/tskit table access instead of Python iteration over
+    all mutations, for much faster performance on large tree sequences.
+    """
+    t = ts.tables
+    sites = t.sites
+    mutations = t.mutations
+
+    # Vectorized: get positions for all mutations via their sites
+    positions = sites.position[mutations.site]
+
+    # Filter by node (vectorized)
+    node_mask = mutations.node == node_id
+
+    # Filter by tree interval if specified
     if tree_index is not None:
         tree = ts.at_index(tree_index)
-        tree_interval = tree.interval
+        left, right = tree.interval.left, tree.interval.right
+        pos_mask = (positions >= left) & (positions < right)
+        node_mask = node_mask & pos_mask
 
-    for mut in ts.mutations():
-        if mut.node == node_id:
-            site = ts.site(mut.site)
+    indices = np.where(node_mask)[0]
 
-            # Filter by tree interval if specified
-            if tree_interval is not None:
-                if not (site.position >= tree_interval.left and site.position < tree_interval.right):
-                    continue
+    # Build result - loop only over matched mutations (typically small)
+    result = []
+    for idx in indices:
+        mut = mutations[idx]
+        site_id = int(mut.site)
+        site = sites[site_id]
+        mut_time = mut.time
+        mut_parent = mut.parent
 
-            mutations.append({
-                "id": int(mut.id),
-                "site_id": int(mut.site),
-                "position": float(site.position),
-                "ancestral_state": site.ancestral_state,
-                "derived_state": mut.derived_state,
-                "time": float(mut.time) if mut.time != tskit.UNKNOWN_TIME else None,
-                "parent_mutation": int(mut.parent) if mut.parent != -1 else None,
-                "metadata": make_json_serializable(mut.metadata) if mut.metadata else None
-            })
+        result.append({
+            "id": int(idx),
+            "site_id": site_id,
+            "position": float(site.position),
+            "ancestral_state": site.ancestral_state,
+            "derived_state": mut.derived_state,
+            "time": float(mut_time) if mut_time != tskit.UNKNOWN_TIME else None,
+            "parent_mutation": int(mut_parent) if mut_parent != -1 else None,
+            "metadata": make_json_serializable(mut.metadata) if mut.metadata else None
+        })
 
-    return mutations
+    return result
 
 
 def get_edges_for_node(ts, node_id, tree_index=None):
@@ -435,6 +450,7 @@ async def handle_details(file_path, data):
         if ctx is None:
             return json.dumps({"error": "Tree sequence (ts) is not set. Please upload a file first."})
 
+        print(f"Getting details for file: {file_path}", data)
         ts = ctx.tree_sequence
         return_data = {}
         tree_index = data.get("treeIndex")
@@ -473,10 +489,10 @@ async def handle_details(file_path, data):
                     ts, node_id, tree_index
                 )
 
-                # Edges for this node
-                return_data["edges"] = get_edges_for_node(
-                    ts, node_id, tree_index
-                )
+                # # Edges for this node
+                # return_data["edges"] = get_edges_for_node(
+                #     ts, node_id, tree_index
+                # )
 
         return json.dumps(return_data)
     except Exception as e:

@@ -394,7 +394,7 @@ function FileView() {
     if (file && project && isConnected && !tsconfig?.filename) {
       setLoading(true);
       setError(null);
-      setStatusMessage({ status: 'loading', message: 'Loading config...' });
+      setStatusMessage({ status: 'loading', message: 'Loading file...' });
 
       // Build payload with genomic coords if present
       const payload = {
@@ -416,7 +416,7 @@ function FileView() {
           }
         })
         .catch(err => {
-          console.error('FileView: Error loading config:', err);
+          console.error('FileView: Error loading file:', err);
           setError(err.message || 'Failed to load file');
         })
         .finally(() => {
@@ -704,7 +704,7 @@ function FileView() {
         <div className="flex-1 relative bg-white">
         {/* ViewportOverlay - Container box with loading state */}
         <ViewportOverlay
-          statusMessage={loading ? { status: 'loading', message: 'Loading config...' } : statusMessage}
+          statusMessage={loading ? { status: 'loading', message: 'Loading file...' } : statusMessage}
           filename={filename || file}
           viewport={viewport}
           onViewportChange={updateViewport}
