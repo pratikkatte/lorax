@@ -20,8 +20,19 @@ from lorax.cache.lru import LRUCacheWithMeta
 from lorax.cache.file_context import FileContext
 from lorax.constants import TS_CACHE_SIZE
 
-# Global lock for thread-safe cache operations
-_cache_lock = asyncio.Lock()
+# Per-file locks to allow concurrent loading of different files
+# (replaces global lock that serialized all loads)
+_file_locks: dict[str, asyncio.Lock] = {}
+_locks_lock = asyncio.Lock()
+
+
+async def _get_file_lock(file_path: str) -> asyncio.Lock:
+    """Get or create the lock for a specific file path."""
+    async with _locks_lock:
+        if file_path not in _file_locks:
+            _file_locks[file_path] = asyncio.Lock()
+        return _file_locks[file_path]
+
 
 # Global cache for FileContext objects
 # Uses LRUCacheWithMeta to track file mtime for cache validation
@@ -85,8 +96,9 @@ async def get_file_context(file_path: str, root_dir: str = None) -> Optional[Fil
             print(f"🔄 File changed, reloading: {file_path}")
             _file_cache.remove(file_path)
 
-    # Need to load - acquire lock
-    async with _cache_lock:
+    # Need to load - acquire per-file lock (allows concurrent loads of different files)
+    file_lock = await _get_file_lock(file_path)
+    async with file_lock:
         # 2. Check again under lock (in case another task loaded it while we waited)
         ctx, cached_mtime = _file_cache.get_with_meta(file_path)
         if ctx is not None and cached_mtime == current_mtime:
