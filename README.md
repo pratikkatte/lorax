@@ -2,7 +2,7 @@
 
 **Lorax** is an essential tool for the **interactive exploration and visualization of Ancestral Recombination Graphs (ARGs)**.
 
-> Visit the official Lorax Website: [https://lorax.in/](https://lorax.in/)
+> Visit the official Lorax Website: [https://lorax.in/](https://lorax.ucsc.edu/)
 
 ## Local Installation and Usage
 
