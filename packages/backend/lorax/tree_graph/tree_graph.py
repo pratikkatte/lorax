@@ -8,6 +8,8 @@ This module provides:
 """
 
 import struct
+from concurrent.futures import ThreadPoolExecutor
+
 import numpy as np
 import pyarrow as pa
 from numba import njit
@@ -17,7 +19,10 @@ from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
 # Default cell size for sparsification (0.2% of normalized [0,1] space)
-DEFAULT_SPARSIFY_CELL_SIZE = 0.00002
+DEFAULT_SPARSIFY_CELL_SIZE = 0.2
+
+# Minimum tree count to enable parallel processing (avoids executor overhead for small batches)
+PARALLEL_TREE_THRESHOLD = 2
 
 
 @njit(cache=True)
@@ -258,13 +263,183 @@ def construct_tree(
     )
 
 
+def _process_single_tree(
+    ts,
+    tree_idx,
+    edges,
+    nodes,
+    breakpoints,
+    min_time,
+    max_time,
+    sparsification,
+    sparsify_resolution,
+    has_mutations,
+    mutations,
+    mutation_positions,
+    pre_cached_graph,
+):
+    """
+    Process a single tree: construct, optionally sparsify/collapse, collect mutations.
+    Returns (tree_idx, graph, newly_built, node_ids, parent_ids, is_tip, x, y, n, mut_arrays)
+    where mut_arrays is (mut_tree_idx, mut_x, mut_y, mut_node_id, n_muts) or None.
+    """
+    tree_idx = int(tree_idx)
+    if tree_idx < 0 or tree_idx >= ts.num_trees:
+        return (tree_idx, None, None, None, None, None, None, None, 0, None)
+
+    if pre_cached_graph is not None:
+        graph = pre_cached_graph
+        newly_built = False
+    else:
+        graph = construct_tree(ts, edges, nodes, breakpoints, tree_idx, min_time, max_time)
+        newly_built = True
+
+    indices = np.where(graph.in_tree)[0].astype(np.int32)
+    n = len(indices)
+    if n == 0:
+        return (tree_idx, graph if newly_built else None, newly_built, None, None, None, None, None, 0, None)
+
+    child_counts = np.diff(graph.children_indptr)
+    is_tip = child_counts[indices] == 0
+    node_ids = indices
+    parent_ids = graph.parent[indices]
+    x = graph.y[indices]
+    y = graph.x[indices]
+
+    if sparsification and sparsify_resolution is not None:
+        order = np.argsort(node_ids)
+        sorted_ids = node_ids[order]
+        pos = np.searchsorted(sorted_ids, parent_ids)
+        parent_indices = np.full(n, -1, dtype=np.int32)
+        # Avoid sorted_ids[pos] when pos>=n (searchsorted returns n when value not found)
+        safe_pos = np.minimum(pos, n - 1)
+        valid = (parent_ids != -1) & (pos < n) & (sorted_ids[safe_pos] == parent_ids)
+        parent_indices[valid] = order[pos[valid]]
+        keep_mask = _sparsify_edges(
+            x.astype(np.float32),
+            y.astype(np.float32),
+            parent_indices.astype(np.int32),
+            sparsify_resolution,
+        )
+        node_ids = node_ids[keep_mask]
+        parent_ids = parent_ids[keep_mask]
+        x = x[keep_mask]
+        y = y[keep_mask]
+        is_tip = is_tip[keep_mask]
+        n = len(node_ids)
+
+        if n > 0:
+            original_is_tip = is_tip.copy()
+            order = np.argsort(node_ids)
+            sorted_ids = node_ids[order]
+            pos = np.searchsorted(sorted_ids, parent_ids)
+            parent_local = np.full(n, -1, dtype=np.int32)
+            safe_pos = np.minimum(pos, n - 1)
+            valid = (parent_ids != -1) & (pos < n) & (sorted_ids[safe_pos] == parent_ids)
+            parent_local[valid] = order[pos[valid]]
+            child_counts = np.bincount(parent_local[parent_local >= 0], minlength=n)
+            collapse_mask = child_counts != 1
+
+            if not np.all(collapse_mask):
+                new_parent_ids = parent_ids.copy()
+                for i in range(n):
+                    if collapse_mask[i]:
+                        continue
+                    parent_idx = parent_local[i]
+                    while parent_idx >= 0 and not collapse_mask[parent_idx]:
+                        parent_idx = parent_local[parent_idx]
+                    new_parent_ids[i] = node_ids[parent_idx] if parent_idx >= 0 else -1
+                # Update kept nodes whose parent was removed to point to effective parent
+                for i in range(n):
+                    if not collapse_mask[i]:
+                        continue
+                    parent_idx = parent_local[i]
+                    if parent_idx < 0:
+                        continue
+                    if not collapse_mask[parent_idx]:
+                        while parent_idx >= 0 and not collapse_mask[parent_idx]:
+                            parent_idx = parent_local[parent_idx]
+                        new_parent_ids[i] = node_ids[parent_idx] if parent_idx >= 0 else -1
+
+                node_ids = node_ids[collapse_mask]
+                parent_ids = new_parent_ids[collapse_mask]
+                x = x[collapse_mask]
+                y = y[collapse_mask]
+                n = len(node_ids)
+
+                if n > 0:
+                    order = np.argsort(node_ids)
+                    sorted_ids = node_ids[order]
+                    pos = np.searchsorted(sorted_ids, parent_ids)
+                    parent_local = np.full(n, -1, dtype=np.int32)
+                    safe_pos = np.minimum(pos, n - 1)
+                    valid = (parent_ids != -1) & (pos < n) & (sorted_ids[safe_pos] == parent_ids)
+                    parent_local[valid] = order[pos[valid]]
+                    child_counts = np.bincount(parent_local[parent_local >= 0], minlength=n)
+                    is_tip = (child_counts == 0) & original_is_tip[collapse_mask]
+                else:
+                    is_tip = is_tip[:0]
+
+    if n == 0:
+        return (tree_idx, graph if newly_built else None, newly_built, None, None, None, None, None, 0, None)
+
+    mut_arrays = None
+    if has_mutations:
+        interval_left = breakpoints[tree_idx]
+        interval_right = breakpoints[tree_idx + 1]
+        mask = (mutation_positions >= interval_left) & (mutation_positions < interval_right)
+        mut_indices = np.where(mask)[0]
+        n_muts = len(mut_indices)
+        if n_muts > 0:
+            mut_node_ids = mutations.node[mut_indices].astype(np.int32)
+            mut_times = mutations.time[mut_indices]
+            mut_parent_ids = graph.parent[mut_node_ids].astype(np.int32)
+            mut_layout = graph.x[mut_node_ids].astype(np.float32)
+            time_range = max_time - min_time if max_time > min_time else 1.0
+            mut_time_norm = (max_time - mut_times) / time_range
+            nan_mask = np.isnan(mut_times)
+            if np.any(nan_mask):
+                node_y = graph.y[mut_node_ids[nan_mask]]
+                parent_ids_for_nan = mut_parent_ids[nan_mask]
+                parent_y = np.where(
+                    parent_ids_for_nan >= 0,
+                    graph.y[np.maximum(parent_ids_for_nan, 0)],
+                    0.0,
+                )
+                mut_time_norm[nan_mask] = (node_y + parent_y) / 2.0
+            mut_time_norm = mut_time_norm.astype(np.float32)
+            mut_x = mut_time_norm
+            mut_y = mut_layout
+            mut_arrays = (
+                np.full(n_muts, tree_idx, dtype=np.int32),
+                mut_x,
+                mut_y,
+                mut_node_ids,
+                n_muts,
+            )
+
+    return (
+        tree_idx,
+        graph if newly_built else None,
+        newly_built,
+        node_ids,
+        parent_ids,
+        is_tip,
+        x,
+        y,
+        n,
+        mut_arrays,
+    )
+
+
 def construct_trees_batch(
     ts,
     tree_indices: List[int],
     sparsification: bool = False,
     sparsify_mutations: bool = True,
     include_mutations: bool = True,
-    pre_cached_graphs: Optional[dict] = None
+    pre_cached_graphs: Optional[dict] = None,
+    sparsify_cell_size: Optional[float] = None,
 ) -> Tuple[bytes, float, float, List[int], dict]:
     """
     Construct multiple trees and return combined PyArrow buffer.
@@ -335,10 +510,42 @@ def construct_trees_batch(
         combined = struct.pack('<I', len(node_bytes)) + node_bytes + mut_bytes
         return combined, min_time, max_time, [], {}
 
+    # Filter to valid tree indices for estimation and processing
+    valid_indices = [
+        int(t) for t in tree_indices
+        if 0 <= int(t) < ts.num_trees
+    ]
+
+    if not valid_indices:
+        node_table = pa.table({
+            'node_id': pa.array([], type=pa.int32()),
+            'parent_id': pa.array([], type=pa.int32()),
+            'is_tip': pa.array([], type=pa.bool_()),
+            'tree_idx': pa.array([], type=pa.int32()),
+            'x': pa.array([], type=pa.float32()),
+            'y': pa.array([], type=pa.float32()),
+        })
+        mut_table = pa.table({
+            'mut_x': pa.array([], type=pa.float32()),
+            'mut_y': pa.array([], type=pa.float32()),
+            'mut_tree_idx': pa.array([], type=pa.int32()),
+            'mut_node_id': pa.array([], type=pa.int32()),
+        })
+        node_sink = pa.BufferOutputStream()
+        node_writer = pa.ipc.new_stream(node_sink, node_table.schema)
+        node_writer.write_table(node_table)
+        node_writer.close()
+        mut_sink = pa.BufferOutputStream()
+        mut_writer = pa.ipc.new_stream(mut_sink, mut_table.schema)
+        mut_writer.write_table(mut_table)
+        mut_writer.close()
+        combined = struct.pack('<I', len(node_sink.getvalue().to_pybytes())) + node_sink.getvalue().to_pybytes() + mut_sink.getvalue().to_pybytes()
+        return combined, min_time, max_time, [], {}
+
     # Estimate total nodes for pre-allocation
-    sample_tree = ts.at_index(int(tree_indices[0]) if tree_indices else 0)
+    sample_tree = ts.at_index(valid_indices[0])
     estimated_nodes_per_tree = sample_tree.num_nodes
-    total_estimated = estimated_nodes_per_tree * len(tree_indices) * 2
+    total_estimated = estimated_nodes_per_tree * len(valid_indices) * 2
 
     # Pre-allocate node arrays
     all_node_ids = np.empty(total_estimated, dtype=np.int32)
@@ -364,106 +571,59 @@ def construct_trees_batch(
     pre_cached_graphs = pre_cached_graphs or {}
     newly_built_graphs = {}
 
-    for tree_idx in tree_indices:
-        tree_idx = int(tree_idx)
+    # Precompute resolution once per batch (used when sparsification enabled)
+    sparsify_resolution = None
+    if sparsification:
+        cell_size = sparsify_cell_size if sparsify_cell_size is not None else DEFAULT_SPARSIFY_CELL_SIZE
+        print(f"Sparsify resolution: {cell_size}")
+        sparsify_resolution = int(1.0 / cell_size)
 
-        if tree_idx < 0 or tree_idx >= ts.num_trees:
-            continue
+    def process_one(tidx):
+        return _process_single_tree(
+            ts,
+            tidx,
+            edges,
+            nodes,
+            breakpoints,
+            min_time,
+            max_time,
+            sparsification,
+            sparsify_resolution,
+            has_mutations,
+            mutations,
+            mutation_positions,
+            pre_cached_graphs.get(int(tidx)),
+        )
 
-        # Check pre-cached first, then construct if needed
-        if tree_idx in pre_cached_graphs:
-            graph = pre_cached_graphs[tree_idx]
-        else:
-            graph = construct_tree(ts, edges, nodes, breakpoints, tree_idx, min_time, max_time)
-            newly_built_graphs[tree_idx] = graph  # Track for caching
+    use_parallel = len(valid_indices) >= PARALLEL_TREE_THRESHOLD
+    if use_parallel:
+        with ThreadPoolExecutor(max_workers=min(len(valid_indices), 8)) as executor:
+            results = list(executor.map(process_one, valid_indices))
+    else:
+        results = [process_one(tidx) for tidx in valid_indices]
 
-        # Get nodes in tree
-        indices = np.where(graph.in_tree)[0].astype(np.int32)
-        n = len(indices)
-
-        if n == 0:
-            continue
-
-        # Derive is_tip
-        child_counts = np.diff(graph.children_indptr)
-        is_tip = child_counts[indices] == 0
-
-        # Get coordinates (swap for backend convention)
-        node_ids = indices
-        parent_ids = graph.parent[indices]
-        x = graph.y[indices]  # SWAP: time -> x
-        y = graph.x[indices]  # SWAP: layout -> y
-
-        # Apply sparsification if requested (edge-midpoint grid deduplication)
-        if sparsification:
-            resolution = int(1.0 / DEFAULT_SPARSIFY_CELL_SIZE)
-            keep_mask = _sparsify_edges(
-                node_ids.astype(np.int32),
-                x.astype(np.float32),
-                y.astype(np.float32),
-                is_tip,
-                parent_ids.astype(np.int32),
-                resolution
-            )
-            node_ids = node_ids[keep_mask]
-            parent_ids = parent_ids[keep_mask]
-            x = x[keep_mask]
-            y = y[keep_mask]
-            is_tip = is_tip[keep_mask]
-            n = len(node_ids)
-
-            if n > 0:
-                # Preserve original tip status before collapse (for correct is_tip after recompute)
-                original_is_tip = is_tip.copy()
-                # Collapse unary internal nodes (keep roots even if unary).
-                order = np.argsort(node_ids)
-                sorted_ids = node_ids[order]
-                pos = np.searchsorted(sorted_ids, parent_ids)
-                parent_local = np.full(n, -1, dtype=np.int32)
-                valid = (parent_ids != -1) & (pos < n) & (sorted_ids[pos] == parent_ids)
-                parent_local[valid] = order[pos[valid]]
-                child_counts = np.bincount(parent_local[parent_local >= 0], minlength=n)
-                collapse_mask = child_counts != 1
-
-                if not np.all(collapse_mask):
-                    new_parent_ids = parent_ids.copy()
-                    for i in range(n):
-                        if not collapse_mask[i]:
-                            continue
-                        parent = new_parent_ids[i]
-                        while parent != -1:
-                            pos = np.searchsorted(sorted_ids, parent)
-                            if pos >= n or sorted_ids[pos] != parent:
-                                parent = -1
-                                break
-                            parent_idx = order[pos]
-                            if collapse_mask[parent_idx]:
-                                break
-                            parent = new_parent_ids[parent_idx]
-                        new_parent_ids[i] = parent
-
-                    node_ids = node_ids[collapse_mask]
-                    parent_ids = new_parent_ids[collapse_mask]
-                    x = x[collapse_mask]
-                    y = y[collapse_mask]
-                    n = len(node_ids)
-
-                    if n > 0:
-                        order = np.argsort(node_ids)
-                        sorted_ids = node_ids[order]
-                        pos = np.searchsorted(sorted_ids, parent_ids)
-                        parent_local = np.full(n, -1, dtype=np.int32)
-                        valid = (parent_ids != -1) & (pos < n) & (sorted_ids[pos] == parent_ids)
-                        parent_local[valid] = order[pos[valid]]
-                        child_counts = np.bincount(parent_local[parent_local >= 0], minlength=n)
-                        is_tip = (child_counts == 0) & original_is_tip[collapse_mask]
-                    else:
-                        is_tip = is_tip[:0]
+    for result in results:
+        (
+            tree_idx,
+            graph,
+            newly_built,
+            node_ids,
+            parent_ids,
+            is_tip,
+            x,
+            y,
+            n,
+            mut_arrays,
+        ) = result
 
         if n == 0:
+            if newly_built and graph is not None:
+                newly_built_graphs[tree_idx] = graph
             continue
 
-        # Ensure capacity
+        if newly_built and graph is not None:
+            newly_built_graphs[tree_idx] = graph
+
         while offset + n > len(all_node_ids):
             new_size = len(all_node_ids) * 2
             all_node_ids.resize(new_size, refcheck=False)
@@ -473,75 +633,27 @@ def construct_trees_batch(
             all_x.resize(new_size, refcheck=False)
             all_y.resize(new_size, refcheck=False)
 
-        # Copy node data
         all_node_ids[offset:offset+n] = node_ids
         all_parent_ids[offset:offset+n] = parent_ids
         all_is_tip[offset:offset+n] = is_tip
         all_tree_idx[offset:offset+n] = tree_idx
         all_x[offset:offset+n] = x
         all_y[offset:offset+n] = y
-
         offset += n
 
-        # Collect mutations for this tree interval (inline computation)
-        if has_mutations:
-            interval_left = breakpoints[tree_idx]
-            interval_right = breakpoints[tree_idx + 1]
-
-            # Filter mutations by genomic position (using pre-extracted mutation_positions)
-            mask = (mutation_positions >= interval_left) & (mutation_positions < interval_right)
-            mut_indices = np.where(mask)[0]
-
-            n_muts = len(mut_indices)
-            if n_muts > 0:
-                # Extract mutation data (simplified: only x, y, tree_idx)
-                mut_node_ids = mutations.node[mut_indices].astype(np.int32)
-                mut_times = mutations.time[mut_indices]
-                mut_parent_ids = graph.parent[mut_node_ids].astype(np.int32)
-
-                # Reuse graph.x for layout position (aligned with node horizontally)
-                mut_layout = graph.x[mut_node_ids].astype(np.float32)
-
-                # Time normalization (same formula as nodes)
-                time_range = max_time - min_time if max_time > min_time else 1.0
-
-                # Compute normalized time for valid times
-                mut_time_norm = (max_time - mut_times) / time_range
-
-                # Handle NaN times: use midpoint between node and parent in normalized y space
-                nan_mask = np.isnan(mut_times)
-                if np.any(nan_mask):
-                    node_y = graph.y[mut_node_ids[nan_mask]]
-                    parent_ids_for_nan = mut_parent_ids[nan_mask]
-                    # For roots (parent=-1), use 0.0 (corresponds to max_time)
-                    parent_y = np.where(
-                        parent_ids_for_nan >= 0,
-                        graph.y[np.maximum(parent_ids_for_nan, 0)],
-                        0.0
-                    )
-                    mut_time_norm[nan_mask] = (node_y + parent_y) / 2.0
-
-                mut_time_norm = mut_time_norm.astype(np.float32)
-
-                # SWAP for backend convention (same as nodes)
-                mut_x = mut_time_norm  # time -> x
-                mut_y = mut_layout     # layout -> y
-
-                # Ensure mutation buffer capacity
-                while mut_offset + n_muts > len(all_mut_tree_idx):
-                    new_size = len(all_mut_tree_idx) * 2
-                    all_mut_tree_idx.resize(new_size, refcheck=False)
-                    all_mut_x.resize(new_size, refcheck=False)
-                    all_mut_y.resize(new_size, refcheck=False)
-                    all_mut_node_id.resize(new_size, refcheck=False)
-
-                # Copy mutation data (only essential fields)
-                all_mut_tree_idx[mut_offset:mut_offset+n_muts] = tree_idx
-                all_mut_x[mut_offset:mut_offset+n_muts] = mut_x
-                all_mut_y[mut_offset:mut_offset+n_muts] = mut_y
-                all_mut_node_id[mut_offset:mut_offset+n_muts] = mut_node_ids
-
-                mut_offset += n_muts
+        if mut_arrays is not None:
+            mut_tree_idx_a, mut_x_a, mut_y_a, mut_node_id_a, n_muts = mut_arrays
+            while mut_offset + n_muts > len(all_mut_tree_idx):
+                new_size = len(all_mut_tree_idx) * 2
+                all_mut_tree_idx.resize(new_size, refcheck=False)
+                all_mut_x.resize(new_size, refcheck=False)
+                all_mut_y.resize(new_size, refcheck=False)
+                all_mut_node_id.resize(new_size, refcheck=False)
+            all_mut_tree_idx[mut_offset:mut_offset+n_muts] = mut_tree_idx_a
+            all_mut_x[mut_offset:mut_offset+n_muts] = mut_x_a
+            all_mut_y[mut_offset:mut_offset+n_muts] = mut_y_a
+            all_mut_node_id[mut_offset:mut_offset+n_muts] = mut_node_id_a
+            mut_offset += n_muts
 
         processed_indices.append(tree_idx)
 
@@ -562,9 +674,13 @@ def construct_trees_batch(
 
         # Apply mutation sparsification when requested (grid-deduplicate by x,y per tree)
         if sparsify_mutations:
-            resolution = int(1.0 / DEFAULT_SPARSIFY_CELL_SIZE)
+            mut_resolution = (
+                sparsify_resolution
+                if sparsify_resolution is not None
+                else int(1.0 / (sparsify_cell_size or DEFAULT_SPARSIFY_CELL_SIZE))
+            )
             keep_mask = _sparsify_mutations(
-                all_mut_x, all_mut_y, all_mut_tree_idx, all_mut_node_id, resolution
+                all_mut_x, all_mut_y, all_mut_tree_idx, all_mut_node_id, mut_resolution
             )
             all_mut_tree_idx = all_mut_tree_idx[keep_mask]
             all_mut_x = all_mut_x[keep_mask]
@@ -652,6 +768,7 @@ def _sparsify_mutations(mut_x, mut_y, mut_tree_idx, mut_node_id, resolution):
     if n == 0:
         return keep
 
+    print(f"Sparsifying mutations: {n}")
     seen_cells = Dict.empty(key_type=types.int64, value_type=types.int32)
     stride = resolution + 1
 
@@ -669,88 +786,88 @@ def _sparsify_mutations(mut_x, mut_y, mut_tree_idx, mut_node_id, resolution):
 
 
 @njit(cache=True)
-def _sparsify_edges(node_ids, x, y, is_tip, parent_ids, resolution):
+def _sparsify_edges(x, y, parent_indices, resolution):
     """
     Edge-centric sparsification: grid-deduplicate edges by midpoint position.
 
     Algorithm:
-    1. Always keep root nodes
-    2. For each non-root node (= edge to parent), compute edge midpoint
-    3. Grid-dedupe by midpoint: first edge per cell survives
-    4. Trace path to root for each kept node
+    1. Always keep root and tip nodes
+    2. For each non-root node (= edge to parent), compute edge midpoint (avg of endpoints)
+    3. Grid-dedupe by midpoint + coarse direction: first edge per key survives
+    4. BFS from kept nodes toward roots to mark all ancestors (O(n))
 
-    Long root-level edges have midpoints spread across the x range,
-    occupying unique cells. Short tip-level edges cluster near x≈1
-    and get deduplicated. This naturally preserves visually significant
-    edges based on their length and position.
+    Uses geometric midpoint (same averaging as x/y coordinate computation).
 
     Args:
-        node_ids: int32 array of node IDs
         x: float32 array of x coordinates (normalized [0,1])
         y: float32 array of y coordinates (normalized [0,1])
-        is_tip: bool array indicating tip nodes
-        parent_ids: int32 array of parent IDs (-1 for roots)
+        parent_indices: int32 array s.t. parent_indices[i] = index of parent in array (-1 for roots)
         resolution: Grid resolution (e.g., 500 for cell_size=0.002)
 
     Returns:
         keep: bool array indicating which nodes to keep
     """
-    n = len(node_ids)
+    n = len(x)
     keep = np.zeros(n, dtype=np.bool_)
 
     if n == 0:
         return keep
 
-    # Build node_to_idx mapping
-    max_node_id = 0
-    for i in range(n):
-        if node_ids[i] > max_node_id:
-            max_node_id = node_ids[i]
-
-    node_to_idx = np.full(max_node_id + 1, -1, dtype=np.int32)
-    for i in range(n):
-        node_to_idx[node_ids[i]] = i
-
     seen_cells = Dict.empty(key_type=types.int64, value_type=types.int32)
+    child_counts = np.zeros(n, dtype=np.int32)
 
-    # Always keep root nodes
+    # Count children so tips can be preserved.
     for i in range(n):
-        if parent_ids[i] == -1:
+        parent_idx = parent_indices[i]
+        if parent_idx >= 0:
+            child_counts[parent_idx] += 1
+
+    # Always keep root and tip nodes.
+    for i in range(n):
+        # if parent_indices[i] == -1 or child_counts[i] == 0:
+        if parent_indices[i] == -1:
             keep[i] = True
 
-    # Grid-dedupe edges by midpoint position
+    # Grid-dedupe edges by midpoint and coarse direction.
+    # Midpoint alone can collapse visually distinct edges when long branches cross the same bin.
+    stride = resolution + 1
     for i in range(n):
-        if parent_ids[i] == -1:
-            continue  # Root — no edge to parent
-        if parent_ids[i] > max_node_id:
-            continue
-        parent_idx = node_to_idx[parent_ids[i]]
+        parent_idx = parent_indices[i]
         if parent_idx < 0:
-            continue
+            continue  # Root — no edge to parent
 
         mid_x = (x[i] + x[parent_idx]) / 2.0
         mid_y = (y[i] + y[parent_idx]) / 2.0
         cx = min(int(mid_x * resolution), resolution - 1)
         cy = min(int(mid_y * resolution), resolution - 1)
-        key = cx * (resolution + 1) + cy
+        dx = x[parent_idx] - x[i]
+        dy = y[parent_idx] - y[i]
+        sx = 1 if dx >= 0.0 else 0
+        sy = 1 if dy >= 0.0 else 0
+        steep = 1 if abs(dy) > abs(dx) else 0
+        direction_bin = sx + 2 * sy + 4 * steep  # 0..7
+        key = (cx * stride + cy) * 8 + direction_bin
 
         if key not in seen_cells:
-            seen_cells[key] = i
+            seen_cells[key] = np.int32(i)
             keep[i] = True
 
-    # Trace ancestors for connectivity
+    # BFS from kept nodes toward roots to mark all ancestors (O(n) total)
+    queue = np.empty(n, dtype=np.int32)
+    q_head = 0
+    q_tail = 0
     for i in range(n):
         if keep[i]:
-            parent = parent_ids[i]
-            while parent != -1:
-                if parent > max_node_id:
-                    break
-                parent_idx = node_to_idx[parent]
-                if parent_idx < 0:
-                    break
-                if keep[parent_idx]:
-                    break
-                keep[parent_idx] = True
-                parent = parent_ids[parent_idx]
+            queue[q_tail] = i
+            q_tail += 1
+
+    while q_head < q_tail:
+        i = queue[q_head]
+        q_head += 1
+        parent_idx = parent_indices[i]
+        if parent_idx >= 0 and not keep[parent_idx]:
+            keep[parent_idx] = True
+            queue[q_tail] = parent_idx
+            q_tail += 1
 
     return keep

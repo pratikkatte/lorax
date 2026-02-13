@@ -621,6 +621,9 @@ async def handle_tree_graph_query(
 
     buffer, min_time, max_time, processed_indices, newly_built = await asyncio.to_thread(process_trees)
 
+    buffer_mb = len(buffer) / (1024 * 1024)
+    print(f"Tree graph buffer size: {buffer_mb:.2f} MB")
+
     # Cache newly built TreeGraphs
     if session_id and tree_graph_cache and newly_built:
         for tree_idx, graph in newly_built.items():

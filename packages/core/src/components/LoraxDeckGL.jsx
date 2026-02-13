@@ -486,7 +486,6 @@ const LoraxDeckGL = forwardRef(({
     const defaultColor = [0, 0, 0, 255];
     const defaultRadius = 7;
 
-    // Use mutation marker coordinates (mutations are not sparsified, unlike nodes).
     // `mut_x` is normalized time (vertical), `mut_y` is normalized layout (horizontal, backend-swapped).
     // World X for mutation markers = mut_y * scaleX + translateX; World Y = mut_x.
     const n = Math.min(
