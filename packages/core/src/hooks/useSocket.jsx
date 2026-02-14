@@ -5,6 +5,7 @@ import websocketEvents from "../utils/websocketEvents.js";
 export function useSocket({
   apiBase,
   isProd = false,
+  diagnosticPingEnabled = false,
   onSessionError
 }) {
   const socketRef = useRef(null);
@@ -84,12 +85,14 @@ export function useSocket({
       websocketEvents.emit("session-restored", data);
     });
 
-    socket.on("pong", (msg) => {
-      // Keep-alive response
-    });
+    if (diagnosticPingEnabled) {
+      socket.on("pong", (msg) => {
+        websocketEvents.emit("diagnostic-pong", msg);
+      });
+    }
 
     return socket;
-  }, [apiBase, isProd, onSessionError, setStatusMessage]);
+  }, [apiBase, diagnosticPingEnabled, isProd, onSessionError, setStatusMessage]);
 
   const disconnect = useCallback(() => {
     if (socketRef.current) {

@@ -1,10 +1,16 @@
 import { useEffect, useRef, useMemo, useCallback, useState } from "react";
 import * as arrow from "apache-arrow";
 import { getProjects as getProjectsApi, uploadFileToBackend as uploadFileApi } from "../services/api.js";
+import { resolveDiagnosticPingConfig } from "../utils/socketDiagnostics.js";
 import { useSession } from "./useSession.jsx";
 import { useSocket } from "./useSocket.jsx";
 
-export function useLoraxConnection({ apiBase, isProd = false }) {
+export function useLoraxConnection({
+  apiBase,
+  isProd = false,
+  diagnosticPingEnabled,
+  diagnosticPingIntervalMs
+}) {
   // Use extracted session hook
   const {
     loraxSid,
@@ -27,6 +33,16 @@ export function useLoraxConnection({ apiBase, isProd = false }) {
     });
   }, [clearSession, initializeSession]);
 
+  const diagnosticPingConfig = useMemo(
+    () =>
+      resolveDiagnosticPingConfig({
+        enabledOverride: diagnosticPingEnabled,
+        intervalOverrideMs: diagnosticPingIntervalMs,
+        env: import.meta.env
+      }),
+    [diagnosticPingEnabled, diagnosticPingIntervalMs]
+  );
+
   // Use extracted socket hook with session error handling
   const {
     socketRef,
@@ -43,6 +59,7 @@ export function useLoraxConnection({ apiBase, isProd = false }) {
   } = useSocket({
     apiBase,
     isProd,
+    diagnosticPingEnabled: diagnosticPingConfig.enabled,
     onSessionError: handleSessionError
   });
 
@@ -59,14 +76,14 @@ export function useLoraxConnection({ apiBase, isProd = false }) {
     };
   }, [initializeSession, connect, disconnect]);
 
-  // Keep-alive ping
+  // Optional diagnostics ping (disabled by default)
   useEffect(() => {
-    if (!isConnected) return;
+    if (!diagnosticPingConfig.enabled || !isConnected) return;
     const interval = setInterval(() => {
-      emit("ping", { time: Date.now() });
-    }, 5000);
+      emit("ping", { time: Date.now(), source: "diagnostic" });
+    }, diagnosticPingConfig.intervalMs);
     return () => clearInterval(interval);
-  }, [isConnected, emit]);
+  }, [diagnosticPingConfig.enabled, diagnosticPingConfig.intervalMs, isConnected, emit]);
 
   // Compare-trees-result: fire-and-forget responses from compare_trees_event
   const [compareTreesResult, setCompareTreesResult] = useState(null);
@@ -83,18 +100,140 @@ export function useLoraxConnection({ apiBase, isProd = false }) {
   // Query file loading
   const queryFile = useCallback((payload) => {
     return new Promise((resolve, reject) => {
+      const LOAD_FILE_ACK_TIMEOUT_MS = 30000;
+      const LOAD_FILE_TOTAL_TIMEOUT_MS = 120000;
+      const SESSION_ERROR_CODES = new Set(["SESSION_NOT_FOUND", "MISSING_SESSION"]);
+
       const execute = () => {
         if (!socketRef.current) {
           reject(new Error("Socket not available"));
           return;
         }
-        const handleResult = (message) => {
+
+        const requestId = `load-${Date.now()}-${++requestIdRef.current}`;
+        let settled = false;
+        let timeoutId = null;
+
+        const cleanup = () => {
+          if (timeoutId) {
+            clearTimeout(timeoutId);
+          }
           off("load-file-result", handleResult);
-          resolve(message);
+          off("disconnect", handleDisconnect);
         };
 
-        once("load-file-result", handleResult);
-        emit("load_file", { ...payload, lorax_sid: sidRef.current, share_sid: payload.share_sid });
+        const settleResolve = (value) => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          resolve(value);
+        };
+
+        const settleReject = (error) => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          reject(error);
+        };
+
+        const makeResultError = (result) => {
+          const error = new Error(result?.message || "Failed to load file.");
+          error.code = result?.code;
+          error.recoverable = result?.recoverable;
+          return error;
+        };
+
+        const normalizeResult = (message) => {
+          if (!message || typeof message !== "object") {
+            return null;
+          }
+          if (typeof message.ok === "boolean") {
+            return message;
+          }
+          if (message.config && message.filename) {
+            return {
+              ok: true,
+              request_id: message.request_id ?? requestId,
+              ...message,
+              code: message.code || "FILE_LOADED",
+            };
+          }
+          if (message.error) {
+            return {
+              ok: false,
+              request_id: message.request_id ?? requestId,
+              code: message.code || "LOAD_FILE_FAILED",
+              message: message.error,
+              recoverable: true,
+            };
+          }
+          return null;
+        };
+
+        const handleTerminalResult = (message, source) => {
+          if (source === "ack" && (message === undefined || message === null)) {
+            // Older backends may not ack; keep waiting for legacy event fallback.
+            return;
+          }
+
+          const result = normalizeResult(message);
+          if (!result) {
+            const sourceLabel = source === "ack" ? "acknowledgement" : "event";
+            settleReject(new Error(`Malformed load_file ${sourceLabel} payload.`));
+            return;
+          }
+
+          if (result.request_id && result.request_id !== requestId) {
+            return;
+          }
+
+          if (result.ok) {
+            settleResolve(result);
+            return;
+          }
+
+          if (SESSION_ERROR_CODES.has(result.code)) {
+            handleSessionError();
+          }
+          settleReject(makeResultError(result));
+        };
+
+        const handleResult = (message) => {
+          handleTerminalResult(message, "event");
+        };
+
+        const handleDisconnect = () => {
+          settleReject(new Error("Socket disconnected during file load."));
+        };
+
+        timeoutId = setTimeout(() => {
+          settleReject(new Error("Timed out waiting for load_file result."));
+        }, LOAD_FILE_TOTAL_TIMEOUT_MS);
+
+        on("load-file-result", handleResult);
+        on("disconnect", handleDisconnect);
+
+        const requestPayload = {
+          ...payload,
+          lorax_sid: sidRef.current,
+          share_sid: payload.share_sid,
+          request_id: requestId,
+        };
+
+        if (typeof socketRef.current.timeout === "function") {
+          socketRef.current
+            .timeout(LOAD_FILE_ACK_TIMEOUT_MS)
+            .emit("load_file", requestPayload, (err, response) => {
+              if (settled) return;
+              if (err) {
+                // Ack timeout can happen during rollout; keep waiting for event fallback.
+                return;
+              }
+              handleTerminalResult(response, "ack");
+            });
+        } else {
+          emit("load_file", requestPayload);
+        }
       };
 
       if (!socketRef.current) {
@@ -107,7 +246,7 @@ export function useLoraxConnection({ apiBase, isProd = false }) {
         execute();
       }
     });
-  }, [initializeSession, emit, once, off, socketRef, sidRef]);
+  }, [initializeSession, emit, on, off, socketRef, sidRef, handleSessionError]);
 
   /**
    * Query tree layout from backend via socket.

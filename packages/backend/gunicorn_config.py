@@ -18,8 +18,12 @@ cpu_cores = multiprocessing.cpu_count()
 bind = "0.0.0.0:8080"
 
 # Worker configuration
-# workers = cpu_cores
-workers = 1
+default_workers = min(4, max(2, cpu_cores))
+try:
+    workers = int(os.getenv("WEB_CONCURRENCY", str(default_workers)))
+except ValueError:
+    workers = default_workers
+workers = max(1, workers)
 
 # Use uvicorn worker class for async FastAPI
 worker_class = "uvicorn.workers.UvicornWorker"

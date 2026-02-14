@@ -6,7 +6,6 @@ Handles load_file, details, and query events.
 
 import os
 import json
-import asyncio
 from pathlib import Path
 
 from lorax.context import session_manager, BUCKET_NAME, tree_graph_cache, csv_tree_graph_cache
@@ -17,6 +16,11 @@ from lorax.constants import (
 from lorax.cloud.gcs_utils import download_gcs_file
 from lorax.handlers import handle_upload, handle_details
 from lorax.sockets.decorators import require_session
+from lorax.sockets.load_scheduler import (
+    load_scheduler,
+    LoadQueueFullError,
+    LoadQueueTimeoutError,
+)
 from lorax.sockets.utils import is_csv_session_file
 
 UPLOAD_DIR = Path(UPLOADS_DIR)
@@ -31,49 +35,108 @@ def dev_print(*args, **kwargs):
         print(*args, **kwargs)
 
 
+def _load_file_success_payload(
+    *,
+    request_id,
+    filename: str,
+    project: str,
+    owner_sid: str,
+    config: dict,
+):
+    return {
+        "ok": True,
+        "request_id": request_id,
+        "filename": filename,
+        "project": project,
+        "owner_sid": owner_sid,
+        "config": config,
+        "code": "FILE_LOADED",
+    }
+
+
+def _load_file_failure_payload(
+    *,
+    request_id,
+    code: str,
+    message: str,
+    recoverable: bool = True,
+):
+    return {
+        "ok": False,
+        "request_id": request_id,
+        "code": code,
+        "message": message,
+        "recoverable": recoverable,
+    }
+
+
 def register_file_events(sio):
     """Register file operation socket events."""
 
-    async def background_load_file(sid, data):
+    async def _emit_load_file_terminal(sid, payload):
+        # Legacy event path for existing clients.
+        await sio.emit("load-file-result", payload, to=sid)
+
+    async def _process_load_file(sid, data):
+        data = data or {}
+        request_id = data.get("request_id")
+
         try:
             lorax_sid = data.get("lorax_sid")
             share_sid = data.get("share_sid")
 
             if not lorax_sid:
                 dev_print(f"⚠️ Missing lorax_sid")
-                await sio.emit("error", {
-                    "code": ERROR_MISSING_SESSION,
-                    "message": "Session ID is missing."
-                }, to=sid)
-                return
+                return _load_file_failure_payload(
+                    request_id=request_id,
+                    code=ERROR_MISSING_SESSION,
+                    message="Session ID is missing.",
+                    recoverable=True,
+                )
 
             session = await session_manager.get_session(lorax_sid)
             if not session:
                 dev_print(f"⚠️ Unknown sid {lorax_sid}")
-                await sio.emit("error", {
-                    "code": ERROR_SESSION_NOT_FOUND,
-                    "message": "Session expired. Please refresh the page."
-                }, to=sid)
-                return
+                return _load_file_failure_payload(
+                    request_id=request_id,
+                    code=ERROR_SESSION_NOT_FOUND,
+                    message="Session expired. Please refresh the page.",
+                    recoverable=True,
+                )
 
             if share_sid and share_sid != lorax_sid:
                 dev_print(f"⚠️ share_sid denied for sid={lorax_sid} target={share_sid}")
-                await sio.emit("error", {
-                    "code": "share_sid_denied",
-                    "message": "Access denied for shared upload."
-                }, to=sid)
-                return
+                return _load_file_failure_payload(
+                    request_id=request_id,
+                    code="SHARE_SID_DENIED",
+                    message="Access denied for shared upload.",
+                    recoverable=False,
+                )
 
-            project = str(data.get("project"))
-            filename = str(data.get("file"))
+            project = str(data.get("project") or "")
+            filename = str(data.get("file") or "")
 
             # Extract genomic coordinates from client if provided
             genomiccoordstart = data.get("genomiccoordstart")
             genomiccoordend = data.get("genomiccoordend")
             dev_print("lorax_sid", lorax_sid, project, filename)
+
+            if not project:
+                return _load_file_failure_payload(
+                    request_id=request_id,
+                    code="MISSING_PROJECT_PARAM",
+                    message="Missing required 'project' parameter.",
+                    recoverable=True,
+                )
+
             if not filename:
                 dev_print("Missing file param")
-                return
+                return _load_file_failure_payload(
+                    request_id=request_id,
+                    code="MISSING_FILE_PARAM",
+                    message="Missing required 'file' parameter.",
+                    recoverable=True,
+                )
 
             gcs_allowed = True
             if project == 'Uploads':
@@ -102,7 +165,12 @@ def register_file_events(sio):
 
             if not file_path.exists():
                 dev_print("File not found")
-                return
+                return _load_file_failure_payload(
+                    request_id=request_id,
+                    code="FILE_NOT_FOUND",
+                    message=f"File not found: {project}/{filename}",
+                    recoverable=True,
+                )
 
             # Clear TreeGraph cache when loading a new file
             await tree_graph_cache.clear_session(lorax_sid)
@@ -111,9 +179,6 @@ def register_file_events(sio):
             session.file_path = str(file_path)
             await session_manager.save_session(session)
 
-            dev_print("loading file", file_path, os.getpid())
-            ctx = await handle_upload(str(file_path), str(UPLOAD_DIR))
-
             await sio.emit("status", {
                 "status": "processing-file",
                 "message": "Processing file...",
@@ -121,12 +186,19 @@ def register_file_events(sio):
                 "project": project
             }, to=sid)
 
+            dev_print("loading file", file_path, os.getpid())
+            ctx = await handle_upload(str(file_path), str(UPLOAD_DIR))
+
             # Config is already computed and cached in FileContext
-            config = ctx.config
+            config = ctx.config if ctx else None
 
             if config is None:
-                await sio.emit("error", {"message": "Failed to load file configuration"}, to=sid)
-                return
+                return _load_file_failure_payload(
+                    request_id=request_id,
+                    code="FILE_CONFIG_LOAD_FAILED",
+                    message="Failed to load file configuration.",
+                    recoverable=True,
+                )
 
             # Override initial_position if client provided genomic coordinates
             if genomiccoordstart is not None and genomiccoordend is not None:
@@ -137,21 +209,63 @@ def register_file_events(sio):
                     dev_print(f"Invalid coordinates, using computed: {e}")
 
             owner_sid = share_sid if share_sid else lorax_sid
-            await sio.emit("load-file-result", {
-                "message": "File loaded",
-                "sid": sid,
-                "filename": filename,
-                "config": config,
-                "owner_sid": owner_sid
-            }, to=sid)
+            return _load_file_success_payload(
+                request_id=request_id,
+                filename=filename,
+                project=project,
+                owner_sid=owner_sid,
+                config=config,
+            )
 
         except Exception as e:
             dev_print(f"Load file error: {e}")
-            await sio.emit("error", {"message": str(e)}, to=sid)
+            return _load_file_failure_payload(
+                request_id=request_id,
+                code="LOAD_FILE_FAILED",
+                message=str(e),
+                recoverable=True,
+            )
 
     @sio.event
     async def load_file(sid, data):
-        asyncio.create_task(background_load_file(sid, data))
+        data = data or {}
+        request_id = data.get("request_id")
+        lorax_sid = data.get("lorax_sid")
+
+        try:
+            payload, queue_wait_ms, duration_ms = await load_scheduler.run(
+                lambda: _process_load_file(sid, data),
+                request_id=request_id,
+                socket_sid=sid,
+                lorax_sid=lorax_sid,
+            )
+            payload["queue_wait_ms"] = queue_wait_ms
+            payload["duration_ms"] = duration_ms
+        except LoadQueueFullError:
+            payload = _load_file_failure_payload(
+                request_id=request_id,
+                code="SERVER_BUSY",
+                message="Server is busy processing other file load requests. Please retry shortly.",
+                recoverable=True,
+            )
+        except LoadQueueTimeoutError:
+            payload = _load_file_failure_payload(
+                request_id=request_id,
+                code="SERVER_BUSY",
+                message="Timed out waiting for an available file loader. Please retry shortly.",
+                recoverable=True,
+            )
+        except Exception as e:
+            payload = _load_file_failure_payload(
+                request_id=request_id,
+                code="LOAD_FILE_FAILED",
+                message=str(e),
+                recoverable=True,
+            )
+
+        await _emit_load_file_terminal(sid, payload)
+        # Ack response for modern clients.
+        return payload
 
     @sio.event
     async def details(sid, data):

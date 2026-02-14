@@ -1,14 +1,18 @@
 """
 Connection event handlers for Lorax Socket.IO.
 
-Handles connect, disconnect, and ping events.
+Handles connect/disconnect events and optional diagnostic ping.
 """
 
 from datetime import datetime
 from http.cookies import SimpleCookie
 
 from lorax.context import session_manager
-from lorax.constants import ERROR_SESSION_NOT_FOUND, ERROR_CONNECTION_REPLACED
+from lorax.constants import (
+    ERROR_SESSION_NOT_FOUND,
+    ERROR_CONNECTION_REPLACED,
+    SOCKET_DIAGNOSTIC_PING_ENABLED,
+)
 
 
 # Mapping from socket_sid to lorax_sid for disconnect handling
@@ -91,9 +95,10 @@ def register_connection_events(sio):
                 session.remove_socket(sid)
                 await session_manager.save_session(session)
 
-    @sio.event
-    async def ping(sid, data):
-        await sio.emit("pong", {
-            "type": "pong",
-            "time": datetime.utcnow().isoformat()
-        }, to=sid)
+    if SOCKET_DIAGNOSTIC_PING_ENABLED:
+        @sio.event
+        async def ping(sid, data):
+            await sio.emit("pong", {
+                "type": "pong",
+                "time": datetime.utcnow().isoformat()
+            }, to=sid)

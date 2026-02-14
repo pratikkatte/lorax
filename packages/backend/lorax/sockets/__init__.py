@@ -2,7 +2,7 @@
 Lorax Socket Event Handlers.
 
 This package provides modularized socket event handling:
-- connection: connect, disconnect, ping events
+- connection: connect, disconnect, optional diagnostic ping events
 - file_ops: load_file, details, query events
 - tree_layout: process_postorder_layout, cache_trees events
 - metadata: fetch_metadata_*, search_metadata events

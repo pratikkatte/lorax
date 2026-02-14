@@ -41,8 +41,8 @@ ENV PYTHONPATH=/app/backend
 
 EXPOSE 8080
 
-# CMD ["python", "-m", "lorax.cli", "serve", "--gunicorn", "--workers", "1", "--host", "0.0.0.0", "--port", "8080"]
-CMD ["python", "-m", "lorax.cli", "serve", "--host", "0.0.0.0", "--port", "8080"]
+# Production default: gunicorn + uvicorn workers. Set WEB_CONCURRENCY to override worker count.
+CMD ["python", "-m", "gunicorn", "-c", "/app/backend/gunicorn_config.py", "lorax.lorax_app:sio_app"]
 # ===============================
 # 3) Full runtime stage (default target)
 # ===============================
