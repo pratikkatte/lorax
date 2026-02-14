@@ -15,6 +15,22 @@ import { useTreePolygons } from '../hooks/useTreePolygons.jsx';
 import TreePolygonOverlay from './TreePolygonOverlay.jsx';
 import { mergeWithDefaults, validateViewConfig, getEnabledViews } from '../utils/deckViewConfig.js';
 import { getSVG } from '../utils/deckglToSvg.js';
+import websocketEvents from '../utils/websocketEvents.js';
+import { buildLockViewSnapshot } from '../utils/lockViewSnapshot.js';
+
+// Temporary debug overlay for lock-view snapshot visualization.
+const SHOW_LOCK_SNAPSHOT_DEBUG_OVERLAY = true;
+const DEBUG_LABEL_BY_CORNER = {
+  topLeft: { dx: 8, dy: 16, textAnchor: 'start' },
+  topRight: { dx: -8, dy: 16, textAnchor: 'end' },
+  bottomRight: { dx: -8, dy: -8, textAnchor: 'end' },
+  bottomLeft: { dx: 8, dy: -8, textAnchor: 'start' }
+};
+
+function formatDebugCoordinate(value) {
+  if (!Number.isFinite(value)) return 'null';
+  return Number(value).toFixed(4);
+}
 
 function pointInPolygon(point, vs) {
   // Ray-casting algorithm: point = [x,y], vs = [[x,y], ...]
@@ -139,6 +155,11 @@ const LoraxDeckGL = forwardRef(({
   ...otherProps
 }, ref) => {
   const deckRef = useRef(null);
+  const lockViewSnapshotRef = useRef(null);
+  const snapshotRafRef = useRef(null);
+  const pendingSnapshotRef = useRef(false);
+  const prevLockModelMatrixRef = useRef(lockModelMatrix);
+  const [lockSnapshotDebugOverlay, setLockSnapshotDebugOverlay] = useState(null);
 
   // 1. Merge and validate config
   const viewConfig = mergeWithDefaults(userViewConfig);
@@ -865,6 +886,128 @@ const LoraxDeckGL = forwardRef(({
     }
   }, [hoveredTreeIndex, setHoveredPolygon]);
 
+  const emitLockViewSnapshot = useCallback((snapshot) => {
+    lockViewSnapshotRef.current = snapshot;
+    if (snapshot) {
+      console.log('[lock-view-snapshot]', {
+        capturedAt: snapshot.capturedAt,
+        coordinateSystem: snapshot.coordinateSystem,
+        cornersTreeLocal: snapshot.corners,
+        boundingBoxWorld: snapshot.boundingBox
+      });
+    } else {
+      console.log('[lock-view-snapshot] cleared');
+    }
+    websocketEvents.emit('lock-view-snapshot', snapshot);
+  }, []);
+
+  const updateLockSnapshotDebugOverlay = useCallback((snapshot, orthoViewport) => {
+    if (!SHOW_LOCK_SNAPSHOT_DEBUG_OVERLAY || !snapshot || !orthoViewport) {
+      setLockSnapshotDebugOverlay(null);
+      return;
+    }
+
+    const width = Number(orthoViewport.width);
+    const height = Number(orthoViewport.height);
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+      setLockSnapshotDebugOverlay(null);
+      return;
+    }
+
+    const x = Number(orthoViewport.x);
+    const y = Number(orthoViewport.y);
+    const viewportX = Number.isFinite(x) ? x : 0;
+    const viewportY = Number.isFinite(y) ? y : 0;
+    const cornerPixels = {
+      topLeft: [viewportX, viewportY],
+      topRight: [viewportX + width, viewportY],
+      bottomRight: [viewportX + width, viewportY + height],
+      bottomLeft: [viewportX, viewportY + height]
+    };
+
+    const corners = Array.isArray(snapshot.corners)
+      ? snapshot.corners.map((corner) => {
+        const [px, py] = cornerPixels[corner.corner] || [viewportX, viewportY];
+        return { ...corner, px, py };
+      })
+      : [];
+
+    setLockSnapshotDebugOverlay({
+      x: viewportX,
+      y: viewportY,
+      width,
+      height,
+      corners,
+      boundingBox: snapshot.boundingBox
+    });
+  }, []);
+
+  const captureLockViewSnapshot = useCallback(() => {
+    if (!lockModelMatrix) return false;
+
+    const deck = deckRef.current?.deck;
+    const viewports = deck?.getViewports?.();
+    if (!Array.isArray(viewports)) return false;
+
+    const orthoViewport = viewports.find((vp) => vp?.id === 'ortho') || null;
+    const snapshot = buildLockViewSnapshot({ orthoViewport, localBins });
+    if (!snapshot) return false;
+
+    updateLockSnapshotDebugOverlay(snapshot, orthoViewport);
+    emitLockViewSnapshot(snapshot);
+    return true;
+  }, [lockModelMatrix, localBins, updateLockSnapshotDebugOverlay, emitLockViewSnapshot]);
+
+  const runScheduledLockSnapshotCapture = useCallback(() => {
+    snapshotRafRef.current = null;
+    const captured = captureLockViewSnapshot();
+    pendingSnapshotRef.current = !captured;
+  }, [captureLockViewSnapshot]);
+
+  const scheduleLockSnapshotCapture = useCallback(() => {
+    if (!lockModelMatrix) return;
+
+    pendingSnapshotRef.current = true;
+    if (snapshotRafRef.current != null) return;
+
+    snapshotRafRef.current = requestAnimationFrame(runScheduledLockSnapshotCapture);
+  }, [lockModelMatrix, runScheduledLockSnapshotCapture]);
+
+  useEffect(() => {
+    const prevLocked = prevLockModelMatrixRef.current;
+    prevLockModelMatrixRef.current = lockModelMatrix;
+
+    if (!prevLocked && lockModelMatrix) {
+      pendingSnapshotRef.current = true;
+      const captured = captureLockViewSnapshot();
+      pendingSnapshotRef.current = !captured;
+      if (!captured) {
+        scheduleLockSnapshotCapture();
+      }
+      return;
+    }
+
+    if (prevLocked && !lockModelMatrix) {
+      pendingSnapshotRef.current = false;
+      if (snapshotRafRef.current != null) {
+        cancelAnimationFrame(snapshotRafRef.current);
+        snapshotRafRef.current = null;
+      }
+      updateLockSnapshotDebugOverlay(null, null);
+      emitLockViewSnapshot(null);
+    }
+  }, [lockModelMatrix, captureLockViewSnapshot, scheduleLockSnapshotCapture, updateLockSnapshotDebugOverlay, emitLockViewSnapshot]);
+
+  useEffect(() => () => {
+    pendingSnapshotRef.current = false;
+    lockViewSnapshotRef.current = null;
+    setLockSnapshotDebugOverlay(null);
+    if (snapshotRafRef.current != null) {
+      cancelAnimationFrame(snapshotRafRef.current);
+      snapshotRafRef.current = null;
+    }
+  }, []);
+
   // 10. Event handlers - run internal logic first, then call external handlers
   const handleResize = useCallback(({ width, height }) => {
     setDecksize({ width, height });
@@ -873,14 +1016,21 @@ const LoraxDeckGL = forwardRef(({
 
   const handleViewStateChange = useCallback((params) => {
     internalHandleViewStateChange(params);
+    if (lockModelMatrix) {
+      scheduleLockSnapshotCapture();
+    }
     externalOnViewStateChange?.(params);
-  }, [internalHandleViewStateChange, externalOnViewStateChange]);
+  }, [internalHandleViewStateChange, externalOnViewStateChange, lockModelMatrix, scheduleLockSnapshotCapture]);
 
   const handleAfterRender = useCallback(() => {
     if (showPolygons && onPolygonsAfterRender && deckRef.current?.deck) {
       onPolygonsAfterRender(deckRef.current.deck);
     }
-  }, [showPolygons, onPolygonsAfterRender]);
+    if (lockModelMatrix && pendingSnapshotRef.current && snapshotRafRef.current == null) {
+      const captured = captureLockViewSnapshot();
+      pendingSnapshotRef.current = !captured;
+    }
+  }, [showPolygons, onPolygonsAfterRender, lockModelMatrix, captureLockViewSnapshot]);
 
   // Enable deck.gl picking loop for layer-level onHover/onClick and
   // implement polygon hover/click without letting the SVG overlay intercept pointer events.
@@ -1080,6 +1230,73 @@ const LoraxDeckGL = forwardRef(({
           </View>
         ))}
       </DeckGL>
+      {SHOW_LOCK_SNAPSHOT_DEBUG_OVERLAY && lockSnapshotDebugOverlay && (
+        <svg
+          width="100%"
+          height="100%"
+          viewBox={`0 0 ${decksize?.width || 1} ${decksize?.height || 1}`}
+          style={{
+            position: 'absolute',
+            inset: 0,
+            pointerEvents: 'none',
+            zIndex: 20
+          }}
+        >
+          <rect
+            x={lockSnapshotDebugOverlay.x}
+            y={lockSnapshotDebugOverlay.y}
+            width={lockSnapshotDebugOverlay.width}
+            height={lockSnapshotDebugOverlay.height}
+            fill="none"
+            stroke="rgba(255, 0, 64, 0.95)"
+            strokeWidth={2}
+            strokeDasharray="8 5"
+          />
+          {lockSnapshotDebugOverlay.corners.map((corner) => {
+            const labelCfg = DEBUG_LABEL_BY_CORNER[corner.corner] || DEBUG_LABEL_BY_CORNER.topLeft;
+            const labelText = `${corner.corner} x:${formatDebugCoordinate(corner.x)} y:${formatDebugCoordinate(corner.y)}`;
+            const treeText = `tree:${corner.treeIndex ?? 'null'}`;
+            return (
+              <g key={corner.corner}>
+                <circle
+                  cx={corner.px}
+                  cy={corner.py}
+                  r={4}
+                  fill="rgba(255, 0, 64, 0.95)"
+                  stroke="white"
+                  strokeWidth={1}
+                />
+                <text
+                  x={corner.px + labelCfg.dx}
+                  y={corner.py + labelCfg.dy}
+                  textAnchor={labelCfg.textAnchor}
+                  fill="rgba(255, 0, 64, 0.98)"
+                  fontSize={12}
+                  fontWeight={700}
+                  stroke="rgba(255, 255, 255, 0.85)"
+                  strokeWidth={2}
+                  paintOrder="stroke"
+                >
+                  {labelText}
+                </text>
+                <text
+                  x={corner.px + labelCfg.dx}
+                  y={corner.py + labelCfg.dy + 14}
+                  textAnchor={labelCfg.textAnchor}
+                  fill="rgba(255, 0, 64, 0.98)"
+                  fontSize={11}
+                  fontWeight={700}
+                  stroke="rgba(255, 255, 255, 0.85)"
+                  strokeWidth={2}
+                  paintOrder="stroke"
+                >
+                  {treeText}
+                </text>
+              </g>
+            );
+          })}
+        </svg>
+      )}
     </div>
   );
 });
