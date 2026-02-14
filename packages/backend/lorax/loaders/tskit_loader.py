@@ -21,7 +21,7 @@ def get_config_tskit(ts, file_path, root_dir):
     """Extract configuration and metadata from a tree sequence file.
 
     Note: Uses get_metadata_schema() for lightweight initial load.
-    Full metadata mappings are fetched on-demand via fetch_metadata_for_key.
+    Full metadata values are fetched on-demand via fetch_metadata_array.
     """
     try:
         intervals = list(ts.breakpoints())

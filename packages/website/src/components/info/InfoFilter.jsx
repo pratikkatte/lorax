@@ -182,7 +182,7 @@ export default function InfoFilter({
   const isMetadataReady = useCallback((key) => {
     if (!key) return false;
     const status = loadedMetadata?.get?.(key);
-    return status === 'pyarrow' || status === 'json';
+    return status === 'pyarrow';
   }, [loadedMetadata]);
 
   const applyFeatureColors = useCallback((feature) => {

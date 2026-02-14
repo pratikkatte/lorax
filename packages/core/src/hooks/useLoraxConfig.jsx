@@ -21,21 +21,17 @@ function useLoraxConfig({ backend, enabled = true, onConfigLoaded, setStatusMess
   const [tsconfig, setConfig] = useState(null);
   const [filename, setFilename] = useState("");
   const [sampleNames, setSampleNames] = useState(null);
-  const [sampleDetails, setSampleDetails] = useState({});  // {sample_name: {key: value}} - lazy loaded
 
   // Metadata state
   const [metadataColors, setMetadataColors] = useState(null); // {metadata_key: {metadata_value: [r,g,b,a]}}
   const [metadataKeys, setMetadataKeys] = useState([]);  // List of available metadata keys for coloring
   const [metadataLoading, setMetadataLoading] = useState(false); // Loading state for metadata fetch
 
-  // Unified metadata loading tracking: Map<key, 'pyarrow' | 'json' | 'loading'>
+  // Unified metadata loading tracking: Map<key, 'pyarrow' | 'loading'>
   const [loadedMetadata, setLoadedMetadata] = useState(new Map());
 
   // PyArrow-based efficient metadata for large tree sequences
   const [metadataArrays, setMetadataArrays] = useState({}); // {key: {uniqueValues, indices, nodeIdToIdx}}
-
-  // Track pending JSON fallback timers for cancellation when PyArrow succeeds
-  const pendingJsonFallbacksRef = useRef(new Map()); // Map<key, timeoutId>
 
   // Ref for loadedMetadata to avoid stale closures and dependency issues
   const loadedMetadataRef = useRef(loadedMetadata);
@@ -121,12 +117,8 @@ function useLoraxConfig({ backend, enabled = true, onConfigLoaded, setStatusMess
     const mKeys = metadataSchema.metadata_keys || [];
 
     // Reset state for new file - colors will be assigned when fetchMetadataArrayForKey returns
-    setSampleDetails({});
     setLoadedMetadata(new Map());
     setMetadataArrays({});
-    // Cancel any pending JSON fallback timers
-    pendingJsonFallbacksRef.current.forEach((timeoutId) => clearTimeout(timeoutId));
-    pendingJsonFallbacksRef.current.clear();
     setMetadataColors({});  // Start empty, colors assigned on-demand
     setMetadataKeys(mKeys);
 
@@ -135,69 +127,6 @@ function useLoraxConfig({ backend, enabled = true, onConfigLoaded, setStatusMess
       onConfigLoaded(newConfig);
     }
   }, [setStatusMessage, onConfigLoaded]);
-
-  /**
-   * Fetch metadata for a specific key (on-demand, lazy loading).
-   * Uses Promise-based query from backend connection.
-   * Note: This is the JSON fallback, only called if PyArrow doesn't complete in time.
-   */
-  const fetchMetadataForKey = useCallback(async (key) => {
-    if (!enabled) return;
-    if (!key || !isConnected || !backend?.queryMetadataForKey) {
-      console.warn("Cannot fetch metadata: not connected or missing params");
-      return;
-    }
-
-    // Skip if already loaded (but allow if still 'loading' - this is the fallback)
-    const status = loadedMetadataRef.current.get(key);
-    if (status === 'pyarrow' || status === 'json') {
-      return;
-    }
-
-    setMetadataLoading(true);
-
-    try {
-      const result = await backend.queryMetadataForKey(key);
-      const sampleToValue = result.data || {};
-
-      // Skip if already loaded as PyArrow (higher priority format) during async operation
-      setLoadedMetadata(prev => {
-        if (prev.get(key) === 'pyarrow') {
-          return prev;
-        }
-        const next = new Map(prev);
-        next.set(key, 'json');
-        return next;
-      });
-
-      // Extract unique values and assign colors
-      const uniqueValues = [...new Set(Object.values(sampleToValue))].sort();
-      const valueColorMap = {};
-      uniqueValues.forEach((val, index) => {
-        valueColorMap[val] = getColor(index, uniqueValues.length);
-      });
-      setMetadataColors(prev => ({
-        ...prev,
-        [key]: valueColorMap
-      }));
-
-      // Merge into sampleDetails: for each sample, add/update the key-value pair
-      setSampleDetails(prev => {
-        const updated = { ...prev };
-        Object.entries(sampleToValue).forEach(([sampleName, value]) => {
-          if (!updated[sampleName]) {
-            updated[sampleName] = {};
-          }
-          updated[sampleName][key] = value;
-        });
-        return updated;
-      });
-    } catch (err) {
-      console.error("Error fetching metadata:", err);
-    } finally {
-      setMetadataLoading(false);
-    }
-  }, [enabled, isConnected, backend]);
 
   /**
    * Fetch metadata as efficient PyArrow array format (for large tree sequences).
@@ -212,7 +141,7 @@ function useLoraxConfig({ backend, enabled = true, onConfigLoaded, setStatusMess
 
     // Skip if already loaded or loading (use ref to get current value)
     const status = loadedMetadataRef.current.get(key);
-    if (status === 'pyarrow' || status === 'json' || status === 'loading') {
+    if (status === 'pyarrow' || status === 'loading') {
       return;
     }
 
@@ -253,13 +182,6 @@ function useLoraxConfig({ backend, enabled = true, onConfigLoaded, setStatusMess
         next.set(result.key, 'pyarrow');
         return next;
       });
-
-      // Cancel any pending JSON fallback timer for this key
-      const pendingTimer = pendingJsonFallbacksRef.current.get(key);
-      if (pendingTimer) {
-        clearTimeout(pendingTimer);
-        pendingJsonFallbacksRef.current.delete(key);
-      }
     } catch (err) {
       console.error("Error fetching metadata array:", err);
       // Reset loading state on error so it can be retried
@@ -314,19 +236,6 @@ function useLoraxConfig({ backend, enabled = true, onConfigLoaded, setStatusMess
     return promise;
   }, [enabled, isConnected, backend]);
 
-  // Expose pending JSON fallback ref for useMetadataFilter to register timers
-  const registerJsonFallback = useCallback((key, timeoutId) => {
-    pendingJsonFallbacksRef.current.set(key, timeoutId);
-  }, []);
-
-  const clearJsonFallback = useCallback((key) => {
-    const timeoutId = pendingJsonFallbacksRef.current.get(key);
-    if (timeoutId) {
-      clearTimeout(timeoutId);
-      pendingJsonFallbacksRef.current.delete(key);
-    }
-  }, []);
-
   return useMemo(() => ({
     // Config state
     tsconfig,
@@ -337,7 +246,6 @@ function useLoraxConfig({ backend, enabled = true, onConfigLoaded, setStatusMess
 
     // Sample/population state
     sampleNames,
-    sampleDetails,
 
     // Metadata state
     metadataColors,
@@ -345,15 +253,11 @@ function useLoraxConfig({ backend, enabled = true, onConfigLoaded, setStatusMess
     metadataKeys,
     metadataLoading,
 
-    // Unified metadata tracking: Map<key, 'pyarrow' | 'json' | 'loading'>
+    // Unified metadata tracking: Map<key, 'pyarrow' | 'loading'>
     loadedMetadata,
 
     // PyArrow-based metadata arrays
     metadataArrays,
-
-    // JSON fallback timer management
-    registerJsonFallback,
-    clearJsonFallback,
 
     // Worker for interval computations
     worker,
@@ -361,7 +265,6 @@ function useLoraxConfig({ backend, enabled = true, onConfigLoaded, setStatusMess
 
     // Methods
     handleConfigUpdate,
-    fetchMetadataForKey,
     fetchMetadataArrayForKey,
     searchMetadataValue
   }), [
@@ -370,18 +273,14 @@ function useLoraxConfig({ backend, enabled = true, onConfigLoaded, setStatusMess
     genomeLength,
     globalBpPerUnit,
     sampleNames,
-    sampleDetails,
     metadataColors,
     metadataKeys,
     metadataLoading,
     loadedMetadata,
     metadataArrays,
-    registerJsonFallback,
-    clearJsonFallback,
     worker,
     workerConfigReady,
     handleConfigUpdate,
-    fetchMetadataForKey,
     fetchMetadataArrayForKey,
     searchMetadataValue
   ]);

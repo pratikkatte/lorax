@@ -39,7 +39,8 @@ const Info = ({
   // Get state from context
   const {
     // Config state from useLoraxConfig
-    sampleDetails: contextSampleDetails,
+    metadataArrays: contextMetadataArrays,
+    loadedMetadata: contextLoadedMetadata,
     tsconfig: contextTsconfig,
     // Connection and mutation query functions
     isConnected,
@@ -49,7 +50,8 @@ const Info = ({
   } = useLorax();
 
   // Use context values or fall back to empty defaults for InfoMetadata
-  const sampleDetails = contextSampleDetails || null;
+  const metadataArrays = contextMetadataArrays || {};
+  const loadedMetadata = contextLoadedMetadata || null;
   const tsconfig = contextTsconfig || {};
 
   // Use mutations hook from core
@@ -121,7 +123,8 @@ const Info = ({
             populationDetails={populationDetails}
             nodeMutations={nodeMutations}
             nodeEdges={nodeEdges}
-            sampleDetails={sampleDetails}
+            metadataArrays={metadataArrays}
+            loadedMetadata={loadedMetadata}
             tsconfig={tsconfig}
             selectedTipMetadata={selectedTipMetadata}
             setHighlightedMutationNode={setHighlightedMutationNode}

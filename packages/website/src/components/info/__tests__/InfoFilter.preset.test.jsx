@@ -5,6 +5,7 @@ import { MemoryRouter, useLocation } from 'react-router-dom';
 import { vi } from 'vitest';
 import InfoFilter from '../InfoFilter.jsx';
 import { LoraxTestProvider } from '@lorax/core';
+import { metadataFeatureConfig } from '../../../config/metadataFeatureConfig';
 
 vi.mock('@lorax/core', async () => {
   const React = await import('react');
@@ -18,6 +19,25 @@ vi.mock('@lorax/core', async () => {
 const TEST_CONFIG = {
   project: '1000Genomes',
   filename: '1kg_chr2.trees.tsz',
+};
+const TEST_FEATURE = metadataFeatureConfig.find(
+  (feature) =>
+    feature?.project === TEST_CONFIG.project &&
+    feature?.filename === TEST_CONFIG.filename
+);
+const ACTION_FEATURE = metadataFeatureConfig.find(
+  (feature) => Array.isArray(feature?.actions) && feature.actions.length > 0
+);
+
+const hexToRgba = (hex) => {
+  const normalized = String(hex || '').replace('#', '');
+  if (!/^[a-fA-F0-9]{6}$/.test(normalized)) return null;
+  return [
+    parseInt(normalized.slice(0, 2), 16),
+    parseInt(normalized.slice(2, 4), 16),
+    parseInt(normalized.slice(4, 6), 16),
+    255
+  ];
 };
 
 const createDeferred = () => {
@@ -103,26 +123,37 @@ const renderWithLorax = ({
 
 describe('InfoFilter presetFeature', () => {
   it('applies preset from URL (select key, values, colors, coords)', async () => {
-    const loadedMetadata = new Map([['name', 'pyarrow']]);
+    if (!TEST_FEATURE) {
+      throw new Error('Missing 1000Genomes feature preset in metadataFeatureConfig');
+    }
+
+    const loadedMetadata = new Map([[TEST_FEATURE.metadata.key, 'pyarrow']]);
     const { onNavigateToCoords } = renderWithLorax({
-      initialEntries: ['/file?presetfeature=1000Genomes_chr2'],
+      initialEntries: [`/file?presetfeature=${TEST_FEATURE.id}`],
       loraxOverrides: { loadedMetadata },
     });
 
     await waitFor(() => {
-      expect(screen.getByTestId('selectedColorBy')).toHaveTextContent('name');
+      expect(screen.getByTestId('selectedColorBy')).toHaveTextContent(TEST_FEATURE.metadata.key);
     });
 
-    expect(screen.getByTestId('searchTags')).toHaveTextContent('GBR,CHS');
-    expect(screen.getByTestId('enabledValues')).toHaveTextContent('CHS,GBR');
-    expect(screen.getByTestId('metadataColors')).toHaveTextContent(
-      '"GBR":[24,185,56,255]'
+    const values = TEST_FEATURE.metadata.values.map(String);
+    const firstValue = values[0];
+    const parsedColors = JSON.parse(screen.getByTestId('metadataColors').textContent || '{}');
+    expect(screen.getByTestId('searchTags')).toHaveTextContent(values.join(','));
+    expect(screen.getByTestId('enabledValues')).toHaveTextContent([...values].sort().join(','));
+    expect(parsedColors?.[TEST_FEATURE.metadata.key]?.[firstValue]).toEqual(
+      hexToRgba(TEST_FEATURE.metadata.colors[firstValue])
     );
-    expect(onNavigateToCoords).toHaveBeenCalledWith([136608644, 136608651]);
+    expect(onNavigateToCoords).toHaveBeenCalledWith(TEST_FEATURE.genomicCoords);
   });
 
   it('enables preset from toggle and updates URL', async () => {
-    const loadedMetadata = new Map([['name', 'pyarrow']]);
+    if (!TEST_FEATURE) {
+      throw new Error('Missing 1000Genomes feature preset in metadataFeatureConfig');
+    }
+
+    const loadedMetadata = new Map([[TEST_FEATURE.metadata.key, 'pyarrow']]);
     const { user } = renderWithLorax({
       initialEntries: ['/file'],
       loraxOverrides: { loadedMetadata },
@@ -133,24 +164,30 @@ describe('InfoFilter presetFeature', () => {
 
     await waitFor(() => {
       expect(screen.getByTestId('location-search')).toHaveTextContent(
-        'presetfeature=1000Genomes_chr2'
+        `presetfeature=${TEST_FEATURE.id}`
       );
     });
-    expect(screen.getByTestId('selectedColorBy')).toHaveTextContent('name');
-    expect(screen.getByTestId('searchTags')).toHaveTextContent('GBR,CHS');
+    expect(screen.getByTestId('selectedColorBy')).toHaveTextContent(TEST_FEATURE.metadata.key);
+    expect(screen.getByTestId('searchTags')).toHaveTextContent(
+      TEST_FEATURE.metadata.values.map(String).join(',')
+    );
   });
 
   it('disables preset, clears URL, and resets filter state', async () => {
-    const loadedMetadata = new Map([['name', 'pyarrow']]);
+    if (!TEST_FEATURE) {
+      throw new Error('Missing 1000Genomes feature preset in metadataFeatureConfig');
+    }
+
+    const loadedMetadata = new Map([[TEST_FEATURE.metadata.key, 'pyarrow']]);
     const metadataColors = {
-      name: {
+      [TEST_FEATURE.metadata.key]: {
         GBR: [24, 185, 56, 255],
         CHS: [216, 14, 14, 255],
         FIN: [120, 120, 120, 255],
       },
     };
     const { user } = renderWithLorax({
-      initialEntries: ['/file?presetfeature=1000Genomes_chr2'],
+      initialEntries: [`/file?presetfeature=${TEST_FEATURE.id}`],
       loraxOverrides: { loadedMetadata, metadataColors },
     });
 
@@ -167,28 +204,38 @@ describe('InfoFilter presetFeature', () => {
   });
 
   it('waits for navigation before firing preset actions', async () => {
-    const loadedMetadata = new Map([['name', 'pyarrow']]);
+    if (!ACTION_FEATURE) {
+      throw new Error('Missing action feature preset in metadataFeatureConfig');
+    }
+
+    const loadedMetadata = new Map([[ACTION_FEATURE.metadata.key, 'pyarrow']]);
     const deferred = createDeferred();
     const onNavigateToCoords = vi.fn(() => deferred.promise);
     const onPresetAction = vi.fn();
     const { user } = renderWithLorax({
       initialEntries: ['/file'],
-      loraxOverrides: { loadedMetadata },
+      loraxOverrides: {
+        loadedMetadata,
+        tsconfig: {
+          project: ACTION_FEATURE.project,
+          filename: ACTION_FEATURE.filename
+        }
+      },
       propsOverrides: { onNavigateToCoords, onPresetAction }
     });
 
     const enableButton = await screen.findByTitle('Enable preset');
     await user.click(enableButton);
 
-    expect(onNavigateToCoords).toHaveBeenCalledWith([136608644, 136608651]);
+    expect(onNavigateToCoords).toHaveBeenCalledWith(ACTION_FEATURE.genomicCoords);
     expect(onPresetAction).not.toHaveBeenCalled();
 
     deferred.resolve();
 
     await waitFor(() => {
       expect(onPresetAction).toHaveBeenCalledWith(
-        ['adjustView'],
-        expect.objectContaining({ id: 'lactase_persistence' })
+        ACTION_FEATURE.actions,
+        expect.objectContaining({ id: ACTION_FEATURE.id })
       );
     });
   });

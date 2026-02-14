@@ -10,7 +10,8 @@ export default function InfoMetadata({
   treeDetails,
   nodeDetails,
   individualDetails,
-  sampleDetails,
+  metadataArrays,
+  loadedMetadata,
   tsconfig,
   populationDetails,
   nodeMutations,
@@ -19,9 +20,26 @@ export default function InfoMetadata({
   setHighlightedMutationNode,
   setHighlightedMutationTreeIndex
 }) {
-  // Get sample name from node metadata if available
-  const sampleName = nodeDetails?.metadata?.name || nodeDetails?.id;
-  const sampleMetadata = sampleDetails && sampleName ? sampleDetails[sampleName] : null;
+  const sampleNodeId = Number(nodeDetails?.id);
+  const sampleMetadata = React.useMemo(() => {
+    if (!Number.isFinite(sampleNodeId) || !metadataArrays) return null;
+
+    const details = {};
+    Object.entries(metadataArrays).forEach(([key, arrayData]) => {
+      if (loadedMetadata?.get?.(key) !== 'pyarrow') return;
+      const idx = arrayData?.nodeIdToIdx?.get?.(sampleNodeId);
+      if (idx === undefined) return;
+
+      const valueIdx = arrayData?.indices?.[idx];
+      if (valueIdx === undefined || valueIdx === null) return;
+
+      const value = arrayData?.uniqueValues?.[valueIdx];
+      if (value === undefined || value === null || value === '') return;
+      details[key] = value;
+    });
+
+    return Object.keys(details).length > 0 ? details : null;
+  }, [sampleNodeId, metadataArrays, loadedMetadata]);
 
   return (
     <>
@@ -73,7 +91,7 @@ export default function InfoMetadata({
         </DetailCard>
       )}
 
-      {/* Sample Metadata from sample_details - dynamic display */}
+      {/* Sample Metadata derived from loaded Arrow metadata arrays */}
       {sampleMetadata && Object.keys(sampleMetadata).length > 0 && (
         <DetailCard title="Sample Metadata">
           {Object.entries(sampleMetadata).map(([key, value]) => (

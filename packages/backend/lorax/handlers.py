@@ -20,9 +20,6 @@ from lorax.utils import (
     make_json_serializable,
 )
 from lorax.metadata.loader import (
-    get_metadata_for_key,
-    search_samples_by_metadata,
-    get_metadata_array_for_key,
     _get_sample_metadata_value
 )
 from lorax.metadata.mutations import (

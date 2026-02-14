@@ -599,33 +599,6 @@ export function useLoraxConnection({
   }, [emit, once, off, socketRef, sidRef]);
 
   /**
-   * Query metadata for a specific key (JSON format).
-   * Returns sample-to-value mapping for the requested metadata key.
-   * @param {string} key - Metadata key to fetch
-   * @returns {Promise<{key: string, data: Object}>} key and sample->value mapping
-   */
-  const queryMetadataForKey = useCallback((key) => {
-    return new Promise((resolve, reject) => {
-      if (!socketRef.current) {
-        reject(new Error("Socket not available"));
-        return;
-      }
-
-      const handleResult = (message) => {
-        off("metadata-key-result", handleResult);
-        if (message.error) {
-          reject(new Error(message.error));
-          return;
-        }
-        resolve({ key: message.key, data: message.data || {} });
-      };
-
-      once("metadata-key-result", handleResult);
-      emit("fetch_metadata_for_key", { lorax_sid: sidRef.current, key });
-    });
-  }, [emit, once, off, socketRef, sidRef]);
-
-  /**
    * Query metadata as PyArrow array format (efficient for large tree sequences).
    * Returns unique values, indices array, and sample node IDs.
    * @param {string} key - Metadata key to fetch
@@ -749,7 +722,6 @@ export function useLoraxConnection({
       queryHighlightPositions,
       queryMultiValueSearch,
       searchMutations,
-      queryMetadataForKey,
       queryMetadataArray,
       queryMetadataSearch,
       loraxSid,
@@ -769,7 +741,6 @@ export function useLoraxConnection({
       queryHighlightPositions,
       queryMultiValueSearch,
       searchMutations,
-      queryMetadataForKey,
       queryMetadataArray,
       queryMetadataSearch,
       loraxSid,

@@ -35,11 +35,7 @@ function useMetadataFilter({ enabled = false, config = {} }) {
     metadataKeys = [],
     metadataColors,
     setMetadataColors,
-    loadedMetadata,          // Unified tracking: Map<key, 'pyarrow' | 'json' | 'loading'>
-    fetchMetadataForKey,
     fetchMetadataArrayForKey,
-    registerJsonFallback,    // Register timer for cancellation on PyArrow success
-    clearJsonFallback,       // Clear timer on unmount/key change
     isConnected,
     tsconfig
   } = config;
@@ -54,14 +50,7 @@ function useMetadataFilter({ enabled = false, config = {} }) {
   const [displayLineagePaths, setDisplayLineagePaths] = useState(false);
   const [compareMode, setCompareMode] = useState(false);
 
-  // Ref to track loadedMetadata for use in timeout callbacks (avoids stale closure)
-  const loadedMetadataRef = useRef(loadedMetadata);
   const pendingSelectedKeyRef = useRef(null);
-
-  // Sync ref with state
-  useEffect(() => {
-    loadedMetadataRef.current = loadedMetadata;
-  }, [loadedMetadata]);
 
   // Compute coloryby dropdown options from metadataKeys
   const coloryby = useMemo(() => {
@@ -105,41 +94,15 @@ function useMetadataFilter({ enabled = false, config = {} }) {
     }
   }, [enabled, selectedColorBy, metadataKeys]);
 
-  // Auto-fetch metadata values when key changes
-  // Note: We intentionally exclude loadedMetadata from deps to avoid infinite loops.
-  // The ref is used to check current state in the timeout callback.
+  // Auto-fetch metadata values as Arrow arrays when key changes.
   useEffect(() => {
     if (!enabled || !selectedColorBy || !isConnected) return;
 
-    // Try PyArrow first (more efficient for large datasets)
-    // Note: fetchMetadataArrayForKey already checks if key is loaded/loading
+    // fetchMetadataArrayForKey checks whether the key is already loaded/loading.
     if (fetchMetadataArrayForKey) {
       fetchMetadataArrayForKey(selectedColorBy);
     }
-
-    // Set up fallback to JSON after 2s if PyArrow doesn't complete
-    const timeoutId = setTimeout(() => {
-      // Use ref to get current state (avoids stale closure)
-      const currentStatus = loadedMetadataRef.current?.get(selectedColorBy);
-      if (currentStatus !== 'pyarrow' && currentStatus !== 'json' && fetchMetadataForKey) {
-        fetchMetadataForKey(selectedColorBy);
-      }
-    }, 2000);
-
-    // Register the timer so it can be canceled if PyArrow succeeds
-    if (registerJsonFallback) {
-      registerJsonFallback(selectedColorBy, timeoutId);
-    }
-
-    return () => {
-      // Clear timer on unmount or key change
-      clearTimeout(timeoutId);
-      if (clearJsonFallback) {
-        clearJsonFallback(selectedColorBy);
-      }
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, selectedColorBy, isConnected, fetchMetadataArrayForKey, fetchMetadataForKey, registerJsonFallback, clearJsonFallback]);
+  }, [enabled, selectedColorBy, isConnected, fetchMetadataArrayForKey]);
 
   // Track previous selectedColorBy to detect key changes vs color changes
   const prevSelectedColorByRef = useRef(null);
@@ -179,7 +142,7 @@ function useMetadataFilter({ enabled = false, config = {} }) {
     setHighlightedMetadataValue(null);  // Clear highlight when key changes
     setEnabledValuesState(new Set());
     setHasManualSelection(false);
-  }, [selectedColorBy]);
+  }, []);
 
   const setEnabledValues = useCallback((next) => {
     setHasManualSelection(true);

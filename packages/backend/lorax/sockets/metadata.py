@@ -1,14 +1,14 @@
 """
 Metadata event handlers for Lorax Socket.IO.
 
-Handles fetch_metadata_for_key, search_metadata, and fetch_metadata_array events.
+Handles search_metadata and fetch_metadata_array events.
 """
 
 import asyncio
 
 from lorax.constants import ERROR_NO_FILE_LOADED
 from lorax.metadata.loader import (
-    get_metadata_for_key, search_samples_by_metadata, get_metadata_array_for_key
+    search_samples_by_metadata, get_metadata_array_for_key
 )
 from lorax.cache import get_file_context
 from lorax.sockets.decorators import require_session
@@ -17,63 +17,6 @@ from lorax.sockets.utils import is_csv_session_file
 
 def register_metadata_events(sio):
     """Register metadata-related socket events."""
-
-    @sio.event
-    async def fetch_metadata_for_key(sid, data):
-        """Socket event to fetch metadata mapping for a specific key."""
-        try:
-            lorax_sid = data.get("lorax_sid")
-            session = await require_session(lorax_sid, sid, sio)
-            if not session:
-                return
-
-            if not session.file_path:
-                print(f"⚠️ No file loaded for session {lorax_sid}")
-                await sio.emit("error", {
-                    "code": ERROR_NO_FILE_LOADED,
-                    "message": "No file loaded. Please load a file first."
-                }, to=sid)
-                return
-
-            if is_csv_session_file(session.file_path):
-                key = data.get("key")
-                if key == "sample":
-                    ctx = await get_file_context(session.file_path)
-                    if ctx is None:
-                        await sio.emit("metadata-key-result", {"error": "Failed to load CSV"}, to=sid)
-                        return
-                    # sample_names is {name: {"sample_name": name}, ...}
-                    sample_names = ctx.config.get("sample_names", {})
-                    # Return {name: name} like tskit's "sample" key
-                    result = {name: name for name in sample_names.keys()}
-                    await sio.emit("metadata-key-result", {"key": key, "data": result}, to=sid)
-                    return
-                else:
-                    await sio.emit("metadata-key-result", {
-                        "error": f"Metadata key '{key}' is not supported for CSV files."
-                    }, to=sid)
-                    return
-
-            key = data.get("key")
-            if not key:
-                await sio.emit("metadata-key-result", {
-                    "error": "Missing 'key' parameter"
-                }, to=sid)
-                return
-
-            ctx = await get_file_context(session.file_path)
-            if ctx is None:
-                await sio.emit("metadata-key-result", {
-                    "error": "Failed to load tree sequence"
-                }, to=sid)
-                return
-
-            # Pass FileContext to metadata function
-            result = await asyncio.to_thread(get_metadata_for_key, ctx, key)
-            await sio.emit("metadata-key-result", {"key": key, "data": result}, to=sid)
-        except Exception as e:
-            print(f"❌ Metadata fetch error: {e}")
-            await sio.emit("metadata-key-result", {"error": str(e)}, to=sid)
 
     @sio.event
     async def search_metadata(sid, data):

@@ -5,7 +5,7 @@ This package provides modularized socket event handling:
 - connection: connect, disconnect, optional diagnostic ping events
 - file_ops: load_file, details, query events
 - tree_layout: process_postorder_layout, cache_trees events
-- metadata: fetch_metadata_*, search_metadata events
+- metadata: fetch_metadata_array, search_metadata events
 - mutations: query_mutations_window, search_mutations events
 - node_search: search_nodes, get_highlight_positions events
 - lineage: ancestors, descendants, mrca, subtree events
