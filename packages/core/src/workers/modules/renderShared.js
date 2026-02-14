@@ -1,7 +1,6 @@
 /**
- * Shared render utilities used by both main-thread (renderUtils.js) and
- * renderDataWorker.js. Single source of truth for groupNodesByTree,
- * groupMutationsByTree, and getTipColor.
+ * Shared render utilities used by render helpers and renderDataWorker.js.
+ * Single source of truth for groupNodesByTree, groupMutationsByTree, and getTipColor.
  */
 
 /**

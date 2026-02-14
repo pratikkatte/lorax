@@ -1,0 +1,192 @@
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { buildLockViewSnapshot } from '../utils/lockViewSnapshot.js';
+
+export const LOCK_SNAPSHOT_DEBUG_LABEL_BY_CORNER = {
+  topLeft: { dx: 8, dy: 16, textAnchor: 'start' },
+  topRight: { dx: -8, dy: 16, textAnchor: 'end' },
+  bottomRight: { dx: -8, dy: -8, textAnchor: 'end' },
+  bottomLeft: { dx: 8, dy: -8, textAnchor: 'start' }
+};
+
+export function formatLockSnapshotDebugCoordinate(value) {
+  if (!Number.isFinite(value)) return 'null';
+  return Number(value).toFixed(4);
+}
+
+function normalizeLockViewPayload(snapshot) {
+  if (!snapshot || typeof snapshot !== 'object') return null;
+
+  const boundingBox = snapshot.boundingBox;
+  if (!boundingBox || typeof boundingBox !== 'object') return null;
+
+  const inBoxTreeIndices = Array.isArray(snapshot.inBoxTreeIndices)
+    ? snapshot.inBoxTreeIndices
+      .map((idx) => Number(idx))
+      .filter((idx) => Number.isFinite(idx))
+    : [];
+  const inBoxTreeCount = Number.isFinite(snapshot.inBoxTreeCount)
+    ? snapshot.inBoxTreeCount
+    : inBoxTreeIndices.length;
+
+  return {
+    capturedAt: Number(snapshot.capturedAt) || Date.now(),
+    boundingBox: {
+      minX: Number(boundingBox.minX),
+      maxX: Number(boundingBox.maxX),
+      minY: Number(boundingBox.minY),
+      maxY: Number(boundingBox.maxY),
+      width: Number(boundingBox.width),
+      height: Number(boundingBox.height)
+    },
+    inBoxTreeIndices,
+    inBoxTreeCount
+  };
+}
+
+function buildDebugOverlay(snapshot, orthoViewport) {
+  if (!snapshot || !orthoViewport) return null;
+
+  const width = Number(orthoViewport.width);
+  const height = Number(orthoViewport.height);
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    return null;
+  }
+
+  const x = Number(orthoViewport.x);
+  const y = Number(orthoViewport.y);
+  const viewportX = Number.isFinite(x) ? x : 0;
+  const viewportY = Number.isFinite(y) ? y : 0;
+
+  const cornerPixels = {
+    topLeft: [viewportX, viewportY],
+    topRight: [viewportX + width, viewportY],
+    bottomRight: [viewportX + width, viewportY + height],
+    bottomLeft: [viewportX, viewportY + height]
+  };
+
+  const corners = Array.isArray(snapshot.corners)
+    ? snapshot.corners.map((corner) => {
+      const [px, py] = cornerPixels[corner.corner] || [viewportX, viewportY];
+      return { ...corner, px, py };
+    })
+    : [];
+
+  return {
+    x: viewportX,
+    y: viewportY,
+    width,
+    height,
+    corners,
+    boundingBox: snapshot.boundingBox
+  };
+}
+
+export function useLockViewSnapshot({
+  deckRef,
+  localBins,
+  lockModelMatrix = false,
+  debug = false
+}) {
+  const snapshotRafRef = useRef(null);
+  const pendingSnapshotRef = useRef(false);
+  const prevLockModelMatrixRef = useRef(lockModelMatrix);
+
+  const [lockViewPayload, setLockViewPayload] = useState(null);
+  const [lockSnapshotDebugOverlay, setLockSnapshotDebugOverlay] = useState(null);
+
+  const clearScheduledCapture = useCallback(() => {
+    if (snapshotRafRef.current == null) return;
+    if (typeof cancelAnimationFrame === 'function') {
+      cancelAnimationFrame(snapshotRafRef.current);
+    }
+    snapshotRafRef.current = null;
+  }, []);
+
+  const captureLockViewSnapshot = useCallback(() => {
+    if (!lockModelMatrix) return false;
+
+    const deck = deckRef.current?.deck;
+    const viewports = deck?.getViewports?.();
+    if (!Array.isArray(viewports)) return false;
+
+    const orthoViewport = viewports.find((vp) => vp?.id === 'ortho') || null;
+    const snapshot = buildLockViewSnapshot({ orthoViewport, localBins });
+    if (!snapshot) return false;
+
+    const normalizedPayload = normalizeLockViewPayload(snapshot);
+    setLockViewPayload(normalizedPayload);
+    setLockSnapshotDebugOverlay(
+      debug ? buildDebugOverlay(snapshot, orthoViewport) : null
+    );
+    return true;
+  }, [deckRef, localBins, lockModelMatrix, debug]);
+
+  const runScheduledCapture = useCallback(() => {
+    snapshotRafRef.current = null;
+    const captured = captureLockViewSnapshot();
+    pendingSnapshotRef.current = !captured;
+  }, [captureLockViewSnapshot]);
+
+  const scheduleCapture = useCallback(() => {
+    if (!lockModelMatrix) return;
+
+    pendingSnapshotRef.current = true;
+    if (snapshotRafRef.current != null) return;
+
+    if (typeof requestAnimationFrame === 'function') {
+      snapshotRafRef.current = requestAnimationFrame(runScheduledCapture);
+    } else {
+      runScheduledCapture();
+    }
+  }, [lockModelMatrix, runScheduledCapture]);
+
+  const flushPendingCapture = useCallback(() => {
+    if (!lockModelMatrix) return;
+    if (!pendingSnapshotRef.current) return;
+    if (snapshotRafRef.current != null) return;
+    const captured = captureLockViewSnapshot();
+    pendingSnapshotRef.current = !captured;
+  }, [lockModelMatrix, captureLockViewSnapshot]);
+
+  useEffect(() => {
+    if (!debug) {
+      setLockSnapshotDebugOverlay(null);
+    }
+  }, [debug]);
+
+  useEffect(() => {
+    const prevLocked = prevLockModelMatrixRef.current;
+    prevLockModelMatrixRef.current = lockModelMatrix;
+
+    if (!prevLocked && lockModelMatrix) {
+      pendingSnapshotRef.current = true;
+      const captured = captureLockViewSnapshot();
+      pendingSnapshotRef.current = !captured;
+      if (!captured) {
+        scheduleCapture();
+      }
+      return;
+    }
+
+    if (prevLocked && !lockModelMatrix) {
+      pendingSnapshotRef.current = false;
+      clearScheduledCapture();
+      setLockSnapshotDebugOverlay(null);
+      setLockViewPayload(null);
+    }
+  }, [lockModelMatrix, captureLockViewSnapshot, scheduleCapture, clearScheduledCapture]);
+
+  useEffect(() => () => {
+    pendingSnapshotRef.current = false;
+    clearScheduledCapture();
+  }, [clearScheduledCapture]);
+
+  return {
+    lockViewPayload,
+    lockSnapshotDebugOverlay,
+    scheduleCapture,
+    flushPendingCapture
+  };
+}
+
+export default useLockViewSnapshot;

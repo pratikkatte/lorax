@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { computeRenderArrays, serializeModelMatrices, buildModelMatricesMap } from '../utils/renderUtils.js';
-import { supportsWebWorkers } from '../utils/computations.js';
+import { serializeModelMatrices } from '../utils/renderUtils.js';
 import { useWorker } from './useWorker.jsx';
 import { getRenderDataWorker } from '../workers/workerSpecs.js';
 
@@ -28,11 +27,6 @@ function shouldSkipRender(localBins, treeData) {
  * Hook to compute render data (typed arrays) for tree visualization.
  * Sends tree data + localBins to worker, receives typed arrays for deck.gl layers.
  *
- * Supports two execution modes:
- * - 'worker': Uses web worker for computation (Vite)
- * - 'main-thread': Uses synchronous computation (webpack/non-Vite)
- * - 'auto': Detects environment and chooses appropriate mode
- *
  * NOTE: This hook executes immediately without debounce.
  * Debouncing should be applied at the viewport/genomicCoords level (useInterval)
  * to ensure atomic processing and prevent race conditions.
@@ -44,8 +38,7 @@ function shouldSkipRender(localBins, treeData) {
  * @param {Object} params.metadataArrays - Optional metadata for tip coloring
  * @param {Object} params.metadataColors - Optional color mapping for metadata values
  * @param {Object} params.populationFilter - Optional { colorBy, enabledValues }
- * @param {string} params.mode - Execution mode: 'worker' | 'main-thread' | 'auto' (default: 'auto')
- * @returns {Object} { renderData, isLoading, error, isReady, effectiveMode, clearBuffers }
+ * @returns {Object} { renderData, isLoading, error, isReady, clearBuffers }
  */
 export function useRenderData({
   localBins,
@@ -53,8 +46,7 @@ export function useRenderData({
   displayArray = null,
   metadataArrays = null,
   metadataColors = null,
-  populationFilter = null,
-  mode = 'auto'
+  populationFilter = null
 }) {
   const [renderData, setRenderData] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -65,17 +57,8 @@ export function useRenderData({
   // Use generic worker hook
   const worker = useWorker(getRenderDataWorker);
 
-  // Determine effective mode
-  const effectiveMode = useMemo(() => {
-    if (mode === 'worker') return 'worker';
-    if (mode === 'main-thread') return 'main-thread';
-    // Auto mode: use worker if we can
-    return supportsWebWorkers() ? 'worker' : 'main-thread';
-  }, [mode]);
-
-  // Worker mode effect - executes immediately (no debounce)
   useEffect(() => {
-    if (effectiveMode !== 'worker' || !worker.isReady) return;
+    if (!worker.isReady) return;
 
     const { skip } = shouldSkipRender(localBins, treeData);
     if (skip) {
@@ -103,7 +86,7 @@ export function useRenderData({
           mut_y: treeData.mut_y,
           mut_tree_idx: treeData.mut_tree_idx,
           modelMatrices: serializeModelMatrices(localBins),
-          displayArray: displayArray || [],
+          displayArray: displayArray ?? EMPTY_DISPLAY_ARRAY,
           metadataArrays,
           metadataColors,
           populationFilter
@@ -124,77 +107,20 @@ export function useRenderData({
         setIsLoading(false);
       }
     })();
-  }, [effectiveMode, worker, localBins, treeData, displayArray, metadataArrays, metadataColors, populationFilter]);
+  }, [worker, localBins, treeData, displayArray, metadataArrays, metadataColors, populationFilter]);
 
-  // Main-thread mode effect - executes immediately (no debounce)
-  useEffect(() => {
-    if (effectiveMode !== 'main-thread') return;
-
-    const { skip } = shouldSkipRender(localBins, treeData);
-    if (skip) {
-      setRenderData(null);
-      return;
-    }
-
-    const requestId = ++latestRequestId.current;
-
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      // Synchronous computation on main thread
-      const modelMatricesMap = buildModelMatricesMap(localBins);
-      const result = computeRenderArrays({
-        node_id: treeData.node_id,
-        parent_id: treeData.parent_id,
-        is_tip: treeData.is_tip,
-        tree_idx: treeData.tree_idx,
-        x: treeData.x,
-        y: treeData.y,
-        name: treeData.name,
-        // Mutation fields
-        mut_x: treeData.mut_x,
-        mut_y: treeData.mut_y,
-        mut_tree_idx: treeData.mut_tree_idx,
-        modelMatrices: modelMatricesMap,
-        displayArray: displayArray ?? EMPTY_DISPLAY_ARRAY,
-        metadataArrays,
-        metadataColors,
-        populationFilter
-      });
-
-      // Ignore stale results
-      if (requestId !== latestRequestId.current) {
-        return;
-      }
-
-      setRenderData(result);
-      setIsLoading(false);
-    } catch (err) {
-      if (requestId !== latestRequestId.current) return;
-
-      console.error('[useRenderData] Failed to compute render data:', err);
-      setError(err);
-      setIsLoading(false);
-    }
-  }, [effectiveMode, localBins, treeData, displayArray, metadataArrays, metadataColors, populationFilter]);
-
-  /**
-   * Clear worker buffers to free memory (only in worker mode)
-   */
   const clearBuffers = useCallback(() => {
-    if (effectiveMode === 'worker' && worker.isReady) {
-      return worker.request('clear-buffers', null);
+    if (!worker.isReady) {
+      return Promise.resolve();
     }
-    return Promise.resolve();
-  }, [effectiveMode, worker]);
+    return worker.request('clear-buffers', null);
+  }, [worker]);
 
   return useMemo(() => ({
     renderData,
     isLoading,
     error,
-    isReady: effectiveMode === 'main-thread' || worker.isReady,
-    effectiveMode,
+    isReady: worker.isReady,
     clearBuffers
-  }), [renderData, isLoading, error, effectiveMode, worker.isReady, clearBuffers]);
+  }), [renderData, isLoading, error, worker.isReady, clearBuffers]);
 }

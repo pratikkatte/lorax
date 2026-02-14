@@ -6,8 +6,8 @@ let requestIdCounter = 0;
  * Generic hook providing Promise-based communication with a web worker.
  * Pure communication layer - no state management for intervals.
  *
- * NOTE: This hook only works in Vite environments. For webpack/non-Vite builds,
- * use the main-thread mode in consuming hooks instead.
+ * NOTE: This hook relies on the workerSpecs loader and expects worker support
+ * in the current build/runtime.
  *
  * @param {Function} getWorkerModule - Async function that returns a Worker class
  * @returns {Object} Worker API with { isReady, request }
@@ -32,7 +32,7 @@ export function useWorker(getWorkerModule) {
       if (!mounted) return;
 
       if (!WorkerClass) {
-        console.warn('[useWorker] Worker not available - use main-thread mode instead');
+        console.warn('[useWorker] Worker not available');
         return;
       }
 

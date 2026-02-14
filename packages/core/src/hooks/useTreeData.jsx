@@ -1,6 +1,17 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { parseTreeLayoutBuffer, EMPTY_TREE_LAYOUT } from '../utils/arrowUtils.js';
 
+const LOCK_VIEW_REQUEST_CADENCE_MS = 120;
+
+function arraysEqual(a, b) {
+  if (!Array.isArray(a) || !Array.isArray(b)) return false;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
 /**
  * Update cache with trees from parsed response.
  * Groups nodes and mutations by tree_idx and stores in cache.
@@ -64,7 +75,7 @@ function evictOutOfViewTrees(cache, intervals, genomicCoords, marginFactor = 0.5
 
   const [viewStart, viewEnd] = genomicCoords;
   const viewWidth = viewEnd - viewStart;
-  const margin = viewWidth * marginFactor;  // Keep trees within 50% extra viewport width
+  const margin = viewWidth * marginFactor; // Keep trees within 50% extra viewport width
 
   const evictStart = viewStart - margin;
   const evictEnd = viewEnd + margin;
@@ -151,22 +162,24 @@ function buildTreeDataFromCache(cache, displayArray) {
  * @param {number[]} params.displayArray - Tree indices to fetch (from useLocalData)
  * @param {Function} params.queryTreeLayout - Socket method from useLorax
  * @param {boolean} params.isConnected - Socket connection status
- * @param {boolean} params.sparsification - Enable sparsification (default false)
+ * @param {Object|null} params.lockView - Optional lock-view bbox payload
  * @param {Object} params.tsconfig - Tree sequence config (for cache invalidation on file change)
  * @param {number[]} params.genomicCoords - Viewport bounds [startBp, endBp] for cache eviction
- * @returns {Object} { treeData, isLoading, error, clearCache }
+ * @returns {Object} { treeData, isLoading, isBackgroundRefresh, fetchReason, error, clearCache }
  */
 export function useTreeData({
   displayArray,
   queryTreeLayout,
   isConnected,
-  sparsification = false,
+  lockView = null,
   tsconfig = null,
   genomicCoords = null,
 }) {
 
   const [treeData, setTreeData] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isBackgroundRefresh, setIsBackgroundRefresh] = useState(false);
+  const [fetchReason, setFetchReason] = useState('cache-only');
   const [error, setError] = useState(null);
 
   // Request ID counter - only process response if it matches latest request
@@ -178,26 +191,83 @@ export function useTreeData({
   // Time bounds (file-level constants, cached from first fetch)
   const timeBoundsRef = useRef(null);
 
-  // Cache key for invalidation (file identity + sparsification)
-  const cacheKeyRef = useRef({ tsconfigId: null, sparsification: null });
+  // Cache key for invalidation (file identity + effective detail mode).
+  // Backend now infers sparsification from tree count.
+  const cacheKeyRef = useRef({ tsconfigId: null, inferredSparsification: null });
+
+  // Previous display array, used to classify lock-view heartbeat refreshes.
+  const previousDisplayArrayRef = useRef([]);
 
   // Derive stable file identity from tsconfig
   const tsconfigId = tsconfig?.file_path || tsconfig?.genome_length || null;
 
-  // Invalidate cache when file or sparsification changes
+  const inferredSparsification = (displayArray?.length ?? 0) > 1;
+
+  const normalizedLockView = useMemo(() => {
+    if (!lockView || typeof lockView !== 'object') return null;
+    const boundingBox = lockView.boundingBox;
+    if (!boundingBox || typeof boundingBox !== 'object') return null;
+
+    const toFiniteNumber = (value, fallback = null) => {
+      const numeric = Number(value);
+      return Number.isFinite(numeric) ? numeric : fallback;
+    };
+
+    const minX = toFiniteNumber(boundingBox.minX);
+    const maxX = toFiniteNumber(boundingBox.maxX);
+    const minY = toFiniteNumber(boundingBox.minY);
+    const maxY = toFiniteNumber(boundingBox.maxY);
+    const width = toFiniteNumber(boundingBox.width);
+    const height = toFiniteNumber(boundingBox.height);
+    if (
+      minX == null || maxX == null || minY == null || maxY == null
+      || width == null || height == null
+    ) {
+      return null;
+    }
+
+    const inBoxTreeIndices = Array.isArray(lockView.inBoxTreeIndices)
+      ? lockView.inBoxTreeIndices
+        .map((idx) => Number(idx))
+        .filter((idx) => Number.isFinite(idx))
+      : [];
+    const inBoxTreeCountRaw = Number(lockView.inBoxTreeCount);
+    const inBoxTreeCount = Number.isFinite(inBoxTreeCountRaw)
+      ? inBoxTreeCountRaw
+      : inBoxTreeIndices.length;
+    const capturedAtRaw = Number(lockView.capturedAt);
+    const capturedAt = Number.isFinite(capturedAtRaw) ? capturedAtRaw : Date.now();
+
+    return {
+      capturedAt,
+      boundingBox: { minX, maxX, minY, maxY, width, height },
+      inBoxTreeIndices,
+      inBoxTreeCount
+    };
+  }, [lockView]);
+
+  // Bucket lock-view timestamps so we only refresh at fixed cadence.
+  const lockViewTick = useMemo(() => {
+    if (!normalizedLockView) return null;
+    return Math.floor(normalizedLockView.capturedAt / LOCK_VIEW_REQUEST_CADENCE_MS);
+  }, [normalizedLockView]);
+
+  // Invalidate cache when file or inferred detail mode changes
   useEffect(() => {
     if (cacheKeyRef.current.tsconfigId !== tsconfigId ||
-        cacheKeyRef.current.sparsification !== sparsification) {
+        cacheKeyRef.current.inferredSparsification !== inferredSparsification) {
       treeDataCacheRef.current.clear();
       timeBoundsRef.current = null;
-      cacheKeyRef.current = { tsconfigId, sparsification };
+      cacheKeyRef.current = { tsconfigId, inferredSparsification };
+      previousDisplayArrayRef.current = [];
     }
-  }, [tsconfigId, sparsification]);
+  }, [tsconfigId, inferredSparsification]);
 
   // Manual cache clear callback
   const clearCache = useCallback(() => {
     treeDataCacheRef.current.clear();
     timeBoundsRef.current = null;
+    previousDisplayArrayRef.current = [];
   }, []);
 
   // Fetch immediately when displayArray changes (no debounce)
@@ -209,36 +279,69 @@ export function useTreeData({
     if (!displayArray || displayArray.length === 0) {
       setTreeData(EMPTY_TREE_LAYOUT);
       setIsLoading(false);
+      setIsBackgroundRefresh(false);
+      setFetchReason('cache-only');
+      previousDisplayArrayRef.current = [];
       return;
     }
 
     const cache = treeDataCacheRef.current;
 
     // Filter to only unfetched tree indices
-    const unfetchedIndices = displayArray.filter(idx => !cache.has(idx));
+    const unfetchedIndices = displayArray.filter((idx) => !cache.has(idx));
 
-    // If all trees are cached and we have time bounds, build from cache only
-    if (unfetchedIndices.length === 0 && timeBoundsRef.current) {
+    const shouldForceLockViewRefresh = normalizedLockView != null && lockViewTick != null;
+    const hasCompleteCache = unfetchedIndices.length === 0 && !!timeBoundsRef.current;
+    const displayArrayUnchanged = arraysEqual(displayArray, previousDisplayArrayRef.current);
+
+    let requestKind = 'cache-only';
+
+    if (shouldForceLockViewRefresh && hasCompleteCache && displayArrayUnchanged) {
+      requestKind = 'lock-refresh';
+    } else if (
+      unfetchedIndices.length > 0
+      || !timeBoundsRef.current
+      || shouldForceLockViewRefresh
+    ) {
+      requestKind = 'full-fetch';
+    }
+
+    if (requestKind === 'cache-only') {
       const cachedData = buildTreeDataFromCache(cache, displayArray);
       setTreeData({
         ...cachedData,
         ...timeBoundsRef.current
       });
       setIsLoading(false);
+      setIsBackgroundRefresh(false);
+      setFetchReason('cache-only');
+      previousDisplayArrayRef.current = displayArray.slice();
       return;
     }
 
     // Increment request ID for this request
     const currentRequestId = ++requestIdRef.current;
 
-    setIsLoading(true);
+    setFetchReason(requestKind);
     setError(null);
+    if (requestKind === 'lock-refresh') {
+      setIsLoading(false);
+      setIsBackgroundRefresh(true);
+    } else {
+      setIsLoading(true);
+      setIsBackgroundRefresh(false);
+    }
 
     (async () => {
       try {
-        // Only fetch unfetched trees (or all if no time bounds yet)
-        const indicesToFetch = unfetchedIndices.length > 0 ? unfetchedIndices : displayArray;
-        const response = await queryTreeLayout(indicesToFetch, sparsification, displayArray);
+        const indicesToFetch = requestKind === 'lock-refresh'
+          ? displayArray
+          : (unfetchedIndices.length > 0 ? unfetchedIndices : displayArray);
+
+        const response = await queryTreeLayout(indicesToFetch, {
+          actualDisplayArray: displayArray,
+          lockView: normalizedLockView
+        });
 
         // Ignore stale response if a newer request was sent
         if (currentRequestId !== requestIdRef.current) {
@@ -271,6 +374,9 @@ export function useTreeData({
           ...timeBoundsRef.current
         });
         setIsLoading(false);
+        setIsBackgroundRefresh(false);
+        setFetchReason(requestKind);
+        previousDisplayArrayRef.current = displayArray.slice();
       } catch (err) {
         // Ignore errors from stale requests
         if (currentRequestId !== requestIdRef.current) {
@@ -279,14 +385,17 @@ export function useTreeData({
         console.error('[useTreeData] Failed to fetch tree data:', err);
         setError(err);
         setIsLoading(false);
+        setIsBackgroundRefresh(false);
       }
     })();
-  }, [displayArray, queryTreeLayout, isConnected, sparsification]);
+  }, [displayArray, queryTreeLayout, isConnected, lockViewTick]);
 
   return useMemo(() => ({
     treeData,
     isLoading,
+    isBackgroundRefresh,
+    fetchReason,
     error,
     clearCache
-  }), [treeData, isLoading, error, clearCache]);
+  }), [treeData, isLoading, isBackgroundRefresh, fetchReason, error, clearCache]);
 }

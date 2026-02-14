@@ -1,9 +1,4 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import {
-  queryLocalDataSync,
-  serializeBinsForTransfer,
-  supportsWebWorkers
-} from '../utils/computations.js';
 
 // Compare arrays to avoid unnecessary state updates
 function arraysEqual(a, b) {
@@ -17,7 +12,7 @@ function arraysEqual(a, b) {
 
 /**
  * Deserialize bins from worker
- * Reconstructs Map and Matrix4 from serialized format
+ * Reconstructs Map and model matrices from serialized format.
  */
 function deserializeBins(serialized) {
   if (!serialized || !Array.isArray(serialized)) return null;
@@ -26,8 +21,7 @@ function deserializeBins(serialized) {
     const { key, ...rest } = item;
     map.set(key, {
       ...rest,
-      // Keep modelMatrix as array - consumer can convert to Matrix4 if needed
-      // This avoids requiring @math.gl/core as a dependency
+      // Keep modelMatrix as a plain array. Consumers can promote if needed.
       modelMatrix: rest.modelMatrix
     });
   }
@@ -38,25 +32,19 @@ function deserializeBins(serialized) {
  * Hook to compute local bins and tree positioning based on intervals.
  * Receives pre-decimation intervals from useInterval.
  *
- * Supports two execution modes:
- * - 'worker': Uses web worker for computation (Vite)
- * - 'main-thread': Uses synchronous computation (webpack/non-Vite)
- * - 'auto': Detects environment and chooses appropriate mode
- *
  * NOTE: This hook executes immediately without debounce.
  * Debouncing should be applied at the viewport/genomicCoords level (useInterval)
  * to ensure atomic processing and prevent race conditions.
  *
  * @param {Object} params
- * @param {Object} params.worker - Worker instance from useWorker (required for 'worker' mode)
- * @param {boolean} params.workerConfigReady - Whether worker has config (required for 'worker' mode)
+ * @param {Object} params.worker - Worker instance from useWorker
+ * @param {boolean} params.workerConfigReady - Whether worker has config
  * @param {number[]} params.allIntervalsInView - Pre-decimation intervals from useInterval
  * @param {Object} params.intervalBounds - { lo, hi } global index bounds from useInterval
  * @param {[number, number]} params.genomicCoords - [startBp, endBp] viewport bounds
  * @param {Object} params.viewState - deck.gl viewState with zoom
  * @param {Object} params.tsconfig - { genome_length, intervals[] }
- * @param {Object} params.displayOptions - { selectionStrategy }
- * @param {string} params.mode - Execution mode: 'worker' | 'main-thread' | 'auto' (default: 'auto')
+ * @param {Object} params.displayOptions - { selectionStrategy, lockModelMatrix }
  * @returns {Object} { localBins, displayArray, isReady, showingAllTrees, reset }
  */
 export function useLocalData({
@@ -68,8 +56,7 @@ export function useLocalData({
   genomicCoords,
   viewState,
   tsconfig,
-  displayOptions = {},
-  mode = 'auto'
+  displayOptions = {}
 }) {
   const [localBins, setLocalBins] = useState(null);
   const [displayArray, setDisplayArray] = useState([]);
@@ -82,14 +69,6 @@ export function useLocalData({
   const lockedWindowRef = useRef(null);
   const lockedXZoomRef = useRef(null);
   const zoomDirtyRef = useRef(false);
-
-  // Determine effective mode
-  const effectiveMode = useMemo(() => {
-    if (mode === 'worker') return 'worker';
-    if (mode === 'main-thread') return 'main-thread';
-    // Auto mode: use worker if available, otherwise main-thread
-    return supportsWebWorkers() && worker ? 'worker' : 'main-thread';
-  }, [mode, worker]);
 
   // Serialize displayOptions to avoid object reference comparison issues
   const displayOptionsKey = JSON.stringify(displayOptions);
@@ -220,16 +199,15 @@ export function useLocalData({
     zoomDirtyRef.current = false;
   }, [tsconfig?.file_path, tsconfig?.genome_length]);
 
-  // Worker mode effect - executes immediately (no debounce)
   useEffect(() => {
-    if (effectiveMode !== 'worker') return;
-    if (!workerConfigReady || !genomicCoords || !worker || !globalBpPerUnit) return;
+    if (!worker) return;
+    if (!workerConfigReady || !genomicCoords || !globalBpPerUnit) return;
     if (!allIntervalsInView || allIntervalsInView.length === 0) return;
     if (!intervalsCoords || intervalsCoords[0] !== genomicCoords[0] || intervalsCoords[1] !== genomicCoords[1]) return;
     if (shouldSkipForLockedInteraction(!!localBins)) return;
 
-    const new_globalBp = computeNewGlobalBp();
-    if (!new_globalBp) return;
+    const newGlobalBp = computeNewGlobalBp();
+    if (!newGlobalBp) return;
 
     const [start, end] = genomicCoords;
     const requestId = ++latestRequestId.current;
@@ -242,9 +220,9 @@ export function useLocalData({
           start,
           end,
           globalBpPerUnit,
-          new_globalBp,
+          new_globalBp: newGlobalBp,
           genome_length: tsconfig.genome_length,
-          displayOptions : { ...displayOptions, showing_all_trees: showingAllTrees }
+          displayOptions: { ...displayOptions, showing_all_trees: showingAllTrees }
         });
 
         if (requestId !== latestRequestId.current) return;
@@ -259,48 +237,7 @@ export function useLocalData({
         console.error('Failed to query local data:', error);
       }
     })();
-  }, [effectiveMode, workerConfigReady, genomicCoords, worker, globalBpPerUnit, allIntervalsInView, intervalBounds, displayOptionsKey, tsconfig, shouldSkipForLockedInteraction, computeNewGlobalBp]);
-
-  // Main-thread mode effect - executes immediately (no debounce)
-  useEffect(() => {
-    if (effectiveMode !== 'main-thread') return;
-    if (!genomicCoords || !globalBpPerUnit) return;
-    if (!allIntervalsInView || allIntervalsInView.length === 0) return;
-    if (!intervalsCoords || intervalsCoords[0] !== genomicCoords[0] || intervalsCoords[1] !== genomicCoords[1]) return;
-    if (shouldSkipForLockedInteraction(!!localBins)) return;
-
-    const new_globalBp = computeNewGlobalBp();
-    if (!new_globalBp) return;
-
-    const [start, end] = genomicCoords;
-    const requestId = ++latestRequestId.current;
-
-    try {
-      // Synchronous computation on main thread
-      const result = queryLocalDataSync({
-        intervals: allIntervalsInView,
-        lo: intervalBounds.lo,
-        start,
-        end,
-        globalBpPerUnit,
-        new_globalBp,
-        genome_length: tsconfig.genome_length,
-        displayOptions
-      });
-
-      if (requestId !== latestRequestId.current) return;
-
-      // Result is already a Map, no need to deserialize
-      setLocalBins(result.local_bins);
-      setDisplayArray(prev => {
-        const newArr = result.displayArray || [];
-        return arraysEqual(prev, newArr) ? prev : newArr;
-      });
-      setShowingAllTrees(result.showing_all_trees || false);
-    } catch (error) {
-      console.error('Failed to compute local data:', error);
-    }
-  }, [effectiveMode, genomicCoords, globalBpPerUnit, allIntervalsInView, intervalBounds, intervalsCoords, displayOptionsKey, tsconfig, shouldSkipForLockedInteraction, computeNewGlobalBp]);
+  }, [workerConfigReady, genomicCoords, worker, globalBpPerUnit, allIntervalsInView, intervalBounds, displayOptionsKey, tsconfig, shouldSkipForLockedInteraction, computeNewGlobalBp]);
 
   const reset = useCallback(() => {
     setLocalBins(null);
@@ -314,21 +251,16 @@ export function useLocalData({
     zoomDirtyRef.current = false;
   }, []);
 
-  // Determine isReady based on mode
-  const isReady = useMemo(() => {
-    if (effectiveMode === 'worker') {
-      return workerConfigReady && !!globalBpPerUnit;
-    }
-    // Main-thread mode just needs globalBpPerUnit
-    return !!globalBpPerUnit;
-  }, [effectiveMode, workerConfigReady, globalBpPerUnit]);
+  const isReady = useMemo(
+    () => workerConfigReady && !!globalBpPerUnit && !!worker,
+    [workerConfigReady, globalBpPerUnit, worker]
+  );
 
   return useMemo(() => ({
     localBins,
     displayArray,
     showingAllTrees,
     isReady,
-    effectiveMode, // Expose which mode is being used
     reset
-  }), [localBins, displayArray, showingAllTrees, isReady, effectiveMode, reset]);
+  }), [localBins, displayArray, showingAllTrees, isReady, reset]);
 }

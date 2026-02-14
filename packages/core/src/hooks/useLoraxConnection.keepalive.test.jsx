@@ -89,4 +89,97 @@ describe("useLoraxConnection diagnostics keepalive", () => {
       })
     );
   });
+
+  it("queryTreeLayout includes lockView payload and omits sparsification flag", async () => {
+    const socketEmit = vi.fn();
+    socketEmit.mockImplementation((_event, payload, ack) => {
+      ack({
+        buffer: new Uint8Array(0),
+        global_min_time: 0,
+        global_max_time: 1,
+        tree_indices: payload.displayArray
+      });
+    });
+
+    mocked.useSocket.mockReturnValue({
+      socketRef: { current: { emit: socketEmit } },
+      isConnected: true,
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+      emit: socketEmit,
+      on: vi.fn(),
+      off: vi.fn(),
+      once: vi.fn(),
+      statusMessage: { message: null },
+      setStatusMessage: vi.fn()
+    });
+
+    const { result } = renderHook(() =>
+      useLoraxConnection({ apiBase: "/api", diagnosticPingEnabled: false })
+    );
+
+    const lockView = {
+      boundingBox: { minX: 0, maxX: 10, minY: 0, maxY: 5, width: 10, height: 5 },
+      inBoxTreeIndices: [1],
+      inBoxTreeCount: 1
+    };
+
+    await act(async () => {
+      await result.current.queryTreeLayout([1], {
+        actualDisplayArray: [1, 2],
+        lockView
+      });
+    });
+
+    expect(socketEmit).toHaveBeenCalledTimes(1);
+    const [eventName, payload] = socketEmit.mock.calls[0];
+    expect(eventName).toBe("process_postorder_layout");
+    expect(payload).toMatchObject({
+      displayArray: [1],
+      actualDisplayArray: [1, 2],
+      lockView,
+      lorax_sid: "sid-1",
+      request_id: expect.any(Number)
+    });
+    expect(payload).not.toHaveProperty("sparsification");
+  });
+
+  it("queryTreeLayout defaults actualDisplayArray to displayArray", async () => {
+    const socketEmit = vi.fn();
+    socketEmit.mockImplementation((_event, payload, ack) => {
+      ack({
+        buffer: new Uint8Array(0),
+        global_min_time: 0,
+        global_max_time: 1,
+        tree_indices: payload.displayArray
+      });
+    });
+
+    mocked.useSocket.mockReturnValue({
+      socketRef: { current: { emit: socketEmit } },
+      isConnected: false,
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+      emit: socketEmit,
+      on: vi.fn(),
+      off: vi.fn(),
+      once: vi.fn(),
+      statusMessage: { message: null },
+      setStatusMessage: vi.fn()
+    });
+
+    const { result } = renderHook(() =>
+      useLoraxConnection({ apiBase: "/api", diagnosticPingEnabled: false })
+    );
+
+    await act(async () => {
+      await result.current.queryTreeLayout([4, 5]);
+    });
+
+    expect(socketEmit).toHaveBeenCalledTimes(1);
+    const [eventName, payload] = socketEmit.mock.calls[0];
+    expect(eventName).toBe("process_postorder_layout");
+    expect(payload.actualDisplayArray).toEqual([4, 5]);
+    expect(payload).not.toHaveProperty("lockView");
+  });
 });

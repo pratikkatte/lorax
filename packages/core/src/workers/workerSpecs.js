@@ -3,7 +3,7 @@
  * These functions return Promises that resolve to Worker classes.
  *
  * NOTE: The dynamic import with ?worker&inline is Vite-specific.
- * In webpack environments, these will fail gracefully and return null.
+ * If unavailable in a given runtime, loaders return null.
  */
 
 let localBackendWorkerPromise = null;
@@ -18,11 +18,11 @@ export function getLocalBackendWorker() {
     localBackendWorkerPromise = (async () => {
       try {
         // This import syntax only works in Vite
-        // In webpack, this will fail and we'll return null
+        // In unsupported runtimes, this may fail and we'll return null.
         const module = await import(/* webpackIgnore: true */ /* @vite-ignore */ './localBackendWorker.js?worker&inline');
         return module.default;
       } catch (e) {
-        console.warn('[workerSpecs] localBackendWorker import failed (expected in non-Vite environments):', e.message);
+        console.warn('[workerSpecs] localBackendWorker import failed:', e.message);
         return null;
       }
     })();
@@ -39,11 +39,11 @@ export function getRenderDataWorker() {
     renderDataWorkerPromise = (async () => {
       try {
         // This import syntax only works in Vite
-        // In webpack, this will fail and we'll return null
+        // In unsupported runtimes, this may fail and we'll return null.
         const module = await import(/* webpackIgnore: true */ /* @vite-ignore */ './renderDataWorker.js?worker&inline');
         return module.default;
       } catch (e) {
-        console.warn('[workerSpecs] renderDataWorker import failed (expected in non-Vite environments):', e.message);
+        console.warn('[workerSpecs] renderDataWorker import failed:', e.message);
         return null;
       }
     })();

@@ -5,32 +5,18 @@ import { useLorax } from '../context/LoraxProvider.jsx';
 import { useDeckViews } from '../hooks/useDeckViews.jsx';
 import { useDeckLayers } from '../hooks/useDeckLayers.jsx';
 import { useDeckController } from '../hooks/useDeckController.jsx';
-import { useInterval } from '../hooks/useInterval.jsx';
-import { useLocalData } from '../hooks/useLocalData.jsx';
-import { useTreeData } from '../hooks/useTreeData.jsx';
-import { useRenderData } from '../hooks/useRenderData.jsx';
+import { useTreeViewportPipeline } from '../hooks/useTreeViewportPipeline.jsx';
+import {
+  useLockViewSnapshot,
+  LOCK_SNAPSHOT_DEBUG_LABEL_BY_CORNER,
+  formatLockSnapshotDebugCoordinate
+} from '../hooks/useLockViewSnapshot.jsx';
 import { useGenomePositions } from '../hooks/useGenomePositions.jsx';
 import { useTimePositions } from '../hooks/useTimePositions.jsx';
 import { useTreePolygons } from '../hooks/useTreePolygons.jsx';
 import TreePolygonOverlay from './TreePolygonOverlay.jsx';
 import { mergeWithDefaults, validateViewConfig, getEnabledViews } from '../utils/deckViewConfig.js';
 import { getSVG } from '../utils/deckglToSvg.js';
-import websocketEvents from '../utils/websocketEvents.js';
-import { buildLockViewSnapshot } from '../utils/lockViewSnapshot.js';
-
-// Temporary debug overlay for lock-view snapshot visualization.
-const SHOW_LOCK_SNAPSHOT_DEBUG_OVERLAY = true;
-const DEBUG_LABEL_BY_CORNER = {
-  topLeft: { dx: 8, dy: 16, textAnchor: 'start' },
-  topRight: { dx: -8, dy: 16, textAnchor: 'end' },
-  bottomRight: { dx: -8, dy: -8, textAnchor: 'end' },
-  bottomLeft: { dx: 8, dy: -8, textAnchor: 'start' }
-};
-
-function formatDebugCoordinate(value) {
-  if (!Number.isFinite(value)) return 'null';
-  return Number(value).toFixed(4);
-}
 
 function pointInPolygon(point, vs) {
   // Ray-casting algorithm: point = [x,y], vs = [[x,y], ...]
@@ -152,14 +138,12 @@ const LoraxDeckGL = forwardRef(({
   edgeColor = null,
   // Disable modelMatrix recomputation on zoom; allow pan-driven recomputation
   lockModelMatrix = false,
+  // Optional lock-view debug overlay (off by default)
+  lockSnapshotDebug = false,
   ...otherProps
 }, ref) => {
   const deckRef = useRef(null);
-  const lockViewSnapshotRef = useRef(null);
-  const snapshotRafRef = useRef(null);
-  const pendingSnapshotRef = useRef(false);
-  const prevLockModelMatrixRef = useRef(lockModelMatrix);
-  const [lockSnapshotDebugOverlay, setLockSnapshotDebugOverlay] = useState(null);
+  const [lockViewPayload, setLockViewPayload] = useState(null);
 
   // 1. Merge and validate config
   const viewConfig = mergeWithDefaults(userViewConfig);
@@ -235,47 +219,50 @@ const LoraxDeckGL = forwardRef(({
     }
   }, [genomicCoords, externalOnGenomicCoordsChange]);
 
-  // 6. Worker-based interval computation
-  const { visibleIntervals, allIntervalsInView, intervalBounds, intervalsCoords } = useInterval({
+  // 6. Worker-based viewport -> local bins -> tree fetch -> render pipeline
+  const {
+    interval: { visibleIntervals },
+    local: { localBins, displayArray, showingAllTrees },
+    tree: {
+      treeData,
+      isLoading: treeDataLoading,
+      isBackgroundRefresh: treeDataBackgroundRefresh,
+      fetchReason: treeDataFetchReason,
+      error: treeDataError
+    },
+    render: { renderData: baseRenderData, isLoading: renderDataLoading },
+    visibleTreeIndices,
+    treesInWindowCount
+  } = useTreeViewportPipeline({
     worker,
     workerConfigReady,
-    genomicCoords
-  });
-
-  // 6b. Worker-based local data computation (tree positioning)
-  const { localBins, displayArray, showingAllTrees } = useLocalData({
-    worker,
-    workerConfigReady,
-    allIntervalsInView,
-    intervalBounds,  // { lo, hi } global index bounds
-    intervalsCoords,
     genomicCoords,
     viewState,
-    tsconfig,  // Pass full tsconfig (has genome_length, intervals)
-    displayOptions: { selectionStrategy: 'largestSpan', lockModelMatrix }
-  });
-
-  // Get visible tree indices from localBins (needed for useTreeData and highlight fetching)
-  const visibleTreeIndices = useMemo(() => {
-    if (!localBins) return [];
-    return Array.from(localBins.keys());
-  }, [localBins]);
-
-  const treesInWindowCount = useMemo(() => {
-    if (!Array.isArray(allIntervalsInView) || allIntervalsInView.length < 2) return 0;
-    return allIntervalsInView.length - 1;
-  }, [allIntervalsInView]);
-
-  // 6c. Fetch tree data from backend (auto-triggers on displayArray change)
-  // Uses frontend caching to avoid re-fetching already loaded trees
-  const { treeData, isLoading: treeDataLoading, error: treeDataError } = useTreeData({
-    displayArray,
+    tsconfig,
     queryTreeLayout,
     isConnected,
-    sparsification: displayArray.length > 1,  // Enable to reduce data transfer for large trees
-    tsconfig,  // For cache invalidation on file change
-    genomicCoords,  // For viewport-based cache eviction
+    lockModelMatrix,
+    lockViewPayload,
+    metadataArrays,
+    metadataColors,
+    populationFilter
   });
+
+  const {
+    lockViewPayload: latestLockViewPayload,
+    lockSnapshotDebugOverlay,
+    scheduleCapture: scheduleLockSnapshotCapture,
+    flushPendingCapture: flushPendingLockSnapshotCapture
+  } = useLockViewSnapshot({
+    deckRef,
+    localBins,
+    lockModelMatrix,
+    debug: lockSnapshotDebug
+  });
+
+  useEffect(() => {
+    setLockViewPayload(latestLockViewPayload);
+  }, [latestLockViewPayload]);
 
   // 6c.1. Notify parent when tree loading state changes
   useEffect(() => {
@@ -298,17 +285,6 @@ const LoraxDeckGL = forwardRef(({
   useEffect(() => {
     onTreesInWindowCountChange?.(treesInWindowCount);
   }, [treesInWindowCount, onTreesInWindowCountChange]);
-
-  // 6d. Compute render data (typed arrays) for tree visualization
-  const { renderData: baseRenderData, isLoading: renderDataLoading } = useRenderData({
-    localBins,
-    treeData,
-    displayArray,
-    // Metadata-driven tip coloring
-    metadataArrays,
-    metadataColors,
-    populationFilter
-  });
 
   // 6e. Highlight positions for filter-table clicks
   const [highlightPositions, setHighlightPositions] = useState(null);
@@ -882,128 +858,6 @@ const LoraxDeckGL = forwardRef(({
     }
   }, [hoveredTreeIndex, setHoveredPolygon]);
 
-  const emitLockViewSnapshot = useCallback((snapshot) => {
-    lockViewSnapshotRef.current = snapshot;
-    if (snapshot) {
-      console.log('[lock-view-snapshot]', {
-        capturedAt: snapshot.capturedAt,
-        coordinateSystem: snapshot.coordinateSystem,
-        cornersTreeLocal: snapshot.corners,
-        boundingBoxWorld: snapshot.boundingBox
-      });
-    } else {
-      console.log('[lock-view-snapshot] cleared');
-    }
-    websocketEvents.emit('lock-view-snapshot', snapshot);
-  }, []);
-
-  const updateLockSnapshotDebugOverlay = useCallback((snapshot, orthoViewport) => {
-    if (!SHOW_LOCK_SNAPSHOT_DEBUG_OVERLAY || !snapshot || !orthoViewport) {
-      setLockSnapshotDebugOverlay(null);
-      return;
-    }
-
-    const width = Number(orthoViewport.width);
-    const height = Number(orthoViewport.height);
-    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
-      setLockSnapshotDebugOverlay(null);
-      return;
-    }
-
-    const x = Number(orthoViewport.x);
-    const y = Number(orthoViewport.y);
-    const viewportX = Number.isFinite(x) ? x : 0;
-    const viewportY = Number.isFinite(y) ? y : 0;
-    const cornerPixels = {
-      topLeft: [viewportX, viewportY],
-      topRight: [viewportX + width, viewportY],
-      bottomRight: [viewportX + width, viewportY + height],
-      bottomLeft: [viewportX, viewportY + height]
-    };
-
-    const corners = Array.isArray(snapshot.corners)
-      ? snapshot.corners.map((corner) => {
-        const [px, py] = cornerPixels[corner.corner] || [viewportX, viewportY];
-        return { ...corner, px, py };
-      })
-      : [];
-
-    setLockSnapshotDebugOverlay({
-      x: viewportX,
-      y: viewportY,
-      width,
-      height,
-      corners,
-      boundingBox: snapshot.boundingBox
-    });
-  }, []);
-
-  const captureLockViewSnapshot = useCallback(() => {
-    if (!lockModelMatrix) return false;
-
-    const deck = deckRef.current?.deck;
-    const viewports = deck?.getViewports?.();
-    if (!Array.isArray(viewports)) return false;
-
-    const orthoViewport = viewports.find((vp) => vp?.id === 'ortho') || null;
-    const snapshot = buildLockViewSnapshot({ orthoViewport, localBins });
-    if (!snapshot) return false;
-
-    updateLockSnapshotDebugOverlay(snapshot, orthoViewport);
-    emitLockViewSnapshot(snapshot);
-    return true;
-  }, [lockModelMatrix, localBins, updateLockSnapshotDebugOverlay, emitLockViewSnapshot]);
-
-  const runScheduledLockSnapshotCapture = useCallback(() => {
-    snapshotRafRef.current = null;
-    const captured = captureLockViewSnapshot();
-    pendingSnapshotRef.current = !captured;
-  }, [captureLockViewSnapshot]);
-
-  const scheduleLockSnapshotCapture = useCallback(() => {
-    if (!lockModelMatrix) return;
-
-    pendingSnapshotRef.current = true;
-    if (snapshotRafRef.current != null) return;
-
-    snapshotRafRef.current = requestAnimationFrame(runScheduledLockSnapshotCapture);
-  }, [lockModelMatrix, runScheduledLockSnapshotCapture]);
-
-  useEffect(() => {
-    const prevLocked = prevLockModelMatrixRef.current;
-    prevLockModelMatrixRef.current = lockModelMatrix;
-
-    if (!prevLocked && lockModelMatrix) {
-      pendingSnapshotRef.current = true;
-      const captured = captureLockViewSnapshot();
-      pendingSnapshotRef.current = !captured;
-      if (!captured) {
-        scheduleLockSnapshotCapture();
-      }
-      return;
-    }
-
-    if (prevLocked && !lockModelMatrix) {
-      pendingSnapshotRef.current = false;
-      if (snapshotRafRef.current != null) {
-        cancelAnimationFrame(snapshotRafRef.current);
-        snapshotRafRef.current = null;
-      }
-      updateLockSnapshotDebugOverlay(null, null);
-      emitLockViewSnapshot(null);
-    }
-  }, [lockModelMatrix, captureLockViewSnapshot, scheduleLockSnapshotCapture, updateLockSnapshotDebugOverlay, emitLockViewSnapshot]);
-
-  useEffect(() => () => {
-    pendingSnapshotRef.current = false;
-    lockViewSnapshotRef.current = null;
-    setLockSnapshotDebugOverlay(null);
-    if (snapshotRafRef.current != null) {
-      cancelAnimationFrame(snapshotRafRef.current);
-      snapshotRafRef.current = null;
-    }
-  }, []);
-
   // 10. Event handlers - run internal logic first, then call external handlers
   const handleResize = useCallback(({ width, height }) => {
     setDecksize({ width, height });
@@ -1012,21 +866,16 @@ const LoraxDeckGL = forwardRef(({
 
   const handleViewStateChange = useCallback((params) => {
     internalHandleViewStateChange(params);
-    if (lockModelMatrix) {
-      scheduleLockSnapshotCapture();
-    }
+    scheduleLockSnapshotCapture();
     externalOnViewStateChange?.(params);
-  }, [internalHandleViewStateChange, externalOnViewStateChange, lockModelMatrix, scheduleLockSnapshotCapture]);
+  }, [internalHandleViewStateChange, externalOnViewStateChange, scheduleLockSnapshotCapture]);
 
   const handleAfterRender = useCallback(() => {
     if (showPolygons && onPolygonsAfterRender && deckRef.current?.deck) {
       onPolygonsAfterRender(deckRef.current.deck);
     }
-    if (lockModelMatrix && pendingSnapshotRef.current && snapshotRafRef.current == null) {
-      const captured = captureLockViewSnapshot();
-      pendingSnapshotRef.current = !captured;
-    }
-  }, [showPolygons, onPolygonsAfterRender, lockModelMatrix, captureLockViewSnapshot]);
+    flushPendingLockSnapshotCapture();
+  }, [showPolygons, onPolygonsAfterRender, flushPendingLockSnapshotCapture]);
 
   // Enable deck.gl picking loop for layer-level onHover/onClick and
   // implement polygon hover/click without letting the SVG overlay intercept pointer events.
@@ -1162,6 +1011,8 @@ const LoraxDeckGL = forwardRef(({
     // Tree data from backend
     treeData,
     treeDataLoading,
+    treeDataBackgroundRefresh,
+    treeDataFetchReason,
     treeDataError,
     // Polygon overlay state
     polygons,
@@ -1185,7 +1036,7 @@ const LoraxDeckGL = forwardRef(({
     },
     getSVGString,
     getPNGBlob
-  }), [viewState, views, viewReset, xzoom, yzoom, genomicCoords, setGenomicCoords, coordsReady, localBins, displayArray, showingAllTrees, treesInWindowCount, treeData, treeDataLoading, treeDataError, polygons, hoveredPolygon, setHoveredPolygon, polygonsReady, getSVGString, getPNGBlob]);
+  }), [viewState, views, viewReset, xzoom, yzoom, genomicCoords, setGenomicCoords, coordsReady, localBins, displayArray, showingAllTrees, treesInWindowCount, treeData, treeDataLoading, treeDataBackgroundRefresh, treeDataFetchReason, treeDataError, polygons, hoveredPolygon, setHoveredPolygon, polygonsReady, getSVGString, getPNGBlob]);
 
   return (
     <div
@@ -1226,7 +1077,7 @@ const LoraxDeckGL = forwardRef(({
           </View>
         ))}
       </DeckGL>
-      {SHOW_LOCK_SNAPSHOT_DEBUG_OVERLAY && lockSnapshotDebugOverlay && (
+      {lockSnapshotDebug && lockSnapshotDebugOverlay && (
         <svg
           width="100%"
           height="100%"
@@ -1249,8 +1100,8 @@ const LoraxDeckGL = forwardRef(({
             strokeDasharray="8 5"
           />
           {lockSnapshotDebugOverlay.corners.map((corner) => {
-            const labelCfg = DEBUG_LABEL_BY_CORNER[corner.corner] || DEBUG_LABEL_BY_CORNER.topLeft;
-            const labelText = `${corner.corner} x:${formatDebugCoordinate(corner.x)} y:${formatDebugCoordinate(corner.y)}`;
+            const labelCfg = LOCK_SNAPSHOT_DEBUG_LABEL_BY_CORNER[corner.corner] || LOCK_SNAPSHOT_DEBUG_LABEL_BY_CORNER.topLeft;
+            const labelText = `${corner.corner} x:${formatLockSnapshotDebugCoordinate(corner.x)} y:${formatLockSnapshotDebugCoordinate(corner.y)}`;
             const treeText = `tree:${corner.treeIndex ?? 'null'}`;
             return (
               <g key={corner.corner}>

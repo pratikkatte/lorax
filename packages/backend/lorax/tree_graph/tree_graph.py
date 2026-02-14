@@ -391,9 +391,6 @@ def _process_single_tree(
                 else:
                     is_tip = is_tip[:0]
 
-        if n_nodes_before != n:
-            print(f"tree {tree_idx} node sparsification: {n_nodes_before} -> {n}")
-
     if n == 0:
         return (tree_idx, graph if newly_built else None, newly_built, None, None, None, None, None, 0, None)
 
@@ -436,9 +433,6 @@ def _process_single_tree(
                     mut_x = mut_x[keep]
                     mut_y = mut_y[keep]
                     n_muts = len(mut_node_ids)
-
-            if sparsification and n_muts_before != n_muts:
-                print(f"tree {tree_idx} mutation sparsification (node filter): {n_muts_before} -> {n_muts}")
 
             if n_muts > 0:
                 mut_arrays = (
@@ -609,7 +603,6 @@ def construct_trees_batch(
     sparsify_resolution = None
     if sparsification:
         cell_size = sparsify_cell_size if sparsify_cell_size is not None else sparsify_cell_size_for_nodes(num_nodes)
-        print(f"Sparsify cell_size: {cell_size} (num_nodes: {num_nodes})")
         sparsify_resolution = int(1.0 / cell_size)
 
     def process_one(tidx):
@@ -721,9 +714,6 @@ def construct_trees_batch(
             all_mut_x = all_mut_x[keep_mask]
             all_mut_y = all_mut_y[keep_mask]
             all_mut_node_id = all_mut_node_id[keep_mask]
-            n_muts_after_grid = len(all_mut_tree_idx)
-            if n_muts_before_grid != n_muts_after_grid:
-                print(f"mutation grid sparsification: {n_muts_before_grid} -> {n_muts_after_grid} (batch)")
 
     # Build separate node table
     if offset == 0:
@@ -806,7 +796,6 @@ def _sparsify_mutations(mut_x, mut_y, mut_tree_idx, mut_node_id, resolution):
     if n == 0:
         return keep
 
-    print(f"Sparsifying mutations: {n}")
     seen_cells = Dict.empty(key_type=types.int64, value_type=types.int32)
     stride = resolution + 1
 
