@@ -19,11 +19,21 @@ from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
 # Default cell size for sparsification (0.2% of normalized [0,1] space)
-DEFAULT_SPARSIFY_CELL_SIZE = 0.2
+DEFAULT_SPARSIFY_CELL_SIZE = 0.002
 
 # Minimum tree count to enable parallel processing (avoids executor overhead for small batches)
 PARALLEL_TREE_THRESHOLD = 2
 
+def sparsify_cell_size_for_nodes(num_nodes: int) -> float:
+    """Cell size s.t. resolution² ≈ num_nodes / target_nodes_per_cell.
+    target_nodes_per_cell scales with tree size: smaller trees get finer detail."""
+    if num_nodes <= 0:
+        return DEFAULT_SPARSIFY_CELL_SIZE
+    # Scale target: ~10 for small trees, ~1000 for large (sqrt scaling)
+    target = max(10.0, min(1000.0, 10.0 * np.sqrt(num_nodes / 100.0)))
+    cells = max(1, num_nodes / target)
+    resolution = max(5, min(1000, int(np.sqrt(cells))))  # clamp resolution
+    return 1.0 / resolution
 
 @njit(cache=True)
 def _compute_x_postorder(children_indptr, children_data, roots, num_nodes):
@@ -299,6 +309,7 @@ def _process_single_tree(
     if n == 0:
         return (tree_idx, graph if newly_built else None, newly_built, None, None, None, None, None, 0, None)
 
+    n_nodes_before = n
     child_counts = np.diff(graph.children_indptr)
     is_tip = child_counts[indices] == 0
     node_ids = indices
@@ -380,6 +391,9 @@ def _process_single_tree(
                 else:
                     is_tip = is_tip[:0]
 
+        if n_nodes_before != n:
+            print(f"tree {tree_idx} node sparsification: {n_nodes_before} -> {n}")
+
     if n == 0:
         return (tree_idx, graph if newly_built else None, newly_built, None, None, None, None, None, 0, None)
 
@@ -410,13 +424,32 @@ def _process_single_tree(
             mut_time_norm = mut_time_norm.astype(np.float32)
             mut_x = mut_time_norm
             mut_y = mut_layout
-            mut_arrays = (
-                np.full(n_muts, tree_idx, dtype=np.int32),
-                mut_x,
-                mut_y,
-                mut_node_ids,
-                n_muts,
-            )
+
+            n_muts_before = n_muts
+            # When sparsification is enabled, only keep mutations on nodes that survived
+            # edge sparsification (avoids orphaned mutations referencing removed nodes)
+            if sparsification:
+                
+                keep = np.isin(mut_node_ids, node_ids)
+                if not np.all(keep):  # Only slice if we'd actually drop something
+                    mut_node_ids = mut_node_ids[keep]
+                    mut_x = mut_x[keep]
+                    mut_y = mut_y[keep]
+                    n_muts = len(mut_node_ids)
+
+            if sparsification and n_muts_before != n_muts:
+                print(f"tree {tree_idx} mutation sparsification (node filter): {n_muts_before} -> {n_muts}")
+
+            if n_muts > 0:
+                mut_arrays = (
+                    np.full(n_muts, tree_idx, dtype=np.int32),
+                    mut_x,
+                    mut_y,
+                    mut_node_ids,
+                    n_muts,
+                )
+            else:
+                mut_arrays = None
 
     return (
         tree_idx,
@@ -545,6 +578,7 @@ def construct_trees_batch(
     # Estimate total nodes for pre-allocation
     sample_tree = ts.at_index(valid_indices[0])
     estimated_nodes_per_tree = sample_tree.num_nodes
+    num_nodes = sample_tree.num_nodes
     total_estimated = estimated_nodes_per_tree * len(valid_indices) * 2
 
     # Pre-allocate node arrays
@@ -574,8 +608,8 @@ def construct_trees_batch(
     # Precompute resolution once per batch (used when sparsification enabled)
     sparsify_resolution = None
     if sparsification:
-        cell_size = sparsify_cell_size if sparsify_cell_size is not None else DEFAULT_SPARSIFY_CELL_SIZE
-        print(f"Sparsify resolution: {cell_size}")
+        cell_size = sparsify_cell_size if sparsify_cell_size is not None else sparsify_cell_size_for_nodes(num_nodes)
+        print(f"Sparsify cell_size: {cell_size} (num_nodes: {num_nodes})")
         sparsify_resolution = int(1.0 / cell_size)
 
     def process_one(tidx):
@@ -674,6 +708,7 @@ def construct_trees_batch(
 
         # Apply mutation sparsification when requested (grid-deduplicate by x,y per tree)
         if sparsify_mutations:
+            n_muts_before_grid = len(all_mut_tree_idx)
             mut_resolution = (
                 sparsify_resolution
                 if sparsify_resolution is not None
@@ -686,6 +721,9 @@ def construct_trees_batch(
             all_mut_x = all_mut_x[keep_mask]
             all_mut_y = all_mut_y[keep_mask]
             all_mut_node_id = all_mut_node_id[keep_mask]
+            n_muts_after_grid = len(all_mut_tree_idx)
+            if n_muts_before_grid != n_muts_after_grid:
+                print(f"mutation grid sparsification: {n_muts_before_grid} -> {n_muts_after_grid} (batch)")
 
     # Build separate node table
     if offset == 0:
