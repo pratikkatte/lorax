@@ -34,7 +34,9 @@ export default function PositionSlider({
   onChange,
   onResetY,
   project,
-  tsconfig
+  tsconfig,
+  lockModelMatrix = false,
+  setLockModelMatrix = () => {}
 }) {
   const { compareMode = false, setCompareMode } = useLorax();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -43,6 +45,7 @@ export default function PositionSlider({
   const [hasChanges, setHasChanges] = useState(false);
   const [showFileInfo, setShowFileInfo] = useState(false);
   const [showCompareTopologyInfo, setShowCompareTopologyInfo] = useState(false);
+  const [showLockViewInfo, setShowLockViewInfo] = useState(false);
   const fileInfoRef = useRef(null);
   const valueRef = useRef(value);
   const panIntervalRef = useRef(null);
@@ -190,6 +193,14 @@ export default function PositionSlider({
           fullText
         />
       )}
+      {showLockViewInfo && (
+        <ErrorAlert
+          message="Trees are frozen in place. Pan outside the locked window to update. Zoom in out freely view the rendered trees."
+          onDismiss={() => setShowLockViewInfo(false)}
+          variant="info"
+          fullText
+        />
+      )}
       {/* Lorax logo/home link */}
       <a
         href="/"
@@ -204,8 +215,8 @@ export default function PositionSlider({
         <span className="font-bold text-slate-800">Lorax</span>
       </a>
 
-      {/* Topology comparison toggle - right corner */}
-      <div className="absolute right-4 flex items-center gap-2">
+      {/* View toggles - right corner */}
+      <div className="absolute right-4 flex items-center gap-3">
         <button
           type="button"
           role="switch"
@@ -232,6 +243,63 @@ export default function PositionSlider({
           >
             <span
               className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow-sm transition-transform ${compareMode ? 'left-[18px]' : 'left-0.5'}`}
+            />
+          </span>
+        </button>
+
+        <button
+          type="button"
+          role="switch"
+          aria-checked={lockModelMatrix}
+          onClick={() => {
+            if (lockModelMatrix) {
+              setLockModelMatrix?.(false);
+              setShowLockViewInfo(false);
+            } else {
+              setLockModelMatrix?.(true);
+              setShowLockViewInfo(true);
+            }
+          }}
+          title="Disable model matrix recomputation on zoom; recompute on pan"
+          className="flex items-center gap-2 cursor-pointer group"
+        >
+          <span className="relative h-4 w-4 shrink-0 text-slate-500 group-hover:text-slate-600 transition-colors">
+            {/* Locked icon */}
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+              aria-hidden="true"
+              className={`absolute inset-0 transition-all duration-250 ease-out ${
+                lockModelMatrix ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 -translate-y-1 scale-75'
+              }`}
+            >
+              <path d="M17 10h-1V8a4 4 0 10-8 0v2H7a2 2 0 00-2 2v7a2 2 0 002 2h10a2 2 0 002-2v-7a2 2 0 00-2-2zm-7-2a2 2 0 114 0v2h-4V8z" />
+            </svg>
+            {/* Unlocked icon */}
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+              aria-hidden="true"
+              className={`absolute inset-0 transition-all duration-250 ease-out ${
+                lockModelMatrix ? 'opacity-0 translate-y-1 scale-75' : 'opacity-100 translate-y-0 scale-100'
+              }`}
+            >
+              <path d="M17 10h-5V8a2 2 0 114 0h2a4 4 0 10-8 0v2H7a2 2 0 00-2 2v7a2 2 0 002 2h10a2 2 0 002-2v-7a2 2 0 00-2-2z" />
+            </svg>
+          </span>
+          <span className="text-xs text-slate-500 group-hover:text-slate-600 tracking-wide select-none transition-colors">
+            Lock view
+          </span>
+          <span
+            className={`relative block w-8 h-4 rounded-full transition-colors flex-shrink-0 ${lockModelMatrix
+              ? 'bg-slate-600'
+              : 'bg-slate-200'
+            }`}
+          >
+            <span
+              className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow-sm transition-transform ${lockModelMatrix ? 'left-[18px]' : 'left-0.5'}`}
             />
           </span>
         </button>

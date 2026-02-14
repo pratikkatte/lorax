@@ -95,6 +95,8 @@ function FileView() {
   const [showCompareDeletion, setShowCompareDeletion] = useState(true);
   // Tree edge color [r, g, b, a] (used when colorEdgesByTree is false)
   const [edgeColor, setEdgeColor] = useState([100, 100, 100, 255]);
+  // Controls whether model matrix recomputes on zoom interactions.
+  const [lockModelMatrix, setLockModelMatrix] = useState(false);
 
   // Hover tooltip state (rendered in website, not in core)
   const [hoverTooltip, setHoverTooltip] = useState(null); // { kind, x, y, title, rows[] }
@@ -698,6 +700,8 @@ function FileView() {
           onResetY={() => deckRef.current?.viewAdjustY?.()}
           project={project}
           tsconfig={tsconfig}
+          lockModelMatrix={lockModelMatrix}
+          setLockModelMatrix={setLockModelMatrix}
         />
 
         {/* Main viewport area */}
@@ -767,6 +771,7 @@ function FileView() {
               showCompareInsertion={showCompareInsertion}
               showCompareDeletion={showCompareDeletion}
               edgeColor={edgeColor}
+              lockModelMatrix={lockModelMatrix}
               onPolygonClick={handlePolygonClick}
               onTipHover={(tip, info, event) => {
                 if (!tip) {

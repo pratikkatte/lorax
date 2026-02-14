@@ -130,6 +130,8 @@ const LoraxDeckGL = forwardRef(({
   showCompareDeletion = true,
   // Tree edge color [r, g, b, a] (used when colorEdgesByTree is false)
   edgeColor = null,
+  // Disable modelMatrix recomputation on zoom; allow pan-driven recomputation
+  lockModelMatrix = false,
   ...otherProps
 }, ref) => {
   const deckRef = useRef(null);
@@ -225,7 +227,7 @@ const LoraxDeckGL = forwardRef(({
     genomicCoords,
     viewState,
     tsconfig,  // Pass full tsconfig (has genome_length, intervals)
-    displayOptions: { selectionStrategy: 'largestSpan' }
+    displayOptions: { selectionStrategy: 'largestSpan', lockModelMatrix }
   });
 
   // Get visible tree indices from localBins (needed for useTreeData and highlight fetching)

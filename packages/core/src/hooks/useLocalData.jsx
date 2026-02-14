@@ -76,6 +76,12 @@ export function useLocalData({
   const [showingAllTrees, setShowingAllTrees] = useState(false);
 
   const latestRequestId = useRef(0);
+  const prevLiveXZoomRef = useRef(null);
+  const prevGenomicCoordsRef = useRef(null);
+  const lockWasEnabledRef = useRef(false);
+  const lockedWindowRef = useRef(null);
+  const lockedXZoomRef = useRef(null);
+  const zoomDirtyRef = useRef(false);
 
   // Determine effective mode
   const effectiveMode = useMemo(() => {
@@ -87,6 +93,7 @@ export function useLocalData({
 
   // Serialize displayOptions to avoid object reference comparison issues
   const displayOptionsKey = JSON.stringify(displayOptions);
+  const lockModelMatrix = !!displayOptions?.lockModelMatrix;
 
   // Compute scale factors from viewState
   const globalBpPerUnit = useMemo(() => {
@@ -94,24 +101,135 @@ export function useLocalData({
     return tsconfig.genome_length / tsconfig.intervals.length;
   }, [tsconfig]);
 
-  const new_globalBp = useMemo(() => {
-    // viewState is multi-view: { ortho: {...}, 'genome-info': {...}, ... }
-    // Get zoom from the main ortho view
+  const getCurrentXZoom = useCallback(() => {
     const orthoZoom = viewState?.ortho?.zoom;
-    if (!globalBpPerUnit || orthoZoom == null) return null;
-    const xZoom = Array.isArray(orthoZoom) ? orthoZoom[0] : orthoZoom;
+    if (orthoZoom == null) return null;
+    return Array.isArray(orthoZoom) ? orthoZoom[0] : orthoZoom;
+  }, [viewState]);
+
+  const computeNewGlobalBp = useCallback(() => {
+    if (!globalBpPerUnit) return null;
+    const liveXZoom = getCurrentXZoom();
+    const effectiveXZoom = lockModelMatrix && Number.isFinite(lockedXZoomRef.current)
+      ? lockedXZoomRef.current
+      : liveXZoom;
+    if (!Number.isFinite(effectiveXZoom)) return null;
+
     const baseZoom = 8;
-    const zoomDiff = xZoom - baseZoom;
+    const zoomDiff = effectiveXZoom - baseZoom;
     const scaleFactor = Math.pow(2, -zoomDiff);
     return globalBpPerUnit * scaleFactor;
-  }, [globalBpPerUnit, viewState]);
+  }, [globalBpPerUnit, getCurrentXZoom, lockModelMatrix]);
+
+  const shouldSkipForLockedInteraction = useCallback((hasLocalBins) => {
+    const EPSILON = 1e-9;
+    const liveXZoom = getCurrentXZoom();
+    const hasLiveXZoom = Number.isFinite(liveXZoom);
+
+    // Track genomic window deltas to distinguish unchanged effect reruns from true pan movement.
+    const currentCoords = genomicCoords;
+    const prevCoords = prevGenomicCoordsRef.current;
+    const hasCurrentCoords = Array.isArray(currentCoords) && currentCoords.length === 2;
+    const hasPrevCoords = Array.isArray(prevCoords) && prevCoords.length === 2;
+    const coordsChanged = hasCurrentCoords && hasPrevCoords
+      && (currentCoords[0] !== prevCoords[0] || currentCoords[1] !== prevCoords[1]);
+
+    if (hasCurrentCoords) {
+      prevGenomicCoordsRef.current = [currentCoords[0], currentCoords[1]];
+    }
+
+    // Unlocked: clear all lock snapshots and process normally.
+    if (!lockModelMatrix) {
+      lockWasEnabledRef.current = false;
+      lockedWindowRef.current = null;
+      lockedXZoomRef.current = null;
+      zoomDirtyRef.current = false;
+      if (hasLiveXZoom) {
+        prevLiveXZoomRef.current = liveXZoom;
+      }
+      return false;
+    }
+
+    // Just enabled: snapshot lock baseline, avoid immediate recompute if we already have data.
+    if (!lockWasEnabledRef.current) {
+      lockWasEnabledRef.current = true;
+      if (hasCurrentCoords) {
+        lockedWindowRef.current = [currentCoords[0], currentCoords[1]];
+      }
+      if (hasLiveXZoom) {
+        lockedXZoomRef.current = liveXZoom;
+        prevLiveXZoomRef.current = liveXZoom;
+      }
+      zoomDirtyRef.current = false;
+      return !!hasLocalBins;
+    }
+
+    // Detect live zoom changes while locked.
+    let liveZoomChanged = false;
+    const prevLiveXZoom = prevLiveXZoomRef.current;
+    if (
+      hasLiveXZoom
+      && Number.isFinite(prevLiveXZoom)
+      && Math.abs(liveXZoom - prevLiveXZoom) > EPSILON
+    ) {
+      liveZoomChanged = true;
+      zoomDirtyRef.current = true;
+    }
+    if (hasLiveXZoom) {
+      prevLiveXZoomRef.current = liveXZoom;
+    }
+
+    if (!Array.isArray(lockedWindowRef.current) || lockedWindowRef.current.length !== 2) {
+      if (hasCurrentCoords) {
+        lockedWindowRef.current = [currentCoords[0], currentCoords[1]];
+      }
+      return true;
+    }
+
+    const [lockedStart, lockedEnd] = lockedWindowRef.current;
+    const outsideLockedWindow = hasCurrentCoords
+      && (currentCoords[0] < lockedStart - EPSILON || currentCoords[1] > lockedEnd + EPSILON);
+
+    // Inside lock snapshot: never recompute/fetch while locked.
+    if (!outsideLockedWindow) return true;
+
+    // After a zoom, require pan-driven movement (coordsChanged) with stable zoom
+    // before allowing updates again.
+    if (zoomDirtyRef.current) {
+      if (!liveZoomChanged && coordsChanged && hasCurrentCoords) {
+        zoomDirtyRef.current = false;
+        lockedWindowRef.current = [currentCoords[0], currentCoords[1]];
+        return false;
+      }
+      return true;
+    }
+
+    // Pan outside lock window without zoom involvement: allow update and move baseline.
+    if (!coordsChanged || !hasCurrentCoords) return true;
+    lockedWindowRef.current = [currentCoords[0], currentCoords[1]];
+    return false;
+  }, [lockModelMatrix, getCurrentXZoom, genomicCoords]);
+
+  // Reset zoom tracking when file/config changes to avoid stale lock baselines.
+  useEffect(() => {
+    prevLiveXZoomRef.current = null;
+    prevGenomicCoordsRef.current = null;
+    lockWasEnabledRef.current = false;
+    lockedWindowRef.current = null;
+    lockedXZoomRef.current = null;
+    zoomDirtyRef.current = false;
+  }, [tsconfig?.file_path, tsconfig?.genome_length]);
 
   // Worker mode effect - executes immediately (no debounce)
   useEffect(() => {
     if (effectiveMode !== 'worker') return;
-    if (!workerConfigReady || !genomicCoords || !worker || !globalBpPerUnit || !new_globalBp) return;
+    if (!workerConfigReady || !genomicCoords || !worker || !globalBpPerUnit) return;
     if (!allIntervalsInView || allIntervalsInView.length === 0) return;
     if (!intervalsCoords || intervalsCoords[0] !== genomicCoords[0] || intervalsCoords[1] !== genomicCoords[1]) return;
+    if (shouldSkipForLockedInteraction(!!localBins)) return;
+
+    const new_globalBp = computeNewGlobalBp();
+    if (!new_globalBp) return;
 
     const [start, end] = genomicCoords;
     const requestId = ++latestRequestId.current;
@@ -141,14 +259,18 @@ export function useLocalData({
         console.error('Failed to query local data:', error);
       }
     })();
-  }, [effectiveMode, workerConfigReady, genomicCoords, worker, globalBpPerUnit, new_globalBp, allIntervalsInView, intervalBounds, displayOptionsKey, tsconfig]);
+  }, [effectiveMode, workerConfigReady, genomicCoords, worker, globalBpPerUnit, allIntervalsInView, intervalBounds, displayOptionsKey, tsconfig, shouldSkipForLockedInteraction, computeNewGlobalBp]);
 
   // Main-thread mode effect - executes immediately (no debounce)
   useEffect(() => {
     if (effectiveMode !== 'main-thread') return;
-    if (!genomicCoords || !globalBpPerUnit || !new_globalBp) return;
+    if (!genomicCoords || !globalBpPerUnit) return;
     if (!allIntervalsInView || allIntervalsInView.length === 0) return;
     if (!intervalsCoords || intervalsCoords[0] !== genomicCoords[0] || intervalsCoords[1] !== genomicCoords[1]) return;
+    if (shouldSkipForLockedInteraction(!!localBins)) return;
+
+    const new_globalBp = computeNewGlobalBp();
+    if (!new_globalBp) return;
 
     const [start, end] = genomicCoords;
     const requestId = ++latestRequestId.current;
@@ -178,12 +300,18 @@ export function useLocalData({
     } catch (error) {
       console.error('Failed to compute local data:', error);
     }
-  }, [effectiveMode, genomicCoords, globalBpPerUnit, new_globalBp, allIntervalsInView, intervalBounds, intervalsCoords, displayOptionsKey, tsconfig]);
+  }, [effectiveMode, genomicCoords, globalBpPerUnit, allIntervalsInView, intervalBounds, intervalsCoords, displayOptionsKey, tsconfig, shouldSkipForLockedInteraction, computeNewGlobalBp]);
 
   const reset = useCallback(() => {
     setLocalBins(null);
     setDisplayArray([]);
     setShowingAllTrees(false);
+    prevLiveXZoomRef.current = null;
+    prevGenomicCoordsRef.current = null;
+    lockWasEnabledRef.current = false;
+    lockedWindowRef.current = null;
+    lockedXZoomRef.current = null;
+    zoomDirtyRef.current = false;
   }, []);
 
   // Determine isReady based on mode
