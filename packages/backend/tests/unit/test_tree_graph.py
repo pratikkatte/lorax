@@ -322,3 +322,37 @@ class TestSparsification:
             for parent_id in df['parent_id']:
                 if parent_id != -1:
                     assert parent_id in node_ids, f"Parent {parent_id} not in nodes"
+
+    def test_sparsification_no_orphaned_mutations(self, minimal_ts):
+        """With sparsification, every mut_node_id must exist in the node table for that tree."""
+        import struct
+        import pyarrow as pa
+        from lorax.tree_graph import construct_trees_batch
+
+        if minimal_ts.num_mutations == 0:
+            pytest.skip("minimal_ts has no mutations")
+
+        buffer, _, _, _ = construct_trees_batch(
+            minimal_ts,
+            tree_indices=list(range(min(minimal_ts.num_trees, 5))),
+            sparsification=True,
+        )
+
+        node_len = struct.unpack("<I", buffer[:4])[0]
+        node_bytes = buffer[4 : 4 + node_len]
+        mut_bytes = buffer[4 + node_len :]
+
+        node_table = pa.ipc.open_stream(node_bytes).read_all()
+        node_df = node_table.to_pandas()
+
+        kept_nodes = set(zip(node_df["tree_idx"], node_df["node_id"]))
+
+        if len(mut_bytes) > 0:
+            mut_table = pa.ipc.open_stream(mut_bytes).read_all()
+            mut_df = mut_table.to_pandas()
+            for _, row in mut_df.iterrows():
+                key = (row["mut_tree_idx"], row["mut_node_id"])
+                assert key in kept_nodes, (
+                    f"Orphaned mutation: mut_node_id={row['mut_node_id']} "
+                    f"not in kept nodes for tree_idx={row['mut_tree_idx']}"
+                )

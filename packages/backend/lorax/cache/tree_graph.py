@@ -1,293 +1,161 @@
 """
 TreeGraph Cache for per-session caching of TreeGraph objects.
 
-Supports Redis for production (distributed) and in-memory for local mode.
-Enables efficient lineage and search operations by reusing constructed trees.
+This cache is intentionally in-memory only. It stores per-session TreeGraph
+objects and applies opportunistic TTL cleanup to bound long-run memory growth.
 """
 
-import pickle
 import asyncio
+import time
 from collections import OrderedDict
 from typing import Dict, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from lorax.tree_graph import TreeGraph
 
-# TTL for Redis entries (matches session lifetime)
-REDIS_TTL_SECONDS = 7 * 24 * 60 * 60  # 7 days
-
 
 class TreeGraphCache:
     """
-    Per-session cache for TreeGraph objects with Redis/local mode switching.
-
-    In production mode (with Redis), TreeGraph objects are serialized via pickle
-    and stored with per-session keys. In local mode, uses in-memory dict.
+    Per-session in-memory cache for TreeGraph objects.
 
     Features:
-    - Visibility-based eviction: trees not in visible set are evicted
-    - Thread-safe async operations
-    - Automatic mode detection based on Redis availability
+    - Visibility-based eviction via `evict_not_visible`
+    - Per-session TTL expiration
+    - Async lock for thread-safe updates
     """
 
-    def __init__(self, redis_client=None):
-        """
-        Initialize the cache.
-
-        Args:
-            redis_client: Optional async Redis client. If None, uses in-memory mode.
-        """
-        self.redis = redis_client
+    def __init__(
+        self,
+        *,
+        local_ttl_seconds: int = 3600,
+        cleanup_interval_seconds: int = 60,
+    ):
         # Local cache: session_id -> OrderedDict{tree_index -> TreeGraph}
-        # OrderedDict maintains insertion order for LRU eviction
+        # OrderedDict keeps recent access ordering per session.
         self._local_cache: Dict[str, OrderedDict] = {}
+        self._session_last_access: Dict[str, float] = {}
+        self._local_ttl_seconds = max(1, int(local_ttl_seconds))
+        self._cleanup_interval_seconds = max(1, int(cleanup_interval_seconds))
+        self._last_cleanup_monotonic = 0.0
         self._lock = asyncio.Lock()
+        print(
+            "TreeGraphCache initialized (in-memory, "
+            f"ttl={self._local_ttl_seconds}s, cleanup={self._cleanup_interval_seconds}s)"
+        )
 
-        mode = "Redis" if redis_client else "in-memory"
-        print(f"TreeGraphCache initialized in {mode} mode")
+    def _touch_session_nolock(self, session_id: str, now: Optional[float] = None) -> None:
+        self._session_last_access[session_id] = time.monotonic() if now is None else now
 
-    def _redis_key(self, session_id: str, tree_index: int) -> str:
-        """Generate Redis key for a cached TreeGraph."""
-        return f"treegraph:{{{session_id}}}:{tree_index}"
+    def _cleanup_expired_sessions_nolock(self, now: float) -> int:
+        expired_session_ids = [
+            session_id
+            for session_id, last_access in self._session_last_access.items()
+            if (now - last_access) > self._local_ttl_seconds
+        ]
+        for session_id in expired_session_ids:
+            self._local_cache.pop(session_id, None)
+            self._session_last_access.pop(session_id, None)
+        return len(expired_session_ids)
 
-    def _redis_session_pattern(self, session_id: str) -> str:
-        """Generate Redis pattern to match all trees for a session."""
-        return f"treegraph:{{{session_id}}}:*"
+    async def _maybe_cleanup(self) -> None:
+        now = time.monotonic()
+        if (now - self._last_cleanup_monotonic) < self._cleanup_interval_seconds:
+            return
+        async with self._lock:
+            now = time.monotonic()
+            if (now - self._last_cleanup_monotonic) < self._cleanup_interval_seconds:
+                return
+            self._last_cleanup_monotonic = now
+            evicted_sessions = self._cleanup_expired_sessions_nolock(now)
+            if evicted_sessions > 0:
+                print(f"TreeGraphCache TTL-evicted {evicted_sessions} expired sessions")
 
     async def get(self, session_id: str, tree_index: int) -> Optional["TreeGraph"]:
-        """
-        Retrieve a cached TreeGraph.
-
-        Args:
-            session_id: Session identifier
-            tree_index: Tree index in the tree sequence
-
-        Returns:
-            TreeGraph if cached, None otherwise
-        """
-        if self.redis:
-            return await self._redis_get(session_id, tree_index)
-        else:
-            return self._local_get(session_id, tree_index)
+        """Retrieve a cached TreeGraph."""
+        await self._maybe_cleanup()
+        async with self._lock:
+            session_cache = self._local_cache.get(session_id)
+            if not session_cache:
+                return None
+            tree_graph = session_cache.get(tree_index)
+            if tree_graph is None:
+                self._touch_session_nolock(session_id)
+                return None
+            session_cache.move_to_end(tree_index)
+            self._touch_session_nolock(session_id)
+            return tree_graph
 
     async def set(
         self,
         session_id: str,
         tree_index: int,
-        tree_graph: "TreeGraph"
+        tree_graph: "TreeGraph",
     ) -> None:
-        """
-        Cache a TreeGraph object.
-
-        Args:
-            session_id: Session identifier
-            tree_index: Tree index in the tree sequence
-            tree_graph: TreeGraph object to cache
-        """
-        if self.redis:
-            await self._redis_set(session_id, tree_index, tree_graph)
-        else:
-            await self._local_set(session_id, tree_index, tree_graph)
-
-    async def get_all_for_session(self, session_id: str) -> Dict[int, "TreeGraph"]:
-        """
-        Retrieve all cached TreeGraphs for a session.
-
-        Args:
-            session_id: Session identifier
-
-        Returns:
-            Dict mapping tree_index to TreeGraph
-        """
-        if self.redis:
-            return await self._redis_get_all(session_id)
-        else:
-            return self._local_get_all(session_id)
-
-    async def clear_session(self, session_id: str) -> None:
-        """
-        Clear all cached TreeGraphs for a session.
-
-        Call this when:
-        - Session loads a new file
-        - Session is deleted/expired
-
-        Args:
-            session_id: Session identifier
-        """
-        if self.redis:
-            await self._redis_clear_session(session_id)
-        else:
-            await self._local_clear_session(session_id)
-
-    async def evict_not_visible(self, session_id: str, visible_indices: set) -> int:
-        """
-        Evict all cached TreeGraphs NOT in the visible set.
-
-        This implements visibility-based eviction: trees that are no longer
-        visible in the viewport are removed from cache.
-
-        Args:
-            session_id: Session identifier
-            visible_indices: Set of tree indices currently visible
-
-        Returns:
-            Number of trees evicted
-        """
-        if self.redis:
-            return await self._redis_evict_not_visible(session_id, visible_indices)
-        else:
-            return await self._local_evict_not_visible(session_id, visible_indices)
-
-    # ==================== Redis Implementation ====================
-
-    async def _redis_get(self, session_id: str, tree_index: int) -> Optional["TreeGraph"]:
-        """Get TreeGraph from Redis."""
-        try:
-            key = self._redis_key(session_id, tree_index)
-            data = await self.redis.get(key)
-            if data:
-                return pickle.loads(data)
-            return None
-        except Exception as e:
-            print(f"TreeGraphCache Redis get error: {e}")
-            return None
-
-    async def _redis_set(
-        self,
-        session_id: str,
-        tree_index: int,
-        tree_graph: "TreeGraph"
-    ) -> None:
-        """Set TreeGraph in Redis."""
-        try:
-            # Serialize and store
-            key = self._redis_key(session_id, tree_index)
-            data = pickle.dumps(tree_graph)
-            await self.redis.setex(key, REDIS_TTL_SECONDS, data)
-        except Exception as e:
-            print(f"TreeGraphCache Redis set error: {e}")
-
-    async def _redis_get_all(self, session_id: str) -> Dict[int, "TreeGraph"]:
-        """Get all TreeGraphs for a session from Redis."""
-        result = {}
-        try:
-            pattern = self._redis_session_pattern(session_id)
-            async for key in self.redis.scan_iter(pattern):
-                # Extract tree_index from key: treegraph:{session_id}:{tree_index}
-                parts = key.split(":")
-                if len(parts) == 3:
-                    tree_index = int(parts[2])
-                    data = await self.redis.get(key)
-                    if data:
-                        result[tree_index] = pickle.loads(data)
-        except Exception as e:
-            print(f"TreeGraphCache Redis get_all error: {e}")
-        return result
-
-    async def _redis_clear_session(self, session_id: str) -> None:
-        """Clear all TreeGraphs for a session from Redis."""
-        try:
-            pattern = self._redis_session_pattern(session_id)
-            keys = []
-            async for key in self.redis.scan_iter(pattern):
-                keys.append(key)
-            if keys:
-                await self.redis.delete(*keys)
-                print(f"TreeGraphCache cleared {len(keys)} trees for session {session_id[:8]}...")
-        except Exception as e:
-            print(f"TreeGraphCache Redis clear error: {e}")
-
-    async def _redis_evict_not_visible(self, session_id: str, visible_indices: set) -> int:
-        """Evict non-visible trees from Redis."""
-        evicted = 0
-        try:
-            pattern = self._redis_session_pattern(session_id)
-            keys_to_delete = []
-            async for key in self.redis.scan_iter(pattern):
-                # Extract tree_index from key: treegraph:{session_id}:{tree_index}
-                parts = key.decode().split(":") if isinstance(key, bytes) else key.split(":")
-                if len(parts) == 3:
-                    tree_index = int(parts[2])
-                    if tree_index not in visible_indices:
-                        keys_to_delete.append(key)
-            if keys_to_delete:
-                await self.redis.delete(*keys_to_delete)
-                evicted = len(keys_to_delete)
-                if evicted > 0:
-                    print(f"TreeGraphCache evicted {evicted} non-visible trees for session {session_id[:8]}...")
-        except Exception as e:
-            print(f"TreeGraphCache Redis evict error: {e}")
-        return evicted
-
-    # ==================== Local (In-Memory) Implementation ====================
-
-    def _local_get(self, session_id: str, tree_index: int) -> Optional["TreeGraph"]:
-        """Get TreeGraph from local cache."""
-        session_cache = self._local_cache.get(session_id)
-        if session_cache and tree_index in session_cache:
-            # Move to end for LRU (most recently used)
-            session_cache.move_to_end(tree_index)
-            return session_cache[tree_index]
-        return None
-
-    async def _local_set(
-        self,
-        session_id: str,
-        tree_index: int,
-        tree_graph: "TreeGraph"
-    ) -> None:
-        """Set TreeGraph in local cache."""
+        """Cache a TreeGraph object."""
+        await self._maybe_cleanup()
         async with self._lock:
             if session_id not in self._local_cache:
                 self._local_cache[session_id] = OrderedDict()
-
             session_cache = self._local_cache[session_id]
             session_cache[tree_index] = tree_graph
+            session_cache.move_to_end(tree_index)
+            self._touch_session_nolock(session_id)
 
-    def _local_get_all(self, session_id: str) -> Dict[int, "TreeGraph"]:
-        """Get all TreeGraphs for a session from local cache."""
-        session_cache = self._local_cache.get(session_id)
-        if session_cache:
-            return dict(session_cache)
-        return {}
-
-    async def _local_clear_session(self, session_id: str) -> None:
-        """Clear all TreeGraphs for a session from local cache."""
-        async with self._lock:
-            if session_id in self._local_cache:
-                count = len(self._local_cache[session_id])
-                del self._local_cache[session_id]
-                print(f"TreeGraphCache cleared {count} trees for session {session_id[:8]}...")
-
-    async def _local_evict_not_visible(self, session_id: str, visible_indices: set) -> int:
-        """Evict non-visible trees from local cache."""
-        evicted = 0
+    async def get_all_for_session(self, session_id: str) -> Dict[int, "TreeGraph"]:
+        """Retrieve all cached TreeGraphs for a session."""
+        await self._maybe_cleanup()
         async with self._lock:
             session_cache = self._local_cache.get(session_id)
-            if session_cache:
-                keys_to_remove = [idx for idx in session_cache.keys() if idx not in visible_indices]
-                for idx in keys_to_remove:
-                    del session_cache[idx]
-                    evicted += 1
-                if evicted > 0:
-                    print(f"TreeGraphCache evicted {evicted} non-visible trees for session {session_id[:8]}...")
-        return evicted
+            if not session_cache:
+                return {}
+            self._touch_session_nolock(session_id)
+            return dict(session_cache)
 
-    # ==================== Utility Methods ====================
+    async def clear_session(self, session_id: str) -> None:
+        """Clear all cached TreeGraphs for a session."""
+        await self._maybe_cleanup()
+        async with self._lock:
+            count = len(self._local_cache.get(session_id, {}))
+            self._local_cache.pop(session_id, None)
+            self._session_last_access.pop(session_id, None)
+            if count > 0:
+                print(f"TreeGraphCache cleared {count} trees for session {session_id[:8]}...")
+
+    async def evict_not_visible(self, session_id: str, visible_indices: set) -> int:
+        """Evict trees that are not currently visible."""
+        await self._maybe_cleanup()
+        async with self._lock:
+            session_cache = self._local_cache.get(session_id)
+            if not session_cache:
+                return 0
+            keys_to_remove = [idx for idx in session_cache.keys() if idx not in visible_indices]
+            for idx in keys_to_remove:
+                session_cache.pop(idx, None)
+            if not session_cache:
+                self._local_cache.pop(session_id, None)
+                self._session_last_access.pop(session_id, None)
+            else:
+                self._touch_session_nolock(session_id)
+            evicted = len(keys_to_remove)
+            if evicted > 0:
+                print(f"TreeGraphCache evicted {evicted} non-visible trees for session {session_id[:8]}...")
+            return evicted
+
+    async def cleanup_expired_local_sessions(self) -> int:
+        """Force a full TTL cleanup pass (primarily for tests/diagnostics)."""
+        async with self._lock:
+            now = time.monotonic()
+            self._last_cleanup_monotonic = now
+            return self._cleanup_expired_sessions_nolock(now)
 
     def get_stats(self) -> Dict:
         """Get cache statistics."""
-        if self.redis:
-            return {
-                "mode": "redis",
-                "sessions": "N/A (use Redis commands to inspect)"
-            }
-        else:
-            total_trees = sum(len(cache) for cache in self._local_cache.values())
-            return {
-                "mode": "in-memory",
-                "sessions": len(self._local_cache),
-                "total_trees": total_trees,
-                "eviction_strategy": "visibility-based"
-            }
+        total_trees = sum(len(cache) for cache in self._local_cache.values())
+        return {
+            "mode": "in-memory",
+            "sessions": len(self._local_cache),
+            "total_trees": total_trees,
+            "eviction_strategy": "visibility+ttl",
+            "ttl_seconds": self._local_ttl_seconds,
+            "cleanup_interval_seconds": self._cleanup_interval_seconds,
+        }

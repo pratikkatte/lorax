@@ -1,9 +1,9 @@
-
-import os
 import json
+import time
+import asyncio
 from uuid import uuid4
 from datetime import datetime, timezone
-from typing import Optional, Dict, Tuple
+from typing import Optional, Dict
 
 from lorax.redis_utils import create_redis_client
 from fastapi import Request, Response
@@ -13,6 +13,8 @@ from lorax.constants import (
     COOKIE_MAX_AGE,
     MAX_SOCKETS_PER_SESSION,
     ENFORCE_CONNECTION_LIMITS,
+    INMEM_TTL_SECONDS,
+    CACHE_CLEANUP_INTERVAL_SECONDS,
 )
 
 def _is_https_request(request: Request) -> bool:
@@ -33,6 +35,19 @@ def _is_https_request(request: Request) -> bool:
         return True
 
     return request.url.scheme == "https"
+
+
+def _parse_iso_timestamp(value: Optional[str]) -> Optional[datetime]:
+    """Parse an ISO timestamp string to UTC datetime."""
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(value)
+    except (TypeError, ValueError):
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
 
 
 class Session:
@@ -119,11 +134,17 @@ class SessionManager:
         *,
         redis_client=None,
         redis_cluster: bool = False,
+        memory_ttl_seconds: int = INMEM_TTL_SECONDS,
+        cleanup_interval_seconds: int = CACHE_CLEANUP_INTERVAL_SECONDS,
     ):
         self.redis_url = redis_url
         self.redis_client = redis_client
         self.redis_cluster = redis_cluster
         self.memory_sessions: Dict[str, Session] = {}
+        self.memory_ttl_seconds = max(1, int(memory_ttl_seconds))
+        self.cleanup_interval_seconds = max(1, int(cleanup_interval_seconds))
+        self._memory_lock = asyncio.Lock()
+        self._last_cleanup_monotonic = 0.0
 
         if self.redis_client is None and self.redis_url:
             self.redis_client = create_redis_client(
@@ -135,7 +156,67 @@ class SessionManager:
         if self.redis_client:
             print(f"✅ SessionManager using Redis at {self.redis_url}")
         else:
-            print("⚠️ SessionManager running in in-memory mode")
+            print(
+                "⚠️ SessionManager running in in-memory mode "
+                f"(ttl={self.memory_ttl_seconds}s, cleanup={self.cleanup_interval_seconds}s)"
+            )
+
+    def _is_memory_session_expired(self, session: Session, now_utc: Optional[datetime] = None) -> bool:
+        now_utc = now_utc or datetime.now(timezone.utc)
+        last_seen = _parse_iso_timestamp(session.last_activity) or _parse_iso_timestamp(session.created_at)
+        if last_seen is None:
+            return False
+        return (now_utc - last_seen).total_seconds() > self.memory_ttl_seconds
+
+    async def _cleanup_expired_memory_sessions_locked(self, now_monotonic: float) -> int:
+        now_utc = datetime.now(timezone.utc)
+        expired_sids = [
+            sid
+            for sid, session in self.memory_sessions.items()
+            if self._is_memory_session_expired(session, now_utc=now_utc)
+        ]
+        for sid in expired_sids:
+            self.memory_sessions.pop(sid, None)
+        self._last_cleanup_monotonic = now_monotonic
+        return len(expired_sids)
+
+    async def _maybe_cleanup_memory_sessions(self) -> None:
+        if self.redis_client:
+            return
+        now = time.monotonic()
+        if (now - self._last_cleanup_monotonic) < self.cleanup_interval_seconds:
+            return
+        async with self._memory_lock:
+            now = time.monotonic()
+            if (now - self._last_cleanup_monotonic) < self.cleanup_interval_seconds:
+                return
+            evicted = await self._cleanup_expired_memory_sessions_locked(now)
+            if evicted > 0:
+                print(f"SessionManager pruned {evicted} expired in-memory sessions")
+
+    async def cleanup_expired_memory_sessions(self) -> int:
+        """Force in-memory session TTL cleanup (primarily for tests/diagnostics)."""
+        if self.redis_client:
+            return 0
+        async with self._memory_lock:
+            return await self._cleanup_expired_memory_sessions_locked(time.monotonic())
+
+    def _set_session_cookie(self, response: Response, sid: str, secure: bool) -> None:
+        """
+        Set/refresh session cookie.
+
+        Uses rolling expiration by resetting max_age on each HTTP request that
+        flows through get_or_create_session.
+        """
+        samesite = "none" if secure else "lax"
+        response.set_cookie(
+            key=SESSION_COOKIE,
+            value=sid,
+            httponly=True,
+            samesite=samesite,
+            max_age=COOKIE_MAX_AGE,
+            secure=secure,
+        )
 
     async def get_session(self, sid: str) -> Optional[Session]:
         """Retrieve a session by SID."""
@@ -148,10 +229,19 @@ class SessionManager:
                 return Session.from_dict(json.loads(data))
             return None
         else:
-            return self.memory_sessions.get(sid)
+            await self._maybe_cleanup_memory_sessions()
+            async with self._memory_lock:
+                session = self.memory_sessions.get(sid)
+                if session is None:
+                    return None
+                if self._is_memory_session_expired(session):
+                    self.memory_sessions.pop(sid, None)
+                    return None
+                return session
 
     async def create_session(self, sid: str = None) -> Session:
         """Create a new session. If SID provided, verify uniqueness/overwrite if needed."""
+        await self._maybe_cleanup_memory_sessions()
         if not sid:
             sid = str(uuid4())
         
@@ -168,7 +258,9 @@ class SessionManager:
                 json.dumps(session.to_dict())
             )
         else:
-            self.memory_sessions[session.sid] = session
+            await self._maybe_cleanup_memory_sessions()
+            async with self._memory_lock:
+                self.memory_sessions[session.sid] = session
 
     async def get_or_create_session(self, request: Request, response: Response):
         """Helper to handle cookie extraction and setting."""
@@ -185,18 +277,13 @@ class SessionManager:
         if not session:
             # Create new if missing or expired
             session = await self.create_session()
-            # SameSite=None is required for cross-site usage (e.g. lorax.ucsc.edu -> api.lorax.in),
-            # but browsers require SameSite=None cookies to be Secure (HTTPS).
-            # For local HTTP dev, fall back to Lax so the cookie is accepted.
-            samesite = "none" if secure else "lax"
-            response.set_cookie(
-                key=SESSION_COOKIE, 
-                value=session.sid, 
-                httponly=True, 
-                samesite=samesite,
-                max_age=COOKIE_MAX_AGE, 
-                secure=secure
-            )
+        else:
+            # Rolling session activity update for active HTTP usage.
+            session.update_activity()
+            await self.save_session(session)
+
+        # Rolling cookie refresh: extend browser cookie on each successful access.
+        self._set_session_cookie(response, session.sid, secure)
         
         return session.sid, session
 

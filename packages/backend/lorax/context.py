@@ -18,6 +18,8 @@ from lorax.constants import (
     DISK_CACHE_ENABLED,
     DISK_CACHE_DIR,
     DISK_CACHE_MAX_BYTES,
+    INMEM_TTL_SECONDS,
+    CACHE_CLEANUP_INTERVAL_SECONDS,
 )
 
 # Validate mode requirements
@@ -31,7 +33,12 @@ if validation_errors:
 # This is critical for in-memory mode so routes and sockets share the same stores
 
 REDIS_CLUSTER_URL, REDIS_CLUSTER = get_redis_config()
-session_manager = SessionManager(redis_url=REDIS_CLUSTER_URL, redis_cluster=REDIS_CLUSTER)
+session_manager = SessionManager(
+    redis_url=REDIS_CLUSTER_URL,
+    redis_cluster=REDIS_CLUSTER,
+    memory_ttl_seconds=INMEM_TTL_SECONDS,
+    cleanup_interval_seconds=CACHE_CLEANUP_INTERVAL_SECONDS,
+)
 
 # Common Environment Variables
 _bucket_name = (os.getenv("BUCKET_NAME") or "").strip()
@@ -60,24 +67,16 @@ disk_cache_manager = DiskCacheManager(
     enabled=DISK_CACHE_ENABLED,
 )
 
-# Initialize TreeGraph Cache for per-session tree caching
-# Uses Redis in production for distributed caching, in-memory for local mode
-_tree_graph_redis = None
-if REDIS_CLUSTER_URL:
-    try:
-        # Create a separate connection for binary data (decode_responses=False)
-        _tree_graph_redis = create_redis_client(
-            REDIS_CLUSTER_URL,
-            decode_responses=False,
-            cluster=REDIS_CLUSTER,
-        )
-        print(f"TreeGraphCache using Redis at {REDIS_CLUSTER_URL}")
-    except Exception as e:
-        print(f"Warning: Failed to connect Redis for TreeGraphCache: {e}")
-
-tree_graph_cache = TreeGraphCache(redis_client=None)
+# Initialize TreeGraph Cache for per-session tree caching (in-memory only).
+tree_graph_cache = TreeGraphCache(
+    local_ttl_seconds=INMEM_TTL_SECONDS,
+    cleanup_interval_seconds=CACHE_CLEANUP_INTERVAL_SECONDS,
+)
 
 # CSV mode: cache parsed Newick trees per session (in-memory only)
-csv_tree_graph_cache = CsvTreeGraphCache()
+csv_tree_graph_cache = CsvTreeGraphCache(
+    local_ttl_seconds=INMEM_TTL_SECONDS,
+    cleanup_interval_seconds=CACHE_CLEANUP_INTERVAL_SECONDS,
+)
 
 print(f"Context initialized: mode={CURRENT_MODE}, disk_cache={DISK_CACHE_ENABLED}")

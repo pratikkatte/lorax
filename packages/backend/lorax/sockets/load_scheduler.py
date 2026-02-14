@@ -32,6 +32,15 @@ def _env_float(name: str, default: float, minimum: float) -> float:
     return max(minimum, value)
 
 
+DEV_MODE = os.getenv("LORAX_MODE", "").strip().lower() == "development"
+
+
+def dev_print(*args, **kwargs) -> None:
+    """Print only when running in development mode."""
+    if DEV_MODE:
+        print(*args, **kwargs)
+
+
 class LoadQueueFullError(Exception):
     """Raised when the bounded load queue is full."""
 
@@ -220,8 +229,7 @@ class LoadScheduler:
             **fields,
             "counters": counters,
         }
-        print(f"[load_file] {json.dumps(record, sort_keys=True)}")
+        dev_print(f"[load_file] {json.dumps(record, sort_keys=True)}")
 
 
 load_scheduler = LoadScheduler()
-

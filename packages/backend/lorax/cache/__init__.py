@@ -4,7 +4,7 @@ Lorax Caching System.
 This package provides consolidated caching infrastructure:
 - LRUCache, LRUCacheWithMeta: In-memory LRU caches with eviction
 - DiskCacheManager: LRU disk cache with distributed locking for GCS downloads
-- TreeGraphCache: Per-session caching of TreeGraph objects
+- TreeGraphCache: Per-session in-memory caching of TreeGraph objects
 - FileContext: Unified cache entry combining tree sequence, config, and metadata
 - get_file_context: Cached file loading with mtime validation
 

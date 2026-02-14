@@ -9,11 +9,39 @@ Provides common patterns as decorators to reduce boilerplate:
 """
 
 import functools
+import os
+import time
 from typing import Callable, Any
 
 from lorax.context import session_manager
 from lorax.constants import ERROR_SESSION_NOT_FOUND, ERROR_NO_FILE_LOADED
 from lorax.sockets.utils import is_csv_session_file
+
+_SESSION_ACTIVITY_TOUCH_SEC = max(
+    0.0,
+    float(os.getenv("LORAX_SESSION_ACTIVITY_TOUCH_SEC", "5")),
+)
+_last_activity_touch_monotonic: dict[str, float] = {}
+
+
+async def _touch_session_activity(lorax_sid: str, session: Any) -> None:
+    """Update session activity on socket events, with optional write throttling."""
+    session.update_activity()
+    now = time.monotonic()
+    last_touch = _last_activity_touch_monotonic.get(lorax_sid)
+    should_persist = (
+        last_touch is None
+        or _SESSION_ACTIVITY_TOUCH_SEC == 0.0
+        or (now - last_touch) >= _SESSION_ACTIVITY_TOUCH_SEC
+    )
+    if not should_persist:
+        return
+    try:
+        await session_manager.save_session(session)
+    except Exception as exc:
+        print(f"⚠️ Failed to persist socket activity for session {lorax_sid}: {exc}")
+        return
+    _last_activity_touch_monotonic[lorax_sid] = now
 
 
 async def require_session(lorax_sid: str, socket_sid: str, sio) -> Any:
@@ -24,11 +52,13 @@ async def require_session(lorax_sid: str, socket_sid: str, sio) -> Any:
     """
     session = await session_manager.get_session(lorax_sid)
     if not session:
+        _last_activity_touch_monotonic.pop(lorax_sid, None)
         await sio.emit("error", {
             "code": ERROR_SESSION_NOT_FOUND,
             "message": "Session expired. Please refresh the page."
         }, to=socket_sid)
         return None
+    await _touch_session_activity(lorax_sid, session)
     return session
 
 

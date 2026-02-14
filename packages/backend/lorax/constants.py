@@ -17,14 +17,28 @@ from lorax.modes import (
     CURRENT_CONFIG,
 )
 
+def _get_env_int(name: str, default: int, min_value: int = 0) -> int:
+    """Read an integer environment variable with sane fallback/clamping."""
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        parsed = int(raw)
+    except (TypeError, ValueError):
+        return default
+    return max(min_value, parsed)
+
+
 # Session Configuration
 SESSION_COOKIE = "lorax_sid"
-COOKIE_MAX_AGE = 7 * 24 * 60 * 60  # 7 days in seconds
+COOKIE_MAX_AGE = _get_env_int("LORAX_COOKIE_MAX_AGE_SEC", 3600, min_value=1)
+INMEM_TTL_SECONDS = _get_env_int("LORAX_INMEM_TTL_SEC", 3600, min_value=1)
 
 # Cache Configuration (mode-aware)
 TS_CACHE_SIZE = CURRENT_CONFIG.ts_cache_size
 CONFIG_CACHE_SIZE = CURRENT_CONFIG.config_cache_size
 METADATA_CACHE_SIZE = CURRENT_CONFIG.metadata_cache_size
+CACHE_CLEANUP_INTERVAL_SECONDS = _get_env_int("LORAX_CACHE_CLEANUP_INTERVAL_SEC", 60, min_value=1)
 
 # Disk Cache Configuration (mode-aware)
 DISK_CACHE_ENABLED = CURRENT_CONFIG.disk_cache_enabled
@@ -66,4 +80,7 @@ def print_config():
     print(f"TS Cache Size: {TS_CACHE_SIZE}")
     print(f"Disk Cache: {DISK_CACHE_ENABLED} ({CURRENT_CONFIG.disk_cache_max_gb}GB)")
     print(f"Max Sockets/Session: {MAX_SOCKETS_PER_SESSION}")
+    print(f"Cookie Max Age (sec): {COOKIE_MAX_AGE}")
+    print(f"In-Memory TTL (sec): {INMEM_TTL_SECONDS}")
+    print(f"Cleanup Interval (sec): {CACHE_CLEANUP_INTERVAL_SECONDS}")
     print(f"Uploads Dir: {UPLOADS_DIR}")
