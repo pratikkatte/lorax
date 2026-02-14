@@ -3,6 +3,7 @@ import os
 import json
 import asyncio
 import re
+import logging
 
 import numpy as np
 import pandas as pd
@@ -30,6 +31,10 @@ from lorax.metadata.mutations import (
 )
 from lorax.buffer import mutations_to_arrow_buffer
 from lorax.cache import get_file_context, get_file_cache_size
+
+logger = logging.getLogger(__name__)
+
+
 def _get_tip_shift_project_prefixes() -> list[str]:
     """Return project name prefixes that should shift CSV tips to y=1."""
     raw = os.getenv("LORAX_CSV_TIP_SHIFT_PROJECTS", "heliconius")
@@ -121,23 +126,32 @@ async def get_projects(upload_dir, BUCKET_NAME, sid=None):
     if sid and sid in projects:
         projects.pop(sid, None)
 
-    # Merge GCS projects: always include non-Uploads; Uploads only per mode rules
-    if CURRENT_MODE == "local":
-        projects = get_public_gcs_dict(
-            BUCKET_NAME,
-            sid=sid,
-            projects=projects,
-            include_uploads=False,
-            uploads_sid=None,
-        )
-    else:
-        projects = get_public_gcs_dict(
-            BUCKET_NAME,
-            sid=sid,
-            projects=projects,
-            include_uploads=True,
-            uploads_sid=sid,
-        )
+    # Merge GCS projects when explicitly configured.
+    if BUCKET_NAME:
+        try:
+            if CURRENT_MODE == "local":
+                projects = await get_public_gcs_dict(
+                    BUCKET_NAME,
+                    sid=sid,
+                    projects=projects,
+                    include_uploads=False,
+                    uploads_sid=None,
+                )
+            else:
+                projects = await get_public_gcs_dict(
+                    BUCKET_NAME,
+                    sid=sid,
+                    projects=projects,
+                    include_uploads=True,
+                    uploads_sid=sid,
+                )
+        except Exception as exc:
+            logger.warning(
+                "Failed to merge GCS projects for bucket=%s (mode=%s): %s",
+                BUCKET_NAME,
+                CURRENT_MODE,
+                exc,
+            )
 
     return projects
 

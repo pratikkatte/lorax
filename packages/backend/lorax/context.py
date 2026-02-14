@@ -34,7 +34,10 @@ REDIS_CLUSTER_URL, REDIS_CLUSTER = get_redis_config()
 session_manager = SessionManager(redis_url=REDIS_CLUSTER_URL, redis_cluster=REDIS_CLUSTER)
 
 # Common Environment Variables
-BUCKET_NAME = os.getenv("BUCKET_NAME") or os.getenv("GCS_BUCKET_NAME") or 'lorax_projects'
+_bucket_name = (os.getenv("BUCKET_NAME") or "").strip()
+if not _bucket_name:
+    _bucket_name = (os.getenv("GCS_BUCKET_NAME") or "").strip()
+BUCKET_NAME = _bucket_name or None
 
 # Initialize Disk Cache Manager
 # Uses Redis for distributed locking if available, falls back to file locks
