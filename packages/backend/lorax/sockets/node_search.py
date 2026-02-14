@@ -322,7 +322,8 @@ def register_node_search_events(sio):
                 metadata_value,
                 tree_indices,
                 lorax_sid,
-                tree_graph_cache
+                tree_graph_cache,
+                ctx=ctx,
             )
 
             await sio.emit("highlight-positions-result", result, to=sid)
@@ -485,7 +486,8 @@ def register_node_search_events(sio):
                 tree_indices,
                 lorax_sid,
                 tree_graph_cache,
-                show_lineages
+                show_lineages,
+                ctx=ctx,
             )
 
             await sio.emit("search-metadata-multi-result", result, to=sid)

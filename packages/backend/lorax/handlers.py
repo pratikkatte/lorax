@@ -8,6 +8,7 @@ import logging
 import numpy as np
 import pandas as pd
 import psutil
+import pyarrow as pa
 import tskit
 
 from lorax.modes import CURRENT_MODE
@@ -20,7 +21,8 @@ from lorax.utils import (
     make_json_serializable,
 )
 from lorax.metadata.loader import (
-    _get_sample_metadata_value
+    _get_sample_metadata_value,
+    get_metadata_array_for_key,
 )
 from lorax.metadata.mutations import (
     get_mutations_in_window,
@@ -30,6 +32,9 @@ from lorax.buffer import mutations_to_arrow_buffer
 from lorax.cache import get_file_context, get_file_cache_size
 
 logger = logging.getLogger(__name__)
+
+_TREE_GRAPH_LOAD_TASKS = {}
+_TREE_GRAPH_LOAD_TASKS_LOCK = asyncio.Lock()
 
 
 def _get_tip_shift_project_prefixes() -> list[str]:
@@ -968,6 +973,107 @@ def _get_matching_sample_nodes(ts, metadata_key, metadata_value, sources, sample
     return matching_node_ids
 
 
+def _metadata_value_index_cache_key(metadata_key, sources, sample_name_key) -> str:
+    sources_key = ",".join(str(source) for source in sources)
+    return f"{metadata_key}:value_to_sample_nodes:{sources_key}:{sample_name_key}"
+
+
+def _build_value_to_sample_nodes_index_fallback(ts, metadata_key, sources, sample_name_key):
+    value_to_nodes = {}
+    for node_id in ts.samples():
+        _, value = _get_sample_metadata_value(
+            ts, node_id, metadata_key, sources, sample_name_key
+        )
+        if value is None:
+            continue
+        value_str = str(value)
+        value_to_nodes.setdefault(value_str, []).append(int(node_id))
+    return {
+        value: np.asarray(node_ids, dtype=np.int32)
+        for value, node_ids in value_to_nodes.items()
+        if node_ids
+    }
+
+
+def _get_value_to_sample_nodes_index(
+    ctx,
+    metadata_key,
+    sources=("individual", "node", "population"),
+    sample_name_key="name",
+):
+    """
+    Get or build cached metadata value -> sample node_ids index.
+
+    The index is stored in FileContext metadata cache and derived from
+    get_metadata_array_for_key() output for fast repeated lookups.
+    """
+    cache_key = _metadata_value_index_cache_key(metadata_key, sources, sample_name_key)
+    cached = ctx.get_metadata(cache_key)
+    if cached is not None:
+        return cached
+
+    ts = ctx.tree_sequence
+    try:
+        metadata_array = get_metadata_array_for_key(
+            ctx,
+            metadata_key,
+            sources=sources,
+            sample_name_key=sample_name_key,
+        )
+
+        unique_values = [str(v) for v in metadata_array.get("unique_values", [])]
+        sample_node_ids = np.asarray(
+            metadata_array.get("sample_node_ids", []),
+            dtype=np.int32,
+        )
+        value_to_nodes = {value: [] for value in unique_values}
+
+        arrow_buffer = metadata_array.get("arrow_buffer")
+        if (
+            arrow_buffer is not None
+            and sample_node_ids.size > 0
+            and len(unique_values) > 0
+        ):
+            reader = pa.ipc.open_stream(pa.BufferReader(arrow_buffer))
+            table = reader.read_all()
+            value_indices = np.asarray(
+                table.column("idx").to_numpy(),
+                dtype=np.int64,
+            )
+            limit = min(sample_node_ids.size, value_indices.size)
+            for node_id, value_idx in zip(sample_node_ids[:limit], value_indices[:limit]):
+                idx = int(value_idx)
+                if 0 <= idx < len(unique_values):
+                    value_to_nodes[unique_values[idx]].append(int(node_id))
+
+        # Preserve existing semantics: missing/None metadata values should not match.
+        if "" in value_to_nodes and value_to_nodes[""] and metadata_key != "sample":
+            explicit_empty = []
+            for node_id in value_to_nodes[""]:
+                _, value = _get_sample_metadata_value(
+                    ts, int(node_id), metadata_key, sources, sample_name_key
+                )
+                if value is not None and str(value) == "":
+                    explicit_empty.append(int(node_id))
+            if explicit_empty:
+                value_to_nodes[""] = explicit_empty
+            else:
+                value_to_nodes.pop("", None)
+
+        compact_index = {
+            value: np.asarray(node_ids, dtype=np.int32)
+            for value, node_ids in value_to_nodes.items()
+            if node_ids
+        }
+    except Exception:
+        compact_index = _build_value_to_sample_nodes_index_fallback(
+            ts, metadata_key, sources, sample_name_key
+        )
+
+    ctx.set_metadata(cache_key, compact_index)
+    return compact_index
+
+
 async def _ensure_tree_graph_loaded(
     ts,
     tree_idx,
@@ -992,23 +1098,43 @@ async def _ensure_tree_graph_loaded(
     Returns:
         TreeGraph object
     """
-    from lorax.tree_graph import construct_tree
-
     # Try to get from cache first
     graph = await tree_graph_cache.get(session_id, tree_idx)
     if graph is not None:
         return graph
 
-    # Construct tree graph
-    def _construct():
-        return construct_tree(ts, edges, nodes, breakpoints, tree_idx, min_time, max_time)
+    key = (session_id, int(tree_idx))
+    created_task = False
 
-    graph = await asyncio.to_thread(_construct)
+    async with _TREE_GRAPH_LOAD_TASKS_LOCK:
+        task = _TREE_GRAPH_LOAD_TASKS.get(key)
+        if task is None:
+            created_task = True
 
-    # Cache it for future use
-    await tree_graph_cache.set(session_id, tree_idx, graph)
+            async def _build_and_cache():
+                cached = await tree_graph_cache.get(session_id, tree_idx)
+                if cached is not None:
+                    return cached
 
-    return graph
+                def _construct():
+                    return construct_tree(
+                        ts, edges, nodes, breakpoints, tree_idx, min_time, max_time
+                    )
+
+                built_graph = await asyncio.to_thread(_construct)
+                await tree_graph_cache.set(session_id, tree_idx, built_graph)
+                return built_graph
+
+            task = asyncio.create_task(_build_and_cache())
+            _TREE_GRAPH_LOAD_TASKS[key] = task
+
+    try:
+        return await task
+    finally:
+        if created_task:
+            async with _TREE_GRAPH_LOAD_TASKS_LOCK:
+                if _TREE_GRAPH_LOAD_TASKS.get(key) is task:
+                    _TREE_GRAPH_LOAD_TASKS.pop(key, None)
 
 
 async def get_highlight_positions(
@@ -1020,7 +1146,8 @@ async def get_highlight_positions(
     session_id: str,
     tree_graph_cache,
     sources=("individual", "node", "population"),
-    sample_name_key="name"
+    sample_name_key="name",
+    ctx=None,
 ):
     """
     Get positions for all tip nodes with a specific metadata value.
@@ -1044,12 +1171,28 @@ async def get_highlight_positions(
     if not tree_indices:
         return {"positions": []}
 
-    # Get sample node IDs that have this metadata value
-    matching_node_ids = _get_matching_sample_nodes(
-        ts, metadata_key, metadata_value, sources, sample_name_key
-    )
+    if ctx is None and file_path:
+        ctx = await get_file_context(file_path)
 
-    if not matching_node_ids:
+    matching_node_ids = None
+    if ctx is not None:
+        value_to_nodes = _get_value_to_sample_nodes_index(
+            ctx, metadata_key, sources, sample_name_key
+        )
+        matching_node_ids = value_to_nodes.get(str(metadata_value))
+    if matching_node_ids is None:
+        matching_node_ids = np.asarray(
+            list(
+                _get_matching_sample_nodes(
+                    ts, metadata_key, metadata_value, sources, sample_name_key
+                )
+            ),
+            dtype=np.int32,
+        )
+    else:
+        matching_node_ids = np.asarray(matching_node_ids, dtype=np.int32)
+
+    if matching_node_ids.size == 0:
         return {"positions": []}
 
     # Pre-extract tables for reuse (only needed if cache miss)
@@ -1059,28 +1202,40 @@ async def get_highlight_positions(
     min_time = float(ts.min_time)
     max_time = float(ts.max_time)
 
+    valid_tree_indices = []
+    for raw_tree_idx in tree_indices:
+        tree_idx = int(raw_tree_idx)
+        if tree_idx < 0 or tree_idx >= ts.num_trees:
+            continue
+        valid_tree_indices.append(tree_idx)
+
+    if not valid_tree_indices:
+        return {"positions": []}
+
     positions = []
 
     # For each requested tree, get graph and extract positions
-    for tree_idx in tree_indices:
-        tree_idx = int(tree_idx)
-        if tree_idx < 0 or tree_idx >= ts.num_trees:
-            continue
-
+    for tree_idx in valid_tree_indices:
         graph = await _ensure_tree_graph_loaded(
             ts, tree_idx, session_id, tree_graph_cache,
             edges, nodes, breakpoints, min_time, max_time
         )
 
-        # Extract positions for matching nodes that are in this tree
-        for node_id in matching_node_ids:
-            if graph.in_tree[node_id]:
-                positions.append({
-                    "node_id": int(node_id),
-                    "tree_idx": tree_idx,
-                    "x": float(graph.x[node_id]),
-                    "y": float(graph.y[node_id])
-                })
+        # Vectorized extraction for nodes that are present in this tree.
+        hits = matching_node_ids[graph.in_tree[matching_node_ids]]
+        if hits.size == 0:
+            continue
+        x_coords = graph.x[hits]
+        y_coords = graph.y[hits]
+        positions.extend(
+            {
+                "node_id": int(node_id),
+                "tree_idx": tree_idx,
+                "x": float(x_coord),
+                "y": float(y_coord),
+            }
+            for node_id, x_coord, y_coord in zip(hits, x_coords, y_coords)
+        )
 
     return {"positions": positions}
 
@@ -1095,7 +1250,8 @@ async def get_multi_value_highlight_positions(
     tree_graph_cache,
     show_lineages: bool = False,
     sources=("individual", "node", "population"),
-    sample_name_key="name"
+    sample_name_key="name",
+    ctx=None,
 ):
     """
     Get positions for tip nodes matching ANY of the metadata values.
@@ -1125,6 +1281,30 @@ async def get_multi_value_highlight_positions(
     # Deduplicate values
     unique_values = list(set(str(v) for v in metadata_values))
 
+    if ctx is None and file_path:
+        ctx = await get_file_context(file_path)
+
+    if ctx is not None:
+        value_to_nodes = _get_value_to_sample_nodes_index(
+            ctx, metadata_key, sources, sample_name_key
+        )
+        matching_node_ids_by_value = {
+            value: np.asarray(value_to_nodes.get(value, []), dtype=np.int32)
+            for value in unique_values
+        }
+    else:
+        matching_node_ids_by_value = {
+            value: np.asarray(
+                list(
+                    _get_matching_sample_nodes(
+                        ts, metadata_key, value, sources, sample_name_key
+                    )
+                ),
+                dtype=np.int32,
+            )
+            for value in unique_values
+        }
+
     # Pre-extract tables for reuse (only needed if cache miss)
     edges = ts.tables.edges
     nodes = ts.tables.nodes
@@ -1132,53 +1312,66 @@ async def get_multi_value_highlight_positions(
     min_time = float(ts.min_time)
     max_time = float(ts.max_time)
 
+    valid_tree_indices = []
+    for raw_tree_idx in tree_indices:
+        tree_idx = int(raw_tree_idx)
+        if tree_idx < 0 or tree_idx >= ts.num_trees:
+            continue
+        valid_tree_indices.append(tree_idx)
+
+    if not valid_tree_indices:
+        return {"positions_by_value": {}, "lineages": {}, "total_count": 0}
+
+    graphs_by_tree_idx = {}
+    for tree_idx in valid_tree_indices:
+        graphs_by_tree_idx[tree_idx] = await _ensure_tree_graph_loaded(
+            ts, tree_idx, session_id, tree_graph_cache,
+            edges, nodes, breakpoints, min_time, max_time
+        )
+
+    trees_by_tree_idx = {}
+    if show_lineages:
+        trees_by_tree_idx = {
+            tree_idx: ts.at_index(tree_idx) for tree_idx in valid_tree_indices
+        }
+
     positions_by_value = {}
     lineages = {} if show_lineages else None
     total_count = 0
 
-    # For each value, find matching samples
+    # For each value, find matching samples.
     for value in unique_values:
-        matching_node_ids = _get_matching_sample_nodes(
-            ts, metadata_key, value, sources, sample_name_key
-        )
+        matching_node_ids = matching_node_ids_by_value[value]
 
-        if not matching_node_ids:
+        if matching_node_ids.size == 0:
             positions_by_value[value] = []
             continue
 
         value_positions = []
         value_lineages = {} if show_lineages else None
 
-        # For each requested tree, get graph and extract positions
-        for tree_idx in tree_indices:
-            tree_idx = int(tree_idx)
-            if tree_idx < 0 or tree_idx >= ts.num_trees:
+        for tree_idx in valid_tree_indices:
+            graph = graphs_by_tree_idx[tree_idx]
+            hits = matching_node_ids[graph.in_tree[matching_node_ids]]
+            if hits.size == 0:
                 continue
 
-            graph = await _ensure_tree_graph_loaded(
-                ts, tree_idx, session_id, tree_graph_cache,
-                edges, nodes, breakpoints, min_time, max_time
+            x_coords = graph.x[hits]
+            y_coords = graph.y[hits]
+            value_positions.extend(
+                {
+                    "node_id": int(node_id),
+                    "tree_idx": tree_idx,
+                    "x": float(x_coord),
+                    "y": float(y_coord),
+                }
+                for node_id, x_coord, y_coord in zip(hits, x_coords, y_coords)
             )
 
-            tree_positions = []
-            tree_seeds = []  # For lineage computation
-
-            # Extract positions for matching nodes that are in this tree
-            for node_id in matching_node_ids:
-                if graph.in_tree[node_id]:
-                    tree_positions.append({
-                        "node_id": int(node_id),
-                        "tree_idx": tree_idx,
-                        "x": float(graph.x[node_id]),
-                        "y": float(graph.y[node_id])
-                    })
-                    tree_seeds.append(node_id)
-
-            value_positions.extend(tree_positions)
-
             # Compute lineage paths if requested
-            if show_lineages and tree_seeds:
-                tree = ts.at_index(tree_idx)
+            if show_lineages:
+                tree_seeds = [int(node_id) for node_id in hits.tolist()]
+                tree = trees_by_tree_idx[tree_idx]
                 name_map = {nid: str(nid) for nid in tree_seeds}
                 tree_lineages = _compute_lineage_paths(
                     tree, tree_seeds, name_map, None  # No per-sample colors, use value color
