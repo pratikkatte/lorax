@@ -78,6 +78,8 @@ function FileView() {
 
   // Visible trees state (array of tree indices visible in viewport)
   const [visibleTrees, setVisibleTrees] = useState([]);
+  const [showingAllTrees, setShowingAllTrees] = useState(false);
+  const [treesInWindowCount, setTreesInWindowCount] = useState(0);
   // Per-tree color customization { [treeIndex]: '#hexcolor' }
   const [treeColors, setTreeColors] = useState({});
   // Per-tree edge/path colors { [treeIndex]: '#hexcolor' } (CSV tree_info defaults)
@@ -97,6 +99,10 @@ function FileView() {
   const [edgeColor, setEdgeColor] = useState([100, 100, 100, 255]);
   // Controls whether model matrix recomputes on zoom interactions.
   const [lockModelMatrix, setLockModelMatrix] = useState(false);
+  // Tracks whether lock view was auto-enabled from showingAllTrees behavior.
+  const autoLockModelMatrixRef = useRef(false);
+  // User manual OFF should temporarily block auto re-enable until context reset.
+  const manualLockOffOverrideRef = useRef(false);
 
   // Hover tooltip state (rendered in website, not in core)
   const [hoverTooltip, setHoverTooltip] = useState(null); // { kind, x, y, title, rows[] }
@@ -639,6 +645,58 @@ function FileView() {
     setVisibleTrees(trees || []);
   }, []);
 
+  // Track user-driven lock view toggles separately from auto-lock behavior.
+  const handleLockModelMatrixChange = useCallback((locked) => {
+    const nextLocked = Boolean(locked);
+    autoLockModelMatrixRef.current = false;
+    manualLockOffOverrideRef.current = !nextLocked;
+    setLockModelMatrix(nextLocked);
+  }, []);
+
+  // Track whether all trees are currently shown in the viewport.
+  const handleShowingAllTreesChange = useCallback((showing) => {
+    const nextShowing = Boolean(showing);
+    if (!nextShowing) {
+      // Context reset: user manual OFF no longer blocks future auto-enable.
+      manualLockOffOverrideRef.current = false;
+    }
+    setShowingAllTrees(nextShowing);
+  }, []);
+
+  const handleTreesInWindowCountChange = useCallback((count) => {
+    setTreesInWindowCount(Number.isFinite(count) ? count : 0);
+  }, []);
+
+  const AUTO_UNLOCK_MAX_VISIBLE_TREES = 10;
+
+  useEffect(() => {
+    autoLockModelMatrixRef.current = false;
+    manualLockOffOverrideRef.current = false;
+  }, [tsconfig?.file_path, tsconfig?.genome_length]);
+
+  // When all trees are shown, enforce lock view.
+  // If lock was auto-enabled, release it only after tree-count threshold is exceeded.
+  useEffect(() => {
+    if (
+      showingAllTrees
+      && !lockModelMatrix
+      && treesInWindowCount <= AUTO_UNLOCK_MAX_VISIBLE_TREES
+      && !manualLockOffOverrideRef.current
+    ) {
+      autoLockModelMatrixRef.current = true;
+      setLockModelMatrix(true);
+    }
+
+    if (
+      lockModelMatrix
+      && autoLockModelMatrixRef.current
+      && treesInWindowCount > AUTO_UNLOCK_MAX_VISIBLE_TREES
+    ) {
+      autoLockModelMatrixRef.current = false;
+      setLockModelMatrix(false);
+    }
+  }, [showingAllTrees, lockModelMatrix, treesInWindowCount]);
+
   const handlePolygonClick = useCallback(async (payload) => {
     const treeIndex = payload?.treeIndex;
     if (treeIndex == null) return;
@@ -701,7 +759,7 @@ function FileView() {
           project={project}
           tsconfig={tsconfig}
           lockModelMatrix={lockModelMatrix}
-          setLockModelMatrix={setLockModelMatrix}
+          setLockModelMatrix={handleLockModelMatrixChange}
         />
 
         {/* Main viewport area */}
@@ -764,6 +822,8 @@ function FileView() {
               onViewStateChange={handleDeckViewStateChange}
               onTreeLoadingChange={handleTreeLoadingChange}
               onVisibleTreesChange={handleVisibleTreesChange}
+              onShowingAllTreesChange={handleShowingAllTreesChange}
+              onTreesInWindowCountChange={handleTreesInWindowCountChange}
               hoveredTreeIndex={hoveredTreeIndex}
               polygonOptions={{ treeColors, fillColor: polygonFillColor }}
               compareInsertionColor={compareInsertionColor}

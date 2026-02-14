@@ -49,7 +49,7 @@ describe('PositionSlider lock view toggle', () => {
     await user.click(lockSwitch);
     expect(setLockModelMatrix).toHaveBeenCalledWith(true);
     expect(
-      screen.getByText(/Lock view enabled: zoom changes will not fetch trees/i)
+      screen.getByText(/Trees are frozen in place/i)
     ).toBeInTheDocument();
   });
 });

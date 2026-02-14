@@ -114,6 +114,10 @@ const LoraxDeckGL = forwardRef(({
   onTreeLoadingChange,
   // Visible trees change callback
   onVisibleTreesChange,
+  // Whether current viewport includes all trees
+  onShowingAllTreesChange,
+  // Number of trees in current genomic window (interval count - 1)
+  onTreesInWindowCountChange,
   // External control of polygon hover (for list-to-polygon sync)
   hoveredTreeIndex,
   // Optional: per-tree edge coloring (CSV "color by tree")
@@ -236,6 +240,11 @@ const LoraxDeckGL = forwardRef(({
     return Array.from(localBins.keys());
   }, [localBins]);
 
+  const treesInWindowCount = useMemo(() => {
+    if (!Array.isArray(allIntervalsInView) || allIntervalsInView.length < 2) return 0;
+    return allIntervalsInView.length - 1;
+  }, [allIntervalsInView]);
+
   // 6c. Fetch tree data from backend (auto-triggers on displayArray change)
   // Uses frontend caching to avoid re-fetching already loaded trees
   const { treeData, isLoading: treeDataLoading, error: treeDataError } = useTreeData({
@@ -258,6 +267,16 @@ const LoraxDeckGL = forwardRef(({
       onVisibleTreesChange(displayArray);
     }
   }, [displayArray, onVisibleTreesChange]);
+
+  // 6c.3. Notify parent when viewport reaches "showing all trees" state
+  useEffect(() => {
+    onShowingAllTreesChange?.(showingAllTrees);
+  }, [showingAllTrees, onShowingAllTreesChange]);
+
+  // 6c.4. Notify parent when trees-in-window count changes
+  useEffect(() => {
+    onTreesInWindowCountChange?.(treesInWindowCount);
+  }, [treesInWindowCount, onTreesInWindowCountChange]);
 
   // 6d. Compute render data (typed arrays) for tree visualization
   const { renderData: baseRenderData, isLoading: renderDataLoading } = useRenderData({
@@ -993,6 +1012,7 @@ const LoraxDeckGL = forwardRef(({
     localBins,
     displayArray,
     showingAllTrees,
+    treesInWindowCount,
     // Tree data from backend
     treeData,
     treeDataLoading,
@@ -1019,7 +1039,7 @@ const LoraxDeckGL = forwardRef(({
     },
     getSVGString,
     getPNGBlob
-  }), [viewState, views, viewReset, xzoom, yzoom, genomicCoords, setGenomicCoords, coordsReady, localBins, displayArray, showingAllTrees, treeData, treeDataLoading, treeDataError, polygons, hoveredPolygon, setHoveredPolygon, polygonsReady, getSVGString, getPNGBlob]);
+  }), [viewState, views, viewReset, xzoom, yzoom, genomicCoords, setGenomicCoords, coordsReady, localBins, displayArray, showingAllTrees, treesInWindowCount, treeData, treeDataLoading, treeDataError, polygons, hoveredPolygon, setHoveredPolygon, polygonsReady, getSVGString, getPNGBlob]);
 
   return (
     <div
