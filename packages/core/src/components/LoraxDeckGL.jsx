@@ -528,8 +528,7 @@ const LoraxDeckGL = forwardRef(({
     const defaultColor = [0, 0, 0, 255];
     const defaultRadius = 7;
 
-    // `mut_x` is normalized time (vertical), `mut_y` is normalized layout (horizontal, backend-swapped).
-    // World X for mutation markers = mut_y * scaleX + translateX; World Y = mut_x.
+    // Canonical axis contract: mut_x is horizontal layout, mut_y is vertical time.
     const n = Math.min(
       treeData.mut_node_id.length,
       treeData.mut_tree_idx.length,
@@ -548,8 +547,8 @@ const LoraxDeckGL = forwardRef(({
       const scaleX = m[0];
       const translateX = m[12];
 
-      const time = treeData.mut_x[i];
-      const layout = treeData.mut_y[i];
+      const layout = treeData.mut_x[i];
+      const time = treeData.mut_y[i];
       if (!Number.isFinite(time) || !Number.isFinite(layout)) continue;
 
       const worldX = layout * scaleX + translateX;
@@ -633,12 +632,9 @@ const LoraxDeckGL = forwardRef(({
             const nodePos = nodePositions.get(nodeId);
             if (!nodePos) continue;
 
-            // Apply model matrix transform
-            // In tree coordinates: y is horizontal (genomic/time), x is vertical (layout)
-            // worldX = nodePos.y * scaleX + translateX (horizontal position)
-            // worldY = nodePos.x * scaleY + translateY (vertical position)
-            const worldX = nodePos.y * scaleX + translateX;
-            const worldY = nodePos.x * scaleY + translateY;
+            // Apply model matrix transform using canonical x/y semantics.
+            const worldX = nodePos.x * scaleX + translateX;
+            const worldY = nodePos.y * scaleY + translateY;
 
             if (i > 0 && pathCoords.length > 0) {
               // Insert L-shaped corner: horizontal then vertical
@@ -687,10 +683,10 @@ const LoraxDeckGL = forwardRef(({
         const translateY = m[13];
 
         for (const e of inserted) {
-          const parentWorldX = e.parent_y * scaleX + translateX;
-          const parentWorldY = e.parent_x * scaleY + translateY;
-          const childWorldX = e.child_y * scaleX + translateX;
-          const childWorldY = e.child_x * scaleY + translateY;
+          const parentWorldX = e.parent_x * scaleX + translateX;
+          const parentWorldY = e.parent_y * scaleY + translateY;
+          const childWorldX = e.child_x * scaleX + translateX;
+          const childWorldY = e.child_y * scaleY + translateY;
           edges.push({
             path: [[parentWorldX, parentWorldY], [childWorldX, parentWorldY], [childWorldX, childWorldY]],
             color: insertedColor
@@ -708,10 +704,10 @@ const LoraxDeckGL = forwardRef(({
         const translateY = m[13];
 
         for (const e of removed) {
-          const parentWorldX = e.parent_y * scaleX + translateX;
-          const parentWorldY = e.parent_x * scaleY + translateY;
-          const childWorldX = e.child_y * scaleX + translateX;
-          const childWorldY = e.child_x * scaleY + translateY;
+          const parentWorldX = e.parent_x * scaleX + translateX;
+          const parentWorldY = e.parent_y * scaleY + translateY;
+          const childWorldX = e.child_x * scaleX + translateX;
+          const childWorldY = e.child_y * scaleY + translateY;
           edges.push({
             path: [[parentWorldX, parentWorldY], [childWorldX, parentWorldY], [childWorldX, childWorldY]],
             color: removedColor
@@ -807,9 +803,9 @@ const LoraxDeckGL = forwardRef(({
     updateFromArray(renderData?.tipPositions);
 
     if (!Number.isFinite(minY) || !Number.isFinite(maxY)) {
-      const xs = treeData?.x;
-      if (Array.isArray(xs) && xs.length > 0) {
-        for (const v of xs) {
+      const ys = treeData?.y;
+      if (Array.isArray(ys) && ys.length > 0) {
+        for (const v of ys) {
           if (!Number.isFinite(v)) continue;
           if (v < minY) minY = v;
           if (v > maxY) maxY = v;

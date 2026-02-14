@@ -36,7 +36,7 @@ async def get_ancestors(
     Returns:
         Dict with:
         - ancestors: List of node IDs from node to root (excluding the query node)
-        - path: List of (node_id, time, x, y) tuples for visualization
+        - path: List of {node_id, time, x, y} for visualization (x=layout, y=time)
         - error: Error message if tree not cached
     """
     tg = await tree_graph_cache.get(session_id, tree_index)
@@ -70,8 +70,8 @@ async def get_ancestors(
     path.append({
         "node_id": int(node_id),
         "time": float(tg.time[node_id]),
-        "x": float(tg.y[node_id]),  # Backend convention: y = time -> frontend x
-        "y": float(tg.x[node_id])   # Backend convention: x = layout -> frontend y
+        "x": float(tg.x[node_id]),
+        "y": float(tg.y[node_id])
     })
 
     current = node_id
@@ -84,8 +84,8 @@ async def get_ancestors(
         path.append({
             "node_id": int(parent),
             "time": float(tg.time[parent]),
-            "x": float(tg.y[parent]),
-            "y": float(tg.x[parent])
+            "x": float(tg.x[parent]),
+            "y": float(tg.y[parent])
         })
         current = parent
 
@@ -203,7 +203,7 @@ async def search_nodes_by_criteria(
     Returns:
         Dict with:
         - matches: List of matching node IDs
-        - positions: List of {node_id, x, y, time} for each match
+        - positions: List of {node_id, x, y, time} for each match (x=layout, y=time)
         - error: Error message if tree not cached
     """
     tg = await tree_graph_cache.get(session_id, tree_index)
@@ -231,8 +231,8 @@ async def search_nodes_by_criteria(
             matches.append(int(node_id))
             positions.append({
                 "node_id": int(node_id),
-                "x": float(tg.y[node_id]),  # time -> frontend x
-                "y": float(tg.x[node_id]),  # layout -> frontend y
+                "x": float(tg.x[node_id]),
+                "y": float(tg.y[node_id]),
                 "time": float(tg.time[node_id])
             })
 
@@ -278,13 +278,13 @@ def _matches_criteria(tg: "TreeGraph", node_id: int, criteria: Dict[str, Any]) -
         if criteria["has_children"] != has_children:
             return False
 
-    # Y (layout) position range
+    # Y (time) position range
     if "min_y" in criteria:
-        if tg.x[node_id] < criteria["min_y"]:  # x in backend = y in frontend
+        if tg.y[node_id] < criteria["min_y"]:
             return False
 
     if "max_y" in criteria:
-        if tg.x[node_id] > criteria["max_y"]:
+        if tg.y[node_id] > criteria["max_y"]:
             return False
 
     return True
@@ -309,7 +309,7 @@ async def get_subtree(
 
     Returns:
         Dict with:
-        - nodes: List of {node_id, parent_id, x, y, time, is_tip}
+        - nodes: List of {node_id, parent_id, x, y, time, is_tip} (x=layout, y=time)
         - edges: List of {parent, child} pairs
         - error: Error message if tree not cached
     """
@@ -352,8 +352,8 @@ async def get_subtree(
         nodes.append({
             "node_id": int(node_id),
             "parent_id": int(tg.parent[node_id]),
-            "x": float(tg.y[node_id]),
-            "y": float(tg.x[node_id]),
+            "x": float(tg.x[node_id]),
+            "y": float(tg.y[node_id]),
             "time": float(tg.time[node_id]),
             "is_tip": tg.is_tip(node_id)
         })
@@ -396,7 +396,7 @@ async def get_mrca(
         Dict with:
         - mrca: Node ID of the MRCA, or None if not found
         - mrca_time: Time of the MRCA node
-        - mrca_position: {x, y} of the MRCA
+        - mrca_position: {x, y} of the MRCA (x=layout, y=time)
         - error: Error message if tree not cached
     """
     if not node_ids or len(node_ids) < 2:
@@ -448,8 +448,8 @@ async def get_mrca(
         "mrca": int(mrca),
         "mrca_time": float(tg.time[mrca]),
         "mrca_position": {
-            "x": float(tg.y[mrca]),
-            "y": float(tg.x[mrca])
+            "x": float(tg.x[mrca]),
+            "y": float(tg.y[mrca])
         },
         "tree_index": tree_index,
         "query_nodes": node_ids

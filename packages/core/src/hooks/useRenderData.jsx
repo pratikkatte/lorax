@@ -39,7 +39,7 @@ function shouldSkipRender(localBins, treeData) {
  *
  * @param {Object} params
  * @param {Map|null} params.localBins - Map of tree_idx -> { modelMatrix, ... } from useLocalData
- * @param {Object|null} params.treeData - { node_id[], parent_id[], is_tip[], tree_idx[], x[], y[] } from useTreeData
+ * @param {Object|null} params.treeData - { node_id[], parent_id[], is_tip[], tree_idx[], x(layout)[], y(time)[] } from useTreeData
  * @param {Array|null} params.displayArray - Global tree indices that were requested from backend
  * @param {Object} params.metadataArrays - Optional metadata for tip coloring
  * @param {Object} params.metadataColors - Optional color mapping for metadata values

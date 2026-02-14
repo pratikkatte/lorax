@@ -12,8 +12,8 @@
  * @param {Array} parent_id - Parent node IDs
  * @param {Array} is_tip - Tip flags
  * @param {Array} tree_idx - Tree indices from backend (may be 0-indexed or global)
- * @param {Array} x - X coordinates
- * @param {Array} y - Y coordinates
+ * @param {Array} x - X coordinates (layout/horizontal)
+ * @param {Array} y - Y coordinates (time/vertical)
  * @param {Array} name - Node names (for tips)
  * @param {Array} displayArray - Global tree indices that were requested (for mapping)
  * @returns {Map} Map of global tree index -> nodes
@@ -61,8 +61,8 @@ export function groupNodesByTree(node_id, parent_id, is_tip, tree_idx, x, y, nam
 /**
  * Group mutations by tree index for efficient per-tree processing.
  *
- * @param {Array} mut_x - X coordinates (time-based)
- * @param {Array} mut_y - Y coordinates (layout-based)
+ * @param {Array} mut_x - X coordinates (layout/horizontal)
+ * @param {Array} mut_y - Y coordinates (time/vertical)
  * @param {Array} mut_tree_idx - Tree indices from backend
  * @returns {Map} Map of global tree index -> mutations
  */

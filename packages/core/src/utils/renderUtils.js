@@ -19,11 +19,11 @@ export { groupNodesByTree, groupMutationsByTree, getTipColor };
  * @param {Array} data.parent_id - Parent node IDs (-1 for roots)
  * @param {Array} data.is_tip - Boolean flags for tip nodes
  * @param {Array} data.tree_idx - Tree index for each node
- * @param {Array} data.x - X coordinates (time-based [0,1])
- * @param {Array} data.y - Y coordinates (genealogy-based [0,1])
+ * @param {Array} data.x - X coordinates (layout/horizontal [0,1])
+ * @param {Array} data.y - Y coordinates (time/vertical [0,1])
  * @param {Array} data.name - Node names (for tips)
- * @param {Array} data.mut_x - Mutation X coordinates
- * @param {Array} data.mut_y - Mutation Y coordinates
+ * @param {Array} data.mut_x - Mutation X coordinates (layout/horizontal)
+ * @param {Array} data.mut_y - Mutation Y coordinates (time/vertical)
  * @param {Array} data.mut_tree_idx - Mutation tree indices
  * @param {Array} data.modelMatrices - Array of {key, modelMatrix} objects or Map
  * @param {Array} data.displayArray - Global tree indices that were requested
@@ -76,7 +76,7 @@ export function computeRenderArrays(data) {
   // Group nodes by tree (with mapping from backend's tree_idx to global indices)
   const treeNodesMap = groupNodesByTree(node_id, parent_id, is_tip, tree_idx, x, y, name, displayArray);
 
-  // Group mutations by tree (simplified: only x, y, tree_idx)
+  // Group mutations by tree (layout x, time y).
   const treeMutationsMap = groupMutationsByTree(mut_x, mut_y, mut_tree_idx);
 
   // Calculate total nodes and mutations for buffer sizing
@@ -162,22 +162,20 @@ export function computeRenderArrays(data) {
     for (const node of nodeMap.values()) {
       if (node.children.length === 0) continue;
 
-      const py = node.y;  // Parent Y (normalized [0, 1])
-      const pt = node.x;  // Parent X (time)
+      const px = node.x;
+      const py = node.y;
 
       for (const childNode of node.children) {
+        const cx = childNode.x;
         const cy = childNode.y;
-        const ct = childNode.x;
 
-        // L-shape path: parent -> horizontal to child y -> down to child
-        // World X = y * scaleX + translateX (y is the horizontal spread)
-        // World Y = t (time is the vertical axis)
-        pathBuffer[pathOffset++] = py * scaleX + translateX;
-        pathBuffer[pathOffset++] = pt;
-        pathBuffer[pathOffset++] = cy * scaleX + translateX;
-        pathBuffer[pathOffset++] = pt;
-        pathBuffer[pathOffset++] = cy * scaleX + translateX;
-        pathBuffer[pathOffset++] = ct;
+        // L-shape path: parent -> horizontal to child x -> vertical to child y.
+        pathBuffer[pathOffset++] = px * scaleX + translateX;
+        pathBuffer[pathOffset++] = py;
+        pathBuffer[pathOffset++] = cx * scaleX + translateX;
+        pathBuffer[pathOffset++] = py;
+        pathBuffer[pathOffset++] = cx * scaleX + translateX;
+        pathBuffer[pathOffset++] = cy;
 
         pathStartIndicesBuffer[pathStartIndexCount++] = pathOffset / 2;
         edgeData.push({
@@ -192,8 +190,8 @@ export function computeRenderArrays(data) {
     // Collect tip positions and colors
     for (const node of nodeMap.values()) {
       if (node.is_tip) {
-        const tipX = node.y * scaleX + translateX;
-        const tipY = node.x;
+        const tipX = node.x * scaleX + translateX;
+        const tipY = node.y;
 
         tipBuffer[tipOffset++] = tipX;
         tipBuffer[tipOffset++] = tipY;
@@ -225,11 +223,9 @@ export function computeRenderArrays(data) {
     const treeMutations = treeMutationsMap.get(treeIdx);
     if (treeMutations && treeMutations.length > 0) {
       for (const mut of treeMutations) {
-        // Apply same transform as nodes:
-        // World X = y (layout) * scaleX + translateX (horizontal position)
-        // World Y = x (time) (vertical position)
-        const mutWorldX = mut.y * scaleX + translateX;
-        const mutWorldY = mut.x;
+        // Apply same transform as nodes.
+        const mutWorldX = mut.x * scaleX + translateX;
+        const mutWorldY = mut.y;
 
         mutBuffer[mutOffset++] = mutWorldX;
         mutBuffer[mutOffset++] = mutWorldY;

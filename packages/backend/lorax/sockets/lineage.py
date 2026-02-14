@@ -36,7 +36,7 @@ def register_lineage_events(sio):
 
         Returns: {
             ancestors: [int],           # Node IDs from node to root
-            path: [{node_id, time, x, y}],  # Path coordinates for visualization
+            path: [{node_id, time, x, y}],  # x=layout, y=time
             tree_index: int,
             query_node: int
         }
@@ -154,7 +154,7 @@ def register_lineage_events(sio):
 
         Returns: {
             matches: [int],
-            positions: [{node_id, x, y, time}],
+            positions: [{node_id, x, y, time}],  # x=layout, y=time
             total_matches: int
         }
         """
@@ -206,7 +206,7 @@ def register_lineage_events(sio):
         }
 
         Returns: {
-            nodes: [{node_id, parent_id, x, y, time, is_tip}],
+            nodes: [{node_id, parent_id, x, y, time, is_tip}],  # x=layout, y=time
             edges: [{parent, child}],
             total_nodes: int
         }
@@ -261,7 +261,7 @@ def register_lineage_events(sio):
         Returns: {
             mrca: int,              # Node ID of MRCA
             mrca_time: float,
-            mrca_position: {x, y},
+            mrca_position: {x, y},  # x=layout, y=time
             tree_index: int,
             query_nodes: [int]
         }

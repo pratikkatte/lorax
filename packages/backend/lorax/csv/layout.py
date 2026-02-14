@@ -119,14 +119,14 @@ def build_csv_layout_response(
         if n == 0:
             continue
 
-        # Collect nodes for this tree
-        # SWAP coordinates to match tskit convention: time -> x, layout -> y
+        # Collect nodes for this tree using canonical x/y semantics.
+        # x = layout/horizontal, y = time/vertical
         all_node_ids.append(graph.node_id)
         all_parent_ids.append(graph.parent_id)
         all_is_tip.append(graph.is_tip)
         all_tree_idx.append(np.full(n, tree_idx, dtype=np.int32))
-        all_x.append(graph.y.astype(np.float32))  # SWAP: time -> x
-        all_y.append(graph.x.astype(np.float32))  # SWAP: layout -> y
+        all_x.append(graph.x.astype(np.float32))
+        all_y.append(graph.y.astype(np.float32))
         all_names.append(np.array(graph.name, dtype=object))
 
         processed_indices.append(tree_idx)

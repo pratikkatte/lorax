@@ -541,8 +541,8 @@ async def handle_tree_graph_query(
             - parent_id: int32 (-1 for roots)
             - is_tip: bool
             - tree_idx: int32 (which tree this node belongs to)
-            - x: float32 (time-based coordinate [0,1])
-            - y: float32 (layout-based coordinate [0,1])
+            - x: float32 (layout-based coordinate [0,1])
+            - y: float32 (time-based coordinate [0,1])
         - global_min_time: float
         - global_max_time: float
         - tree_indices: list[int]
@@ -725,14 +725,14 @@ def _edges_from_tree_graph(tg) -> set:
 
 
 def _edge_with_coords(tg, parent: int, child: int) -> dict:
-    """Get edge dict with x,y coordinates (frontend convention: x=time, y=layout)."""
+    """Get edge dict with canonical x/y coordinates (x=layout, y=time)."""
     return {
         "parent": parent,
         "child": child,
-        "parent_x": float(tg.y[parent]),
-        "parent_y": float(tg.x[parent]),
-        "child_x": float(tg.y[child]),
-        "child_y": float(tg.x[child]),
+        "parent_x": float(tg.x[parent]),
+        "parent_y": float(tg.y[parent]),
+        "child_x": float(tg.x[child]),
+        "child_y": float(tg.y[child]),
     }
 
 
@@ -754,7 +754,7 @@ def _newick_node_id_to_index(ng, node_id: int) -> int | None:
 
 
 def _edge_with_coords_newick(ng, parent: int, child: int) -> dict | None:
-    """Edge dict with x,y (frontend convention: x=time, y=layout) for NewickTreeGraph."""
+    """Edge dict with canonical x/y coordinates (x=layout, y=time) for NewickTreeGraph."""
     pi = _newick_node_id_to_index(ng, parent)
     ci = _newick_node_id_to_index(ng, child)
     if pi is None or ci is None:
@@ -762,10 +762,10 @@ def _edge_with_coords_newick(ng, parent: int, child: int) -> dict | None:
     return {
         "parent": parent,
         "child": child,
-        "parent_x": float(ng.y[pi]),
-        "parent_y": float(ng.x[pi]),
-        "child_x": float(ng.y[ci]),
-        "child_y": float(ng.x[ci]),
+        "parent_x": float(ng.x[pi]),
+        "parent_y": float(ng.y[pi]),
+        "child_x": float(ng.x[ci]),
+        "child_y": float(ng.y[ci]),
     }
 
 

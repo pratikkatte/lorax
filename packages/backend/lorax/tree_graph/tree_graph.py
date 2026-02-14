@@ -144,9 +144,9 @@ class TreeGraph:
         """
         Serialize TreeGraph to PyArrow IPC format for frontend rendering.
 
-        Note: Coordinates are swapped to match backend convention:
-        - Backend x = self.y (time)
-        - Backend y = self.x (layout)
+        Coordinate contract:
+        - x = layout/horizontal
+        - y = time/vertical
 
         Args:
             tree_idx: Tree index to include in output (for multi-tree rendering)
@@ -173,14 +173,14 @@ class TreeGraph:
             child_counts = np.diff(self.children_indptr)
             is_tip = child_counts[indices] == 0
 
-            # Build PyArrow table (swap x<->y for backend convention)
+            # Build PyArrow table with canonical x/y semantics.
             table = pa.table({
                 'node_id': pa.array(indices, type=pa.int32()),
                 'parent_id': pa.array(self.parent[indices], type=pa.int32()),
                 'is_tip': pa.array(is_tip, type=pa.bool_()),
                 'tree_idx': pa.array(np.full(n, tree_idx, dtype=np.int32), type=pa.int32()),
-                'x': pa.array(self.y[indices], type=pa.float32()),  # SWAP: time -> x
-                'y': pa.array(self.x[indices], type=pa.float32()),  # SWAP: layout -> y
+                'x': pa.array(self.x[indices], type=pa.float32()),
+                'y': pa.array(self.y[indices], type=pa.float32()),
             })
 
         # Serialize to IPC format
@@ -314,8 +314,8 @@ def _process_single_tree(
     is_tip = child_counts[indices] == 0
     node_ids = indices
     parent_ids = graph.parent[indices]
-    x = graph.y[indices]
-    y = graph.x[indices]
+    x = graph.x[indices]
+    y = graph.y[indices]
 
     if sparsification and sparsify_resolution is not None:
         order = np.argsort(node_ids)
@@ -422,8 +422,8 @@ def _process_single_tree(
                 )
                 mut_time_norm[nan_mask] = (node_y + parent_y) / 2.0
             mut_time_norm = mut_time_norm.astype(np.float32)
-            mut_x = mut_time_norm
-            mut_y = mut_layout
+            mut_x = mut_layout
+            mut_y = mut_time_norm
 
             n_muts_before = n_muts
             # When sparsification is enabled, only keep mutations on nodes that survived
@@ -791,8 +791,8 @@ def _sparsify_mutations(mut_x, mut_y, mut_tree_idx, mut_node_id, resolution):
     distribution while reducing payload when many mutations cluster.
 
     Args:
-        mut_x: float32 array of x coordinates (time, normalized [0,1])
-        mut_y: float32 array of y coordinates (layout, normalized [0,1])
+        mut_x: float32 array of x coordinates (layout, normalized [0,1])
+        mut_y: float32 array of y coordinates (time, normalized [0,1])
         mut_tree_idx: int32 array of tree indices
         mut_node_id: int32 array of node IDs (unused for dedup, kept for output)
         resolution: Grid resolution (e.g., 500 for cell_size=0.002)

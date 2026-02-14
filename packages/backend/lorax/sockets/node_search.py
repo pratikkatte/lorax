@@ -276,14 +276,11 @@ def register_node_search_events(sio):
                     if arr_idx is None:
                         continue
 
-                    # Match the coordinate convention used by CSV layout buffer:
-                    # build_csv_layout_response swaps (time->x, layout->y).
                     positions.append(
                         {
                             "node_id": int(target_node_id),
                             "tree_idx": int(tree_idx),
-                            # Match tskit highlight convention: x=layout, y=time.
-                            # (tskit highlight uses TreeGraph internal coords, not the swapped PyArrow coords)
+                            # Canonical axis contract: x=layout, y=time.
                             "x": float(graph.x[arr_idx]),
                             "y": float(graph.y[arr_idx]),
                         }
@@ -424,7 +421,7 @@ def register_node_search_events(sio):
                             {
                                 "node_id": int(node_id),
                                 "tree_idx": int(tree_idx),
-                                # Match tskit highlight convention: x=layout, y=time.
+                                # Canonical axis contract: x=layout, y=time.
                                 "x": float(graph.x[arr_idx]),
                                 "y": float(graph.y[arr_idx]),
                             }
