@@ -524,6 +524,9 @@ async def handle_tree_graph_query(
     csv_tree_graph_cache=None,
     actual_display_array=None,
     sparsify_cell_size_multiplier: float | None = None,
+    adaptive_sparsify_bbox: dict | None = None,
+    adaptive_target_tree_idx: int | None = None,
+    adaptive_outside_cell_size: float | None = None,
 ):
     """
     Construct trees using Numba-optimized tree_graph module.
@@ -535,6 +538,9 @@ async def handle_tree_graph_query(
         session_id: Session ID for cache lookup/storage
         tree_graph_cache: TreeGraphCache instance for caching TreeGraph objects
         sparsify_cell_size_multiplier: Optional multiplier applied to sparsify cell size.
+        adaptive_sparsify_bbox: Optional normalized local bbox for adaptive in-bbox densification.
+        adaptive_target_tree_idx: Optional tree index that adaptive bbox applies to.
+        adaptive_outside_cell_size: Optional fixed outside-bbox cell size for adaptive sparsification.
 
     Returns:
         dict with:
@@ -636,6 +642,9 @@ async def handle_tree_graph_query(
             sparsify_mutations=sparsification,  # When nodes are sparsified, sparsify mutations too
             pre_cached_graphs=pre_cached_graphs,
             sparsify_cell_size_multiplier=sparsify_cell_size_multiplier,
+            adaptive_sparsify_bbox=adaptive_sparsify_bbox,
+            adaptive_target_tree_idx=adaptive_target_tree_idx,
+            adaptive_outside_cell_size=adaptive_outside_cell_size,
         )
 
     buffer, min_time, max_time, processed_indices, newly_built = await asyncio.to_thread(process_trees)

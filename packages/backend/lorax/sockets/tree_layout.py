@@ -13,6 +13,7 @@ from lorax.sockets.decorators import require_session
 from lorax.sockets.utils import is_csv_session_file
 
 logger = logging.getLogger(__name__)
+ADAPTIVE_OUTSIDE_CELL_SIZE = 0.002
 
 
 def _clamp(value, min_value, max_value):
@@ -41,74 +42,84 @@ def _parse_float_like(value):
     return numeric
 
 
-def _parse_lock_view_payload(lock_view):
-    """Parse minimal lockView payload for target-only adaptive requests."""
-    if not isinstance(lock_view, dict):
-        return {
-            "enabled": False,
-            "bounding_box": None,
-            "adaptive_target": None,
-            "display_array_signature": None,
-        }
+def _parse_target_local_bbox(raw_target_local_bbox):
+    if not isinstance(raw_target_local_bbox, dict):
+        return None
 
-    bounding_box = lock_view.get("boundingBox")
-    if not isinstance(bounding_box, dict):
-        bounding_box = None
+    tree_index = _parse_int_like(raw_target_local_bbox.get("treeIndex"))
+    min_x = _parse_float_like(raw_target_local_bbox.get("minX"))
+    max_x = _parse_float_like(raw_target_local_bbox.get("maxX"))
+    min_y = _parse_float_like(raw_target_local_bbox.get("minY"))
+    max_y = _parse_float_like(raw_target_local_bbox.get("maxY"))
 
-    adaptive_target_raw = lock_view.get("adaptiveTarget")
-    adaptive_target = None
-    if isinstance(adaptive_target_raw, dict):
-        adaptive_tree_index = _parse_int_like(adaptive_target_raw.get("treeIndex"))
-        if adaptive_tree_index is not None:
-            coverage_x = _parse_float_like(adaptive_target_raw.get("coverageX"))
-            coverage_y = _parse_float_like(adaptive_target_raw.get("coverageY"))
-            coverage_area = _parse_float_like(adaptive_target_raw.get("coverageArea"))
+    if (
+        tree_index is None
+        or min_x is None
+        or max_x is None
+        or min_y is None
+        or max_y is None
+    ):
+        return None
 
-            if coverage_x is not None:
-                coverage_x = _clamp(coverage_x, 0.0, 1.0)
-            if coverage_y is not None:
-                coverage_y = _clamp(coverage_y, 0.0, 1.0)
-            if coverage_area is None and coverage_x is not None and coverage_y is not None:
-                coverage_area = coverage_x * coverage_y
-            if coverage_area is not None:
-                coverage_area = _clamp(coverage_area, 0.0, 1.0)
-
-            profile = adaptive_target_raw.get("profile")
-            if not isinstance(profile, str) or profile.strip() == "":
-                profile = "balanced"
-
-            adaptive_target = {
-                "tree_index": adaptive_tree_index,
-                "coverage_x": coverage_x,
-                "coverage_y": coverage_y,
-                "coverage_area": coverage_area,
-                "profile": profile,
-            }
-
-    display_array_signature = lock_view.get("displayArraySignature")
-    if not isinstance(display_array_signature, str):
-        display_array_signature = None
+    min_x = _clamp(min_x, 0.0, 1.0)
+    max_x = _clamp(max_x, 0.0, 1.0)
+    min_y = _clamp(min_y, 0.0, 1.0)
+    max_y = _clamp(max_y, 0.0, 1.0)
 
     return {
-        "enabled": True,
-        "bounding_box": bounding_box,
-        "adaptive_target": adaptive_target,
-        "display_array_signature": display_array_signature,
+        "tree_index": tree_index,
+        "min_x": min(min_x, max_x),
+        "max_x": max(min_x, max_x),
+        "min_y": min(min_y, max_y),
+        "max_y": max(min_y, max_y),
     }
 
 
-def _compute_target_sparsify_multiplier(lock_view_info):
-    """Compute lock-target sparsify multiplier using balanced adaptive profile."""
+def _parse_lock_view_payload(lock_view):
+    """Parse minimal lockView payload: targetIndex and targetLocalBBox only."""
+    if not isinstance(lock_view, dict):
+        return {
+            "enabled": False,
+            "target_index": None,
+            "target_local_bbox": None,
+        }
+
+    target_index = _parse_int_like(lock_view.get("targetIndex"))
+    target_local_bbox = _parse_target_local_bbox(lock_view.get("targetLocalBBox"))
+    if target_index is None and isinstance(target_local_bbox, dict):
+        target_index = _parse_int_like(target_local_bbox.get("tree_index"))
+
+    enabled = target_index is not None or target_local_bbox is not None
+    return {
+        "enabled": enabled,
+        "target_index": target_index,
+        "target_local_bbox": target_local_bbox,
+    }
+
+
+def _compute_target_sparsify_multiplier_from_bbox(target_local_bbox):
+    """Compute sparsify multiplier from targetLocalBBox area (coverage)."""
     fallback_multiplier = 0.45
-    adaptive_target = lock_view_info.get("adaptive_target")
-    if not isinstance(adaptive_target, dict):
+    if not isinstance(target_local_bbox, dict):
         return fallback_multiplier
-
-    coverage_area = adaptive_target.get("coverage_area")
-    if not isinstance(coverage_area, (int, float)) or not math.isfinite(float(coverage_area)):
+    min_x = target_local_bbox.get("min_x")
+    max_x = target_local_bbox.get("max_x")
+    min_y = target_local_bbox.get("min_y")
+    max_y = target_local_bbox.get("max_y")
+    if None in (min_x, max_x, min_y, max_y):
         return fallback_multiplier
-
-    coverage = _clamp(float(coverage_area), 0.01, 1.0)
+    try:
+        min_x = float(min_x)
+        max_x = float(max_x)
+        min_y = float(min_y)
+        max_y = float(max_y)
+    except (TypeError, ValueError):
+        return fallback_multiplier
+    if not all(math.isfinite(v) for v in (min_x, max_x, min_y, max_y)):
+        return fallback_multiplier
+    width = max(0.0, max(max_x, min_x) - min(max_x, min_x))
+    height = max(0.0, max(max_y, min_y) - min(max_y, min_y))
+    coverage = _clamp(width * height, 0.01, 1.0)
     multiplier = 0.30 + 1.40 * math.sqrt(coverage)
     return _clamp(multiplier, 0.25, 1.75)
 
@@ -162,36 +173,37 @@ def register_tree_layout_events(sio):
             use_target_adaptive_sparsification = False
             target_tree_idx = None
             target_sparsify_multiplier = None
+            target_sparsify_bbox = None
 
-            adaptive_target = lock_view_info.get("adaptive_target")
-            if lock_view_info["enabled"] and len(display_array) == 1 and isinstance(adaptive_target, dict):
-                adaptive_tree_index = adaptive_target.get("tree_index")
-                if isinstance(adaptive_tree_index, int) and adaptive_tree_index == display_array[0]:
+            target_index = lock_view_info.get("target_index")
+            target_local_bbox = lock_view_info.get("target_local_bbox")
+            if lock_view_info["enabled"] and len(display_array) == 1:
+                resolved_target = target_index if target_index is not None else (
+                    target_local_bbox.get("tree_index") if isinstance(target_local_bbox, dict) else None
+                )
+                if resolved_target is not None and resolved_target == display_array[0]:
                     use_target_adaptive_sparsification = True
-                    target_tree_idx = adaptive_tree_index
-                    target_sparsify_multiplier = _compute_target_sparsify_multiplier(lock_view_info)
+                    target_tree_idx = resolved_target
+                    target_sparsify_multiplier = _compute_target_sparsify_multiplier_from_bbox(target_local_bbox)
                     sparsification = True
+
+                    if isinstance(target_local_bbox, dict) and target_local_bbox.get("tree_index") == target_tree_idx:
+                        target_sparsify_bbox = {
+                            "min_x": target_local_bbox["min_x"],
+                            "max_x": target_local_bbox["max_x"],
+                            "min_y": target_local_bbox["min_y"],
+                            "max_y": target_local_bbox["max_y"],
+                        }
 
             if lock_view_info["enabled"]:
                 print(
                     "[process_postorder_layout] lockView payload received "
                     f"session={lorax_sid} request_id={request_id} "
                     f"display_array={display_array} "
-                    f"actual_display_array={actual_display_array}"
-                )
-                print(
-                    "[process_postorder_layout] lockView boundingBox "
-                    f"session={lorax_sid} request_id={request_id} "
-                    f"boundingBox={lock_view_info['bounding_box']}"
-                )
-                print(
-                    "[process_postorder_layout] lockView plan "
-                    f"session={lorax_sid} request_id={request_id} "
-                    f"display_count={len(display_array)} "
                     f"actual_display_array={actual_display_array} "
                     f"target_tree_idx={target_tree_idx} "
-                    f"use_target_adaptive_sparsification={use_target_adaptive_sparsification} "
                     f"target_sparsify_multiplier={target_sparsify_multiplier} "
+                    f"target_sparsify_bbox={target_sparsify_bbox} "
                     f"sparsification={'sparse' if sparsification else 'full'}"
                 )
             elif isinstance(raw_lock_view, dict):
@@ -223,7 +235,8 @@ def register_tree_layout_events(sio):
                     f"target_tree_idx={target_tree_idx} "
                     f"display_array={display_array} "
                     f"actual_display_array={actual_display_array} "
-                    f"target_sparsify_multiplier={target_sparsify_multiplier}"
+                    f"target_sparsify_multiplier={target_sparsify_multiplier} "
+                    f"target_sparsify_bbox={target_sparsify_bbox}"
                 )
 
             result = await handle_tree_graph_query(
@@ -235,6 +248,11 @@ def register_tree_layout_events(sio):
                 csv_tree_graph_cache=csv_tree_graph_cache,
                 actual_display_array=actual_display_array,
                 sparsify_cell_size_multiplier=target_sparsify_multiplier,
+                adaptive_sparsify_bbox=target_sparsify_bbox,
+                adaptive_target_tree_idx=target_tree_idx,
+                adaptive_outside_cell_size=(
+                    ADAPTIVE_OUTSIDE_CELL_SIZE if use_target_adaptive_sparsification else None
+                ),
             )
 
             if "error" in result:

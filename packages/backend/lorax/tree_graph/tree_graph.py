@@ -22,6 +22,7 @@ from typing import List, Optional, Tuple
 DEFAULT_SPARSIFY_CELL_SIZE = 0.002
 MIN_SPARSIFY_CELL_SIZE = 0.0004
 MAX_SPARSIFY_CELL_SIZE = 0.008
+ADAPTIVE_INSIDE_MAX_MULTIPLIER = 0.95
 
 # Minimum tree count to enable parallel processing (avoids executor overhead for small batches)
 PARALLEL_TREE_THRESHOLD = 2
@@ -62,6 +63,40 @@ def _resolve_sparsify_cell_size(
 
     effective_cell_size = base_cell_size * multiplier
     return float(np.clip(effective_cell_size, MIN_SPARSIFY_CELL_SIZE, MAX_SPARSIFY_CELL_SIZE))
+
+
+def _normalize_adaptive_bbox(adaptive_sparsify_bbox):
+    """Normalize optional adaptive bbox to clipped local [0,1] min/max bounds."""
+    if not isinstance(adaptive_sparsify_bbox, dict):
+        return None
+
+    try:
+        min_x = float(adaptive_sparsify_bbox.get("min_x"))
+        max_x = float(adaptive_sparsify_bbox.get("max_x"))
+        min_y = float(adaptive_sparsify_bbox.get("min_y"))
+        max_y = float(adaptive_sparsify_bbox.get("max_y"))
+    except (TypeError, ValueError):
+        return None
+
+    if not (
+        np.isfinite(min_x)
+        and np.isfinite(max_x)
+        and np.isfinite(min_y)
+        and np.isfinite(max_y)
+    ):
+        return None
+
+    min_x = float(np.clip(min_x, 0.0, 1.0))
+    max_x = float(np.clip(max_x, 0.0, 1.0))
+    min_y = float(np.clip(min_y, 0.0, 1.0))
+    max_y = float(np.clip(max_y, 0.0, 1.0))
+
+    return {
+        "min_x": min(min_x, max_x),
+        "max_x": max(min_x, max_x),
+        "min_y": min(min_y, max_y),
+        "max_y": max(min_y, max_y),
+    }
 
 @njit(cache=True)
 def _compute_x_postorder(children_indptr, children_data, roots, num_nodes):
@@ -315,6 +350,10 @@ def _process_single_tree(
     mutations,
     mutation_positions,
     pre_cached_graph,
+    adaptive_sparsify_bbox,
+    adaptive_target_tree_idx,
+    adaptive_outside_resolution,
+    adaptive_inside_resolution,
 ):
     """
     Process a single tree: construct, optionally sparsify/collapse, collect mutations.
@@ -337,13 +376,29 @@ def _process_single_tree(
     if n == 0:
         return (tree_idx, graph if newly_built else None, newly_built, None, None, None, None, None, 0, None)
 
-    n_nodes_before = n
     child_counts = np.diff(graph.children_indptr)
     is_tip = child_counts[indices] == 0
     node_ids = indices
     parent_ids = graph.parent[indices]
     x = graph.x[indices]
     y = graph.y[indices]
+
+    adaptive_bbox_bounds = None
+    if isinstance(adaptive_sparsify_bbox, dict):
+        adaptive_bbox_bounds = (
+            float(adaptive_sparsify_bbox["min_x"]),
+            float(adaptive_sparsify_bbox["max_x"]),
+            float(adaptive_sparsify_bbox["min_y"]),
+            float(adaptive_sparsify_bbox["max_y"]),
+        )
+
+    adaptive_for_tree = (
+        adaptive_bbox_bounds is not None
+        and adaptive_target_tree_idx is not None
+        and int(adaptive_target_tree_idx) == tree_idx
+        and adaptive_outside_resolution is not None
+        and adaptive_inside_resolution is not None
+    )
 
     if sparsification and sparsify_resolution is not None:
         order = np.argsort(node_ids)
@@ -354,12 +409,26 @@ def _process_single_tree(
         safe_pos = np.minimum(pos, n - 1)
         valid = (parent_ids != -1) & (pos < n) & (sorted_ids[safe_pos] == parent_ids)
         parent_indices[valid] = order[pos[valid]]
-        keep_mask = _sparsify_edges(
-            x.astype(np.float32),
-            y.astype(np.float32),
-            parent_indices.astype(np.int32),
-            sparsify_resolution,
-        )
+        if adaptive_for_tree:
+            bbox_min_x, bbox_max_x, bbox_min_y, bbox_max_y = adaptive_bbox_bounds
+            keep_mask = _sparsify_edges_adaptive(
+                x.astype(np.float32),
+                y.astype(np.float32),
+                parent_indices.astype(np.int32),
+                int(adaptive_outside_resolution),
+                int(adaptive_inside_resolution),
+                float(bbox_min_x),
+                float(bbox_max_x),
+                float(bbox_min_y),
+                float(bbox_max_y),
+            )
+        else:
+            keep_mask = _sparsify_edges(
+                x.astype(np.float32),
+                y.astype(np.float32),
+                parent_indices.astype(np.int32),
+                sparsify_resolution,
+            )
         node_ids = node_ids[keep_mask]
         parent_ids = parent_ids[keep_mask]
         x = x[keep_mask]
@@ -450,11 +519,9 @@ def _process_single_tree(
             mut_x = mut_layout
             mut_y = mut_time_norm
 
-            n_muts_before = n_muts
             # When sparsification is enabled, only keep mutations on nodes that survived
             # edge sparsification (avoids orphaned mutations referencing removed nodes)
             if sparsification:
-                
                 keep = np.isin(mut_node_ids, node_ids)
                 if not np.all(keep):  # Only slice if we'd actually drop something
                     mut_node_ids = mut_node_ids[keep]
@@ -496,6 +563,9 @@ def construct_trees_batch(
     pre_cached_graphs: Optional[dict] = None,
     sparsify_cell_size: Optional[float] = None,
     sparsify_cell_size_multiplier: Optional[float] = None,
+    adaptive_sparsify_bbox: Optional[dict] = None,
+    adaptive_target_tree_idx: Optional[int] = None,
+    adaptive_outside_cell_size: Optional[float] = None,
 ) -> Tuple[bytes, float, float, List[int], dict]:
     """
     Construct multiple trees and return combined PyArrow buffer.
@@ -511,6 +581,9 @@ def construct_trees_batch(
         pre_cached_graphs: Optional dict mapping tree_idx -> TreeGraph for cache hits
         sparsify_cell_size: Optional absolute cell size override.
         sparsify_cell_size_multiplier: Optional multiplier applied on top of base cell size.
+        adaptive_sparsify_bbox: Optional local bbox {min_x,max_x,min_y,max_y} for in-bbox densification.
+        adaptive_target_tree_idx: Optional target tree index for adaptive in-bbox densification.
+        adaptive_outside_cell_size: Optional fixed outside-bbox cell size for adaptive mode.
 
     Returns:
         Tuple of (buffer, global_min_time, global_max_time, tree_indices, newly_built_graphs)
@@ -629,16 +702,77 @@ def construct_trees_batch(
     # Initialize cache tracking
     pre_cached_graphs = pre_cached_graphs or {}
     newly_built_graphs = {}
+    normalized_adaptive_bbox = _normalize_adaptive_bbox(adaptive_sparsify_bbox)
+    normalized_adaptive_target_tree_idx = None
+    if adaptive_target_tree_idx is not None:
+        try:
+            parsed_target = int(adaptive_target_tree_idx)
+            if 0 <= parsed_target < ts.num_trees:
+                normalized_adaptive_target_tree_idx = parsed_target
+        except (TypeError, ValueError):
+            normalized_adaptive_target_tree_idx = None
 
     # Precompute resolution once per batch (used when sparsification enabled)
     sparsify_resolution = None
+    adaptive_outside_resolution = None
+    adaptive_inside_resolution = None
+    adaptive_bbox_bounds = None
+    adaptive_mode_enabled = (
+        sparsification
+        and normalized_adaptive_bbox is not None
+        and normalized_adaptive_target_tree_idx is not None
+        and normalized_adaptive_target_tree_idx in valid_indices
+    )
     if sparsification:
         cell_size = _resolve_sparsify_cell_size(
             num_nodes=num_nodes,
             sparsify_cell_size=sparsify_cell_size,
-            sparsify_cell_size_multiplier=sparsify_cell_size_multiplier,
+            sparsify_cell_size_multiplier=(
+                None if adaptive_mode_enabled else sparsify_cell_size_multiplier
+            ),
         )
         sparsify_resolution = int(1.0 / cell_size)
+
+        if adaptive_mode_enabled:
+            outside_cell_size = _resolve_sparsify_cell_size(
+                num_nodes=num_nodes,
+                sparsify_cell_size=(
+                    adaptive_outside_cell_size
+                    if adaptive_outside_cell_size is not None
+                    else DEFAULT_SPARSIFY_CELL_SIZE
+                ),
+                sparsify_cell_size_multiplier=None,
+            )
+
+            inside_multiplier = 1.0
+            if sparsify_cell_size_multiplier is not None:
+                try:
+                    candidate = float(sparsify_cell_size_multiplier)
+                    if np.isfinite(candidate) and candidate > 0:
+                        inside_multiplier = candidate
+                except (TypeError, ValueError):
+                    inside_multiplier = 1.0
+
+            # Adaptive lock mode should always be denser inside than outside.
+            inside_multiplier = min(inside_multiplier, ADAPTIVE_INSIDE_MAX_MULTIPLIER)
+            inside_multiplier = max(inside_multiplier, MIN_SPARSIFY_CELL_SIZE / outside_cell_size)
+
+            inside_cell_size = _resolve_sparsify_cell_size(
+                num_nodes=num_nodes,
+                sparsify_cell_size=outside_cell_size,
+                sparsify_cell_size_multiplier=inside_multiplier,
+            )
+            if inside_cell_size >= outside_cell_size:
+                inside_cell_size = max(MIN_SPARSIFY_CELL_SIZE, outside_cell_size * ADAPTIVE_INSIDE_MAX_MULTIPLIER)
+
+            adaptive_outside_resolution = int(1.0 / outside_cell_size)
+            adaptive_inside_resolution = int(1.0 / inside_cell_size)
+            adaptive_bbox_bounds = (
+                float(normalized_adaptive_bbox["min_x"]),
+                float(normalized_adaptive_bbox["max_x"]),
+                float(normalized_adaptive_bbox["min_y"]),
+                float(normalized_adaptive_bbox["max_y"]),
+            )
 
     def process_one(tidx):
         return _process_single_tree(
@@ -655,6 +789,10 @@ def construct_trees_batch(
             mutations,
             mutation_positions,
             pre_cached_graphs.get(int(tidx)),
+            normalized_adaptive_bbox,
+            normalized_adaptive_target_tree_idx,
+            adaptive_outside_resolution,
+            adaptive_inside_resolution,
         )
 
     use_parallel = len(valid_indices) >= PARALLEL_TREE_THRESHOLD
@@ -736,15 +874,36 @@ def construct_trees_batch(
 
         # Apply mutation sparsification when requested (grid-deduplicate by x,y per tree)
         if sparsify_mutations:
-            n_muts_before_grid = len(all_mut_tree_idx)
-            mut_resolution = (
-                sparsify_resolution
-                if sparsify_resolution is not None
-                else int(1.0 / (sparsify_cell_size or DEFAULT_SPARSIFY_CELL_SIZE))
-            )
-            keep_mask = _sparsify_mutations(
-                all_mut_x, all_mut_y, all_mut_tree_idx, all_mut_node_id, mut_resolution
-            )
+            if (
+                adaptive_mode_enabled
+                and adaptive_bbox_bounds is not None
+                and adaptive_outside_resolution is not None
+                and adaptive_inside_resolution is not None
+                and normalized_adaptive_target_tree_idx is not None
+            ):
+                bbox_min_x, bbox_max_x, bbox_min_y, bbox_max_y = adaptive_bbox_bounds
+                keep_mask = _sparsify_mutations_adaptive(
+                    all_mut_x,
+                    all_mut_y,
+                    all_mut_tree_idx,
+                    all_mut_node_id,
+                    int(adaptive_outside_resolution),
+                    int(adaptive_inside_resolution),
+                    int(normalized_adaptive_target_tree_idx),
+                    float(bbox_min_x),
+                    float(bbox_max_x),
+                    float(bbox_min_y),
+                    float(bbox_max_y),
+                )
+            else:
+                mut_resolution = (
+                    sparsify_resolution
+                    if sparsify_resolution is not None
+                    else int(1.0 / (sparsify_cell_size or DEFAULT_SPARSIFY_CELL_SIZE))
+                )
+                keep_mask = _sparsify_mutations(
+                    all_mut_x, all_mut_y, all_mut_tree_idx, all_mut_node_id, mut_resolution
+                )
             all_mut_tree_idx = all_mut_tree_idx[keep_mask]
             all_mut_x = all_mut_x[keep_mask]
             all_mut_y = all_mut_y[keep_mask]
@@ -848,6 +1007,59 @@ def _sparsify_mutations(mut_x, mut_y, mut_tree_idx, mut_node_id, resolution):
 
 
 @njit(cache=True)
+def _sparsify_mutations_adaptive(
+    mut_x,
+    mut_y,
+    mut_tree_idx,
+    mut_node_id,
+    outside_resolution,
+    inside_resolution,
+    target_tree_idx,
+    bbox_min_x,
+    bbox_max_x,
+    bbox_min_y,
+    bbox_max_y,
+):
+    """
+    Adaptive mutation dedupe: keep full-tree coordinates and use denser bins inside bbox.
+    """
+    n = len(mut_x)
+    keep = np.zeros(n, dtype=np.bool_)
+
+    if n == 0:
+        return keep
+
+    max_resolution = outside_resolution if outside_resolution >= inside_resolution else inside_resolution
+    stride = max_resolution + 1
+    seen_cells = Dict.empty(key_type=types.int64, value_type=types.int32)
+
+    for i in range(n):
+        tree_idx = int(mut_tree_idx[i])
+        x = mut_x[i]
+        y = mut_y[i]
+
+        in_bbox = (
+            tree_idx == target_tree_idx
+            and x >= bbox_min_x
+            and x <= bbox_max_x
+            and y >= bbox_min_y
+            and y <= bbox_max_y
+        )
+        resolution = inside_resolution if in_bbox else outside_resolution
+        zone = 1 if in_bbox else 0
+
+        cx = min(int(x * resolution), resolution - 1)
+        cy = min(int(y * resolution), resolution - 1)
+
+        key = (((tree_idx * 2 + zone) * stride) + cx) * stride + cy
+        if key not in seen_cells:
+            seen_cells[key] = np.int32(i)
+            keep[i] = True
+
+    return keep
+
+
+@njit(cache=True)
 def _sparsify_edges(x, y, parent_indices, resolution):
     """
     Edge-centric sparsification: grid-deduplicate edges by midpoint position.
@@ -915,6 +1127,91 @@ def _sparsify_edges(x, y, parent_indices, resolution):
             keep[i] = True
 
     # BFS from kept nodes toward roots to mark all ancestors (O(n) total)
+    queue = np.empty(n, dtype=np.int32)
+    q_head = 0
+    q_tail = 0
+    for i in range(n):
+        if keep[i]:
+            queue[q_tail] = i
+            q_tail += 1
+
+    while q_head < q_tail:
+        i = queue[q_head]
+        q_head += 1
+        parent_idx = parent_indices[i]
+        if parent_idx >= 0 and not keep[parent_idx]:
+            keep[parent_idx] = True
+            queue[q_tail] = parent_idx
+            q_tail += 1
+
+    return keep
+
+
+@njit(cache=True)
+def _sparsify_edges_adaptive(
+    x,
+    y,
+    parent_indices,
+    outside_resolution,
+    inside_resolution,
+    bbox_min_x,
+    bbox_max_x,
+    bbox_min_y,
+    bbox_max_y,
+):
+    """
+    Adaptive edge sparsification on full tree: denser bins inside bbox, default outside.
+    """
+    n = len(x)
+    keep = np.zeros(n, dtype=np.bool_)
+
+    if n == 0:
+        return keep
+
+    seen_cells = Dict.empty(key_type=types.int64, value_type=types.int32)
+    child_counts = np.zeros(n, dtype=np.int32)
+    max_resolution = outside_resolution if outside_resolution >= inside_resolution else inside_resolution
+    stride = max_resolution + 1
+
+    for i in range(n):
+        parent_idx = parent_indices[i]
+        if parent_idx >= 0:
+            child_counts[parent_idx] += 1
+
+    for i in range(n):
+        if parent_indices[i] == -1:
+            keep[i] = True
+
+    for i in range(n):
+        parent_idx = parent_indices[i]
+        if parent_idx < 0:
+            continue
+
+        mid_x = (x[i] + x[parent_idx]) / 2.0
+        mid_y = (y[i] + y[parent_idx]) / 2.0
+        in_bbox = (
+            mid_x >= bbox_min_x
+            and mid_x <= bbox_max_x
+            and mid_y >= bbox_min_y
+            and mid_y <= bbox_max_y
+        )
+        resolution = inside_resolution if in_bbox else outside_resolution
+        zone = 1 if in_bbox else 0
+
+        cx = min(int(mid_x * resolution), resolution - 1)
+        cy = min(int(mid_y * resolution), resolution - 1)
+        dx = x[parent_idx] - x[i]
+        dy = y[parent_idx] - y[i]
+        sx = 1 if dx >= 0.0 else 0
+        sy = 1 if dy >= 0.0 else 0
+        steep = 1 if abs(dy) > abs(dx) else 0
+        direction_bin = sx + 2 * sy + 4 * steep
+        key = ((((zone * stride) + cx) * stride + cy) * 8) + direction_bin
+
+        if key not in seen_cells:
+            seen_cells[key] = np.int32(i)
+            keep[i] = True
+
     queue = np.empty(n, dtype=np.int32)
     q_head = 0
     q_tail = 0
