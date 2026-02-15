@@ -198,6 +198,9 @@ const LoraxDeckGL = forwardRef(({
     };
   }, [selectedColorBy, enabledValues]);
 
+  const includeTipData = Boolean(onTipHover || onTipClick);
+  const includeEdgeData = Boolean(colorEdgesByTree || onEdgeHover || onEdgeClick);
+
   // 4. Views and view state management (with genomic coordinates)
   const {
     views,
@@ -257,7 +260,9 @@ const LoraxDeckGL = forwardRef(({
     lockViewPayload,
     metadataArrays,
     metadataColors,
-    populationFilter
+    populationFilter,
+    includeTipData,
+    includeEdgeData
   });
 
   const {

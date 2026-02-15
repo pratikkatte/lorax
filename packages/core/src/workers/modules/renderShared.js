@@ -3,6 +3,141 @@
  * Single source of truth for groupNodesByTree, groupMutationsByTree, and getTipColor.
  */
 
+function isMapLike(value) {
+  return value && typeof value.get === 'function';
+}
+
+function getNodeIndex(nodeIdToIdx, nodeId) {
+  if (!nodeIdToIdx) return undefined;
+  if (isMapLike(nodeIdToIdx)) return nodeIdToIdx.get(nodeId);
+  return nodeIdToIdx[nodeId];
+}
+
+/**
+ * Build mapping from backend-local tree indices to global indices when needed.
+ * The backend may return local 0..N-1 indices when displayArray was requested.
+ */
+export function createTreeIndexMapping(tree_idx, displayArray) {
+  const indexMapping = new Map();
+  if (!displayArray || !Array.isArray(displayArray)) {
+    return indexMapping;
+  }
+
+  const uniqueTreeIdx = [...new Set(tree_idx)].sort((a, b) => a - b);
+  const isZeroIndexed = uniqueTreeIdx.length > 0
+    && uniqueTreeIdx[0] === 0
+    && !displayArray.includes(0)
+    && displayArray.length === uniqueTreeIdx.length;
+
+  if (isZeroIndexed) {
+    displayArray.forEach((globalIdx, localIdx) => {
+      indexMapping.set(localIdx, globalIdx);
+    });
+  }
+
+  return indexMapping;
+}
+
+/**
+ * Group node row indices by resolved tree index.
+ * Returns Map<treeIdx, number[]>, where numbers index into input arrays.
+ */
+export function groupNodeIndicesByTree(tree_idx, displayArray) {
+  const treeMap = new Map();
+  const indexMapping = createTreeIndexMapping(tree_idx, displayArray);
+
+  for (let i = 0; i < tree_idx.length; i++) {
+    const rawTreeIdx = tree_idx[i];
+    const tIdx = indexMapping.has(rawTreeIdx) ? indexMapping.get(rawTreeIdx) : rawTreeIdx;
+
+    if (!treeMap.has(tIdx)) {
+      treeMap.set(tIdx, []);
+    }
+    treeMap.get(tIdx).push(i);
+  }
+
+  return treeMap;
+}
+
+/**
+ * Group mutation row indices by resolved tree index.
+ * Returns Map<treeIdx, number[]>, where numbers index into mutation arrays.
+ */
+export function groupMutationIndicesByTree(mut_tree_idx, displayArray) {
+  const mutMap = new Map();
+  const indexMapping = createTreeIndexMapping(mut_tree_idx, displayArray);
+  const length = mut_tree_idx?.length || 0;
+
+  for (let i = 0; i < length; i++) {
+    const rawTreeIdx = mut_tree_idx[i];
+    const tIdx = indexMapping.has(rawTreeIdx) ? indexMapping.get(rawTreeIdx) : rawTreeIdx;
+
+    if (!mutMap.has(tIdx)) {
+      mutMap.set(tIdx, []);
+    }
+    mutMap.get(tIdx).push(i);
+  }
+
+  return mutMap;
+}
+
+/**
+ * Precompute tip-color lookup context once per request.
+ * Avoids per-tip `includes` checks and repeated color array allocation.
+ */
+export function createTipColorContext(metadataArrays, metadataColors, populationFilter, defaultColor) {
+  const colorBy = populationFilter?.colorBy;
+  if (!colorBy || !metadataArrays?.[colorBy] || !metadataColors?.[colorBy]) {
+    return null;
+  }
+
+  const { uniqueValues, indices, nodeIdToIdx } = metadataArrays[colorBy];
+  if (!uniqueValues || !indices || !nodeIdToIdx) {
+    return null;
+  }
+
+  const enabledValues = Array.isArray(populationFilter?.enabledValues)
+    ? populationFilter.enabledValues
+    : null;
+  const enabledValueSet = enabledValues ? new Set(enabledValues) : null;
+
+  const colorByValue = metadataColors[colorBy];
+  const resolvedColorByValue = new Map();
+  for (const [value, color] of Object.entries(colorByValue)) {
+    if (!Array.isArray(color) || color.length < 3) continue;
+    resolvedColorByValue.set(value, [color[0], color[1], color[2], 200]);
+  }
+
+  return {
+    uniqueValues,
+    indices,
+    nodeIdToIdx,
+    enabledValueSet,
+    resolvedColorByValue,
+    defaultColor,
+    filteredColor: [150, 150, 150, 100]
+  };
+}
+
+/**
+ * Fast tip-color lookup using a precomputed context.
+ */
+export function getTipColorFromContext(nodeId, colorContext) {
+  if (!colorContext) return null;
+
+  const idx = getNodeIndex(colorContext.nodeIdToIdx, nodeId);
+  if (idx === undefined) return colorContext.defaultColor;
+
+  const valueIdx = colorContext.indices[idx];
+  const value = colorContext.uniqueValues[valueIdx];
+
+  if (colorContext.enabledValueSet && !colorContext.enabledValueSet.has(value)) {
+    return colorContext.filteredColor;
+  }
+
+  return colorContext.resolvedColorByValue.get(value) || colorContext.defaultColor;
+}
+
 /**
  * Group nodes by tree index for efficient per-tree processing.
  * Supports both 0-indexed (backend response positions) and global tree indices.
@@ -20,21 +155,7 @@
 export function groupNodesByTree(node_id, parent_id, is_tip, tree_idx, x, y, name, displayArray) {
   const treeMap = new Map();
   const length = node_id.length;
-
-  const indexMapping = new Map();
-  if (displayArray && Array.isArray(displayArray)) {
-    const uniqueTreeIdx = [...new Set(tree_idx)].sort((a, b) => a - b);
-    const isZeroIndexed = uniqueTreeIdx.length > 0 &&
-      uniqueTreeIdx[0] === 0 &&
-      !displayArray.includes(0) &&
-      displayArray.length === uniqueTreeIdx.length;
-
-    if (isZeroIndexed) {
-      displayArray.forEach((globalIdx, localIdx) => {
-        indexMapping.set(localIdx, globalIdx);
-      });
-    }
-  }
+  const indexMapping = createTreeIndexMapping(tree_idx, displayArray);
 
   for (let i = 0; i < length; i++) {
     const rawTreeIdx = tree_idx[i];
@@ -90,24 +211,11 @@ export function groupMutationsByTree(mut_x, mut_y, mut_tree_idx) {
  * Uses O(1) lookup via metadataArrays.
  */
 export function getTipColor(nodeId, metadataArrays, metadataColors, populationFilter, defaultColor) {
-  const colorBy = populationFilter?.colorBy;
-
-  if (!colorBy || !metadataArrays?.[colorBy] || !metadataColors?.[colorBy]) {
-    return defaultColor;
-  }
-
-  const { uniqueValues, indices, nodeIdToIdx } = metadataArrays[colorBy];
-  const idx = nodeIdToIdx?.get(nodeId);
-
-  if (idx === undefined) return defaultColor;
-
-  const valueIdx = indices[idx];
-  const value = uniqueValues[valueIdx];
-
-  if (!populationFilter.enabledValues?.includes(value)) {
-    return [150, 150, 150, 100];
-  }
-
-  const color = metadataColors[colorBy][value];
-  return color ? [...color.slice(0, 3), 200] : defaultColor;
+  const context = createTipColorContext(
+    metadataArrays,
+    metadataColors,
+    populationFilter,
+    defaultColor
+  );
+  return getTipColorFromContext(nodeId, context) || defaultColor;
 }

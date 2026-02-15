@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
 # Default cell size for sparsification (0.2% of normalized [0,1] space)
-DEFAULT_SPARSIFY_CELL_SIZE = 0.002
+DEFAULT_SPARSIFY_CELL_SIZE = 0.02
 MIN_SPARSIFY_CELL_SIZE = 0.0004
 MAX_SPARSIFY_CELL_SIZE = 0.008
 ADAPTIVE_INSIDE_MAX_MULTIPLIER = 0.95
@@ -731,6 +731,7 @@ def construct_trees_batch(
                 None if adaptive_mode_enabled else sparsify_cell_size_multiplier
             ),
         )
+        cell_size = DEFAULT_SPARSIFY_CELL_SIZE
         sparsify_resolution = int(1.0 / cell_size)
 
         if adaptive_mode_enabled:

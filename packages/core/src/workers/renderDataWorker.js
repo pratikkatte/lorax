@@ -10,7 +10,12 @@
  * - Computes L-shaped paths and tip positions for all visible trees
  */
 
-import { groupNodesByTree, groupMutationsByTree, getTipColor } from './modules/renderShared.js';
+import {
+  groupNodeIndicesByTree,
+  groupMutationIndicesByTree,
+  createTipColorContext,
+  getTipColorFromContext
+} from './modules/renderShared.js';
 
 // Reusable buffers to avoid per-call allocation
 let pathBuffer = null;
@@ -34,6 +39,22 @@ function ensureBuffer(currentBuffer, requiredSize, ArrayType) {
   return currentBuffer;
 }
 
+function getEmptyRenderData() {
+  return {
+    pathPositions: new Float64Array(0),
+    pathStartIndices: new Uint32Array([0]),
+    tipPositions: new Float64Array(0),
+    tipColors: new Uint8Array(0),
+    tipData: [],
+    treeLabelMeta: [],
+    edgeData: [],
+    edgeCount: 0,
+    tipCount: 0,
+    mutPositions: new Float64Array(0),
+    mutCount: 0
+  };
+}
+
 /**
  * Main computation function - generates render arrays for all trees
  *
@@ -53,57 +74,55 @@ function ensureBuffer(currentBuffer, requiredSize, ArrayType) {
  * @param {Object} data.metadataArrays - Metadata for coloring
  * @param {Object} data.metadataColors - Color mapping
  * @param {Object} data.populationFilter - Active filter settings
+ * @param {boolean} data.includeTipData - Whether to include object payload for tip picking
+ * @param {boolean} data.includeEdgeData - Whether to include object payload for edge metadata/picking
  * @returns {Object} Render data with typed arrays
  */
 function computeRenderArrays(data) {
   const {
     node_id, parent_id, is_tip, tree_idx, x, y, name,
     mut_x, mut_y, mut_tree_idx,
-    modelMatrices, displayArray, metadataArrays, metadataColors, populationFilter
+    modelMatrices, displayArray, metadataArrays, metadataColors, populationFilter,
+    includeTipData = true,
+    includeEdgeData = true
   } = data;
 
   // Convert modelMatrices array to Map for efficient lookup
   const modelMatricesMap = new Map();
   if (modelMatrices && Array.isArray(modelMatrices)) {
     for (const item of modelMatrices) {
-      if (item.modelMatrix) {
-        modelMatricesMap.set(item.key, item.modelMatrix);
+      const key = Number(item?.key);
+      if (item?.modelMatrix && Number.isFinite(key)) {
+        modelMatricesMap.set(key, item.modelMatrix);
       }
     }
   }
 
   // Handle empty data
   if (!node_id || node_id.length === 0 || modelMatricesMap.size === 0) {
-    return {
-      pathPositions: new Float64Array(0),
-      pathStartIndices: new Uint32Array([0]),
-      tipPositions: new Float64Array(0),
-      tipColors: new Uint8Array(0),
-      tipData: [],
-      treeLabelMeta: [],
-      edgeData: [],
-      edgeCount: 0,
-      tipCount: 0,
-      // Mutation arrays (simplified: only positions)
-      mutPositions: new Float64Array(0),
-      mutCount: 0
-    };
+    return getEmptyRenderData();
   }
 
-  // Group nodes by tree (with mapping from backend's tree_idx to global indices)
-  const treeNodesMap = groupNodesByTree(node_id, parent_id, is_tip, tree_idx, x, y, name, displayArray);
+  // Group rows by tree using row indices (minimizes object churn).
+  const treeNodeIndicesMap = groupNodeIndicesByTree(tree_idx, displayArray);
+  const treeMutationIndicesMap = groupMutationIndicesByTree(mut_tree_idx, displayArray);
 
-  // Group mutations by tree (layout x, time y).
-  const treeMutationsMap = groupMutationsByTree(mut_x, mut_y, mut_tree_idx);
+  const defaultTipColor = [150, 150, 150, 200];
+  const tipColorContext = createTipColorContext(
+    metadataArrays,
+    metadataColors,
+    populationFilter,
+    defaultTipColor
+  );
 
   // Calculate total nodes and mutations for buffer sizing
   let totalNodes = 0;
   let totalMutations = 0;
   for (const [treeIdx] of modelMatricesMap) {
-    const treeNodes = treeNodesMap.get(treeIdx);
-    const treeMutations = treeMutationsMap.get(treeIdx);
-    if (treeNodes) totalNodes += treeNodes.length;
-    if (treeMutations) totalMutations += treeMutations.length;
+    const nodeIndices = treeNodeIndicesMap.get(treeIdx);
+    const mutationIndices = treeMutationIndicesMap.get(treeIdx);
+    if (nodeIndices) totalNodes += nodeIndices.length;
+    if (mutationIndices) totalMutations += mutationIndices.length;
   }
 
   // Ensure buffers are large enough
@@ -119,8 +138,6 @@ function computeRenderArrays(data) {
   pathStartIndicesBuffer = ensureBuffer(pathStartIndicesBuffer, totalNodes + 1, Uint32Array);
   mutBuffer = ensureBuffer(mutBuffer, mutSize, Float64Array);
 
-  const defaultTipColor = [150, 150, 150, 200];
-
   let pathOffset = 0;
   let tipOffset = 0;
   let colorOffset = 0;
@@ -130,123 +147,101 @@ function computeRenderArrays(data) {
 
   pathStartIndicesBuffer[pathStartIndexCount++] = 0;
 
-  const tipData = [];
+  const tipData = includeTipData ? [] : [];
   const treeLabelMeta = [];
-  const edgeData = [];
+  const edgeData = includeEdgeData ? [] : null;
 
   // Process each tree that has a modelMatrix
   for (const [treeIdx, modelMatrix] of modelMatricesMap) {
-    const treeNodes = treeNodesMap.get(treeIdx);
-
-    if (!treeNodes || treeNodes.length === 0) continue;
-
-    // Build node map for this tree
-    const nodeMap = new Map();
-    for (const n of treeNodes) {
-      nodeMap.set(n.node_id, {
-        node_id: n.node_id,
-        x: n.x,
-        y: n.y,
-        is_tip: n.is_tip,
-        parent_id: n.parent_id,
-        name: n.name,
-        children: []
-      });
-    }
-
-    // Build children arrays
-    for (const n of treeNodes) {
-      if (n.parent_id !== -1) {
-        const parent = nodeMap.get(n.parent_id);
-        const child = nodeMap.get(n.node_id);
-        if (parent && child) {
-          parent.children.push(child);
-        }
-      }
-    }
+    const treeNodeIndices = treeNodeIndicesMap.get(treeIdx);
+    if (!treeNodeIndices || treeNodeIndices.length === 0) continue;
 
     // Get transform from modelMatrix (array format: [m0, m1, ..., m15])
     const m = modelMatrix;
-    const scaleX = m[0];
-    const translateX = m[12];
+    const scaleX = m?.[0] ?? 1;
+    const translateX = m?.[12] ?? 0;
 
     treeLabelMeta.push({
       tree_idx: treeIdx,
-      nodeCount: treeNodes.length,
+      nodeCount: treeNodeIndices.length,
       scaleX
     });
 
-    // Generate L-shaped edges
-    for (const node of nodeMap.values()) {
-      if (node.children.length === 0) continue;
+    // Build tree-local map: node_id -> row index in source arrays.
+    const nodeIdToRow = new Map();
+    for (let i = 0; i < treeNodeIndices.length; i++) {
+      const row = treeNodeIndices[i];
+      nodeIdToRow.set(node_id[row], row);
+    }
 
-      const px = node.x;
-      const py = node.y;
+    // Generate L-shaped edges by iterating child rows and resolving parent rows.
+    for (let i = 0; i < treeNodeIndices.length; i++) {
+      const childRow = treeNodeIndices[i];
+      const parentNodeId = parent_id[childRow];
+      if (parentNodeId === -1) continue;
 
-      for (const childNode of node.children) {
-        const cx = childNode.x;
-        const cy = childNode.y;
+      const parentRow = nodeIdToRow.get(parentNodeId);
+      if (parentRow === undefined) continue;
 
-        // L-shape path: parent -> horizontal to child x -> vertical to child y.
-        pathBuffer[pathOffset++] = px * scaleX + translateX;
-        pathBuffer[pathOffset++] = py;
-        pathBuffer[pathOffset++] = cx * scaleX + translateX;
-        pathBuffer[pathOffset++] = py;
-        pathBuffer[pathOffset++] = cx * scaleX + translateX;
-        pathBuffer[pathOffset++] = cy;
+      const px = x[parentRow];
+      const py = y[parentRow];
+      const cx = x[childRow];
+      const cy = y[childRow];
 
-        pathStartIndicesBuffer[pathStartIndexCount++] = pathOffset / 2;
+      pathBuffer[pathOffset++] = px * scaleX + translateX;
+      pathBuffer[pathOffset++] = py;
+      pathBuffer[pathOffset++] = cx * scaleX + translateX;
+      pathBuffer[pathOffset++] = py;
+      pathBuffer[pathOffset++] = cx * scaleX + translateX;
+      pathBuffer[pathOffset++] = cy;
+
+      pathStartIndicesBuffer[pathStartIndexCount++] = pathOffset / 2;
+
+      if (includeEdgeData) {
         edgeData.push({
           tree_idx: treeIdx,
-          parent_id: node.node_id,
-          child_id: childNode.node_id
+          parent_id: node_id[parentRow],
+          child_id: node_id[childRow]
         });
-        edgeCount++;
       }
+
+      edgeCount++;
     }
 
-    // Collect tip positions and colors
-    for (const node of nodeMap.values()) {
-      if (node.is_tip) {
-        const tipX = node.x * scaleX + translateX;
-        const tipY = node.y;
+    // Collect tip positions/colors.
+    for (let i = 0; i < treeNodeIndices.length; i++) {
+      const row = treeNodeIndices[i];
+      if (!is_tip[row]) continue;
 
-        tipBuffer[tipOffset++] = tipX;
-        tipBuffer[tipOffset++] = tipY;
+      const tipX = x[row] * scaleX + translateX;
+      const tipY = y[row];
 
-        // Get color from metadata
-        const color = getTipColor(
-          node.node_id,
-          metadataArrays,
-          metadataColors,
-          populationFilter,
-          defaultTipColor
-        );
+      tipBuffer[tipOffset++] = tipX;
+      tipBuffer[tipOffset++] = tipY;
 
-        colorBuffer[colorOffset++] = color[0];
-        colorBuffer[colorOffset++] = color[1];
-        colorBuffer[colorOffset++] = color[2];
-        colorBuffer[colorOffset++] = color[3] ?? 200;
+      const color = getTipColorFromContext(node_id[row], tipColorContext) || defaultTipColor;
+      colorBuffer[colorOffset++] = color[0];
+      colorBuffer[colorOffset++] = color[1];
+      colorBuffer[colorOffset++] = color[2];
+      colorBuffer[colorOffset++] = color[3] ?? 200;
 
+      if (includeTipData) {
         tipData.push({
-          node_id: node.node_id,
+          node_id: node_id[row],
           tree_idx: treeIdx,
           position: [tipX, tipY],
-          name: node.name
+          name: name?.[row] || ''
         });
       }
     }
 
-    // Process mutations for this tree (simplified: only positions)
-    const treeMutations = treeMutationsMap.get(treeIdx);
-    if (treeMutations && treeMutations.length > 0) {
-      for (const mut of treeMutations) {
-        // Apply same transform as nodes.
-        const mutWorldX = mut.x * scaleX + translateX;
-        const mutWorldY = mut.y;
-
-        mutBuffer[mutOffset++] = mutWorldX;
-        mutBuffer[mutOffset++] = mutWorldY;
+    // Process mutations for this tree.
+    const treeMutationIndices = treeMutationIndicesMap.get(treeIdx);
+    if (treeMutationIndices && treeMutationIndices.length > 0) {
+      for (let i = 0; i < treeMutationIndices.length; i++) {
+        const row = treeMutationIndices[i];
+        mutBuffer[mutOffset++] = mut_x[row] * scaleX + translateX;
+        mutBuffer[mutOffset++] = mut_y[row];
       }
     }
   }
@@ -259,7 +254,7 @@ function computeRenderArrays(data) {
     tipColors: colorBuffer.slice(0, colorOffset),
     tipData,
     treeLabelMeta,
-    edgeData,
+    edgeData: edgeData || [],
     edgeCount,
     tipCount: tipOffset / 2,
     // Mutation data (simplified: only positions)
