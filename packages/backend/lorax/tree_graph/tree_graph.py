@@ -20,6 +20,8 @@ from typing import List, Optional, Tuple
 
 # Default cell size for sparsification (0.2% of normalized [0,1] space)
 DEFAULT_SPARSIFY_CELL_SIZE = 0.002
+MIN_SPARSIFY_CELL_SIZE = 0.0004
+MAX_SPARSIFY_CELL_SIZE = 0.008
 
 # Minimum tree count to enable parallel processing (avoids executor overhead for small batches)
 PARALLEL_TREE_THRESHOLD = 2
@@ -34,6 +36,32 @@ def sparsify_cell_size_for_nodes(num_nodes: int) -> float:
     cells = max(1, num_nodes / target)
     resolution = max(5, min(1000, int(np.sqrt(cells))))  # clamp resolution
     return 1.0 / resolution
+
+
+def _resolve_sparsify_cell_size(
+    *,
+    num_nodes: int,
+    sparsify_cell_size: Optional[float],
+    sparsify_cell_size_multiplier: Optional[float],
+) -> float:
+    """Resolve effective sparsify cell size with optional multiplier and clamps."""
+    base_cell_size = (
+        float(sparsify_cell_size)
+        if sparsify_cell_size is not None
+        else float(sparsify_cell_size_for_nodes(num_nodes))
+    )
+
+    multiplier = 1.0
+    if sparsify_cell_size_multiplier is not None:
+        try:
+            candidate = float(sparsify_cell_size_multiplier)
+            if np.isfinite(candidate) and candidate > 0:
+                multiplier = candidate
+        except (TypeError, ValueError):
+            multiplier = 1.0
+
+    effective_cell_size = base_cell_size * multiplier
+    return float(np.clip(effective_cell_size, MIN_SPARSIFY_CELL_SIZE, MAX_SPARSIFY_CELL_SIZE))
 
 @njit(cache=True)
 def _compute_x_postorder(children_indptr, children_data, roots, num_nodes):
@@ -467,6 +495,7 @@ def construct_trees_batch(
     include_mutations: bool = True,
     pre_cached_graphs: Optional[dict] = None,
     sparsify_cell_size: Optional[float] = None,
+    sparsify_cell_size_multiplier: Optional[float] = None,
 ) -> Tuple[bytes, float, float, List[int], dict]:
     """
     Construct multiple trees and return combined PyArrow buffer.
@@ -480,6 +509,8 @@ def construct_trees_batch(
         sparsify_mutations: When True, grid-deduplicate mutations by (x,y) per tree. Default follows sparsification.
         include_mutations: Whether to include mutation data in buffer
         pre_cached_graphs: Optional dict mapping tree_idx -> TreeGraph for cache hits
+        sparsify_cell_size: Optional absolute cell size override.
+        sparsify_cell_size_multiplier: Optional multiplier applied on top of base cell size.
 
     Returns:
         Tuple of (buffer, global_min_time, global_max_time, tree_indices, newly_built_graphs)
@@ -602,7 +633,11 @@ def construct_trees_batch(
     # Precompute resolution once per batch (used when sparsification enabled)
     sparsify_resolution = None
     if sparsification:
-        cell_size = sparsify_cell_size if sparsify_cell_size is not None else sparsify_cell_size_for_nodes(num_nodes)
+        cell_size = _resolve_sparsify_cell_size(
+            num_nodes=num_nodes,
+            sparsify_cell_size=sparsify_cell_size,
+            sparsify_cell_size_multiplier=sparsify_cell_size_multiplier,
+        )
         sparsify_resolution = int(1.0 / cell_size)
 
     def process_one(tidx):

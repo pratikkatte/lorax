@@ -13,20 +13,73 @@ export function formatLockSnapshotDebugCoordinate(value) {
   return Number(value).toFixed(4);
 }
 
+function uniqueFiniteIndices(values) {
+  if (!Array.isArray(values)) return [];
+  const indices = [];
+  const seen = new Set();
+
+  for (const raw of values) {
+    if (raw == null || raw === '') continue;
+    const value = Number(raw);
+    if (!Number.isFinite(value) || seen.has(value)) continue;
+    seen.add(value);
+    indices.push(value);
+  }
+
+  return indices;
+}
+
+function deriveIndicesFromCorners(corners) {
+  if (!Array.isArray(corners)) return [];
+  return uniqueFiniteIndices(corners.map((corner) => corner?.treeIndex));
+}
+
+function normalizeAdaptiveTarget(adaptiveTarget) {
+  if (!adaptiveTarget || typeof adaptiveTarget !== 'object') return null;
+
+  const treeIndex = Number(adaptiveTarget.treeIndex);
+  const coverageX = Number(adaptiveTarget.coverageX);
+  const coverageY = Number(adaptiveTarget.coverageY);
+  const coverageArea = Number(adaptiveTarget.coverageArea);
+  const profile = typeof adaptiveTarget.profile === 'string'
+    ? adaptiveTarget.profile
+    : 'balanced';
+
+  if (
+    !Number.isFinite(treeIndex)
+    || !Number.isFinite(coverageX)
+    || !Number.isFinite(coverageY)
+    || !Number.isFinite(coverageArea)
+  ) {
+    return null;
+  }
+
+  return {
+    treeIndex,
+    coverageX: Math.max(0, Math.min(1, coverageX)),
+    coverageY: Math.max(0, Math.min(1, coverageY)),
+    coverageArea: Math.max(0, Math.min(1, coverageArea)),
+    profile
+  };
+}
+
 function normalizeLockViewPayload(snapshot) {
   if (!snapshot || typeof snapshot !== 'object') return null;
 
   const boundingBox = snapshot.boundingBox;
   if (!boundingBox || typeof boundingBox !== 'object') return null;
 
-  const inBoxTreeIndices = Array.isArray(snapshot.inBoxTreeIndices)
-    ? snapshot.inBoxTreeIndices
-      .map((idx) => Number(idx))
-      .filter((idx) => Number.isFinite(idx))
-    : [];
-  const inBoxTreeCount = Number.isFinite(snapshot.inBoxTreeCount)
-    ? snapshot.inBoxTreeCount
-    : inBoxTreeIndices.length;
+  const normalizedIndices = uniqueFiniteIndices(snapshot.inBoxTreeIndices);
+  const inBoxTreeIndices = normalizedIndices.length > 0
+    ? normalizedIndices
+    : deriveIndicesFromCorners(snapshot.corners);
+  const inBoxTreeCount = inBoxTreeIndices.length;
+
+  const displayArraySignature = typeof snapshot.displayArraySignature === 'string'
+    ? snapshot.displayArraySignature
+    : '';
+
+  const adaptiveTarget = normalizeAdaptiveTarget(snapshot.adaptiveTarget);
 
   return {
     capturedAt: Number(snapshot.capturedAt) || Date.now(),
@@ -39,7 +92,31 @@ function normalizeLockViewPayload(snapshot) {
       height: Number(boundingBox.height)
     },
     inBoxTreeIndices,
-    inBoxTreeCount
+    inBoxTreeCount,
+    adaptiveTarget,
+    displayArraySignature
+  };
+}
+
+function buildOutgoingLockPayload(snapshot) {
+  if (!snapshot) return null;
+  const targetTreeIndex = snapshot.inBoxTreeCount === 1
+    ? snapshot.inBoxTreeIndices[0]
+    : null;
+  const adaptiveTarget = (
+    Number.isFinite(targetTreeIndex)
+    && Number(snapshot.adaptiveTarget?.treeIndex) === Number(targetTreeIndex)
+  )
+    ? snapshot.adaptiveTarget
+    : null;
+
+  return {
+    capturedAt: snapshot.capturedAt,
+    boundingBox: snapshot.boundingBox,
+    inBoxTreeIndices: snapshot.inBoxTreeIndices,
+    inBoxTreeCount: snapshot.inBoxTreeCount,
+    adaptiveTarget,
+    displayArraySignature: snapshot.displayArraySignature
   };
 }
 
@@ -113,8 +190,10 @@ export function useLockViewSnapshot({
     const snapshot = buildLockViewSnapshot({ orthoViewport, localBins });
     if (!snapshot) return false;
 
-    const normalizedPayload = normalizeLockViewPayload(snapshot);
-    setLockViewPayload(normalizedPayload);
+    const normalizedSnapshot = normalizeLockViewPayload(snapshot);
+    if (!normalizedSnapshot) return false;
+
+    setLockViewPayload(buildOutgoingLockPayload(normalizedSnapshot));
     setLockSnapshotDebugOverlay(
       debug ? buildDebugOverlay(snapshot, orthoViewport) : null
     );

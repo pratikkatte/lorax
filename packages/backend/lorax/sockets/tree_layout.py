@@ -5,9 +5,7 @@ Handles process_postorder_layout and cache_trees events.
 """
 
 import logging
-import struct
-
-import pyarrow as pa
+import math
 
 from lorax.context import tree_graph_cache, csv_tree_graph_cache
 from lorax.handlers import handle_tree_graph_query, ensure_trees_cached
@@ -17,151 +15,102 @@ from lorax.sockets.utils import is_csv_session_file
 logger = logging.getLogger(__name__)
 
 
-def _split_layout_buffer(buffer):
-    """Decode combined layout buffer into node and mutation Arrow tables."""
-    if not isinstance(buffer, (bytes, bytearray)) or len(buffer) < 4:
-        return None, None
-
-    node_len = struct.unpack("<I", buffer[:4])[0]
-    node_bytes = buffer[4:4 + node_len]
-    mut_bytes = buffer[4 + node_len:]
-
-    node_table = pa.ipc.open_stream(node_bytes).read_all()
-    mut_table = pa.ipc.open_stream(mut_bytes).read_all() if len(mut_bytes) > 0 else None
-    return node_table, mut_table
+def _clamp(value, min_value, max_value):
+    return max(min_value, min(max_value, value))
 
 
-def _build_layout_buffer(node_table, mut_table):
-    """Encode node and mutation Arrow tables into combined layout buffer format."""
-    node_sink = pa.BufferOutputStream()
-    node_writer = pa.ipc.new_stream(node_sink, node_table.schema)
-    node_writer.write_table(node_table)
-    node_writer.close()
-    node_bytes = node_sink.getvalue().to_pybytes()
-
-    if mut_table is None:
-        mut_table = pa.table({
-            "mut_x": pa.array([], type=pa.float32()),
-            "mut_y": pa.array([], type=pa.float32()),
-            "mut_tree_idx": pa.array([], type=pa.int32()),
-            "mut_node_id": pa.array([], type=pa.int32()),
-        })
-
-    mut_sink = pa.BufferOutputStream()
-    mut_writer = pa.ipc.new_stream(mut_sink, mut_table.schema)
-    mut_writer.write_table(mut_table)
-    mut_writer.close()
-    mut_bytes = mut_sink.getvalue().to_pybytes()
-
-    return struct.pack("<I", len(node_bytes)) + node_bytes + mut_bytes
+def _parse_int_like(value):
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return int(value)
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    return None
 
 
-def _merge_layout_results(*results):
-    """Merge multiple handle_tree_graph_query responses into one response shape."""
-    valid_results = [r for r in results if isinstance(r, dict) and "buffer" in r]
-    if not valid_results:
-        return {"error": "No valid layout results to merge"}
-
-    node_tables = []
-    mut_tables = []
-    tree_indices = []
-    min_time = None
-    max_time = None
-
-    for result in valid_results:
-        node_table, mut_table = _split_layout_buffer(result["buffer"])
-        if node_table is not None:
-            node_tables.append(node_table)
-        if mut_table is not None:
-            mut_tables.append(mut_table)
-
-        result_tree_indices = result.get("tree_indices", [])
-        if isinstance(result_tree_indices, list):
-            tree_indices.extend(result_tree_indices)
-
-        result_min_time = result.get("global_min_time")
-        result_max_time = result.get("global_max_time")
-        if isinstance(result_min_time, (int, float)):
-            min_time = float(result_min_time) if min_time is None else min(min_time, float(result_min_time))
-        if isinstance(result_max_time, (int, float)):
-            max_time = float(result_max_time) if max_time is None else max(max_time, float(result_max_time))
-
-    if not node_tables:
-        return {"error": "No node tables available to merge"}
-
-    merged_nodes = pa.concat_tables(node_tables) if len(node_tables) > 1 else node_tables[0]
-    merged_muts = None
-    if mut_tables:
-        merged_muts = pa.concat_tables(mut_tables) if len(mut_tables) > 1 else mut_tables[0]
-
-    return {
-        "buffer": _build_layout_buffer(merged_nodes, merged_muts),
-        "global_min_time": min_time if min_time is not None else 0.0,
-        "global_max_time": max_time if max_time is not None else 0.0,
-        "tree_indices": tree_indices,
-    }
+def _parse_float_like(value):
+    if isinstance(value, bool):
+        return None
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(numeric):
+        return None
+    return numeric
 
 
 def _parse_lock_view_payload(lock_view):
-    """Parse and normalize lockView payload from frontend."""
+    """Parse minimal lockView payload for target-only adaptive requests."""
     if not isinstance(lock_view, dict):
         return {
             "enabled": False,
             "bounding_box": None,
-            "in_box_tree_indices": [],
-            "in_box_tree_count": 0,
-            "lock_view_single_tree": False,
+            "adaptive_target": None,
+            "display_array_signature": None,
         }
 
     bounding_box = lock_view.get("boundingBox")
+    if not isinstance(bounding_box, dict):
+        bounding_box = None
 
-    in_box_tree_indices_raw = lock_view.get("inBoxTreeIndices")
-    in_box_tree_indices = []
-    if isinstance(in_box_tree_indices_raw, list):
-        in_box_tree_indices = [
-            int(idx)
-            for idx in in_box_tree_indices_raw
-            if isinstance(idx, int) or (isinstance(idx, float) and idx.is_integer())
-        ]
+    adaptive_target_raw = lock_view.get("adaptiveTarget")
+    adaptive_target = None
+    if isinstance(adaptive_target_raw, dict):
+        adaptive_tree_index = _parse_int_like(adaptive_target_raw.get("treeIndex"))
+        if adaptive_tree_index is not None:
+            coverage_x = _parse_float_like(adaptive_target_raw.get("coverageX"))
+            coverage_y = _parse_float_like(adaptive_target_raw.get("coverageY"))
+            coverage_area = _parse_float_like(adaptive_target_raw.get("coverageArea"))
 
-    in_box_tree_count = lock_view.get("inBoxTreeCount")
-    if isinstance(in_box_tree_count, int):
-        pass
-    elif isinstance(in_box_tree_count, float) and in_box_tree_count.is_integer():
-        in_box_tree_count = int(in_box_tree_count)
-    else:
-        in_box_tree_count = len(in_box_tree_indices)
+            if coverage_x is not None:
+                coverage_x = _clamp(coverage_x, 0.0, 1.0)
+            if coverage_y is not None:
+                coverage_y = _clamp(coverage_y, 0.0, 1.0)
+            if coverage_area is None and coverage_x is not None and coverage_y is not None:
+                coverage_area = coverage_x * coverage_y
+            if coverage_area is not None:
+                coverage_area = _clamp(coverage_area, 0.0, 1.0)
+
+            profile = adaptive_target_raw.get("profile")
+            if not isinstance(profile, str) or profile.strip() == "":
+                profile = "balanced"
+
+            adaptive_target = {
+                "tree_index": adaptive_tree_index,
+                "coverage_x": coverage_x,
+                "coverage_y": coverage_y,
+                "coverage_area": coverage_area,
+                "profile": profile,
+            }
+
+    display_array_signature = lock_view.get("displayArraySignature")
+    if not isinstance(display_array_signature, str):
+        display_array_signature = None
 
     return {
         "enabled": True,
-        "bounding_box": bounding_box if isinstance(bounding_box, dict) else None,
-        "in_box_tree_indices": in_box_tree_indices,
-        "in_box_tree_count": in_box_tree_count,
-        "lock_view_single_tree": in_box_tree_count == 1,
+        "bounding_box": bounding_box,
+        "adaptive_target": adaptive_target,
+        "display_array_signature": display_array_signature,
     }
 
 
-def _resolve_sparsification_plan(display_array, lock_view_info):
-    """Resolve sparsification mode based on display array and lock-view context."""
-    sparsification = len(display_array) > 1
-    candidate_tree_idx = None
-    target_tree_idx = None
+def _compute_target_sparsify_multiplier(lock_view_info):
+    """Compute lock-target sparsify multiplier using balanced adaptive profile."""
+    fallback_multiplier = 0.45
+    adaptive_target = lock_view_info.get("adaptive_target")
+    if not isinstance(adaptive_target, dict):
+        return fallback_multiplier
 
-    in_box_tree_indices = lock_view_info["in_box_tree_indices"]
-    lock_view_single_tree = lock_view_info["lock_view_single_tree"]
-    if lock_view_single_tree and in_box_tree_indices:
-        candidate_tree_idx = int(in_box_tree_indices[0])
-        if candidate_tree_idx in display_array:
-            target_tree_idx = candidate_tree_idx
+    coverage_area = adaptive_target.get("coverage_area")
+    if not isinstance(coverage_area, (int, float)) or not math.isfinite(float(coverage_area)):
+        return fallback_multiplier
 
-    use_mixed_sparsification = target_tree_idx is not None and len(display_array) > 1
-    return {
-        "sparsification": sparsification,
-        "candidate_tree_idx": candidate_tree_idx,
-        "target_tree_idx": target_tree_idx,
-        "target_in_display_array": target_tree_idx is not None,
-        "use_mixed_sparsification": use_mixed_sparsification,
-    }
+    coverage = _clamp(float(coverage_area), 0.01, 1.0)
+    multiplier = 0.30 + 1.40 * math.sqrt(coverage)
+    return _clamp(multiplier, 0.25, 1.75)
 
 
 def register_tree_layout_events(sio):
@@ -187,103 +136,106 @@ def register_tree_layout_events(sio):
                 print(f"⚠️ No file loaded for session {lorax_sid}")
                 return {"error": "No file loaded for session", "request_id": data.get("request_id")}
 
+            display_array = []
             display_array_raw = data.get("displayArray", [])
-            display_array = display_array_raw if isinstance(display_array_raw, list) else []
-            actual_display_array_raw = data.get("actualDisplayArray", display_array)
-            actual_display_array = (
-                actual_display_array_raw
-                if isinstance(actual_display_array_raw, list)
-                else display_array
-            )
-            request_id = data.get("request_id")
-            lock_view_info = _parse_lock_view_payload(data.get("lockView"))
-            sparsification_plan = _resolve_sparsification_plan(display_array, lock_view_info)
+            if isinstance(display_array_raw, list):
+                for idx in display_array_raw:
+                    parsed = _parse_int_like(idx)
+                    if parsed is not None:
+                        display_array.append(parsed)
 
-            sparsification = sparsification_plan["sparsification"]
-            candidate_tree_idx = sparsification_plan["candidate_tree_idx"]
-            target_tree_idx = sparsification_plan["target_tree_idx"]
-            target_in_display_array = sparsification_plan["target_in_display_array"]
-            use_mixed_sparsification = sparsification_plan["use_mixed_sparsification"]
+            actual_display_array = display_array
+            actual_display_array_raw = data.get("actualDisplayArray", display_array)
+            if isinstance(actual_display_array_raw, list):
+                parsed_actual_display_array = []
+                for idx in actual_display_array_raw:
+                    parsed = _parse_int_like(idx)
+                    if parsed is not None:
+                        parsed_actual_display_array.append(parsed)
+                actual_display_array = parsed_actual_display_array
+
+            request_id = data.get("request_id")
+            raw_lock_view = data.get("lockView")
+            lock_view_info = _parse_lock_view_payload(raw_lock_view)
+
+            sparsification = len(display_array) > 1
+            use_target_adaptive_sparsification = False
+            target_tree_idx = None
+            target_sparsify_multiplier = None
+
+            adaptive_target = lock_view_info.get("adaptive_target")
+            if lock_view_info["enabled"] and len(display_array) == 1 and isinstance(adaptive_target, dict):
+                adaptive_tree_index = adaptive_target.get("tree_index")
+                if isinstance(adaptive_tree_index, int) and adaptive_tree_index == display_array[0]:
+                    use_target_adaptive_sparsification = True
+                    target_tree_idx = adaptive_tree_index
+                    target_sparsify_multiplier = _compute_target_sparsify_multiplier(lock_view_info)
+                    sparsification = True
 
             if lock_view_info["enabled"]:
                 print(
+                    "[process_postorder_layout] lockView payload received "
+                    f"session={lorax_sid} request_id={request_id} "
+                    f"display_array={display_array} "
+                    f"actual_display_array={actual_display_array}"
+                )
+                print(
                     "[process_postorder_layout] lockView boundingBox "
                     f"session={lorax_sid} request_id={request_id} "
-                    f"boundingBox={lock_view_info}"
+                    f"boundingBox={lock_view_info['bounding_box']}"
                 )
                 print(
                     "[process_postorder_layout] lockView plan "
                     f"session={lorax_sid} request_id={request_id} "
                     f"display_count={len(display_array)} "
+                    f"actual_display_array={actual_display_array} "
+                    f"target_tree_idx={target_tree_idx} "
+                    f"use_target_adaptive_sparsification={use_target_adaptive_sparsification} "
+                    f"target_sparsify_multiplier={target_sparsify_multiplier} "
+                    f"sparsification={'sparse' if sparsification else 'full'}"
+                )
+            elif isinstance(raw_lock_view, dict):
+                print(
+                    "[process_postorder_layout] lockView payload ignored "
+                    f"session={lorax_sid} request_id={request_id} "
+                    "enabled=False (missing/invalid payload)"
+                )
+
+            logger.debug(
+                "[process_postorder_layout] session=%s request_id=%s display_count=%s "
+                "lock_enabled=%s target_tree_idx=%s adaptive=%s multiplier=%s sparsification=%s",
+                lorax_sid,
+                request_id,
+                len(display_array),
+                lock_view_info["enabled"],
+                target_tree_idx,
+                use_target_adaptive_sparsification,
+                target_sparsify_multiplier,
+                "sparse" if sparsification else "full",
+            )
+
+            # New-only lock contract: backend runs a single call.
+            # Adaptive override applies only for target-only requests.
+            if use_target_adaptive_sparsification and target_tree_idx is not None:
+                print(
+                    "[process_postorder_layout] lockView target request "
+                    f"session={lorax_sid} request_id={request_id} "
+                    f"target_tree_idx={target_tree_idx} "
                     f"display_array={display_array} "
                     f"actual_display_array={actual_display_array} "
-                    f"display_min={min(display_array) if display_array else None} "
-                    f"display_max={max(display_array) if display_array else None} "
-                    f"candidate_tree_idx={candidate_tree_idx} "
-                    f"target_tree_idx={target_tree_idx} "
-                    f"target_in_display_array={target_in_display_array} "
-                    f"use_mixed_sparsification={use_mixed_sparsification}"
-                )
-                effective_sparsification = (
-                    "mixed" if use_mixed_sparsification else ("sparse" if sparsification else "full")
-                )
-                logger.debug(
-                    "[process_postorder_layout] session=%s request_id=%s display_count=%s "
-                    "in_box_tree_count=%s in_box_tree_indices=%s bounding_box=%s "
-                    "lock_view_single_tree=%s target_tree_idx=%s use_mixed_sparsification=%s "
-                    "sparsification=%s",
-                    lorax_sid,
-                    request_id,
-                    len(display_array),
-                    lock_view_info["in_box_tree_count"],
-                    lock_view_info["in_box_tree_indices"],
-                    lock_view_info["bounding_box"],
-                    lock_view_info["lock_view_single_tree"],
-                    target_tree_idx,
-                    use_mixed_sparsification,
-                    effective_sparsification,
+                    f"target_sparsify_multiplier={target_sparsify_multiplier}"
                 )
 
-            # handle_tree_graph_query returns dict with PyArrow buffer (Numba-optimized)
-            # Pass session_id and tree_graph_cache for caching TreeGraph objects
-            # actual_display_array contains all visible trees for cache eviction
-            if use_mixed_sparsification:
-                non_target_indices = [idx for idx in display_array if idx != target_tree_idx]
-                sparse_result = await handle_tree_graph_query(
-                    session.file_path,
-                    non_target_indices,
-                    sparsification=True,
-                    session_id=lorax_sid,
-                    tree_graph_cache=tree_graph_cache,
-                    csv_tree_graph_cache=csv_tree_graph_cache,
-                    actual_display_array=actual_display_array
-                )
-                if "error" in sparse_result:
-                    return {"error": sparse_result["error"], "request_id": request_id}
-
-                full_result = await handle_tree_graph_query(
-                    session.file_path,
-                    [target_tree_idx],
-                    sparsification=False,
-                    session_id=lorax_sid,
-                    tree_graph_cache=tree_graph_cache,
-                    csv_tree_graph_cache=csv_tree_graph_cache,
-                    actual_display_array=actual_display_array
-                )
-                if "error" in full_result:
-                    return {"error": full_result["error"], "request_id": request_id}
-
-                result = _merge_layout_results(sparse_result, full_result)
-            else:
-                result = await handle_tree_graph_query(
-                    session.file_path,
-                    display_array,
-                    sparsification=sparsification,
-                    session_id=lorax_sid,
-                    tree_graph_cache=tree_graph_cache,
-                    csv_tree_graph_cache=csv_tree_graph_cache,
-                    actual_display_array=actual_display_array
-                )
+            result = await handle_tree_graph_query(
+                session.file_path,
+                display_array,
+                sparsification=sparsification,
+                session_id=lorax_sid,
+                tree_graph_cache=tree_graph_cache,
+                csv_tree_graph_cache=csv_tree_graph_cache,
+                actual_display_array=actual_display_array,
+                sparsify_cell_size_multiplier=target_sparsify_multiplier,
+            )
 
             if "error" in result:
                 return {"error": result["error"], "request_id": request_id}

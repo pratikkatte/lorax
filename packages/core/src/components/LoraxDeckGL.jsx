@@ -79,6 +79,18 @@ function getOrthoLocalXY(deckRef, info, event) {
   return { x: canvasXY.x - vx, y: canvasXY.y - vy };
 }
 
+/** Debounce delay (ms) before capturing lock view snapshot after view state settles. */
+const LOCK_VIEW_SNAPSHOT_DEBOUNCE_MS = 150;
+
+function getDisplayArraySignature(displayArray) {
+  if (!Array.isArray(displayArray) || displayArray.length === 0) return '';
+  return displayArray
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value))
+    .sort((a, b) => a - b)
+    .join(',');
+}
+
 /**
  * LoraxDeckGL - Configurable deck.gl component with 4 views:
  * - ortho: Main tree visualization (always required)
@@ -260,9 +272,43 @@ const LoraxDeckGL = forwardRef(({
     debug: lockSnapshotDebug
   });
 
+  const lockDisplayArraySignature = useMemo(
+    () => getDisplayArraySignature(displayArray),
+    [displayArray]
+  );
+  const previousLockDisplayArraySignatureRef = useRef(lockDisplayArraySignature);
+  const lockSnapshotDebounceRef = useRef(null);
+
+  const debouncedScheduleLockSnapshotCapture = useCallback(() => {
+    if (lockSnapshotDebounceRef.current != null) {
+      clearTimeout(lockSnapshotDebounceRef.current);
+    }
+    lockSnapshotDebounceRef.current = setTimeout(() => {
+      lockSnapshotDebounceRef.current = null;
+      scheduleLockSnapshotCapture();
+    }, LOCK_VIEW_SNAPSHOT_DEBOUNCE_MS);
+  }, [scheduleLockSnapshotCapture]);
+
+  useEffect(() => () => {
+    if (lockSnapshotDebounceRef.current != null) {
+      clearTimeout(lockSnapshotDebounceRef.current);
+      lockSnapshotDebounceRef.current = null;
+    }
+  }, []);
+
   useEffect(() => {
     setLockViewPayload(latestLockViewPayload);
   }, [latestLockViewPayload]);
+
+  useEffect(() => {
+    const previousSignature = previousLockDisplayArraySignatureRef.current;
+    previousLockDisplayArraySignatureRef.current = lockDisplayArraySignature;
+
+    if (!lockModelMatrix) return;
+    if (previousSignature === lockDisplayArraySignature) return;
+
+    scheduleLockSnapshotCapture();
+  }, [lockModelMatrix, lockDisplayArraySignature, scheduleLockSnapshotCapture]);
 
   // 6c.1. Notify parent when tree loading state changes
   useEffect(() => {
@@ -866,9 +912,9 @@ const LoraxDeckGL = forwardRef(({
 
   const handleViewStateChange = useCallback((params) => {
     internalHandleViewStateChange(params);
-    scheduleLockSnapshotCapture();
+    debouncedScheduleLockSnapshotCapture();
     externalOnViewStateChange?.(params);
-  }, [internalHandleViewStateChange, externalOnViewStateChange, scheduleLockSnapshotCapture]);
+  }, [internalHandleViewStateChange, externalOnViewStateChange, debouncedScheduleLockSnapshotCapture]);
 
   const handleAfterRender = useCallback(() => {
     if (showPolygons && onPolygonsAfterRender && deckRef.current?.deck) {

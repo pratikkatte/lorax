@@ -57,6 +57,12 @@ export { useLocalData } from './hooks/useLocalData.jsx';
 export { useTreeData } from './hooks/useTreeData.jsx';
 export { useRenderData } from './hooks/useRenderData.jsx';
 export { useTreePolygons } from './hooks/useTreePolygons.jsx';
+export { useTreeViewportPipeline } from './hooks/useTreeViewportPipeline.jsx';
+export {
+  useLockViewSnapshot,
+  LOCK_SNAPSHOT_DEBUG_LABEL_BY_CORNER,
+  formatLockSnapshotDebugCoordinate
+} from './hooks/useLockViewSnapshot.jsx';
 
 // DeckGL Layers
 export { GenomeGridLayer, GenomeInfoLayer, TimeGridLayer, TreeCompositeLayer } from './layers/index.js';
@@ -80,7 +86,7 @@ export {
 // DeckGL Controller
 export { MyOrthographicController, setGlobalControllers } from './controllers/MyOrthographicController.js';
 
-// Pure Computation Utilities (for main-thread mode / webpack compatibility)
+// Pure Computation Utilities
 export {
   lowerBound,
   upperBound,
@@ -89,20 +95,14 @@ export {
   getSelectionStrategy,
   new_complete_experiment_map,
   normalizeIntervals,
-  queryIntervalsSync,
-  queryLocalDataSync,
-  serializeBinsForTransfer,
-  deserializeBins,
-  supportsWebWorkers
+  queryIntervalsSync
 } from './utils/computations.js';
 
-// Render Utilities (for main-thread mode / webpack compatibility)
+// Render Utilities
 export {
   groupNodesByTree,
   getTipColor,
-  computeRenderArrays,
-  serializeModelMatrices,
-  buildModelMatricesMap
+  serializeModelMatrices
 } from './utils/renderUtils.js';
 
 // Arrow Utilities (for parsing PyArrow buffers)

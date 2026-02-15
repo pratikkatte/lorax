@@ -522,7 +522,8 @@ async def handle_tree_graph_query(
     session_id: str = None,
     tree_graph_cache=None,
     csv_tree_graph_cache=None,
-    actual_display_array=None
+    actual_display_array=None,
+    sparsify_cell_size_multiplier: float | None = None,
 ):
     """
     Construct trees using Numba-optimized tree_graph module.
@@ -533,6 +534,7 @@ async def handle_tree_graph_query(
         sparsification: Enable sparsification (default False). Uses edge-midpoint grid deduplication.
         session_id: Session ID for cache lookup/storage
         tree_graph_cache: TreeGraphCache instance for caching TreeGraph objects
+        sparsify_cell_size_multiplier: Optional multiplier applied to sparsify cell size.
 
     Returns:
         dict with:
@@ -632,7 +634,8 @@ async def handle_tree_graph_query(
             tree_indices,
             sparsification=sparsification,
             sparsify_mutations=sparsification,  # When nodes are sparsified, sparsify mutations too
-            pre_cached_graphs=pre_cached_graphs
+            pre_cached_graphs=pre_cached_graphs,
+            sparsify_cell_size_multiplier=sparsify_cell_size_multiplier,
         )
 
     buffer, min_time, max_time, processed_indices, newly_built = await asyncio.to_thread(process_trees)

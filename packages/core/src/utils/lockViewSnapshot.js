@@ -9,7 +9,17 @@
  *     { corner: 'topLeft'|'topRight'|'bottomRight'|'bottomLeft', x, y, treeIndex }
  *   ],
  *   // NOTE: boundingBox is in world coordinates.
- *   boundingBox: { minX, maxX, minY, maxY, width, height }
+ *   boundingBox: { minX, maxX, minY, maxY, width, height },
+ *   inBoxTreeIndices: number[],
+ *   inBoxTreeCount: number,
+ *   adaptiveTarget?: {
+ *     treeIndex: number,
+ *     coverageX: number,
+ *     coverageY: number,
+ *     coverageArea: number,
+ *     profile: 'balanced'
+ *   },
+ *   displayArraySignature: string
  * }
  */
 
@@ -43,7 +53,14 @@ function buildVisibleTreeRanges(localBins) {
     const scaleY = getMatrixComponent(modelMatrix, 5);
     const translateX = getMatrixComponent(modelMatrix, 12);
     const translateY = getMatrixComponent(modelMatrix, 13);
-    if (!Number.isFinite(scaleX) || !Number.isFinite(translateX)) continue;
+    if (
+      !Number.isFinite(scaleX)
+      || !Number.isFinite(scaleY)
+      || !Number.isFinite(translateX)
+      || !Number.isFinite(translateY)
+    ) {
+      continue;
+    }
 
     const rawTreeIndex = Number.isFinite(bin?.global_index) ? bin.global_index : key;
     const treeIndex = Number(rawTreeIndex);
@@ -51,11 +68,15 @@ function buildVisibleTreeRanges(localBins) {
 
     const x0 = translateX;
     const x1 = translateX + scaleX;
+    const y0 = translateY;
+    const y1 = translateY + scaleY;
 
     ranges.push({
       treeIndex,
       minX: Math.min(x0, x1),
       maxX: Math.max(x0, x1),
+      minY: Math.min(y0, y1),
+      maxY: Math.max(y0, y1),
       scaleX,
       scaleY,
       translateX,
@@ -112,6 +133,81 @@ function toWorldXY(unprojected) {
   return { x: Number.NaN, y: Number.NaN };
 }
 
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function overlapLength(aMin, aMax, bMin, bMax) {
+  if (
+    !Number.isFinite(aMin) || !Number.isFinite(aMax)
+    || !Number.isFinite(bMin) || !Number.isFinite(bMax)
+  ) {
+    return 0;
+  }
+  const lo = Math.max(Math.min(aMin, aMax), Math.min(bMin, bMax));
+  const hi = Math.min(Math.max(aMin, aMax), Math.max(bMin, bMax));
+  return Math.max(0, hi - lo);
+}
+
+function buildInBoxTreeIndicesFromCorners(corners) {
+  if (!Array.isArray(corners) || corners.length === 0) return [];
+  const indices = [];
+  const seen = new Set();
+
+  for (const corner of corners) {
+    const rawTreeIndex = corner?.treeIndex;
+    if (rawTreeIndex == null || rawTreeIndex === '') continue;
+    const treeIndex = Number(rawTreeIndex);
+    if (!Number.isFinite(treeIndex) || seen.has(treeIndex)) continue;
+    seen.add(treeIndex);
+    indices.push(treeIndex);
+  }
+
+  return indices;
+}
+
+function computeSingleTargetAdaptiveTarget({ targetTreeIndex, treeRanges, boundingBox }) {
+  if (!Array.isArray(treeRanges) || !boundingBox) return null;
+  const targetIndex = Number(targetTreeIndex);
+  if (!Number.isFinite(targetIndex)) return null;
+
+  const range = treeRanges.find((entry) => Number(entry?.treeIndex) === targetIndex);
+  if (!range) return null;
+
+  const treeWidth = Math.max(1e-12, Math.abs(range.maxX - range.minX));
+  const overlapX = overlapLength(
+    boundingBox.minX,
+    boundingBox.maxX,
+    range.minX,
+    range.maxX
+  );
+  const coverageX = clamp(overlapX / treeWidth, 0, 1);
+
+  return {
+    treeIndex: targetIndex,
+    coverageX,
+    coverageY: 1,
+    coverageArea: coverageX,
+    profile: 'balanced'
+  };
+}
+
+function computeDisplayArraySignature(ranges) {
+  if (!Array.isArray(ranges) || ranges.length === 0) return '';
+  const indices = [];
+  const seen = new Set();
+
+  for (const range of ranges) {
+    const treeIndex = Number(range?.treeIndex);
+    if (!Number.isFinite(treeIndex) || seen.has(treeIndex)) continue;
+    seen.add(treeIndex);
+    indices.push(treeIndex);
+  }
+
+  indices.sort((a, b) => a - b);
+  return indices.join(',');
+}
+
 /**
  * Build lock-view snapshot data for current ortho viewport.
  *
@@ -153,6 +249,7 @@ export function buildLockViewSnapshot({ orthoViewport, localBins }) {
   }
 
   const rangesInsideBox = filterRangesInsideViewportX(treeRanges, minX, maxX);
+  const displayArraySignature = computeDisplayArraySignature(treeRanges);
   const corners = [];
 
   for (const worldCorner of worldCorners) {
@@ -190,17 +287,33 @@ export function buildLockViewSnapshot({ orthoViewport, localBins }) {
     });
   }
 
+  const boundingBox = {
+    minX,
+    maxX,
+    minY,
+    maxY,
+    width: maxX - minX,
+    height: maxY - minY
+  };
+
+  const inBoxTreeIndices = buildInBoxTreeIndicesFromCorners(corners);
+  const inBoxTreeCount = inBoxTreeIndices.length;
+  const adaptiveTarget = inBoxTreeCount === 1
+    ? computeSingleTargetAdaptiveTarget({
+      targetTreeIndex: inBoxTreeIndices[0],
+      treeRanges,
+      boundingBox
+    })
+    : null;
+
   return {
     capturedAt: Date.now(),
     coordinateSystem: 'tree-local-nearest',
     corners,
-    boundingBox: {
-      minX,
-      maxX,
-      minY,
-      maxY,
-      width: maxX - minX,
-      height: maxY - minY
-    }
+    inBoxTreeIndices,
+    inBoxTreeCount,
+    boundingBox,
+    adaptiveTarget,
+    displayArraySignature
   };
 }
