@@ -8,9 +8,11 @@ and PyArrow buffer encoding.
 import pytest
 import json
 import asyncio
+import time
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 import numpy as np
+import tskit
 
 # Check if numba is available (required for tree_graph module)
 try:
@@ -20,6 +22,30 @@ except ImportError:
     HAS_NUMBA = False
 
 pytestmark = pytest.mark.skipif(not HAS_NUMBA, reason="numba not installed")
+
+
+def _build_metadata_test_tree_sequence():
+    """Build a small single-tree sequence with node metadata for highlight tests."""
+    tables = tskit.TableCollection(sequence_length=1.0)
+    root = tables.nodes.add_row(time=1.0, flags=0)
+    sample_specs = [
+        {"name": "s0", "group": "A"},
+        {"name": "s1", "group": "A"},
+        {"name": "s2", "group": 2},
+        {"name": "s3"},
+        {"name": "s4", "group": ""},
+    ]
+    sample_ids = []
+    for spec in sample_specs:
+        node_id = tables.nodes.add_row(
+            time=0.0,
+            flags=tskit.NODE_IS_SAMPLE,
+            metadata=json.dumps(spec).encode("utf-8"),
+        )
+        tables.edges.add_row(0.0, 1.0, root, node_id)
+        sample_ids.append(node_id)
+    tables.sort()
+    return tables.tree_sequence(), sample_ids
 
 
 class TestFileLoading:
@@ -228,6 +254,166 @@ class TestNodeSearch:
         assert "lineage" in result
 
 
+class TestHighlightOptimizations:
+    """Tests for optimized highlight/multi-search paths."""
+
+    @pytest.mark.asyncio
+    async def test_value_to_sample_nodes_index_exact_match_and_cache(self):
+        from lorax.cache.file_context import FileContext
+        from lorax.handlers import _get_value_to_sample_nodes_index
+
+        ts, sample_ids = _build_metadata_test_tree_sequence()
+        ctx = FileContext(
+            file_path="in-memory.trees",
+            tree_sequence=ts,
+            config={},
+            mtime=0.0,
+        )
+
+        index = _get_value_to_sample_nodes_index(
+            ctx,
+            "group",
+            sources=("node",),
+            sample_name_key="name",
+        )
+
+        assert sorted(index["A"].tolist()) == sorted(sample_ids[:2])
+        assert index["2"].tolist() == [sample_ids[2]]
+        assert index[""].tolist() == [sample_ids[4]]
+        assert sample_ids[3] not in index[""].tolist()
+
+        cached = _get_value_to_sample_nodes_index(
+            ctx,
+            "group",
+            sources=("node",),
+            sample_name_key="name",
+        )
+        assert cached is index
+
+    @pytest.mark.asyncio
+    async def test_get_highlight_positions_uses_index_and_vectorized_filter(self):
+        from lorax.cache import TreeGraphCache
+        from lorax.cache.file_context import FileContext
+        from lorax.handlers import get_highlight_positions
+
+        ts, sample_ids = _build_metadata_test_tree_sequence()
+        ctx = FileContext(
+            file_path="in-memory.trees",
+            tree_sequence=ts,
+            config={},
+            mtime=0.0,
+        )
+        cache = TreeGraphCache(local_ttl_seconds=3600, cleanup_interval_seconds=60)
+
+        result = await get_highlight_positions(
+            ts,
+            "in-memory.trees",
+            "group",
+            "A",
+            [0],
+            "session-highlight",
+            cache,
+            sources=("node",),
+            ctx=ctx,
+        )
+
+        node_ids = sorted(pos["node_id"] for pos in result["positions"])
+        assert node_ids == sorted(sample_ids[:2])
+        assert all(pos["tree_idx"] == 0 for pos in result["positions"])
+
+    @pytest.mark.asyncio
+    async def test_get_multi_value_highlight_positions_parity(self):
+        from lorax.cache import TreeGraphCache
+        from lorax.cache.file_context import FileContext
+        from lorax.handlers import get_multi_value_highlight_positions
+
+        ts, sample_ids = _build_metadata_test_tree_sequence()
+        ctx = FileContext(
+            file_path="in-memory.trees",
+            tree_sequence=ts,
+            config={},
+            mtime=0.0,
+        )
+        cache = TreeGraphCache(local_ttl_seconds=3600, cleanup_interval_seconds=60)
+
+        result = await get_multi_value_highlight_positions(
+            ts,
+            "in-memory.trees",
+            "group",
+            ["A", 2, "", "missing"],
+            [0],
+            "session-multi",
+            cache,
+            show_lineages=True,
+            sources=("node",),
+            ctx=ctx,
+        )
+
+        assert len(result["positions_by_value"]["A"]) == 2
+        assert len(result["positions_by_value"]["2"]) == 1
+        assert len(result["positions_by_value"][""]) == 1
+        assert len(result["positions_by_value"]["missing"]) == 0
+        assert result["total_count"] == 4
+        assert "A" in result["lineages"]
+        assert 0 in result["lineages"]["A"]
+        assert len(result["lineages"]["A"][0]) == 2
+        lineage_nodes = [entry["path_node_ids"][-1] for entry in result["lineages"]["A"][0]]
+        assert sorted(lineage_nodes) == sorted(sample_ids[:2])
+
+    @pytest.mark.asyncio
+    async def test_highlight_cache_miss_dedupes_concurrent_tree_build(self):
+        from lorax.cache import TreeGraphCache
+        from lorax.cache.file_context import FileContext
+        import lorax.handlers as handlers_module
+
+        ts, _ = _build_metadata_test_tree_sequence()
+        ctx = FileContext(
+            file_path="in-memory.trees",
+            tree_sequence=ts,
+            config={},
+            mtime=0.0,
+        )
+        cache = TreeGraphCache(local_ttl_seconds=3600, cleanup_interval_seconds=60)
+        handlers_module._TREE_GRAPH_LOAD_TASKS.clear()
+
+        call_count = 0
+        original_construct_tree = handlers_module.construct_tree
+
+        def counting_construct_tree(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            time.sleep(0.05)
+            return original_construct_tree(*args, **kwargs)
+
+        with patch("lorax.handlers.construct_tree", side_effect=counting_construct_tree):
+            await asyncio.gather(
+                handlers_module.get_highlight_positions(
+                    ts,
+                    "in-memory.trees",
+                    "group",
+                    "A",
+                    [0],
+                    "dedupe-session",
+                    cache,
+                    sources=("node",),
+                    ctx=ctx,
+                ),
+                handlers_module.get_highlight_positions(
+                    ts,
+                    "in-memory.trees",
+                    "group",
+                    "A",
+                    [0],
+                    "dedupe-session",
+                    cache,
+                    sources=("node",),
+                    ctx=ctx,
+                ),
+            )
+
+        assert call_count == 1
+
+
 class TestTreeGraphQuery:
     """Tests for tree graph query handlers."""
 
@@ -396,11 +582,25 @@ class TestMutationsHandlers:
 class TestCompareTreesDiff:
     """Tests for get_compare_trees_diff (compare topology)."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_get_compare_trees_diff_csv(self, temp_dir):
         """Test compare topology with CSV file (different Newick topologies)."""
         from lorax.cache import CsvTreeGraphCache, get_file_context
         from lorax.handlers import get_compare_trees_diff
+
+        def _node_index(graph, node_id):
+            matches = np.where(graph.node_id == int(node_id))[0]
+            assert len(matches) == 1
+            return int(matches[0])
+
+        def _assert_edge_coords_match_graph(edge, graph):
+            parent_idx = _node_index(graph, edge["parent"])
+            child_idx = _node_index(graph, edge["child"])
+
+            assert edge["parent_x"] == pytest.approx(float(graph.x[parent_idx]))
+            assert edge["parent_y"] == pytest.approx(float(graph.y[parent_idx]))
+            assert edge["child_x"] == pytest.approx(float(graph.x[child_idx]))
+            assert edge["child_y"] == pytest.approx(float(graph.y[child_idx]))
 
         # Create CSV with genomic_positions and newick (different topologies)
         csv_content = """genomic_positions,newick
@@ -430,14 +630,26 @@ class TestCompareTreesDiff:
         # Two consecutive pairs: (0,1) and (1,2)
         assert len(result["comparisons"]) == 2
         for comp in result["comparisons"]:
+            prev_graph = await csv_cache.get(session_id, int(comp["prev_idx"]))
+            next_graph = await csv_cache.get(session_id, int(comp["next_idx"]))
+
             assert "prev_idx" in comp
             assert "next_idx" in comp
             assert "inserted" in comp
             assert "removed" in comp
+            assert prev_graph is not None
+            assert next_graph is not None
+
             # Different topologies should yield some inserted/removed edges
             assert isinstance(comp["inserted"], list)
             assert isinstance(comp["removed"], list)
-            # Each edge should have coordinates
+            # Canonical edge semantics: *_x uses graph.x (layout), *_y uses graph.y (time).
+            for e in comp["inserted"]:
+                _assert_edge_coords_match_graph(e, next_graph)
+            for e in comp["removed"]:
+                _assert_edge_coords_match_graph(e, prev_graph)
+
+            # Basic payload shape checks.
             for e in comp["inserted"] + comp["removed"]:
                 assert "parent_x" in e
                 assert "parent_y" in e

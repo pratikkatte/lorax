@@ -7,8 +7,11 @@ and connection limit enforcement.
 
 import pytest
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+from types import SimpleNamespace
 from unittest.mock import patch
+
+from fastapi import Response
 
 
 class TestSession:
@@ -229,6 +232,49 @@ class TestSessionManager:
         """Test health check with in-memory storage."""
         result = await session_manager_memory.health_check()
         assert result is True
+
+    @pytest.mark.asyncio
+    async def test_expired_in_memory_session_is_pruned(self):
+        """Expired in-memory sessions should be dropped on access."""
+        from lorax.session_manager import SessionManager
+
+        manager = SessionManager(
+            redis_url=None,
+            memory_ttl_seconds=1,
+            cleanup_interval_seconds=60,
+        )
+        session = await manager.create_session(sid="expired-session")
+        session.last_activity = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat()
+        await manager.save_session(session)
+
+        retrieved = await manager.get_session("expired-session")
+        assert retrieved is None
+        assert "expired-session" not in manager.memory_sessions
+
+    @pytest.mark.asyncio
+    async def test_get_or_create_session_refreshes_cookie_and_activity(self):
+        """Existing sessions should refresh activity and cookie max-age."""
+        from lorax.constants import COOKIE_MAX_AGE, SESSION_COOKIE
+        from lorax.session_manager import SessionManager
+
+        manager = SessionManager(redis_url=None)
+        existing = await manager.create_session(sid="existing-session")
+        old_activity = existing.last_activity
+
+        request = SimpleNamespace(
+            cookies={SESSION_COOKIE: existing.sid},
+            headers={},
+            url=SimpleNamespace(scheme="http"),
+        )
+        response = Response()
+
+        sid, updated = await manager.get_or_create_session(request, response)
+        assert sid == existing.sid
+        assert updated.last_activity != old_activity
+
+        cookie_header = response.headers.get("set-cookie", "")
+        assert f"{SESSION_COOKIE}={existing.sid}" in cookie_header
+        assert f"Max-Age={COOKIE_MAX_AGE}" in cookie_header
 
 
 class TestSessionManagerRedis:

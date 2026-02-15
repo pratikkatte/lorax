@@ -356,3 +356,227 @@ class TestSparsification:
                     f"Orphaned mutation: mut_node_id={row['mut_node_id']} "
                     f"not in kept nodes for tree_idx={row['mut_tree_idx']}"
                 )
+
+    def test_sparsification_cell_size_multiplier_controls_density(self, minimal_ts):
+        """Lower cell-size multiplier should retain at least as many nodes as higher multiplier."""
+        import struct
+        import pyarrow as pa
+        from lorax.tree_graph import construct_trees_batch
+
+        tree_indices = list(range(min(minimal_ts.num_trees, 5)))
+        if not tree_indices:
+            pytest.skip("minimal_ts has no trees")
+
+        dense_buffer, _, _, _, _ = construct_trees_batch(
+            minimal_ts,
+            tree_indices=tree_indices,
+            sparsification=True,
+            sparsify_cell_size_multiplier=0.25,
+        )
+        coarse_buffer, _, _, _, _ = construct_trees_batch(
+            minimal_ts,
+            tree_indices=tree_indices,
+            sparsification=True,
+            sparsify_cell_size_multiplier=1.75,
+        )
+
+        dense_node_len = struct.unpack("<I", dense_buffer[:4])[0]
+        coarse_node_len = struct.unpack("<I", coarse_buffer[:4])[0]
+        dense_nodes = pa.ipc.open_stream(dense_buffer[4:4 + dense_node_len]).read_all().num_rows
+        coarse_nodes = pa.ipc.open_stream(coarse_buffer[4:4 + coarse_node_len]).read_all().num_rows
+
+        assert dense_nodes >= coarse_nodes
+
+    def test_adaptive_sparsification_bbox_does_not_crop_nodes(self, minimal_ts):
+        """Adaptive bbox mode keeps full tree output and only adjusts in-bbox density."""
+        import struct
+        import pyarrow as pa
+        from lorax.tree_graph import construct_trees_batch
+
+        bbox = {
+            "min_x": 0.45,
+            "max_x": 0.55,
+            "min_y": 0.2,
+            "max_y": 0.8,
+        }
+        buffer, _, _, _, _ = construct_trees_batch(
+            minimal_ts,
+            tree_indices=[0],
+            sparsification=True,
+            adaptive_sparsify_bbox=bbox,
+            adaptive_target_tree_idx=0,
+            adaptive_outside_cell_size=0.002,
+            sparsify_cell_size_multiplier=0.5,
+        )
+
+        node_len = struct.unpack("<I", buffer[:4])[0]
+        node_table = pa.ipc.open_stream(buffer[4:4 + node_len]).read_all()
+        node_df = node_table.to_pandas()
+
+        assert len(node_df) > 0
+
+        in_bbox = (
+            (node_df["x"] >= bbox["min_x"])
+            & (node_df["x"] <= bbox["max_x"])
+            & (node_df["y"] >= bbox["min_y"])
+            & (node_df["y"] <= bbox["max_y"])
+        )
+        assert (~in_bbox).any(), "Adaptive mode must keep nodes outside bbox (no cropping)"
+
+        node_ids = set(node_df["node_id"].tolist())
+        for parent_id in node_df["parent_id"]:
+            if parent_id != -1:
+                assert parent_id in node_ids
+
+    def test_adaptive_sparsification_increases_inside_density(self, minimal_ts):
+        """Adaptive mode should retain at least as many in-bbox nodes as baseline sparsification."""
+        import struct
+        import pyarrow as pa
+        from lorax.tree_graph import construct_trees_batch
+
+        bbox = {
+            "min_x": 0.0,
+            "max_x": 1.0,
+            "min_y": 0.0,
+            "max_y": 0.6,
+        }
+        baseline_buffer, _, _, _, _ = construct_trees_batch(
+            minimal_ts,
+            tree_indices=[0],
+            sparsification=True,
+            sparsify_cell_size=0.002,
+        )
+        adaptive_buffer, _, _, _, _ = construct_trees_batch(
+            minimal_ts,
+            tree_indices=[0],
+            sparsification=True,
+            sparsify_cell_size=0.002,
+            sparsify_cell_size_multiplier=0.5,
+            adaptive_sparsify_bbox=bbox,
+            adaptive_target_tree_idx=0,
+            adaptive_outside_cell_size=0.002,
+        )
+
+        baseline_node_len = struct.unpack("<I", baseline_buffer[:4])[0]
+        adaptive_node_len = struct.unpack("<I", adaptive_buffer[:4])[0]
+        baseline_nodes = pa.ipc.open_stream(baseline_buffer[4:4 + baseline_node_len]).read_all().to_pandas()
+        adaptive_nodes = pa.ipc.open_stream(adaptive_buffer[4:4 + adaptive_node_len]).read_all().to_pandas()
+
+        baseline_in_bbox = (
+            (baseline_nodes["x"] >= bbox["min_x"])
+            & (baseline_nodes["x"] <= bbox["max_x"])
+            & (baseline_nodes["y"] >= bbox["min_y"])
+            & (baseline_nodes["y"] <= bbox["max_y"])
+        ).sum()
+        adaptive_in_bbox = (
+            (adaptive_nodes["x"] >= bbox["min_x"])
+            & (adaptive_nodes["x"] <= bbox["max_x"])
+            & (adaptive_nodes["y"] >= bbox["min_y"])
+            & (adaptive_nodes["y"] <= bbox["max_y"])
+        ).sum()
+
+        assert adaptive_in_bbox >= baseline_in_bbox
+
+    def test_adaptive_sparsification_mutations_keep_refs_and_outside_points(self, minimal_ts):
+        """Adaptive mode should not crop mutations to bbox and must keep valid node refs."""
+        import struct
+        import pyarrow as pa
+        from lorax.tree_graph import construct_trees_batch
+
+        if minimal_ts.num_mutations == 0:
+            pytest.skip("minimal_ts has no mutations")
+
+        bbox = {
+            "min_x": 0.25,
+            "max_x": 0.75,
+            "min_y": 0.0,
+            "max_y": 0.6,
+        }
+        baseline_buffer, _, _, _, _ = construct_trees_batch(
+            minimal_ts,
+            tree_indices=[0],
+            sparsification=True,
+            sparsify_cell_size=0.002,
+        )
+        adaptive_buffer, _, _, _, _ = construct_trees_batch(
+            minimal_ts,
+            tree_indices=[0],
+            sparsification=True,
+            sparsify_cell_size=0.002,
+            sparsify_cell_size_multiplier=0.5,
+            adaptive_sparsify_bbox=bbox,
+            adaptive_target_tree_idx=0,
+            adaptive_outside_cell_size=0.002,
+        )
+
+        baseline_node_len = struct.unpack("<I", baseline_buffer[:4])[0]
+        baseline_mut_bytes = baseline_buffer[4 + baseline_node_len :]
+        if len(baseline_mut_bytes) == 0:
+            pytest.skip("baseline produced no mutations")
+        baseline_mut_df = pa.ipc.open_stream(baseline_mut_bytes).read_all().to_pandas()
+        baseline_outside = (
+            (baseline_mut_df["mut_x"] < bbox["min_x"])
+            | (baseline_mut_df["mut_x"] > bbox["max_x"])
+            | (baseline_mut_df["mut_y"] < bbox["min_y"])
+            | (baseline_mut_df["mut_y"] > bbox["max_y"])
+        ).sum()
+        if baseline_outside == 0:
+            pytest.skip("fixture has no baseline mutations outside bbox")
+
+        adaptive_node_len = struct.unpack("<I", adaptive_buffer[:4])[0]
+        adaptive_node_bytes = adaptive_buffer[4 : 4 + adaptive_node_len]
+        adaptive_mut_bytes = adaptive_buffer[4 + adaptive_node_len :]
+
+        node_df = pa.ipc.open_stream(adaptive_node_bytes).read_all().to_pandas()
+        kept_nodes = set(zip(node_df["tree_idx"], node_df["node_id"]))
+
+        if len(adaptive_mut_bytes) == 0:
+            pytest.fail("adaptive mode unexpectedly removed all mutations")
+
+        mut_df = pa.ipc.open_stream(adaptive_mut_bytes).read_all().to_pandas()
+        adaptive_outside = (
+            (mut_df["mut_x"] < bbox["min_x"])
+            | (mut_df["mut_x"] > bbox["max_x"])
+            | (mut_df["mut_y"] < bbox["min_y"])
+            | (mut_df["mut_y"] > bbox["max_y"])
+        ).sum()
+        assert adaptive_outside > 0, "adaptive mode should not crop mutations outside bbox"
+
+        for _, row in mut_df.iterrows():
+            key = (row["mut_tree_idx"], row["mut_node_id"])
+            assert key in kept_nodes
+
+    def test_adaptive_sparsification_inside_never_coarser_than_outside(self, minimal_ts):
+        """Even with a coarse multiplier input, adaptive inside must stay >= outside detail."""
+        import struct
+        import pyarrow as pa
+        from lorax.tree_graph import construct_trees_batch
+
+        bbox = {
+            "min_x": 0.0,
+            "max_x": 1.0,
+            "min_y": 0.0,
+            "max_y": 1.0,
+        }
+        baseline_buffer, _, _, _, _ = construct_trees_batch(
+            minimal_ts,
+            tree_indices=[0],
+            sparsification=True,
+            sparsify_cell_size=0.002,
+        )
+        adaptive_buffer, _, _, _, _ = construct_trees_batch(
+            minimal_ts,
+            tree_indices=[0],
+            sparsification=True,
+            sparsify_cell_size=0.002,
+            sparsify_cell_size_multiplier=1.75,  # would be coarser if not clamped
+            adaptive_sparsify_bbox=bbox,
+            adaptive_target_tree_idx=0,
+            adaptive_outside_cell_size=0.002,
+        )
+
+        baseline_node_len = struct.unpack("<I", baseline_buffer[:4])[0]
+        adaptive_node_len = struct.unpack("<I", adaptive_buffer[:4])[0]
+        baseline_nodes = pa.ipc.open_stream(baseline_buffer[4:4 + baseline_node_len]).read_all().num_rows
+        adaptive_nodes = pa.ipc.open_stream(adaptive_buffer[4:4 + adaptive_node_len]).read_all().num_rows
+        assert adaptive_nodes >= baseline_nodes

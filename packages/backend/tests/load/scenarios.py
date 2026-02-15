@@ -83,6 +83,16 @@ SCENARIOS = {
         "duration": "1m",
         "description": "Quick smoke test to verify setup",
         "host": "http://localhost:8080"
+    },
+
+    # Realistic workflow - load file, upload, request trees (process_postorder_layout)
+    "realistic": {
+        "users": 10,
+        "spawn_rate": 2,
+        "duration": "5m",
+        "description": "Realistic workflow: load file, upload, request tree data",
+        "host": "http://localhost:8080",
+        "locustfile": "locustfile_realistic.py"
     }
 }
 
@@ -102,13 +112,14 @@ THRESHOLDS = {
 }
 
 
-def run_scenario(scenario_name: str, host: str = None):
+def run_scenario(scenario_name: str, host: str = None, http_only: bool = False):
     """
     Run a specific load testing scenario.
 
     Args:
         scenario_name: Name of the scenario to run
         host: Override host URL
+        http_only: If True, use locustfile_http_only.py (no Socket.IO, for deployments where WS fails)
 
     Returns:
         subprocess.CompletedProcess result
@@ -122,9 +133,16 @@ def run_scenario(scenario_name: str, host: str = None):
     config = SCENARIOS[scenario_name]
     target_host = host or config["host"]
 
+    if http_only:
+        locustfile = "locustfile_http_only.py"
+    elif "locustfile" in config:
+        locustfile = config["locustfile"]
+    else:
+        locustfile = "locustfile.py"
+
     cmd = [
-        "locust",
-        "-f", "locustfile.py",
+        "python", "-m", "locust",
+        "-f", locustfile,
         "--headless",
         "-u", str(config["users"]),
         "-r", str(config["spawn_rate"]),
@@ -139,6 +157,19 @@ def run_scenario(scenario_name: str, host: str = None):
     print(f"Users: {config['users']}, Spawn rate: {config['spawn_rate']}/s")
     print(f"Duration: {config['duration']}")
     print(f"Target: {target_host}")
+    if http_only:
+        print("Mode: HTTP only (no Socket.IO)")
+    if locustfile != "locustfile.py":
+        print(f"Locustfile: {locustfile}")
+    if scenario_name == "realistic":
+        import os
+        user_type = os.getenv("LOAD_TEST_USER_TYPE", "both")
+        print(f"LOAD_TEST_USER_TYPE: {user_type}")
+        load_file = os.getenv("LOAD_TEST_FILE")
+        if load_file:
+            print(f"LOAD_TEST_FILE: {load_file}")
+        else:
+            print("Hint: Set LOAD_TEST_FILE='project:filename' for deployment (e.g. 1000Genomes:1kg_chr20.trees.tsz)")
     print("-" * 50)
 
     return subprocess.run(cmd)
@@ -218,8 +249,15 @@ if __name__ == "__main__":
             print(f"  {config['description']}")
             print(f"  Users: {config['users']}, Rate: {config['spawn_rate']}/s")
             print(f"  Duration: {config['duration']}")
-        print("\nUsage: python scenarios.py <scenario_name> [host]")
+        print("\nUsage: python scenarios.py <scenario_name> [host] [--http-only]")
+        print("  --http-only  Skip Socket.IO users (use when Socket.IO connect fails)")
     else:
         scenario = sys.argv[1]
-        host = sys.argv[2] if len(sys.argv) > 2 else None
-        run_scenario(scenario, host)
+        host = None
+        http_only = False
+        for arg in sys.argv[2:]:
+            if arg == "--http-only":
+                http_only = True
+            elif not arg.startswith("-"):
+                host = arg
+        run_scenario(scenario, host, http_only)

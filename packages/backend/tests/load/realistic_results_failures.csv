@@ -1,0 +1,2 @@
+Method,Name,Error,Occurrences
+Socket.IO,connect,ConnectionError('One or more namespaces failed to connect: '),10

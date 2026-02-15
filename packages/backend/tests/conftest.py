@@ -47,6 +47,12 @@ def event_loop():
     loop.close()
 
 
+@pytest.fixture(scope="session")
+def anyio_backend():
+    """Force anyio-marked tests to run only on asyncio backend."""
+    return "asyncio"
+
+
 @pytest.fixture(autouse=True)
 def force_local_mode(monkeypatch):
     """Force local mode for all tests."""

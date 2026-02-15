@@ -10,6 +10,7 @@ Tests end-to-end session flow including:
 
 import pytest
 import asyncio
+from datetime import datetime, timezone, timedelta
 from unittest.mock import patch, MagicMock
 
 # Check if numba is available (required for full app initialization)
@@ -69,6 +70,42 @@ class TestSessionCreation:
 
         # Sessions should be different
         assert sid1 != sid2
+
+    @pytest.mark.asyncio
+    async def test_cookie_is_rolling_for_active_session(self, async_client):
+        """Cookie max-age should be refreshed on repeated HTTP access."""
+        from lorax.constants import COOKIE_MAX_AGE, SESSION_COOKIE
+
+        init_response = await async_client.post("/init-session")
+        sid = init_response.json()["sid"]
+
+        response = await async_client.get("/projects", cookies={SESSION_COOKIE: sid})
+        assert response.status_code == 200
+
+        set_cookie = response.headers.get("set-cookie", "")
+        assert f"{SESSION_COOKIE}={sid}" in set_cookie
+        assert f"Max-Age={COOKIE_MAX_AGE}" in set_cookie
+
+    @pytest.mark.asyncio
+    async def test_expired_inmemory_session_cookie_gets_replaced(self, async_client):
+        """If an in-memory session idles past TTL, the next HTTP access gets a new SID."""
+        from lorax.constants import SESSION_COOKIE
+        from lorax.context import session_manager
+
+        init_response = await async_client.post("/init-session")
+        old_sid = init_response.json()["sid"]
+
+        existing = await session_manager.get_session(old_sid)
+        assert existing is not None
+        existing.last_activity = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat()
+        await session_manager.save_session(existing)
+
+        response = await async_client.get("/projects", cookies={SESSION_COOKIE: old_sid})
+        assert response.status_code == 200
+
+        set_cookie = response.headers.get("set-cookie", "")
+        assert SESSION_COOKIE in set_cookie
+        assert f"{SESSION_COOKIE}={old_sid}" not in set_cookie
 
 
 class TestFileLoadingLifecycle:
