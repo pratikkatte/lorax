@@ -7,10 +7,13 @@ This module provides:
 - construct_trees_batch: Build multiple trees efficiently (includes mutation extraction)
 """
 
+import logging
 import struct
 from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
+
+logger = logging.getLogger(__name__)
 import pyarrow as pa
 from numba import njit
 from numba.typed import Dict
@@ -511,7 +514,7 @@ def _process_single_tree(
                 float(bbox_max_y),
             )
         else:
-            print("normal sparsification")
+
             keep_mask = _sparsify_edges(
                 x.astype(np.float32),
                 y.astype(np.float32),
@@ -821,7 +824,6 @@ def construct_trees_batch(
                 None if adaptive_mode_enabled else sparsify_cell_size_multiplier
             ),
         )
-        print(f"cell_size sparsification: cell_size={cell_size}")
         sparsify_resolution = int(1.0 / cell_size)
 
         if adaptive_mode_enabled:
@@ -841,8 +843,7 @@ def construct_trees_batch(
             resolved_adaptive_outside_cell_size = outside_cell_size
             adaptive_outside_resolution = int(1.0 / outside_cell_size)
             adaptive_inside_resolution = int(1.0 / inside_cell_size)
-            print(f"inside_box sparsification: inside_cell_size={inside_cell_size}", sparsify_cell_size_multiplier)
-            print(f"outside bbox sparsification: outside_cell_size={outside_cell_size}")
+
             adaptive_bbox_bounds = (
                 float(normalized_adaptive_bbox["min_x"]),
                 float(normalized_adaptive_bbox["max_x"]),
@@ -963,7 +964,10 @@ def construct_trees_batch(
         all_mut_node_id = all_mut_node_id[:mut_offset]
 
         # Apply mutation sparsification when requested (grid-deduplicate by x,y per tree)
+        # Resolution aligns with edge sparsification: normal mode uses sparsify_resolution;
+        # adaptive mode uses outside/inside resolution (denser inside bbox).
         if sparsify_mutations:
+            n_muts_before = len(all_mut_tree_idx)
             if (
                 adaptive_mode_enabled
                 and adaptive_bbox_bounds is not None
@@ -985,6 +989,15 @@ def construct_trees_batch(
                     float(bbox_min_y),
                     float(bbox_max_y),
                 )
+                logger.debug(
+                    "mutation sparsification (adaptive): before=%d kept=%d removed=%d "
+                    "outside_res=%d inside_res=%d",
+                    n_muts_before,
+                    int(np.sum(keep_mask)),
+                    n_muts_before - int(np.sum(keep_mask)),
+                    int(adaptive_outside_resolution),
+                    int(adaptive_inside_resolution),
+                )
             else:
                 mut_resolution = (
                     sparsify_resolution
@@ -994,10 +1007,44 @@ def construct_trees_batch(
                 keep_mask = _sparsify_mutations(
                     all_mut_x, all_mut_y, all_mut_tree_idx, all_mut_node_id, mut_resolution
                 )
+                logger.debug(
+                    "mutation sparsification (normal): before=%d kept=%d removed=%d resolution=%d",
+                    n_muts_before,
+                    int(np.sum(keep_mask)),
+                    n_muts_before - int(np.sum(keep_mask)),
+                    mut_resolution,
+                )
             all_mut_tree_idx = all_mut_tree_idx[keep_mask]
             all_mut_x = all_mut_x[keep_mask]
             all_mut_y = all_mut_y[keep_mask]
             all_mut_node_id = all_mut_node_id[keep_mask]
+
+            n_muts_removed_by_sparsify = n_muts_before - len(all_mut_tree_idx)
+            print(f"n_muts_removed_by_sparsify: {n_muts_removed_by_sparsify}")
+            # When edge sparsification removed nodes and mutation sparsification removed
+            # mutations, filter kept mutations to surviving nodes
+            if sparsification and n_muts_removed_by_sparsify > 0:
+                max_node = int(max(all_node_ids.max(), all_mut_node_id.max())) + 1
+                surviving_keys = np.unique(
+                    all_tree_idx.astype(np.int64) * max_node + all_node_ids.astype(np.int64)
+                )
+                mut_keys = (
+                    all_mut_tree_idx.astype(np.int64) * max_node
+                    + all_mut_node_id.astype(np.int64)
+                )
+                node_filter = np.isin(mut_keys, surviving_keys)
+                n_before_node_filter = len(all_mut_tree_idx)
+                n_dropped_orphans = n_before_node_filter - int(np.sum(node_filter))
+                logger.debug(
+                    "mutation node filter: before=%d after=%d dropped_orphans=%d",
+                    n_before_node_filter,
+                    int(np.sum(node_filter)),
+                    n_dropped_orphans,
+                )
+                all_mut_tree_idx = all_mut_tree_idx[node_filter]
+                all_mut_x = all_mut_x[node_filter]
+                all_mut_y = all_mut_y[node_filter]
+                all_mut_node_id = all_mut_node_id[node_filter]
 
     # Build separate node table
     if offset == 0:
