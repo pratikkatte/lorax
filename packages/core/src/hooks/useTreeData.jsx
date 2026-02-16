@@ -127,15 +127,19 @@ function updateCacheFromResponse(cache, parsed) {
 /**
  * Evict cached trees whose genomic bounds are completely outside viewport.
  * Uses margin buffer to prevent thrashing during rapid panning.
+ * Never evicts trees in displayArray (required for current view, e.g. lock-mode).
  *
  * @param {Map} cache - Tree data cache (Map<tree_idx, data>)
  * @param {number[]} intervals - Array of genomic positions (one per tree index)
  * @param {number[]} genomicCoords - Current viewport bounds [startBp, endBp]
+ * @param {number[]} displayArray - Tree indices currently required for display (never evict these)
  * @param {number} marginFactor - Extra viewport width to keep (default 0.5 = 50%)
  * @returns {number} Count of evicted trees
  */
-function evictOutOfViewTrees(cache, intervals, genomicCoords, marginFactor = 0.5) {
+function evictOutOfViewTrees(cache, intervals, genomicCoords, displayArray = [], marginFactor = 0.5) {
   if (!intervals || !genomicCoords || intervals.length === 0) return 0;
+
+  const displaySet = new Set(Array.isArray(displayArray) ? displayArray : []);
 
   const [viewStart, viewEnd] = genomicCoords;
   const viewWidth = viewEnd - viewStart;
@@ -148,6 +152,9 @@ function evictOutOfViewTrees(cache, intervals, genomicCoords, marginFactor = 0.5
 
   // Check each cached tree
   for (const treeIdx of cache.keys()) {
+    // Never evict trees required for current display (lock-mode zoom can narrow genomicCoords)
+    if (displaySet.has(treeIdx)) continue;
+
     // Tree spans from intervals[treeIdx] to intervals[treeIdx + 1]
     const treeStart = intervals[treeIdx];
     const treeEnd = intervals[treeIdx + 1] ?? intervals[treeIdx];
@@ -386,7 +393,9 @@ export function useTreeData({
 
     setFetchReason(requestKind);
     setError(null);
-    if (requestKind === 'lock-refresh') {
+    // Lock mode + single tree: same tree with different sparsification, no overlay
+    const lockModeSingleTree = requestKind === 'full-fetch' && hasValidLockTarget && displayArray.length === 1;
+    if (requestKind === 'lock-refresh' || lockModeSingleTree) {
       setIsLoading(false);
       setIsBackgroundRefresh(true);
     } else {
@@ -445,9 +454,10 @@ export function useTreeData({
           }
         }
 
-        // Evict trees outside visible genomic window (with margin)
+        // Evict trees outside visible genomic window (with margin).
+        // Never evict displayArray trees (lock-mode zoom can narrow genomicCoords).
         if (genomicCoords && tsconfig?.intervals) {
-          evictOutOfViewTrees(cache, tsconfig.intervals, genomicCoords);
+          evictOutOfViewTrees(cache, tsconfig.intervals, genomicCoords, displayArray);
         }
 
         // Cache time bounds on first fetch (they're file-level constants)

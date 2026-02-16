@@ -1,4 +1,4 @@
-import React, { useRef } from "react";
+import React, { useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 
 const STYLES = {
@@ -11,9 +11,17 @@ const STYLES = {
  * Renders a dismissible alert for a message.
  * @param {string} [variant="error"] - "error" (rose) or "info" (slate)
  * @param {boolean} [fullText=false] - if true, show full message (wrap) instead of truncating with ellipsis
+ * @param {number} [autoDismissMs=5000] - auto-dismiss after this many ms; set to 0 to disable
  */
-const ErrorAlert = ({ message, onDismiss, variant = "error", fullText = false }) => {
+const ErrorAlert = ({ message, onDismiss, variant = "error", fullText = false, autoDismissMs = 5000 }) => {
     const rootRef = useRef(null);
+
+    useEffect(() => {
+        if (!message || typeof onDismiss !== "function" || !(Number(autoDismissMs) > 0)) return;
+        const id = setTimeout(onDismiss, autoDismissMs);
+        return () => clearTimeout(id);
+    }, [message, onDismiss, autoDismissMs]);
+
     if (!message) return null;
     const [border, bg, text, btnHover, btnText] = STYLES[variant]?.split(" ") ?? STYLES.error.split(" ");
     const msgStr = message instanceof Error ? message.message : String(message);
