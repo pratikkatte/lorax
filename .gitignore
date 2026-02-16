@@ -1,7 +1,4 @@
 lorax/data/
-CLAUDE.md
-AGENT.md
-
 packages/app/lorax_app/static/
 packages/backend/notebooks/
 # --- Python ---
@@ -148,3 +145,9 @@ out
 packages/plugin/
 packages/website/playwright-report/
 packages/website/test-results/
+
+# --- Editor / AI tool configs ---
+.claude/
+.cursor/
+CLAUDE.md
+AGENT.md

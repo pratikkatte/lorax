@@ -6,7 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](https://pypi.org/project/lorax-arg/)
 
-> **Web platform:** [lorax.in](https://lorax.in/) 
+> **Web platform:** [lorax.ucsc.edu](https://lorax.ucsc.edu/) 
 
 <!-- TODO: Add a screenshot or GIF of the tool in action here -->
 <!-- ![Lorax screenshot](docs/images/screenshot.png) -->
