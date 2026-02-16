@@ -357,6 +357,46 @@ class TestSparsification:
                     f"not in kept nodes for tree_idx={row['mut_tree_idx']}"
                 )
 
+    def test_sparsification_midpoint_only_when_tips_span_x(self, minimal_ts):
+        """When tips span x (not all at 1), midpoint-only deduplication is used (more aggressive)."""
+        from lorax.tree_graph import construct_tree
+        from lorax.tree_graph.tree_graph import _sparsify_edges
+
+        edges = minimal_ts.tables.edges
+        nodes = minimal_ts.tables.nodes
+        breakpoints = list(minimal_ts.breakpoints())
+        graph = construct_tree(
+            minimal_ts, edges, nodes, breakpoints,
+            index=0,
+            min_time=float(minimal_ts.min_time),
+            max_time=float(minimal_ts.max_time),
+        )
+
+        indices = np.where(graph.in_tree)[0].astype(np.int32)
+        n = len(indices)
+        if n == 0:
+            pytest.skip("empty tree")
+
+        node_ids = indices
+        parent_ids = graph.parent[indices]
+        x = graph.x[indices].astype(np.float32)
+        y = graph.y[indices].astype(np.float32)
+
+        order = np.argsort(node_ids)
+        sorted_ids = node_ids[order]
+        pos = np.searchsorted(sorted_ids, parent_ids)
+        parent_indices = np.full(n, -1, dtype=np.int32)
+        safe_pos = np.minimum(pos, n - 1)
+        valid = (parent_ids != -1) & (pos < n) & (sorted_ids[safe_pos] == parent_ids)
+        parent_indices[valid] = order[pos[valid]]
+
+        resolution = 100
+        keep_midpoint = _sparsify_edges(x, y, parent_indices, resolution, use_midpoint_only=True)
+        keep_direction = _sparsify_edges(x, y, parent_indices, resolution, use_midpoint_only=False)
+
+        # Midpoint-only is more aggressive: keeps <= direction-based nodes
+        assert np.sum(keep_midpoint) <= np.sum(keep_direction)
+
     def test_sparsification_cell_size_multiplier_controls_density(self, minimal_ts):
         """Lower cell-size multiplier should retain at least as many nodes as higher multiplier."""
         import struct
@@ -580,3 +620,39 @@ class TestSparsification:
         baseline_nodes = pa.ipc.open_stream(baseline_buffer[4:4 + baseline_node_len]).read_all().num_rows
         adaptive_nodes = pa.ipc.open_stream(adaptive_buffer[4:4 + adaptive_node_len]).read_all().num_rows
         assert adaptive_nodes >= baseline_nodes
+
+    def test_adaptive_sparsification_reuses_cached_outside_cell_size(self, minimal_ts):
+        """Adaptive mode should reuse target TreeGraph's recorded outside cell size when available."""
+        from lorax.tree_graph import construct_tree, construct_trees_batch
+
+        edges = minimal_ts.tables.edges
+        nodes = minimal_ts.tables.nodes
+        breakpoints = list(minimal_ts.breakpoints())
+        graph = construct_tree(
+            minimal_ts,
+            edges,
+            nodes,
+            breakpoints,
+            index=0,
+            min_time=float(minimal_ts.min_time),
+            max_time=float(minimal_ts.max_time),
+        )
+        graph.last_outside_cell_size = 0.004
+
+        bbox = {
+            "min_x": 0.0,
+            "max_x": 1.0,
+            "min_y": 0.0,
+            "max_y": 1.0,
+        }
+        construct_trees_batch(
+            minimal_ts,
+            tree_indices=[0],
+            sparsification=True,
+            pre_cached_graphs={0: graph},
+            adaptive_sparsify_bbox=bbox,
+            adaptive_target_tree_idx=0,
+            sparsify_cell_size_multiplier=0.95,
+        )
+
+        assert graph.last_outside_cell_size == pytest.approx(0.004)

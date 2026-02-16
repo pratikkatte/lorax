@@ -480,7 +480,8 @@ class TestProcessPostorderLayout:
         assert mock_query.await_count == 2
         first_kwargs = mock_query.await_args_list[0].kwargs
         second_kwargs = mock_query.await_args_list[1].kwargs
-        assert first_kwargs["sparsification"] is False
+        # Disabled: single-tree full-data behavior; always sparsify for now
+        assert first_kwargs["sparsification"] is True
         assert second_kwargs["sparsification"] is True
 
     @pytest.mark.asyncio
@@ -534,8 +535,8 @@ class TestProcessPostorderLayout:
         kwargs = mock_query.await_args_list[0].kwargs
         assert kwargs["tree_indices"] == [1]
         assert kwargs["sparsification"] is True
-        # Multiplier derived from bbox area (1.0 * 0.6) = 0.6 -> ~1.38
-        assert kwargs["sparsify_cell_size_multiplier"] == pytest.approx(1.385, rel=0.01)
+        # Staged multiplier from clipped coverage area: 0.6 => 0.80 bucket.
+        assert kwargs["sparsify_cell_size_multiplier"] == pytest.approx(0.80)
         assert kwargs["adaptive_sparsify_bbox"] == {
             "min_x": 0.0,
             "max_x": 1.0,
@@ -543,7 +544,56 @@ class TestProcessPostorderLayout:
             "max_y": 0.8,
         }
         assert kwargs["adaptive_target_tree_idx"] == 1
-        assert kwargs["adaptive_outside_cell_size"] == pytest.approx(0.002)
+        assert kwargs["adaptive_outside_cell_size"] is None
+        assert kwargs["actual_display_array"] == [0, 1, 2]
+
+    @pytest.mark.asyncio
+    async def test_postorder_lock_view_single_tree_missing_bbox_disables_adaptive(
+        self, socket_harness, mock_sio, session_manager_memory, minimal_ts_file
+    ):
+        """Single-tree lock request requires targetLocalBBox to enable adaptive mode."""
+        from lorax.sockets import register_socket_events
+
+        session = await session_manager_memory.create_session()
+        session.file_path = str(minimal_ts_file)
+        await session_manager_memory.save_session(session)
+
+        query_result = {
+            "buffer": b"\x00\x01",
+            "global_min_time": 0.0,
+            "global_max_time": 1.0,
+            "tree_indices": [1]
+        }
+        mock_query = AsyncMock(return_value=query_result)
+
+        lock_view = {"targetIndex": 1}
+
+        with (
+            patch("lorax.sockets.session_manager", session_manager_memory),
+            patch("lorax.sockets.tree_layout.handle_tree_graph_query", mock_query),
+        ):
+            register_socket_events(mock_sio)
+            handler = socket_harness._event_handlers["process_postorder_layout"]
+            await handler(
+                "socket-1",
+                {
+                    "lorax_sid": session.sid,
+                    "displayArray": [1],
+                    "actualDisplayArray": [0, 1, 2],
+                    "lockView": lock_view,
+                    "request_id": "lock-view-missing-bbox",
+                },
+            )
+
+        assert mock_query.await_count == 1
+        kwargs = mock_query.await_args_list[0].kwargs
+        assert kwargs["tree_indices"] == [1]
+        # Disabled: single-tree full-data behavior; always sparsify for now
+        assert kwargs["sparsification"] is True
+        assert kwargs["sparsify_cell_size_multiplier"] is None
+        assert kwargs["adaptive_sparsify_bbox"] is None
+        assert kwargs["adaptive_target_tree_idx"] is None
+        assert kwargs["adaptive_outside_cell_size"] is None
         assert kwargs["actual_display_array"] == [0, 1, 2]
 
     @pytest.mark.asyncio
@@ -636,36 +686,33 @@ class TestProcessPostorderLayout:
         assert result["buffer"] == query_result["buffer"]
         assert mock_query.await_count == 1
         kwargs = mock_query.await_args_list[0].kwargs
-        assert kwargs["sparsification"] is False
+        # Disabled: single-tree full-data behavior; always sparsify for now
+        assert kwargs["sparsification"] is True
         assert kwargs["sparsify_cell_size_multiplier"] is None
         assert kwargs["adaptive_sparsify_bbox"] is None
         assert kwargs["adaptive_target_tree_idx"] is None
         assert kwargs["adaptive_outside_cell_size"] is None
         assert kwargs["actual_display_array"] == [0, 1]
 
-    def test_lock_view_adaptive_multiplier_increases_with_coverage(self):
-        """Lower coverage (smaller bbox area) should result in a smaller multiplier."""
+    def test_lock_view_adaptive_multiplier_uses_stage_buckets(self):
+        """Adaptive multiplier should map coverage to fixed stage buckets."""
         from lorax.sockets.tree_layout import _compute_target_sparsify_multiplier_from_bbox
 
-        low_coverage_bbox = {
-            "min_x": 0.4,
-            "max_x": 0.6,
-            "min_y": 0.4,
-            "max_y": 0.6,
-        }
-        high_coverage_bbox = {
-            "min_x": 0.0,
-            "max_x": 1.0,
-            "min_y": 0.0,
-            "max_y": 1.0,
-        }
-
-        low_multiplier = _compute_target_sparsify_multiplier_from_bbox(low_coverage_bbox)
-        high_multiplier = _compute_target_sparsify_multiplier_from_bbox(high_coverage_bbox)
-
-        assert low_multiplier is not None
-        assert high_multiplier is not None
-        assert low_multiplier < high_multiplier
+        assert _compute_target_sparsify_multiplier_from_bbox(
+            {"min_x": 0.0, "max_x": 0.4, "min_y": 0.0, "max_y": 0.4}
+        ) == pytest.approx(0.35)  # 16%
+        assert _compute_target_sparsify_multiplier_from_bbox(
+            {"min_x": 0.0, "max_x": 0.5, "min_y": 0.0, "max_y": 0.5}
+        ) == pytest.approx(0.50)  # 25%
+        assert _compute_target_sparsify_multiplier_from_bbox(
+            {"min_x": 0.0, "max_x": 0.75, "min_y": 0.0, "max_y": 0.75}
+        ) == pytest.approx(0.65)  # 56.25%
+        assert _compute_target_sparsify_multiplier_from_bbox(
+            {"min_x": 0.0, "max_x": 0.8, "min_y": 0.0, "max_y": 0.8}
+        ) == pytest.approx(0.80)  # 64%
+        assert _compute_target_sparsify_multiplier_from_bbox(
+            {"min_x": 0.0, "max_x": 1.0, "min_y": 0.0, "max_y": 1.0}
+        ) == pytest.approx(0.95)  # 100%
 
 
 class TestMetadataEvents:
