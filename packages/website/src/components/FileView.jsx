@@ -656,6 +656,13 @@ function FileView() {
     setLockModelMatrix(nextLocked);
   }, []);
 
+  // Disable lock-view before preset apply (e.g. position preset navigation).
+  const handleBeforePresetApply = useCallback(() => {
+    if (lockModelMatrix) {
+      handleLockModelMatrixChange(false);
+    }
+  }, [lockModelMatrix, handleLockModelMatrixChange]);
+
   // Track whether all trees are currently shown in the viewport.
   const handleShowingAllTreesChange = useCallback((showing) => {
     const nextShowing = Boolean(showing);
@@ -1008,6 +1015,7 @@ function FileView() {
             onNavigateToCoords={handlePresetNavigate}
             onPresetAction={handlePresetAction}
             onPresetMutationHighlight={handlePresetMutationHighlight}
+            onBeforePresetApply={handleBeforePresetApply}
           />
         </div>
       )}

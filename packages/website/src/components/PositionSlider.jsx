@@ -107,9 +107,10 @@ export default function PositionSlider({
       return;
     }
 
+    if (lockModelMatrix) setLockModelMatrix(false);
     onChange?.([newStart, newEnd]);
     setHasChanges(false);
-  }, [hasChanges, start, end, genomeLength, onChange]);
+  }, [hasChanges, start, end, genomeLength, onChange, lockModelMatrix, setLockModelMatrix]);
 
   const handleKeyPress = (e) => {
     if (e.key === 'Enter') {
@@ -144,9 +145,10 @@ export default function PositionSlider({
       const currentValue = valueRef.current;
       const nextRange = getPannedRange(currentValue, direction);
       if (!nextRange) return;
+      if (lockModelMatrix) setLockModelMatrix(false);
       onChange?.(nextRange);
     },
-    [getPannedRange, onChange]
+    [getPannedRange, onChange, lockModelMatrix, setLockModelMatrix]
   );
 
   const startPan = useCallback(

@@ -203,6 +203,27 @@ describe('InfoFilter presetFeature', () => {
     );
   });
 
+  it('calls onBeforePresetApply when applying preset', async () => {
+    if (!TEST_FEATURE) {
+      throw new Error('Missing 1000Genomes feature preset in metadataFeatureConfig');
+    }
+
+    const loadedMetadata = new Map([[TEST_FEATURE.metadata.key, 'pyarrow']]);
+    const onBeforePresetApply = vi.fn();
+    const { user } = renderWithLorax({
+      initialEntries: ['/file'],
+      loraxOverrides: { loadedMetadata },
+      propsOverrides: { onBeforePresetApply },
+    });
+
+    const enableButton = await screen.findByTitle('Enable preset');
+    await user.click(enableButton);
+
+    await waitFor(() => {
+      expect(onBeforePresetApply).toHaveBeenCalled();
+    });
+  });
+
   it('waits for navigation before firing preset actions', async () => {
     if (!ACTION_FEATURE) {
       throw new Error('Missing action feature preset in metadataFeatureConfig');

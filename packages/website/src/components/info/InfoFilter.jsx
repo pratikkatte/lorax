@@ -55,6 +55,7 @@ export default function InfoFilter({
   onNavigateToCoords,
   onPresetAction,
   onPresetMutationHighlight,
+  onBeforePresetApply,
   isVisible = true
 }) {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -219,6 +220,7 @@ export default function InfoFilter({
   }, [applyFeatureColors, isMetadataReady, pendingFeature]);
 
   const applyPresetValues = useCallback(async (feature) => {
+    onBeforePresetApply?.();
     const key = feature?.metadata?.key;
     const values = Array.isArray(feature?.metadata?.values)
       ? feature.metadata.values.map(String)
@@ -264,6 +266,7 @@ export default function InfoFilter({
   }, [
     applyFeatureColors,
     isMetadataReady,
+    onBeforePresetApply,
     onNavigateToCoords,
     onPresetAction,
     onPresetMutationHighlight,

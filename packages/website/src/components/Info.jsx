@@ -30,7 +30,8 @@ const Info = ({
   setHoveredTreeIndex,
   onNavigateToCoords,
   onPresetAction,
-  onPresetMutationHighlight
+  onPresetMutationHighlight,
+  onBeforePresetApply
 }) => {
   const [activeTabInternal, setActiveTabInternal] = useState('details');
   const activeTab = activeTabProp ?? activeTabInternal;
@@ -164,6 +165,7 @@ const Info = ({
             onNavigateToCoords={onNavigateToCoords}
             onPresetAction={onPresetAction}
             onPresetMutationHighlight={onPresetMutationHighlight}
+            onBeforePresetApply={onBeforePresetApply}
             isVisible={activeTab === 'metadata'}
           />
         </div>
