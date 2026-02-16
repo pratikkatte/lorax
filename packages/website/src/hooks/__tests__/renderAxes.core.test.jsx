@@ -26,29 +26,27 @@ function createInput() {
     mut_x: [0.6],
     mut_y: [0.4],
     mut_tree_idx: [0],
+    modelMatrices: [{ key: 0, modelMatrix: createModelMatrix({ scaleX: 1, translateX: 0 }) }],
     displayArray: [0],
     metadataArrays: null,
     metadataColors: null,
-    populationFilter: null,
+    populationFilter: null
   };
 }
 
 describe('render array axis mapping', () => {
   it('uses canonical axes in worker computeRenderArrays (x horizontal, y vertical/time)', () => {
-    const modelMatrix = createModelMatrix({ scaleX: 10, translateX: 100 });
-
     const result = computeRenderArraysWorker({
       ...createInput(),
-      modelMatrices: [{ key: 0, modelMatrix }],
     });
 
     expect(Array.from(result.pathPositions)).toEqual([
-      102.5, 0.1,
-      107.5, 0.1,
-      107.5, 0.9,
+      0.25, 0.1,
+      0.75, 0.1,
+      0.75, 0.9,
     ]);
-    expect(Array.from(result.tipPositions)).toEqual([107.5, 0.9]);
-    expect(Array.from(result.mutPositions)).toEqual([106, 0.4]);
+    expect(Array.from(result.tipPositions)).toEqual([0.75, 0.9]);
+    expect(Array.from(result.mutPositions)).toEqual([0.6, 0.4]);
     expect(result.edgeData).toHaveLength(1);
     expect(result.edgeData[0]).toMatchObject({ parent_id: 0, child_id: 1, tree_idx: 0 });
   });
@@ -63,5 +61,24 @@ describe('render array axis mapping', () => {
     const serialized = serializeModelMatrices(localBins);
     expect(serialized).toHaveLength(2);
     expect(serialized.map((entry) => entry.key)).toEqual([0, 2]);
+  });
+
+  it('skips tip/edge object payloads when disabled while preserving typed buffers', () => {
+    const result = computeRenderArraysWorker({
+      ...createInput(),
+      includeTipData: false,
+      includeEdgeData: false
+    });
+
+    expect(Array.from(result.pathPositions)).toEqual([
+      0.25, 0.1,
+      0.75, 0.1,
+      0.75, 0.9,
+    ]);
+    expect(Array.from(result.tipPositions)).toEqual([0.75, 0.9]);
+    expect(result.tipData).toEqual([]);
+    expect(result.edgeData).toEqual([]);
+    expect(result.edgeCount).toBe(1);
+    expect(result.tipCount).toBe(1);
   });
 });

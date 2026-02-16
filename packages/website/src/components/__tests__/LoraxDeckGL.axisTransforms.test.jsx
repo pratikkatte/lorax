@@ -113,8 +113,8 @@ vi.mock('@lorax/core/src/hooks/useDeckViews.jsx', () => ({
 vi.mock('@lorax/core/src/hooks/useInterval.jsx', () => ({
   useInterval: () => ({
     visibleIntervals: [],
-    allIntervalsInView: [0, 100],
     intervalBounds: { lo: 0, hi: 1 },
+    intervalCount: 2,
     intervalsCoords: [0, 100]
   })
 }));
@@ -176,7 +176,7 @@ vi.mock('@lorax/core/src/utils/deckglToSvg.js', () => ({
 
 import LoraxDeckGL from '@lorax/core/src/components/LoraxDeckGL.jsx';
 
-describe('LoraxDeckGL canonical axis transforms', () => {
+describe('LoraxDeckGL canonical local-coordinate mapping', () => {
   beforeEach(() => {
     capturedRenderData = null;
 
@@ -239,7 +239,7 @@ describe('LoraxDeckGL canonical axis transforms', () => {
     vi.useRealTimers();
   });
 
-  it('maps mutation highlights using mut_x for horizontal and mut_y for vertical', () => {
+  it('maps mutation highlights using local mut_x/mut_y coordinates', () => {
     treeDataState = {
       ...treeDataState,
       treeData: {
@@ -261,11 +261,11 @@ describe('LoraxDeckGL canonical axis transforms', () => {
 
     expect(capturedRenderData).not.toBeNull();
     expect(capturedRenderData.highlightData).toHaveLength(1);
-    expect(capturedRenderData.highlightData[0].position[0]).toBeCloseTo(103);
-    expect(capturedRenderData.highlightData[0].position[1]).toBeCloseTo(0.7);
+    expect(capturedRenderData.highlightData[0].localPosition[0]).toBeCloseTo(0.3);
+    expect(capturedRenderData.highlightData[0].localPosition[1]).toBeCloseTo(0.7);
   });
 
-  it('maps compare edges using parent_x/child_x as horizontal and parent_y/child_y as vertical', () => {
+  it('maps compare edges using local parent_x/child_x and parent_y/child_y', () => {
     localDataState = {
       ...localDataState,
       localBins: new Map([
@@ -302,19 +302,21 @@ describe('LoraxDeckGL canonical axis transforms', () => {
       (edge) => edge.color[0] === 255 && edge.color[1] === 0
     );
 
-    expectPathClose(inserted.path, [
-      [202, 7.6],
-      [212, 7.6],
-      [212, 9.7]
+    expect(inserted.tree_idx).toBe(1);
+    expectPathClose(inserted.pathLocal, [
+      [0.1, 0.2],
+      [0.6, 0.2],
+      [0.6, 0.9]
     ]);
-    expectPathClose(removed.path, [
-      [105, 5.8],
-      [109, 5.8],
-      [109, 5.2]
+    expect(removed.tree_idx).toBe(0);
+    expectPathClose(removed.pathLocal, [
+      [0.5, 0.4],
+      [0.9, 0.4],
+      [0.9, 0.1]
     ]);
   });
 
-  it('maps lineage paths from node x/y using canonical world transform', async () => {
+  it('maps lineage paths from node x/y using canonical local transform', async () => {
     vi.useFakeTimers();
 
     loraxState = {
@@ -352,10 +354,11 @@ describe('LoraxDeckGL canonical axis transforms', () => {
 
     expect(capturedRenderData?.lineageData?.length).toBe(1);
 
-    expectPathClose(capturedRenderData.lineageData[0].path, [
-      [102, 5.8],
-      [108, 5.8],
-      [108, 6.8]
+    expect(capturedRenderData.lineageData[0].tree_idx).toBe(0);
+    expectPathClose(capturedRenderData.lineageData[0].pathLocal, [
+      [0.2, 0.4],
+      [0.8, 0.4],
+      [0.8, 0.9]
     ]);
   });
 });

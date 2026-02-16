@@ -1,45 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { parseTreeLayoutBuffer, EMPTY_TREE_LAYOUT } from '../utils/arrowUtils.js';
 
-const LOCK_VIEW_REQUEST_CADENCE_MS = 120;
-const LOCK_VIEW_BBOX_SIZE_CHANGE_THRESHOLD = 0.10;
-
-function computeBoundingBoxArea(bbox) {
-  if (!bbox || typeof bbox !== 'object') return null;
-
-  const width = Number(bbox.width);
-  const height = Number(bbox.height);
-  if (Number.isFinite(width) && Number.isFinite(height)) {
-    const area = Math.abs(width) * Math.abs(height);
-    return Number.isFinite(area) ? area : null;
-  }
-
-  const minX = Number(bbox.minX);
-  const maxX = Number(bbox.maxX);
-  const minY = Number(bbox.minY);
-  const maxY = Number(bbox.maxY);
-  if (
-    !Number.isFinite(minX)
-    || !Number.isFinite(maxX)
-    || !Number.isFinite(minY)
-    || !Number.isFinite(maxY)
-  ) {
-    return null;
-  }
-  const area = Math.abs(maxX - minX) * Math.abs(maxY - minY);
-  return Number.isFinite(area) ? area : null;
-}
-
-function computeBBoxAreaChangeRatio(previousBBox, currentBBox) {
-  const previousArea = computeBoundingBoxArea(previousBBox);
-  const currentArea = computeBoundingBoxArea(currentBBox);
-  const EPSILON = 1e-12;
-
-  if (!Number.isFinite(previousArea) || !Number.isFinite(currentArea)) return Infinity;
-  if (previousArea <= EPSILON) return Infinity;
-  return Math.abs(currentArea - previousArea) / previousArea;
-}
-
 function arraysEqual(a, b) {
   if (!Array.isArray(a) || !Array.isArray(b)) return false;
   if (a.length !== b.length) return false;
@@ -62,13 +23,57 @@ function treeDataContentEquivalent(a, b) {
   return true;
 }
 
-function computeDisplayArraySignature(displayArray) {
-  if (!Array.isArray(displayArray) || displayArray.length === 0) return '';
-  const normalized = displayArray
-    .map((value) => Number(value))
-    .filter((value) => Number.isFinite(value))
-    .sort((a, b) => a - b);
-  return normalized.join(',');
+function normalizeTargetLocalBBox(targetLocalBBox) {
+  if (!targetLocalBBox || typeof targetLocalBBox !== 'object') return null;
+  const treeIndex = Number(targetLocalBBox.treeIndex);
+  const minX = Number(targetLocalBBox.minX);
+  const maxX = Number(targetLocalBBox.maxX);
+  const minY = Number(targetLocalBBox.minY);
+  const maxY = Number(targetLocalBBox.maxY);
+  if (
+    !Number.isFinite(treeIndex)
+    || !Number.isFinite(minX)
+    || !Number.isFinite(maxX)
+    || !Number.isFinite(minY)
+    || !Number.isFinite(maxY)
+  ) {
+    return null;
+  }
+  return {
+    treeIndex,
+    minX,
+    maxX,
+    minY,
+    maxY
+  };
+}
+
+function sameTargetLocalBBox(a, b) {
+  if (!a || !b) return false;
+  const EPSILON = 1e-9;
+  return (
+    Number(a.treeIndex) === Number(b.treeIndex)
+    && Math.abs(Number(a.minX) - Number(b.minX)) <= EPSILON
+    && Math.abs(Number(a.maxX) - Number(b.maxX)) <= EPSILON
+    && Math.abs(Number(a.minY) - Number(b.minY)) <= EPSILON
+    && Math.abs(Number(a.maxY) - Number(b.maxY)) <= EPSILON
+  );
+}
+
+function createEmptyCachedTree(treeIdx) {
+  return {
+    node_id: [],
+    parent_id: [],
+    is_tip: [],
+    x: [],
+    y: [],
+    time: [],
+    name: [],
+    mut_x: [],
+    mut_y: [],
+    mut_node_id: [],
+    tree_idx: treeIdx
+  };
 }
 
 /**
@@ -258,7 +263,7 @@ export function useTreeData({
   const previousDisplayArrayRef = useRef([]);
   const lastLockRefreshRef = useRef({
     targetTreeIndex: null,
-    boundingBox: null
+    targetLocalBBox: null
   });
 
   // Derive stable file identity from tsconfig
@@ -268,117 +273,26 @@ export function useTreeData({
 
   const normalizedLockView = useMemo(() => {
     if (!lockView || typeof lockView !== 'object') return null;
-    const boundingBox = lockView.boundingBox;
-    if (!boundingBox || typeof boundingBox !== 'object') return null;
-
-    const toFiniteNumber = (value, fallback = null) => {
-      const numeric = Number(value);
-      return Number.isFinite(numeric) ? numeric : fallback;
-    };
-
-    const minX = toFiniteNumber(boundingBox.minX);
-    const maxX = toFiniteNumber(boundingBox.maxX);
-    const minY = toFiniteNumber(boundingBox.minY);
-    const maxY = toFiniteNumber(boundingBox.maxY);
-    const width = toFiniteNumber(boundingBox.width);
-    const height = toFiniteNumber(boundingBox.height);
-    if (
-      minX == null || maxX == null || minY == null || maxY == null
-      || width == null || height == null
-    ) {
-      return null;
-    }
-
-    const inBoxTreeIndices = Array.isArray(lockView.inBoxTreeIndices)
-      ? lockView.inBoxTreeIndices
-        .map((idx) => Number(idx))
-        .filter((idx) => Number.isFinite(idx))
-      : [];
-    const inBoxTreeCountRaw = Number(lockView.inBoxTreeCount);
-    const inBoxTreeCount = Number.isFinite(inBoxTreeCountRaw)
-      ? inBoxTreeCountRaw
-      : inBoxTreeIndices.length;
-    const capturedAtRaw = Number(lockView.capturedAt);
-    const capturedAt = Number.isFinite(capturedAtRaw) ? capturedAtRaw : Date.now();
-
-    const rawAdaptiveTarget = lockView.adaptiveTarget;
-    let adaptiveTarget = null;
-    if (rawAdaptiveTarget && typeof rawAdaptiveTarget === 'object') {
-      const treeIndex = Number(rawAdaptiveTarget.treeIndex);
-      const coverageX = toFiniteNumber(rawAdaptiveTarget.coverageX);
-      const coverageY = toFiniteNumber(rawAdaptiveTarget.coverageY);
-      const coverageArea = toFiniteNumber(rawAdaptiveTarget.coverageArea);
-      const profile = typeof rawAdaptiveTarget.profile === 'string'
-        ? rawAdaptiveTarget.profile
-        : 'balanced';
-      if (
-        Number.isFinite(treeIndex)
-        && coverageX != null
-        && coverageY != null
-        && coverageArea != null
-      ) {
-        adaptiveTarget = {
-          treeIndex,
-          coverageX: Math.max(0, Math.min(1, coverageX)),
-          coverageY: Math.max(0, Math.min(1, coverageY)),
-          coverageArea: Math.max(0, Math.min(1, coverageArea)),
-          profile
-        };
-      }
-    }
-
-    const displayArraySignature = typeof lockView.displayArraySignature === 'string'
-      ? lockView.displayArraySignature
-      : '';
-
+    const normalizedBBox = normalizeTargetLocalBBox(lockView.targetLocalBBox);
+    if (!normalizedBBox) return null;
+    const targetIndexRaw = Number(lockView.targetIndex);
+    const targetIndex = Number.isFinite(targetIndexRaw)
+      ? targetIndexRaw
+      : normalizedBBox.treeIndex;
+    if (targetIndex !== normalizedBBox.treeIndex) return null;
     return {
-      capturedAt,
-      boundingBox: { minX, maxX, minY, maxY, width, height },
-      inBoxTreeIndices,
-      inBoxTreeCount,
-      adaptiveTarget,
-      displayArraySignature
+      targetIndex,
+      targetLocalBBox: normalizedBBox
     };
   }, [lockView]);
 
-  const currentDisplayArraySignature = useMemo(
-    () => computeDisplayArraySignature(displayArray),
-    [displayArray]
-  );
-
-  const lockViewSignatureMismatch = useMemo(() => {
-    if (!normalizedLockView) return false;
-    const payloadSignature = normalizedLockView.displayArraySignature;
-    if (!payloadSignature || !currentDisplayArraySignature) return false;
-    return payloadSignature !== currentDisplayArraySignature;
-  }, [normalizedLockView, currentDisplayArraySignature]);
-
-  const effectiveLockView = useMemo(() => {
-    if (!normalizedLockView) return null;
-    const payloadSignature = normalizedLockView.displayArraySignature;
-    if (
-      payloadSignature
-      && currentDisplayArraySignature
-      && payloadSignature !== currentDisplayArraySignature
-    ) {
-      return null;
-    }
-    return normalizedLockView;
-  }, [normalizedLockView, currentDisplayArraySignature]);
-
-  // Bucket lock-view timestamps so we only refresh at fixed cadence.
-  const lockViewTick = useMemo(() => {
-    if (!effectiveLockView) return null;
-    return Math.floor(effectiveLockView.capturedAt / LOCK_VIEW_REQUEST_CADENCE_MS);
-  }, [effectiveLockView]);
-
   const lockTargetIndex = useMemo(() => {
     if (!Array.isArray(displayArray)) return null;
-    if (!effectiveLockView?.adaptiveTarget) return null;
-    const candidate = Number(effectiveLockView.adaptiveTarget.treeIndex);
+    if (!normalizedLockView) return null;
+    const candidate = Number(normalizedLockView.targetIndex);
     if (!Number.isFinite(candidate)) return null;
     return displayArray.includes(candidate) ? candidate : null;
-  }, [effectiveLockView, displayArray]);
+  }, [normalizedLockView, displayArray]);
 
   // Invalidate cache when file or inferred detail mode changes
   useEffect(() => {
@@ -388,7 +302,7 @@ export function useTreeData({
       timeBoundsRef.current = null;
       cacheKeyRef.current = { tsconfigId, inferredSparsification };
       previousDisplayArrayRef.current = [];
-      lastLockRefreshRef.current = { targetTreeIndex: null, boundingBox: null };
+      lastLockRefreshRef.current = { targetTreeIndex: null, targetLocalBBox: null };
     }
   }, [tsconfigId, inferredSparsification]);
 
@@ -397,7 +311,7 @@ export function useTreeData({
     treeDataCacheRef.current.clear();
     timeBoundsRef.current = null;
     previousDisplayArrayRef.current = [];
-    lastLockRefreshRef.current = { targetTreeIndex: null, boundingBox: null };
+    lastLockRefreshRef.current = { targetTreeIndex: null, targetLocalBBox: null };
   }, []);
 
   // Fetch immediately when displayArray changes (no debounce)
@@ -412,7 +326,7 @@ export function useTreeData({
       setIsBackgroundRefresh(false);
       setFetchReason('cache-only');
       previousDisplayArrayRef.current = [];
-      lastLockRefreshRef.current = { targetTreeIndex: null, boundingBox: null };
+      lastLockRefreshRef.current = { targetTreeIndex: null, targetLocalBBox: null };
       return;
     }
 
@@ -421,67 +335,45 @@ export function useTreeData({
     // Filter to only unfetched tree indices
     const unfetchedIndices = displayArray.filter((idx) => !cache.has(idx));
 
-    const shouldForceLockViewRefresh = (
-      effectiveLockView != null
-      && lockViewTick != null
-      && lockTargetIndex != null
-    );
+    const hasCompleteCache = unfetchedIndices.length === 0 && !!timeBoundsRef.current;
+    const displayArrayUnchanged = arraysEqual(displayArray, previousDisplayArrayRef.current);
+    const displayArrayChanged = !displayArrayUnchanged;
+    const hasValidLockTarget = normalizedLockView != null && lockTargetIndex != null;
     const lockTargetChanged = (
       lockTargetIndex != null
       && Number(lastLockRefreshRef.current.targetTreeIndex) !== Number(lockTargetIndex)
     );
-    const lockBBoxChangeRatio = lockTargetChanged
-      ? Infinity
-      : computeBBoxAreaChangeRatio(
-        lastLockRefreshRef.current.boundingBox,
-        effectiveLockView?.boundingBox
+    const lockBBoxChanged = lockTargetChanged
+      ? true
+      : !sameTargetLocalBBox(
+        lastLockRefreshRef.current.targetLocalBBox,
+        normalizedLockView?.targetLocalBBox
       );
-    const lockBBoxChangedEnough = lockBBoxChangeRatio >= LOCK_VIEW_BBOX_SIZE_CHANGE_THRESHOLD;
-    const hasCompleteCache = unfetchedIndices.length === 0 && !!timeBoundsRef.current;
-    const displayArrayUnchanged = arraysEqual(displayArray, previousDisplayArrayRef.current);
 
     let requestKind = 'cache-only';
 
     if (
-      shouldForceLockViewRefresh
-      && hasCompleteCache
-      && displayArrayUnchanged
-      && (lockTargetChanged || lockBBoxChangedEnough)
-    ) {
-      requestKind = 'lock-refresh';
-    } else if (
       unfetchedIndices.length > 0
       || !timeBoundsRef.current
-      || !displayArrayUnchanged
+      || displayArrayChanged
     ) {
       requestKind = 'full-fetch';
-    }
-
-    if (normalizedLockView) {
-      console.log('[useTreeData] lock-view decision', {
-        requestKind,
-        lockTargetIndex,
-        normalizedLockView: true,
-        effectiveLockView: !!effectiveLockView,
-        signatureMismatch: lockViewSignatureMismatch,
-        payloadDisplayArraySignature: normalizedLockView.displayArraySignature,
-        currentDisplayArraySignature,
-        lockTargetChanged,
-        lockBBoxChangeRatio,
-        lockBBoxChangedEnough,
-        displayArrayUnchanged,
-        hasCompleteCache,
-        unfetchedIndices,
-        displayArray
-      });
+    } else if (
+      hasValidLockTarget
+      && hasCompleteCache
+      && (lockTargetChanged || lockBBoxChanged)
+    ) {
+      requestKind = 'lock-refresh';
     }
 
     if (requestKind === 'cache-only') {
       const cachedData = buildTreeDataFromCache(cache, displayArray);
       const mergedData = { ...cachedData, ...timeBoundsRef.current };
-      if (!treeDataContentEquivalent(mergedData, treeData)) {
-        setTreeData(mergedData);
-      }
+      setTreeData((previousTreeData) => (
+        treeDataContentEquivalent(mergedData, previousTreeData)
+          ? previousTreeData
+          : mergedData
+      ));
       setIsLoading(false);
       setIsBackgroundRefresh(false);
       setFetchReason('cache-only');
@@ -508,25 +400,19 @@ export function useTreeData({
           ? [lockTargetIndex]
           : (unfetchedIndices.length > 0 ? unfetchedIndices : displayArray);
         const lockViewForRequest = requestKind === 'lock-refresh'
-          ? effectiveLockView
+          ? normalizedLockView
           : null;
 
         if (requestKind === 'full-fetch') {
-          lastLockRefreshRef.current = { targetTreeIndex: null, boundingBox: null };
+          lastLockRefreshRef.current = { targetTreeIndex: null, targetLocalBBox: null };
         }
 
         if (requestKind === 'lock-refresh' && lockTargetIndex != null) {
+
           lastLockRefreshRef.current = {
             targetTreeIndex: lockTargetIndex,
-            boundingBox: lockViewForRequest?.boundingBox ?? null
+            targetLocalBBox: lockViewForRequest?.targetLocalBBox ?? null
           };
-          console.log('[useTreeData] lock-view target request', {
-            targetTreeIndex: lockTargetIndex,
-            indicesToFetch,
-            actualDisplayArray: displayArray,
-            displayArraySignature: lockViewForRequest?.displayArraySignature ?? '',
-            boundingBox: lockViewForRequest?.boundingBox ?? null
-          });
         }
 
         const response = await queryTreeLayout(indicesToFetch, {
@@ -542,8 +428,22 @@ export function useTreeData({
         // Parse PyArrow buffer using utility
         const parsed = parseTreeLayoutBuffer(response.buffer);
 
+        if (requestKind === 'lock-refresh' && lockTargetIndex != null) {
+          cache.delete(lockTargetIndex);
+        }
+
         // Update cache with new trees
         updateCacheFromResponse(cache, parsed);
+        if (requestKind === 'lock-refresh' && lockTargetIndex != null) {
+          const returnedTreeIndices = new Set(
+            (parsed?.tree_idx || [])
+              .map((value) => Number(value))
+              .filter((value) => Number.isFinite(value))
+          );
+          if (!returnedTreeIndices.has(lockTargetIndex)) {
+            cache.set(lockTargetIndex, createEmptyCachedTree(lockTargetIndex));
+          }
+        }
 
         // Evict trees outside visible genomic window (with margin)
         if (genomicCoords && tsconfig?.intervals) {
@@ -583,12 +483,10 @@ export function useTreeData({
     displayArray,
     queryTreeLayout,
     isConnected,
-    lockViewTick,
-    effectiveLockView,
-    lockTargetIndex,
     normalizedLockView,
-    lockViewSignatureMismatch,
-    currentDisplayArraySignature
+    lockTargetIndex,
+    genomicCoords,
+    tsconfig
   ]);
 
   return useMemo(() => ({

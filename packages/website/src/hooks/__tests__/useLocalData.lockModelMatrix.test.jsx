@@ -27,7 +27,6 @@ function createBaseProps(worker) {
   return {
     worker,
     workerConfigReady: true,
-    allIntervalsInView: [0, 100, 200],
     intervalBounds: { lo: 0, hi: 3 },
     intervalsCoords: [0, 100],
     genomicCoords: [0, 100],

@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
 # Default cell size for sparsification (0.2% of normalized [0,1] space)
-DEFAULT_SPARSIFY_CELL_SIZE = 0.02
+DEFAULT_SPARSIFY_CELL_SIZE = 0.002
 MIN_SPARSIFY_CELL_SIZE = 0.0004
 MAX_SPARSIFY_CELL_SIZE = 0.008
 ADAPTIVE_INSIDE_MAX_MULTIPLIER = 0.95
@@ -97,6 +97,93 @@ def _normalize_adaptive_bbox(adaptive_sparsify_bbox):
         "min_y": min(min_y, max_y),
         "max_y": max(min_y, max_y),
     }
+
+
+def _normalize_adaptive_target_tree_idx(adaptive_target_tree_idx, num_trees: int):
+    """Normalize optional adaptive target tree index to a valid int."""
+    if adaptive_target_tree_idx is None:
+        return None
+    try:
+        parsed_target = int(adaptive_target_tree_idx)
+    except (TypeError, ValueError):
+        return None
+    if parsed_target < 0 or parsed_target >= num_trees:
+        return None
+    return parsed_target
+
+
+def _parse_positive_multiplier(raw_multiplier, default_multiplier: float = 1.0) -> float:
+    """Parse optional positive multiplier with a safe default."""
+    if raw_multiplier is None:
+        return default_multiplier
+    try:
+        candidate = float(raw_multiplier)
+    except (TypeError, ValueError):
+        return default_multiplier
+    if not np.isfinite(candidate) or candidate <= 0:
+        return default_multiplier
+    return candidate
+
+
+def _resolve_adaptive_outside_cell_size(
+    *,
+    num_nodes: int,
+    pre_cached_graphs: dict,
+    adaptive_target_tree_idx: int,
+):
+    """Resolve outside cell size for adaptive lock mode.
+
+    Priority:
+    1) Reuse previous outside size recorded on target TreeGraph.
+    2) First-time fallback to tree-size-driven baseline cell size.
+    """
+    target_graph = pre_cached_graphs.get(int(adaptive_target_tree_idx))
+    previous_outside_cell_size = (
+        getattr(target_graph, "last_outside_cell_size", None)
+        if target_graph is not None
+        else None
+    )
+    if previous_outside_cell_size is not None:
+        try:
+            previous_outside_cell_size = float(previous_outside_cell_size)
+            if np.isfinite(previous_outside_cell_size) and previous_outside_cell_size > 0:
+                return _resolve_sparsify_cell_size(
+                    num_nodes=num_nodes,
+                    sparsify_cell_size=previous_outside_cell_size,
+                    sparsify_cell_size_multiplier=None,
+                )
+        except (TypeError, ValueError):
+            pass
+
+    return _resolve_sparsify_cell_size(
+        num_nodes=num_nodes,
+        sparsify_cell_size=None,
+        sparsify_cell_size_multiplier=None,
+    )
+
+
+def _resolve_adaptive_inside_cell_size(
+    *,
+    num_nodes: int,
+    outside_cell_size: float,
+    inside_multiplier: Optional[float],
+):
+    """Resolve inside cell size and enforce that inside is never coarser."""
+    parsed_multiplier = _parse_positive_multiplier(inside_multiplier, default_multiplier=1.0)
+    parsed_multiplier = min(parsed_multiplier, ADAPTIVE_INSIDE_MAX_MULTIPLIER)
+    parsed_multiplier = max(parsed_multiplier, MIN_SPARSIFY_CELL_SIZE / outside_cell_size)
+
+    inside_cell_size = _resolve_sparsify_cell_size(
+        num_nodes=num_nodes,
+        sparsify_cell_size=outside_cell_size,
+        sparsify_cell_size_multiplier=parsed_multiplier,
+    )
+    if inside_cell_size >= outside_cell_size:
+        inside_cell_size = max(
+            MIN_SPARSIFY_CELL_SIZE,
+            outside_cell_size * ADAPTIVE_INSIDE_MAX_MULTIPLIER,
+        )
+    return inside_cell_size
 
 @njit(cache=True)
 def _compute_x_postorder(children_indptr, children_data, roots, num_nodes):
@@ -190,6 +277,7 @@ class TreeGraph:
     x: np.ndarray
     y: np.ndarray
     in_tree: np.ndarray
+    last_outside_cell_size: Optional[float] = None
 
     def children(self, node_id: int) -> np.ndarray:
         """Get children of a node as numpy array slice (zero-copy)."""
@@ -583,7 +671,7 @@ def construct_trees_batch(
         sparsify_cell_size_multiplier: Optional multiplier applied on top of base cell size.
         adaptive_sparsify_bbox: Optional local bbox {min_x,max_x,min_y,max_y} for in-bbox densification.
         adaptive_target_tree_idx: Optional target tree index for adaptive in-bbox densification.
-        adaptive_outside_cell_size: Optional fixed outside-bbox cell size for adaptive mode.
+        adaptive_outside_cell_size: Legacy outside override (kept for API compatibility).
 
     Returns:
         Tuple of (buffer, global_min_time, global_max_time, tree_indices, newly_built_graphs)
@@ -703,20 +791,21 @@ def construct_trees_batch(
     pre_cached_graphs = pre_cached_graphs or {}
     newly_built_graphs = {}
     normalized_adaptive_bbox = _normalize_adaptive_bbox(adaptive_sparsify_bbox)
-    normalized_adaptive_target_tree_idx = None
-    if adaptive_target_tree_idx is not None:
-        try:
-            parsed_target = int(adaptive_target_tree_idx)
-            if 0 <= parsed_target < ts.num_trees:
-                normalized_adaptive_target_tree_idx = parsed_target
-        except (TypeError, ValueError):
-            normalized_adaptive_target_tree_idx = None
+    normalized_adaptive_target_tree_idx = _normalize_adaptive_target_tree_idx(
+        adaptive_target_tree_idx,
+        ts.num_trees,
+    )
 
-    # Precompute resolution once per batch (used when sparsification enabled)
+    # === Step 4: resolve outside+inside adaptive sparsification resolutions ===
+    # Precompute resolutions once per batch. Target-tree adaptive mode uses:
+    # - previous outside cell size from TreeGraph when available
+    # - otherwise a baseline outside size from tree-size heuristics
+    # - inside size from staged multiplier, clamped to never be coarser than outside
     sparsify_resolution = None
     adaptive_outside_resolution = None
     adaptive_inside_resolution = None
     adaptive_bbox_bounds = None
+    resolved_adaptive_outside_cell_size = None
     adaptive_mode_enabled = (
         sparsification
         and normalized_adaptive_bbox is not None
@@ -731,41 +820,24 @@ def construct_trees_batch(
                 None if adaptive_mode_enabled else sparsify_cell_size_multiplier
             ),
         )
-        cell_size = DEFAULT_SPARSIFY_CELL_SIZE
+        print(f"cell_size: {cell_size}")
         sparsify_resolution = int(1.0 / cell_size)
 
         if adaptive_mode_enabled:
-            outside_cell_size = _resolve_sparsify_cell_size(
+            # `adaptive_outside_cell_size` is intentionally ignored in adaptive lock mode.
+            # First request uses baseline density; later requests reuse recorded density.
+            _ = adaptive_outside_cell_size
+            outside_cell_size = _resolve_adaptive_outside_cell_size(
                 num_nodes=num_nodes,
-                sparsify_cell_size=(
-                    adaptive_outside_cell_size
-                    if adaptive_outside_cell_size is not None
-                    else DEFAULT_SPARSIFY_CELL_SIZE
-                ),
-                sparsify_cell_size_multiplier=None,
+                pre_cached_graphs=pre_cached_graphs,
+                adaptive_target_tree_idx=int(normalized_adaptive_target_tree_idx),
             )
-
-            inside_multiplier = 1.0
-            if sparsify_cell_size_multiplier is not None:
-                try:
-                    candidate = float(sparsify_cell_size_multiplier)
-                    if np.isfinite(candidate) and candidate > 0:
-                        inside_multiplier = candidate
-                except (TypeError, ValueError):
-                    inside_multiplier = 1.0
-
-            # Adaptive lock mode should always be denser inside than outside.
-            inside_multiplier = min(inside_multiplier, ADAPTIVE_INSIDE_MAX_MULTIPLIER)
-            inside_multiplier = max(inside_multiplier, MIN_SPARSIFY_CELL_SIZE / outside_cell_size)
-
-            inside_cell_size = _resolve_sparsify_cell_size(
+            inside_cell_size = _resolve_adaptive_inside_cell_size(
                 num_nodes=num_nodes,
-                sparsify_cell_size=outside_cell_size,
-                sparsify_cell_size_multiplier=inside_multiplier,
+                outside_cell_size=outside_cell_size,
+                inside_multiplier=sparsify_cell_size_multiplier,
             )
-            if inside_cell_size >= outside_cell_size:
-                inside_cell_size = max(MIN_SPARSIFY_CELL_SIZE, outside_cell_size * ADAPTIVE_INSIDE_MAX_MULTIPLIER)
-
+            resolved_adaptive_outside_cell_size = outside_cell_size
             adaptive_outside_resolution = int(1.0 / outside_cell_size)
             adaptive_inside_resolution = int(1.0 / inside_cell_size)
             adaptive_bbox_bounds = (
@@ -774,6 +846,11 @@ def construct_trees_batch(
                 float(normalized_adaptive_bbox["min_y"]),
                 float(normalized_adaptive_bbox["max_y"]),
             )
+
+            # Persist target outside density immediately when target tree is already cached.
+            target_cached_graph = pre_cached_graphs.get(int(normalized_adaptive_target_tree_idx))
+            if target_cached_graph is not None:
+                target_cached_graph.last_outside_cell_size = float(outside_cell_size)
 
     def process_one(tidx):
         return _process_single_tree(
@@ -816,6 +893,15 @@ def construct_trees_batch(
             n,
             mut_arrays,
         ) = result
+
+        if (
+            adaptive_mode_enabled
+            and resolved_adaptive_outside_cell_size is not None
+            and normalized_adaptive_target_tree_idx is not None
+            and tree_idx == int(normalized_adaptive_target_tree_idx)
+            and graph is not None
+        ):
+            graph.last_outside_cell_size = float(resolved_adaptive_outside_cell_size)
 
         if n == 0:
             if newly_built and graph is not None:

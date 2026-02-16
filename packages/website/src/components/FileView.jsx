@@ -701,6 +701,8 @@ function FileView() {
     const treeIndex = payload?.treeIndex;
     if (treeIndex == null) return;
 
+    if (lockModelMatrix) return; // no navigation when locked-in
+
     if (tourOpen && tourActiveStepId === 'viewer-tree-polygon') {
       setTourPolygonClicked(true);
       setTourSelectedTreeIndex(treeIndex);
@@ -720,7 +722,7 @@ function FileView() {
     } catch (err) {
       console.error('[FileView] Failed to zoom to polygon interval:', err);
     }
-  }, [tsconfig?.intervals, tourOpen, tourActiveStepId]);
+  }, [tsconfig?.intervals, tourOpen, tourActiveStepId, lockModelMatrix]);
 
   const handleEdgeClick = useCallback(async (edge) => {
     if (!edge?.tree_idx && edge?.tree_idx !== 0) return;

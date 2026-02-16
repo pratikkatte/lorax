@@ -19,6 +19,13 @@
  *     coverageArea: number,
  *     profile: 'balanced'
  *   },
+ *   targetLocalBBox: {
+ *     treeIndex: number,
+ *     minX: number,
+ *     maxX: number,
+ *     minY: number,
+ *     maxY: number
+ *   } | null,
  *   displayArraySignature: string
  * }
  */
@@ -192,6 +199,39 @@ function computeSingleTargetAdaptiveTarget({ targetTreeIndex, treeRanges, boundi
   };
 }
 
+function computeTargetLocalBBox(corners, targetTreeIndex) {
+  if (!Array.isArray(corners) || corners.length === 0) return null;
+  const treeIndex = Number(targetTreeIndex);
+  if (!Number.isFinite(treeIndex)) return null;
+
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  let hasFinitePoint = false;
+
+  for (const corner of corners) {
+    if (Number(corner?.treeIndex) !== treeIndex) continue;
+    const x = Number(corner?.x);
+    const y = Number(corner?.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+    hasFinitePoint = true;
+    minX = Math.min(minX, x);
+    maxX = Math.max(maxX, x);
+    minY = Math.min(minY, y);
+    maxY = Math.max(maxY, y);
+  }
+
+  if (!hasFinitePoint) return null;
+  return {
+    treeIndex,
+    minX,
+    maxX,
+    minY,
+    maxY
+  };
+}
+
 function computeDisplayArraySignature(ranges) {
   if (!Array.isArray(ranges) || ranges.length === 0) return '';
   const indices = [];
@@ -298,9 +338,13 @@ export function buildLockViewSnapshot({ orthoViewport, localBins }) {
 
   const inBoxTreeIndices = buildInBoxTreeIndicesFromCorners(corners);
   const inBoxTreeCount = inBoxTreeIndices.length;
+  const targetTreeIndex = inBoxTreeCount === 1 ? inBoxTreeIndices[0] : null;
+  const targetLocalBBox = Number.isFinite(targetTreeIndex)
+    ? computeTargetLocalBBox(corners, targetTreeIndex)
+    : null;
   const adaptiveTarget = inBoxTreeCount === 1
     ? computeSingleTargetAdaptiveTarget({
-      targetTreeIndex: inBoxTreeIndices[0],
+      targetTreeIndex,
       treeRanges,
       boundingBox
     })
@@ -314,6 +358,7 @@ export function buildLockViewSnapshot({ orthoViewport, localBins }) {
     inBoxTreeCount,
     boundingBox,
     adaptiveTarget,
+    targetLocalBBox,
     displayArraySignature
   };
 }

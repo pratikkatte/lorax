@@ -92,7 +92,7 @@ describe('useTreeData fetch classification', () => {
     expect(result.current.fetchReason).toBe('full-fetch');
   });
 
-  it('marks warm-cache lock heartbeats as lock-refresh without blocking loading', async () => {
+  it('marks warm-cache target+bbox updates as lock-refresh without blocking loading', async () => {
     const warm = deferred();
     const refresh = deferred();
     let phase = 'warm';
@@ -124,18 +124,14 @@ describe('useTreeData fetch classification', () => {
       queryTreeLayout,
       isConnected: true,
       lockView: {
-        capturedAt: 1_000_000,
-        boundingBox: { minX: 0, maxX: 1, minY: 0, maxY: 1, width: 1, height: 1 },
-        inBoxTreeIndices: [7],
-        inBoxTreeCount: 1,
-        adaptiveTarget: {
+        targetIndex: 7,
+        targetLocalBBox: {
           treeIndex: 7,
-          coverageX: 1,
-          coverageY: 1,
-          coverageArea: 1,
-          profile: 'balanced'
+          minX: 0.1,
+          maxX: 0.3,
+          minY: 0.2,
+          maxY: 0.4
         },
-        displayArraySignature: '7'
       },
       tsconfig: { intervals: [0, 100, 200] },
       genomicCoords: [0, 100]
@@ -146,7 +142,8 @@ describe('useTreeData fetch classification', () => {
     expect(refreshIndices).toEqual([7]);
     expect(refreshOptions.actualDisplayArray).toEqual([7]);
     expect(refreshOptions.lockView).toMatchObject({
-      adaptiveTarget: {
+      targetIndex: 7,
+      targetLocalBBox: {
         treeIndex: 7
       }
     });
@@ -163,7 +160,7 @@ describe('useTreeData fetch classification', () => {
     expect(result.current.fetchReason).toBe('lock-refresh');
   });
 
-  it('gates lock-refresh until bbox size changes by at least 10%', async () => {
+  it('fires lock-refresh only when target or bbox changes after cache is warm', async () => {
     const warm = deferred();
     const refreshOne = deferred();
     const refreshTwo = deferred();
@@ -198,18 +195,14 @@ describe('useTreeData fetch classification', () => {
       queryTreeLayout,
       isConnected: true,
       lockView: {
-        capturedAt: 1_000_000,
-        boundingBox: { minX: 0, maxX: 1, minY: 0, maxY: 1, width: 1, height: 1 },
-        inBoxTreeIndices: [7],
-        inBoxTreeCount: 1,
-        adaptiveTarget: {
+        targetIndex: 7,
+        targetLocalBBox: {
           treeIndex: 7,
-          coverageX: 1,
-          coverageY: 1,
-          coverageArea: 1,
-          profile: 'balanced'
-        },
-        displayArraySignature: '7'
+          minX: 0.0,
+          maxX: 0.5,
+          minY: 0.0,
+          maxY: 0.5
+        }
       },
       tsconfig: { intervals: [0, 100, 200] },
       genomicCoords: [0, 100]
@@ -222,24 +215,20 @@ describe('useTreeData fetch classification', () => {
     });
     await waitFor(() => expect(result.current.isBackgroundRefresh).toBe(false));
 
-    // 8% area increase => below threshold => should stay cache-only (no request)
+    // Same bbox => cache-only (no request)
     rerender({
       displayArray: [7],
       queryTreeLayout,
       isConnected: true,
       lockView: {
-        capturedAt: 1_000_120,
-        boundingBox: { minX: 0, maxX: 1.08, minY: 0, maxY: 1, width: 1.08, height: 1 },
-        inBoxTreeIndices: [7],
-        inBoxTreeCount: 1,
-        adaptiveTarget: {
+        targetIndex: 7,
+        targetLocalBBox: {
           treeIndex: 7,
-          coverageX: 1,
-          coverageY: 1,
-          coverageArea: 1,
-          profile: 'balanced'
-        },
-        displayArraySignature: '7'
+          minX: 0.0,
+          maxX: 0.5,
+          minY: 0.0,
+          maxY: 0.5
+        }
       },
       tsconfig: { intervals: [0, 100, 200] },
       genomicCoords: [0, 100]
@@ -248,25 +237,21 @@ describe('useTreeData fetch classification', () => {
     expect(queryTreeLayout).toHaveBeenCalledTimes(2);
     expect(result.current.fetchReason).toBe('cache-only');
 
-    // 20% area increase => above threshold => lock-refresh should fire
+    // Changed bbox => lock-refresh should fire
     phase = 'refresh-two';
     rerender({
       displayArray: [7],
       queryTreeLayout,
       isConnected: true,
       lockView: {
-        capturedAt: 1_000_240,
-        boundingBox: { minX: 0, maxX: 1.2, minY: 0, maxY: 1, width: 1.2, height: 1 },
-        inBoxTreeIndices: [7],
-        inBoxTreeCount: 1,
-        adaptiveTarget: {
+        targetIndex: 7,
+        targetLocalBBox: {
           treeIndex: 7,
-          coverageX: 1,
-          coverageY: 1,
-          coverageArea: 1,
-          profile: 'balanced'
-        },
-        displayArraySignature: '7'
+          minX: 0.0,
+          maxX: 0.6,
+          minY: 0.0,
+          maxY: 0.6
+        }
       },
       tsconfig: { intervals: [0, 100, 200] },
       genomicCoords: [0, 100]
@@ -308,10 +293,7 @@ describe('useTreeData fetch classification', () => {
       queryTreeLayout,
       isConnected: true,
       lockView: {
-        capturedAt: 1_000_000,
-        boundingBox: { minX: 0, maxX: 1, minY: 0, maxY: 1, width: 1, height: 1 },
-        adaptiveTarget: null,
-        displayArraySignature: '7'
+        targetIndex: 7
       },
       tsconfig: { intervals: [0, 100, 200] },
       genomicCoords: [0, 100]
@@ -323,7 +305,7 @@ describe('useTreeData fetch classification', () => {
     expect(result.current.isBackgroundRefresh).toBe(false);
   });
 
-  it('skips lock override when lock payload display signature is stale', async () => {
+  it('skips lock override when targetIndex and targetLocalBBox tree index mismatch', async () => {
     const warm = deferred();
     const queryTreeLayout = vi.fn().mockReturnValue(warm.promise);
 
@@ -351,18 +333,14 @@ describe('useTreeData fetch classification', () => {
       queryTreeLayout,
       isConnected: true,
       lockView: {
-        capturedAt: 1_000_000,
-        boundingBox: { minX: 0, maxX: 1, minY: 0, maxY: 1, width: 1, height: 1 },
-        inBoxTreeIndices: [7],
-        inBoxTreeCount: 1,
-        adaptiveTarget: {
-          treeIndex: 7,
-          coverageX: 1,
-          coverageY: 1,
-          coverageArea: 1,
-          profile: 'balanced'
-        },
-        displayArraySignature: '1,2,3'
+        targetIndex: 7,
+        targetLocalBBox: {
+          treeIndex: 8,
+          minX: 0.1,
+          maxX: 0.3,
+          minY: 0.2,
+          maxY: 0.4
+        }
       },
       tsconfig: { intervals: [0, 100, 200] },
       genomicCoords: [0, 100]
@@ -404,16 +382,14 @@ describe('useTreeData fetch classification', () => {
       queryTreeLayout,
       isConnected: true,
       lockView: {
-        capturedAt: 1_000_000,
-        boundingBox: { minX: 0, maxX: 1, minY: 0, maxY: 1, width: 1, height: 1 },
-        adaptiveTarget: {
+        targetIndex: 8,
+        targetLocalBBox: {
           treeIndex: 8,
-          coverageX: 1,
-          coverageY: 1,
-          coverageArea: 1,
-          profile: 'balanced'
-        },
-        displayArraySignature: '8'
+          minX: 0.2,
+          maxX: 0.4,
+          minY: 0.2,
+          maxY: 0.4
+        }
       },
       tsconfig: { intervals: [0, 100, 200] },
       genomicCoords: [100, 200]
@@ -471,25 +447,14 @@ describe('useTreeData fetch classification', () => {
       queryTreeLayout,
       isConnected: true,
       lockView: {
-        capturedAt: 1_000_000,
-        boundingBox: { minX: 0, maxX: 1, minY: 0, maxY: 1, width: 1, height: 1 },
-        inBoxTreeIndices: [7],
-        inBoxTreeCount: 1,
-        adaptiveTarget: {
-          treeIndex: 7,
-          coverageX: 1,
-          coverageY: 1,
-          coverageArea: 1,
-          profile: 'balanced'
-        },
+        targetIndex: 7,
         targetLocalBBox: {
           treeIndex: 7,
           minX: 0.1,
           maxX: 0.3,
           minY: 0.1,
           maxY: 0.2
-        },
-        displayArraySignature: '7'
+        }
       },
       tsconfig: { intervals: [0, 100, 200] },
       genomicCoords: [0, 100]

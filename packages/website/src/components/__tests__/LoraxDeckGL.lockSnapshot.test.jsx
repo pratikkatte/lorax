@@ -1,7 +1,7 @@
 /* @vitest-environment jsdom */
 
 import React from 'react';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockInternalHandleViewStateChange = vi.fn();
@@ -135,8 +135,8 @@ vi.mock('@lorax/core/src/hooks/useDeckViews.jsx', () => ({
 vi.mock('@lorax/core/src/hooks/useInterval.jsx', () => ({
   useInterval: () => ({
     visibleIntervals: [],
-    allIntervalsInView: [0, 100],
     intervalBounds: { lo: 0, hi: 2 },
+    intervalCount: 2,
     intervalsCoords: [0, 100]
   })
 }));
@@ -211,6 +211,8 @@ describe('LoraxDeckGL lock-view snapshot query payload', () => {
   };
 
   beforeEach(() => {
+    vi.useFakeTimers();
+
     currentDisplayArray = [];
     currentLocalBins = mockLocalBins;
 
@@ -251,6 +253,7 @@ describe('LoraxDeckGL lock-view snapshot query payload', () => {
   afterEach(() => {
     rafSpy.mockRestore();
     cafSpy.mockRestore();
+    vi.useRealTimers();
   });
 
   it('passes null lockView to useTreeData when lock is disabled', () => {
@@ -268,6 +271,13 @@ describe('LoraxDeckGL lock-view snapshot query payload', () => {
       <LoraxDeckGL viewConfig={{ ortho: { enabled: true } }} lockModelMatrix />
     );
 
+    act(() => {
+      flushRaf();
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
     mockUseTreeData.mockClear();
     rafSpy.mockClear();
 
@@ -278,22 +288,23 @@ describe('LoraxDeckGL lock-view snapshot query payload', () => {
     fireEvent.click(viewChangeButton);
     fireEvent.click(viewChangeButton);
 
+    expect(rafSpy).toHaveBeenCalledTimes(0);
+
+    act(() => {
+      vi.advanceTimersByTime(151);
+    });
+
     expect(rafSpy).toHaveBeenCalledTimes(1);
 
     act(() => {
       flushRaf();
     });
 
-    await waitFor(() => {
-      const latestArgs = mockUseTreeData.mock.calls.at(-1)?.[0];
-      expect(latestArgs.lockView).toMatchObject({
-        boundingBox: { minX: 0, maxX: 100, minY: 0, maxY: 50, width: 100, height: 50 },
-        inBoxTreeCount: 2,
-        capturedAt: expect.any(Number)
-      });
-      expect(latestArgs.lockView.inBoxTreeIndices).toEqual([3, 9]);
-      expect(latestArgs.lockView.adaptiveTarget).toBeNull();
+    await act(async () => {
+      await Promise.resolve();
     });
+
+    expect(mockUseTreeData).not.toHaveBeenCalled();
   });
 
   it('clears lockView payload on unlock', () => {
@@ -342,6 +353,10 @@ describe('LoraxDeckGL lock-view snapshot query payload', () => {
       <LoraxDeckGL viewConfig={{ ortho: { enabled: true } }} lockModelMatrix />
     );
 
+    act(() => {
+      flushRaf();
+    });
+
     rafSpy.mockClear();
 
     currentDisplayArray = [9];
@@ -352,7 +367,7 @@ describe('LoraxDeckGL lock-view snapshot query payload', () => {
     expect(rafSpy).toHaveBeenCalledTimes(1);
   });
 
-  it('sets adaptive target only when corner tree list has a single tree', async () => {
+  it('emits minimal lock payload only when corner tree list has a single tree', async () => {
     const multiCornerBins = new Map([
       [1, { global_index: 1, modelMatrix: createModelMatrix({ scaleX: 40, translateX: 0, scaleY: 50, translateY: 0 }) }],
       [2, { global_index: 2, modelMatrix: createModelMatrix({ scaleX: 40, translateX: 60, scaleY: 50, translateY: 0 }) }]
@@ -368,22 +383,29 @@ describe('LoraxDeckGL lock-view snapshot query payload', () => {
       <LoraxDeckGL viewConfig={{ ortho: { enabled: true } }} lockModelMatrix />
     );
 
+    act(() => {
+      flushRaf();
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
     const trigger = () => {
       const viewChangeButton = screen.getAllByRole('button', { name: 'view-change' }).at(-1);
       if (!viewChangeButton) throw new Error('Missing view-change button');
       fireEvent.click(viewChangeButton);
       act(() => {
+        vi.advanceTimersByTime(151);
         flushRaf();
       });
     };
 
     mockUseTreeData.mockClear();
     trigger();
-    await waitFor(() => {
-      const latestArgs = mockUseTreeData.mock.calls.at(-1)?.[0];
-      expect(latestArgs.lockView?.inBoxTreeIndices).toEqual([1, 2]);
-      expect(latestArgs.lockView?.adaptiveTarget).toBeNull();
+    await act(async () => {
+      await Promise.resolve();
     });
+    expect(mockUseTreeData).not.toHaveBeenCalled();
 
     currentDisplayArray = [2];
     currentLocalBins = singleCornerBins;
@@ -391,11 +413,17 @@ describe('LoraxDeckGL lock-view snapshot query payload', () => {
       <LoraxDeckGL viewConfig={{ ortho: { enabled: true } }} lockModelMatrix />
     );
     trigger();
-    await waitFor(() => {
-      const latestArgs = mockUseTreeData.mock.calls.at(-1)?.[0];
-      expect(latestArgs.lockView?.adaptiveTarget?.treeIndex).toBe(2);
-      expect(latestArgs.lockView?.adaptiveTarget?.coverageX).toBeCloseTo(0.5);
-      expect(latestArgs.lockView?.adaptiveTarget?.coverageArea).toBeCloseTo(0.5);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const latestArgs = mockUseTreeData.mock.calls.at(-1)?.[0];
+    expect(latestArgs.lockView?.targetIndex).toBe(2);
+    expect(latestArgs.lockView?.targetLocalBBox).toMatchObject({
+      treeIndex: 2,
+      minX: -4.5,
+      maxX: 0.5,
+      minY: 0,
+      maxY: 1
     });
   });
 });

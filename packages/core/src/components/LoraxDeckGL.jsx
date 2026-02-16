@@ -84,15 +84,6 @@ const LOCK_VIEW_SNAPSHOT_DEBOUNCE_MS = 150;
 /** Keep interaction mode active briefly after deck reports interaction end. */
 const INTERACTION_SETTLE_MS = 120;
 
-function getDisplayArraySignature(displayArray) {
-  if (!Array.isArray(displayArray) || displayArray.length === 0) return '';
-  return displayArray
-    .map((value) => Number(value))
-    .filter((value) => Number.isFinite(value))
-    .sort((a, b) => a - b)
-    .join(',');
-}
-
 /**
  * LoraxDeckGL - Configurable deck.gl component with 4 views:
  * - ortho: Main tree visualization (always required)
@@ -314,11 +305,6 @@ const LoraxDeckGL = forwardRef(({
     debug: lockSnapshotDebug
   });
 
-  const lockDisplayArraySignature = useMemo(
-    () => getDisplayArraySignature(displayArray),
-    [displayArray]
-  );
-  const previousLockDisplayArraySignatureRef = useRef(lockDisplayArraySignature);
   const lockSnapshotDebounceRef = useRef(null);
 
   const debouncedScheduleLockSnapshotCapture = useCallback(() => {
@@ -350,14 +336,9 @@ const LoraxDeckGL = forwardRef(({
   }, [latestLockViewPayload]);
 
   useEffect(() => {
-    const previousSignature = previousLockDisplayArraySignatureRef.current;
-    previousLockDisplayArraySignatureRef.current = lockDisplayArraySignature;
-
     if (!lockModelMatrix) return;
-    if (previousSignature === lockDisplayArraySignature) return;
-
     scheduleLockSnapshotCapture();
-  }, [lockModelMatrix, lockDisplayArraySignature, scheduleLockSnapshotCapture]);
+  }, [lockModelMatrix, displayArray, scheduleLockSnapshotCapture]);
 
   // 6c.1. Notify parent when tree loading state changes
   useEffect(() => {
@@ -989,6 +970,7 @@ const LoraxDeckGL = forwardRef(({
 
   const handleDeckClick = useCallback((info, event) => {
     if (!showPolygons) return;
+    if (lockModelMatrix) return; // no polygon click when locked-in
     // If a deck object was picked, its layer handler should handle it.
     if (info?.object) return;
     const xy = getOrthoLocalXY(deckRef, info, event);
@@ -999,7 +981,7 @@ const LoraxDeckGL = forwardRef(({
     if (hit?.treeIndex != null) {
       onPolygonClick?.({ key: hit.key, treeIndex: hit.treeIndex, polygon: hit });
     }
-  }, [showPolygons, polygons, onPolygonClick]);
+  }, [showPolygons, polygons, onPolygonClick, lockModelMatrix]);
 
   // Ensure hover-driven UI (tooltips, edge highlights) clears when pointer leaves the canvas.
   // DeckGL's onHover won't fire once the pointer is outside the canvas, so we proactively clear.
