@@ -84,10 +84,16 @@ export function useWorker(getWorkerModule) {
    * Send a request to the worker and return a Promise for the response
    * @param {string} type - Message type
    * @param {any} data - Message data
-   * @param {number} timeout - Timeout in ms (default: 30000)
+   * @param {number|{ timeout?: number, transfer?: ArrayBuffer[] }} timeoutOrOpts - Timeout in ms (default: 30000) or options { timeout, transfer }
    * @returns {Promise<any>}
    */
-  const request = useCallback((type, data, timeout = 30000) => {
+  const request = useCallback((type, data, timeoutOrOpts = 30000) => {
+    const opts = typeof timeoutOrOpts === 'object' && timeoutOrOpts !== null
+      ? timeoutOrOpts
+      : { timeout: timeoutOrOpts };
+    const timeout = opts.timeout ?? 30000;
+    const transfer = opts.transfer ?? null;
+
     return new Promise((resolve, reject) => {
       if (!workerRef.current) {
         reject(new Error('Worker not initialized'));
@@ -96,7 +102,6 @@ export function useWorker(getWorkerModule) {
 
       const id = ++requestIdCounter;
 
-      // Set up timeout
       const timeoutId = setTimeout(() => {
         if (pendingRequestsRef.current.has(id)) {
           pendingRequestsRef.current.delete(id);
@@ -104,7 +109,6 @@ export function useWorker(getWorkerModule) {
         }
       }, timeout);
 
-      // Store promise handlers with timeout cleanup
       pendingRequestsRef.current.set(id, {
         resolve: (result) => {
           clearTimeout(timeoutId);
@@ -116,8 +120,11 @@ export function useWorker(getWorkerModule) {
         }
       });
 
-      // Send message to worker
-      workerRef.current.postMessage({ type, id, data });
+      if (transfer && Array.isArray(transfer) && transfer.length > 0) {
+        workerRef.current.postMessage({ type, id, data }, transfer);
+      } else {
+        workerRef.current.postMessage({ type, id, data });
+      }
     });
   }, []);
 

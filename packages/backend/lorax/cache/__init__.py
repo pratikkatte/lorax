@@ -19,6 +19,7 @@ from lorax.cache.tree_graph import TreeGraphCache
 from lorax.cache.csv_tree_graph import CsvTreeGraphCache
 from lorax.cache.file_context import FileContext
 from lorax.cache.file_cache import (
+    evict_file,
     get_file_context,
     get_file_cache_size,
     # Backwards compatibility
@@ -35,6 +36,7 @@ __all__ = [
     "CsvTreeGraphCache",
     # Unified file caching (preferred API)
     "FileContext",
+    "evict_file",
     "get_file_context",
     "get_file_cache_size",
     # Backwards compatibility

@@ -49,6 +49,19 @@ function arraysEqual(a, b) {
   return true;
 }
 
+/**
+ * Quick check if two treeData objects have equivalent content (avoid redundant setState).
+ */
+function treeDataContentEquivalent(a, b) {
+  if (!a || !b) return false;
+  if (a.node_id?.length !== b.node_id?.length) return false;
+  if (!arraysEqual(a.tree_indices, b.tree_indices)) return false;
+  if (a.node_id?.length > 0 && (a.node_id[0] !== b.node_id[0] || a.node_id[a.node_id.length - 1] !== b.node_id[b.node_id.length - 1])) {
+    return false;
+  }
+  return true;
+}
+
 function computeDisplayArraySignature(displayArray) {
   if (!Array.isArray(displayArray) || displayArray.length === 0) return '';
   const normalized = displayArray
@@ -465,10 +478,10 @@ export function useTreeData({
 
     if (requestKind === 'cache-only') {
       const cachedData = buildTreeDataFromCache(cache, displayArray);
-      setTreeData({
-        ...cachedData,
-        ...timeBoundsRef.current
-      });
+      const mergedData = { ...cachedData, ...timeBoundsRef.current };
+      if (!treeDataContentEquivalent(mergedData, treeData)) {
+        setTreeData(mergedData);
+      }
       setIsLoading(false);
       setIsBackgroundRefresh(false);
       setFetchReason('cache-only');

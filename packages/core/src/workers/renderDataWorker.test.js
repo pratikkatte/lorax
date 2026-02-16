@@ -1,10 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import {
-  setColorContext,
-  computeBaseRenderData,
-  applyModelMatrices,
-  evictBaseCache,
+  computeRenderArrays,
+  applyTransform,
   clearWorkerState
 } from './renderDataWorker.js';
 
@@ -42,176 +40,176 @@ function makeTreeData({
   };
 }
 
-describe('renderDataWorker base cache protocol', () => {
+function getTreeStructures(treeData, displayArray) {
+  const structures = {};
+  for (const idx of displayArray) {
+    let nodeCount = 0;
+    let mutCount = 0;
+    for (let i = 0; i < treeData.tree_idx.length; i++) {
+      if (treeData.tree_idx[i] === idx) nodeCount++;
+    }
+    if (treeData.mut_tree_idx) {
+      for (let i = 0; i < treeData.mut_tree_idx.length; i++) {
+        if (treeData.mut_tree_idx[i] === idx) mutCount++;
+      }
+    }
+    structures[idx] = { nodeCount, mutCount };
+  }
+  return structures;
+}
+
+describe('renderDataWorker structure cache and apply-transform', () => {
   beforeEach(() => {
     clearWorkerState();
-    setColorContext({ metadataArrays: null, metadataColors: null });
   });
 
-  it('computes base data and applies model matrices correctly', () => {
+  it('computes render data and caches structure for apply-transform', () => {
     const treeData = makeTreeData({ treeIdx: 7, rootX: 0.5, tipXs: [0.2, 0.8], mutX: 0.6 });
+    const displayArray = [7];
+    const treeStructures = getTreeStructures(treeData, displayArray);
 
-    const computeResult = computeBaseRenderData({
-      treeData,
-      displayArray: [7],
-      targetTreeIndices: [7]
-    });
-
-    expect(computeResult.cachedTreeIndices).toEqual([7]);
-    expect(computeResult.skippedTreeIndices).toEqual([]);
-
-    const render = applyModelMatrices({
-      displayArray: [7],
+    const result = computeRenderArrays({
+      node_id: treeData.node_id,
+      parent_id: treeData.parent_id,
+      is_tip: treeData.is_tip,
+      tree_idx: treeData.tree_idx,
+      x: treeData.x,
+      y: treeData.y,
+      name: treeData.name,
+      mut_x: treeData.mut_x,
+      mut_y: treeData.mut_y,
+      mut_tree_idx: treeData.mut_tree_idx,
       modelMatrices: [{ key: 7, modelMatrix: modelMatrix(2, 10) }],
-      populationFilter: null
+      displayArray,
+      treeStructures
     });
 
-    expect(render.edgeCount).toBe(2);
-    expect(render.tipCount).toBe(2);
-    expect(render.mutCount).toBe(1);
-    expect(Array.from(render.pathStartIndices)).toEqual([0, 3, 6]);
-    expect(Array.from(render.tipPositions)).toEqual([10.4, 0.9, 11.6, 0.9]);
-    expect(Array.from(render.mutPositions)).toEqual([11.2, 0.4]);
-    expect(render.tipData[0].position).toEqual([10.4, 0.9]);
-    expect(render.tipData[1].position).toEqual([11.6, 0.9]);
+    expect(result.edgeCount).toBe(2);
+    expect(result.tipCount).toBe(2);
+    expect(result.mutCount).toBe(1);
+    expect(Array.from(result.pathStartIndices)).toEqual([0, 3, 6]);
+    expect(Array.from(result.tipPositions)).toEqual([10.4, 0.9, 11.6, 0.9]);
+    expect(Array.from(result.mutPositions)).toEqual([11.2, 0.4]);
+    expect(result.tipData[0].position).toEqual([10.4, 0.9]);
+    expect(result.tipData[1].position).toEqual([11.6, 0.9]);
   });
 
-  it('supports matrix-only pan/zoom updates without recomputing base data', () => {
+  it('supports matrix-only pan/zoom updates via apply-transform', () => {
     const treeData = makeTreeData({ treeIdx: 4, tipXs: [0.1, 0.9] });
+    const displayArray = [4];
+    const treeStructures = getTreeStructures(treeData, displayArray);
 
-    computeBaseRenderData({
-      treeData,
-      displayArray: [4],
-      targetTreeIndices: [4]
-    });
-
-    const renderA = applyModelMatrices({
-      displayArray: [4],
+    computeRenderArrays({
+      node_id: treeData.node_id,
+      parent_id: treeData.parent_id,
+      is_tip: treeData.is_tip,
+      tree_idx: treeData.tree_idx,
+      x: treeData.x,
+      y: treeData.y,
+      name: treeData.name,
+      mut_x: treeData.mut_x,
+      mut_y: treeData.mut_y,
+      mut_tree_idx: treeData.mut_tree_idx,
       modelMatrices: [{ key: 4, modelMatrix: modelMatrix(1, 0) }],
-      populationFilter: null
+      displayArray,
+      treeStructures
     });
 
-    const renderB = applyModelMatrices({
-      displayArray: [4],
+    const renderA = applyTransform({
+      modelMatrices: [{ key: 4, modelMatrix: modelMatrix(1, 0) }],
+      treeStructures
+    });
+
+    const renderB = applyTransform({
       modelMatrices: [{ key: 4, modelMatrix: modelMatrix(3, -1) }],
-      populationFilter: null
+      treeStructures
     });
 
+    expect(renderA.cacheMiss).toBeUndefined();
+    expect(renderB.cacheMiss).toBeUndefined();
     expect(Array.from(renderA.tipPositions)).toEqual([0.1, 0.9, 0.9, 0.9]);
     expect(Array.from(renderB.tipPositions)).toEqual([-0.7, 0.9, 1.7000000000000002, 0.9]);
     expect(renderB.edgeCount).toBe(renderA.edgeCount);
   });
 
-  it('recolors tips during apply-model-matrices using worker color context', () => {
-    const treeData = makeTreeData({
-      treeIdx: 9,
-      tipNodeIds: [11, 12]
-    });
+  it('returns cacheMiss when structure does not match', () => {
+    const treeData = makeTreeData({ treeIdx: 9 });
+    const displayArray = [9];
+    const treeStructures = getTreeStructures(treeData, displayArray);
 
-    setColorContext({
-      metadataArrays: {
-        pop: {
-          uniqueValues: ['A', 'B'],
-          indices: [0, 1],
-          nodeIdToIdx: new Map([
-            [11, 0],
-            [12, 1]
-          ])
-        }
-      },
-      metadataColors: {
-        pop: {
-          A: [1, 2, 3, 255],
-          B: [4, 5, 6, 255]
-        }
-      }
-    });
-
-    computeBaseRenderData({
-      treeData,
-      displayArray: [9],
-      targetTreeIndices: [9]
-    });
-
-    const render = applyModelMatrices({
-      displayArray: [9],
+    computeRenderArrays({
+      node_id: treeData.node_id,
+      parent_id: treeData.parent_id,
+      is_tip: treeData.is_tip,
+      tree_idx: treeData.tree_idx,
+      x: treeData.x,
+      y: treeData.y,
+      name: treeData.name,
+      mut_x: treeData.mut_x,
+      mut_y: treeData.mut_y,
+      mut_tree_idx: treeData.mut_tree_idx,
       modelMatrices: [{ key: 9, modelMatrix: modelMatrix(1, 0) }],
-      populationFilter: {
-        colorBy: 'pop',
-        enabledValues: ['A']
-      }
-    });
-
-    expect(Array.from(render.tipColors)).toEqual([
-      1, 2, 3, 200,
-      150, 150, 150, 100
-    ]);
-  });
-
-  it('evicts trees from worker base cache', () => {
-    const treeData = {
-      ...makeTreeData({ treeIdx: 1, rootNodeId: 10, tipNodeIds: [11, 12] }),
-      node_id: [10, 11, 12, 20, 21, 22],
-      parent_id: [-1, 10, 10, -1, 20, 20],
-      is_tip: [false, true, true, false, true, true],
-      tree_idx: [1, 1, 1, 2, 2, 2],
-      x: [0.5, 0.2, 0.8, 0.4, 0.1, 0.9],
-      y: [0.1, 0.9, 0.9, 0.2, 0.8, 0.8],
-      name: ['', 'a', 'b', '', 'c', 'd'],
-      mut_x: [0.6, 0.7],
-      mut_y: [0.4, 0.3],
-      mut_tree_idx: [1, 2]
-    };
-
-    computeBaseRenderData({
-      treeData,
-      displayArray: [1, 2],
-      targetTreeIndices: [1, 2]
-    });
-
-    const evictResult = evictBaseCache({ treeIndices: [1] });
-    expect(evictResult.evictedCount).toBe(1);
-
-    const render = applyModelMatrices({
-      displayArray: [1, 2],
-      modelMatrices: [
-        { key: 1, modelMatrix: modelMatrix(1, 0) },
-        { key: 2, modelMatrix: modelMatrix(1, 0) }
-      ],
+      displayArray,
+      treeStructures,
+      metadataArrays: null,
+      metadataColors: null,
       populationFilter: null
     });
 
-    expect(render.tipCount).toBe(2);
-    expect(render.edgeCount).toBe(2);
-    expect(render.tipData.every((tip) => tip.tree_idx === 2)).toBe(true);
+    const wrongStructures = { 9: { nodeCount: 999, mutCount: 0 } };
+    const result = applyTransform({
+      modelMatrices: [{ key: 9, modelMatrix: modelMatrix(1, 0) }],
+      treeStructures: wrongStructures
+    });
+
+    expect(result.cacheMiss).toBe(true);
   });
 
-  it('replaces cached base data when an existing tree is recomputed', () => {
+  it('replaces cached structure when tree data changes (full compute overwrites cache)', () => {
     const initialTreeData = makeTreeData({ treeIdx: 3, tipXs: [0.1, 0.9] });
     const refreshedTreeData = makeTreeData({ treeIdx: 3, tipXs: [0.4, 0.95] });
+    const displayArray = [3];
 
-    computeBaseRenderData({
-      treeData: initialTreeData,
-      displayArray: [3],
-      targetTreeIndices: [3]
-    });
-
-    const initialRender = applyModelMatrices({
-      displayArray: [3],
+    computeRenderArrays({
+      node_id: initialTreeData.node_id,
+      parent_id: initialTreeData.parent_id,
+      is_tip: initialTreeData.is_tip,
+      tree_idx: initialTreeData.tree_idx,
+      x: initialTreeData.x,
+      y: initialTreeData.y,
+      name: initialTreeData.name,
+      mut_x: initialTreeData.mut_x,
+      mut_y: initialTreeData.mut_y,
+      mut_tree_idx: initialTreeData.mut_tree_idx,
       modelMatrices: [{ key: 3, modelMatrix: modelMatrix(1, 0) }],
-      populationFilter: null
+      displayArray,
+      treeStructures: getTreeStructures(initialTreeData, displayArray)
     });
 
-    computeBaseRenderData({
-      treeData: refreshedTreeData,
-      displayArray: [3],
-      targetTreeIndices: [3]
-    });
-
-    const refreshedRender = applyModelMatrices({
-      displayArray: [3],
+    const initialRender = applyTransform({
       modelMatrices: [{ key: 3, modelMatrix: modelMatrix(1, 0) }],
-      populationFilter: null
+      treeStructures: getTreeStructures(initialTreeData, displayArray)
+    });
+
+    computeRenderArrays({
+      node_id: refreshedTreeData.node_id,
+      parent_id: refreshedTreeData.parent_id,
+      is_tip: refreshedTreeData.is_tip,
+      tree_idx: refreshedTreeData.tree_idx,
+      x: refreshedTreeData.x,
+      y: refreshedTreeData.y,
+      name: refreshedTreeData.name,
+      mut_x: refreshedTreeData.mut_x,
+      mut_y: refreshedTreeData.mut_y,
+      mut_tree_idx: refreshedTreeData.mut_tree_idx,
+      modelMatrices: [{ key: 3, modelMatrix: modelMatrix(1, 0) }],
+      displayArray,
+      treeStructures: getTreeStructures(refreshedTreeData, displayArray)
+    });
+
+    const refreshedRender = applyTransform({
+      modelMatrices: [{ key: 3, modelMatrix: modelMatrix(1, 0) }],
+      treeStructures: getTreeStructures(refreshedTreeData, displayArray)
     });
 
     expect(Array.from(initialRender.tipPositions)).toEqual([0.1, 0.9, 0.9, 0.9]);

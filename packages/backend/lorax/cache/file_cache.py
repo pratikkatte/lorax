@@ -138,6 +138,11 @@ def get_file_cache_size() -> int:
     return len(_file_cache.cache)
 
 
+def evict_file(file_path: str) -> None:
+    """Evict a specific file from the cache. Useful for benchmarking cold-load times."""
+    _file_cache.remove(file_path)
+
+
 # Backwards compatibility: provide get_or_load_ts that returns just the tree_sequence
 async def get_or_load_ts(file_path: str, root_dir: str = None):
     """

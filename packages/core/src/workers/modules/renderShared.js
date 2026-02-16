@@ -16,18 +16,29 @@ function getNodeIndex(nodeIdToIdx, nodeId) {
 /**
  * Build mapping from backend-local tree indices to global indices when needed.
  * The backend may return local 0..N-1 indices when displayArray was requested.
+ * Uses O(n) min/max check instead of O(n log n) sort when possible.
  */
 export function createTreeIndexMapping(tree_idx, displayArray) {
   const indexMapping = new Map();
-  if (!displayArray || !Array.isArray(displayArray)) {
+  if (!displayArray || !Array.isArray(displayArray) || !tree_idx || tree_idx.length === 0) {
     return indexMapping;
   }
 
-  const uniqueTreeIdx = [...new Set(tree_idx)].sort((a, b) => a - b);
-  const isZeroIndexed = uniqueTreeIdx.length > 0
-    && uniqueTreeIdx[0] === 0
+  let minIdx = Infinity;
+  let maxIdx = -Infinity;
+  const seen = new Set();
+  for (let i = 0; i < tree_idx.length; i++) {
+    const v = tree_idx[i];
+    seen.add(v);
+    if (v < minIdx) minIdx = v;
+    if (v > maxIdx) maxIdx = v;
+  }
+
+  const isZeroIndexed = seen.size > 0
+    && minIdx === 0
+    && maxIdx === displayArray.length - 1
     && !displayArray.includes(0)
-    && displayArray.length === uniqueTreeIdx.length;
+    && displayArray.length === seen.size;
 
   if (isZeroIndexed) {
     displayArray.forEach((globalIdx, localIdx) => {
