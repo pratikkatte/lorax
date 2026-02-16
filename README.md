@@ -1,173 +1,76 @@
 # Lorax
 
-**Lorax** is an essential tool for the **interactive exploration and visualization of Ancestral Recombination Graphs (ARGs)**.
+**Interactive visualization and exploration of Ancestral Recombination Graphs (ARGs)**
 
-> Visit the official Lorax Website: [https://lorax.in/](https://lorax.in/)
+[![PyPI version](https://img.shields.io/pypi/v/lorax-arg)](https://pypi.org/project/lorax-arg/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](https://pypi.org/project/lorax-arg/)
 
-## Local Installation and Usage
+> **Web platform:** [lorax.in](https://lorax.in/) 
 
-### Option 1: Using the Pre-built Docker Image (Recommended)
+<!-- TODO: Add a screenshot or GIF of the tool in action here -->
+<!-- ![Lorax screenshot](docs/images/screenshot.png) -->
 
-The simplest way to get started is by pulling the image directly from Docker Hub.
+## Key Features
+
+- **Scalable rendering** -- Interactive visualization of ARGs at biobank scale using WebGL
+- **Genome-wide navigation** -- Traverse genomic coordinates and inspect local genealogies at recombination breakpoints
+- **Mutation-aware** -- Trace variant inheritance through local genealogies
+- **Metadata integration** -- Filter, color, and subset samples by population labels, phenotypes, or custom annotations
+- **Flexible inputs** -- Supports `.trees`, `.trees.tsz` (tskit tree sequences), and CSV-based ARG representations
+
+## Quick Start
+
+### Install with pip (recommended)
+
+```bash
+pip install lorax-arg
+lorax
+```
+
+This opens Lorax in your browser. To load a file directly (preferred for large files):
+
+```bash
+lorax --file path/to/your.trees
+```
+
+### Run with Docker
 
 ```bash
 docker pull pratikkatte7/lorax
-```
-### Option 2: Building the Docker Image from Source
-
-If you prefer to build the image locally, follow these steps:
-
-1. Clone the Repository
-```bash
-git clone https://github.com/pratikkatte/lorax.git
-cd lorax
-```
-2. Built the docker image. 
-
-```bash
-docker build -t lorax .
-```
-
-### Running Lorax and Accessing the Interface
-
-Once the Docker image is available (either pulled or built), you can run the container and access the web interface.
-
-#### Running the Container
-
-Use the following command to run Lorax. It maps the container's internal port 80 to your machine's port 80 (or any other port you specify).
-
-```bash
-# Maps container port 80 to host port 80
 docker run -it -p 80:80 lorax
 ```
 
-> ⚠️ Note: If port 80 is in use on your system, you can choose a different host port, such as 5173:
-> ```bash
-> docker run -it -p 5173:80 lorax
-> ```
--- The tool can be accessed via http://localhost:80. You can provide any other port. For instance 5173, http://localhost:5173
+Then open [http://localhost:80](http://localhost:80) in your browser.
 
-### Accessing the Tool
+For more installation options (building from source, Docker builds, volume mounting, environment variables), see **[INSTALL.md](INSTALL.md)**.
 
-After running the container, open your web browser and navigate to the appropriate address:
+## Supported Input Formats
 
-- If you used port 80: http://localhost:80/
-> If you used other port: http://localhost:[port]/
+| Format | Description |
+|---|---|
+| `.trees`, `.trees.tsz` | compatible with tskit tree sequences files; `.trees.tsz` is a tszip-compressed variant. |
+| `.csv` | One row per recombination interval with genomic position, Newick tree, depth, and optional metadata |
 
-## Using Your Own ARG Data Files
-Lorax supports files in `.trees`, `.tsz` (tskit format) or `.csv` format.
+## Use Cases
 
-1. Simple File Upload via Web Interface
+- Explore signatures of natural selection in local genealogies
+- Visualize introgression and admixture across genomic regions
+- Trace ancestry of specific samples through population-scale ARGs
+- Navigate from GWAS hits or functional annotations to underlying genealogical structure
 
-For smaller files, you can easily use the dedicated upload panel located within the Lorax web page once the tool is running.
 
-2. Mounting a Local Directory (Recommended for Large Datasets)
+## Citation
 
-This method is the easiest and fastest when working with large ARG files, as it avoids slow web uploads by directly sharing your file system with the container.
+<!-- TODO: Add citation information when available (paper, Zenodo DOI, etc.) -->
 
-To make a local directory of your data available inside the container, use the -v (volume mount) flag:
+If you use Lorax in your research, please cite:
 
-- Example: If your ARG files are located in a folder named ts_files in your current directory (`$(pwd)`), use this command:
-> ```
-> docker run -it -p 80:80 -v $(pwd)/ts_files:/app/UPLOADS/ts_files lorax
-> ```
+> Lorax: Interactive visualization of Ancestral Recombination Graphs. https://github.com/pratikkatte/lorax
 
-After the volume is mounted, your files will be accessible by Lorax when you use the interface.
+## License
 
----
-
-## Monorepo Docker (single Dockerfile, two targets)
-
-This repo can be built from the **repo-root `Dockerfile`** with two targets:
-- **`full` (default)**: website + backend in one container (nginx on **:3000**)
-- **`backend`**: backend-only image (API on **:8080**, for GCP)
-
-### Full image (website + backend, port 3000)
-
-This image includes:
-- `packages/backend` (FastAPI + Socket.IO) running internally on `127.0.0.1:8080`
-- `packages/website` served by **nginx on port 3000**
-- same-origin proxying so the browser only needs **port 3000**
-
-### Build
-
-```bash
-docker build -t lorax-monorepo .
-```
-
-### Run
-
-```bash
-docker run --rm -p 3000:3000 lorax-monorepo
-```
-
-Then open: `http://localhost:3000`
-
-### Mount local data (recommended)
-
-```bash
-docker run --rm -p 3000:3000 \
-  -v "$(pwd)/ts_files:/app/UPLOADS/ts_files" \
-  lorax-monorepo
-```
-
----
-
-### Backend-only image (GCP, port 8080)
-
-Build the backend-only target from the repo root:
-
-```bash
-docker build --target backend -t lorax-backend .
-```
-
-Run locally:
-
-```bash
-docker run --rm -p 8080:8080 lorax-backend
-```
-
-Then open: `http://localhost:8080`
-
----
-
-## Pip (single-port app, port 3000)
-
-This repo also contains a pip-installable single-port app distribution at `packages/app/` (named `lorax-arg`).
-
-- **UI**: served at `/`
-- **Backend API**: served at `/api/*`
-- **Socket.IO**: served at `/api/socket.io/`
-
-### Run from source (developer workflow)
-
-```bash
-# Build website once (requires Node 20.19+ or 22.12+; Node 22 recommended)
-npm ci
-VITE_API_BASE=/api npm --workspace packages/website run build
-
-# Install python packages
-python -m pip install -e packages/backend
-python -m pip install -e packages/app
-
-# Run (uses packaged static assets by default)
-lorax --port 3000
-```
-
-### Build a self-contained wheel
-
-```bash
-# Build UI and sync into the Python package
-npm ci
-VITE_API_BASE=/api npm --workspace packages/website run build
-python packages/app/scripts/sync_ui_assets.py
-
-# Build wheel
-python -m pip install build
-python -m build .
-```
-
----
+Lorax is released under the [MIT License](LICENSE).
 
 ## Maintainer
 

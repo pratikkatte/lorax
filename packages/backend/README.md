@@ -31,11 +31,35 @@ lorax serve --host 0.0.0.0 --port 8080 --reload
 
 LORAX_MODE=local lorax serve --reload
 
-# Production mode (with gunicorn)
-lorax serve --gunicorn --workers 4
+# Production mode (gunicorn + uvicorn worker class)
+python -m gunicorn -c packages/backend/gunicorn_config.py lorax.lorax_app:sio_app
 
-# With custom gunicorn config
-lorax serve --gunicorn --config gunicorn_config.py
+# Override worker count at runtime (default: min(4, max(2, cpu_cores)))
+WEB_CONCURRENCY=3 python -m gunicorn -c packages/backend/gunicorn_config.py lorax.lorax_app:sio_app
+```
+
+### Load-File Backpressure
+
+`load_file` uses a bounded queue and worker slots to prevent CPU-heavy loads from
+starving socket responsiveness.
+
+```bash
+# Defaults shown
+LORAX_LOAD_FILE_MAX_CONCURRENCY=1
+LORAX_LOAD_FILE_MAX_QUEUE=8
+LORAX_LOAD_FILE_QUEUE_TIMEOUT_SEC=30
+```
+
+### Session And Tree Cache TTLs
+
+The backend uses in-memory session and tree-graph caches. Defaults are 1 hour
+idle TTL with periodic opportunistic cleanup.
+
+```bash
+# Defaults shown
+LORAX_COOKIE_MAX_AGE_SEC=3600
+LORAX_INMEM_TTL_SEC=3600
+LORAX_CACHE_CLEANUP_INTERVAL_SEC=60
 ```
 
 ### Available Commands
