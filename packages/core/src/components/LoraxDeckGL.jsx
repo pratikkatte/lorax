@@ -11,6 +11,10 @@ import {
   LOCK_SNAPSHOT_DEBUG_LABEL_BY_CORNER,
   formatLockSnapshotDebugCoordinate
 } from '../hooks/useLockViewSnapshot.jsx';
+import {
+  computeLocalBBoxCoverageFromViewState,
+  LOCK_ZOOM_MIN_COVERAGE
+} from '../utils/lockViewSnapshot.js';
 import { useGenomePositions } from '../hooks/useGenomePositions.jsx';
 import { useTimePositions } from '../hooks/useTimePositions.jsx';
 import { useTreePolygons } from '../hooks/useTreePolygons.jsx';
@@ -145,6 +149,8 @@ const LoraxDeckGL = forwardRef(({
   lockModelMatrix = false,
   // Optional lock-view debug overlay (off by default)
   lockSnapshotDebug = false,
+  // Called when zoom-in is blocked due to lock-mode max zoom limit
+  onMaxZoomReached,
   ...otherProps
 }, ref) => {
   const deckRef = useRef(null);
@@ -837,6 +843,23 @@ const LoraxDeckGL = forwardRef(({
     return decksize.height * percent;
   }, [decksize?.height, viewConfig?.ortho?.height]);
 
+  const orthoViewportPx = useMemo(() => {
+    if (!decksize?.width || !decksize?.height) return null;
+    const parsePercent = (spec) => {
+      if (typeof spec !== 'string') return null;
+      const match = spec.match(/^(\d+(?:\.\d+)?)%$/);
+      if (!match) return null;
+      const ratio = Number.parseFloat(match[1]) / 100;
+      return Number.isFinite(ratio) && ratio > 0 ? ratio : null;
+    };
+    const widthRatio = parsePercent(viewConfig?.ortho?.width) ?? 1;
+    const heightRatio = parsePercent(viewConfig?.ortho?.height) ?? 1;
+    const width = decksize.width * widthRatio;
+    const height = decksize.height * heightRatio;
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return null;
+    return { width, height };
+  }, [decksize?.width, decksize?.height, viewConfig?.ortho?.width, viewConfig?.ortho?.height]);
+
   const getVisibleYBounds = useCallback(() => {
     let minY = Infinity;
     let maxY = -Infinity;
@@ -942,10 +965,38 @@ const LoraxDeckGL = forwardRef(({
 
   const handleViewStateChange = useCallback((params) => {
     updateInteractionState(params?.interactionState);
+
+    if (lockModelMatrix && params?.viewId === 'ortho' && orthoViewportPx && localBins?.size > 0) {
+      const newZoom = params.viewState?.zoom;
+      const oldZoom = params.oldViewState?.zoom;
+      const newZ0 = Array.isArray(newZoom) ? newZoom[0] : newZoom;
+      const newZ1 = Array.isArray(newZoom) ? newZoom[1] : newZoom;
+      const oldZ0 = Array.isArray(oldZoom) ? oldZoom[0] : oldZoom;
+      const oldZ1 = Array.isArray(oldZoom) ? oldZoom[1] : oldZoom;
+      const isZoomingIn = (Number.isFinite(newZ0) && Number.isFinite(oldZ0) && newZ0 > oldZ0)
+        || (Number.isFinite(newZ1) && Number.isFinite(oldZ1) && newZ1 > oldZ1);
+
+      if (isZoomingIn) {
+        const coverage = computeLocalBBoxCoverageFromViewState({
+          viewState: params.viewState,
+          viewportWidth: orthoViewportPx.width,
+          viewportHeight: orthoViewportPx.height,
+          localBins
+        });
+        if (coverage != null && coverage <= LOCK_ZOOM_MIN_COVERAGE) {
+          internalHandleViewStateChange({ ...params, viewState: params.oldViewState });
+          debouncedScheduleLockSnapshotCapture();
+          externalOnViewStateChange?.({ ...params, viewState: params.oldViewState });
+          onMaxZoomReached?.();
+          return;
+        }
+      }
+    }
+
     internalHandleViewStateChange(params);
     debouncedScheduleLockSnapshotCapture();
     externalOnViewStateChange?.(params);
-  }, [internalHandleViewStateChange, externalOnViewStateChange, debouncedScheduleLockSnapshotCapture, updateInteractionState]);
+  }, [lockModelMatrix, orthoViewportPx, localBins, internalHandleViewStateChange, externalOnViewStateChange, debouncedScheduleLockSnapshotCapture, updateInteractionState, onMaxZoomReached]);
 
   const handleAfterRender = useCallback(() => {
     if (showPolygons && onPolygonsAfterRender && deckRef.current?.deck) {

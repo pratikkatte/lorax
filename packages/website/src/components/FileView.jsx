@@ -4,6 +4,7 @@ import { useLorax, LoraxDeckGL } from '@lorax/core';
 import PositionSlider from './PositionSlider';
 import ViewportOverlay from './ViewportOverlay';
 import Info from './Info';
+import ErrorAlert from './ErrorAlert';
 import Settings from './Settings';
 import ScreenshotModal from './ScreenshotModal';
 import { useViewportDimensions } from '../hooks/useViewportDimensions';
@@ -103,6 +104,8 @@ function FileView() {
   const autoLockModelMatrixRef = useRef(false);
   // User manual OFF should temporarily block auto re-enable until context reset.
   const manualLockOffOverrideRef = useRef(false);
+  // Max zoom alert (lock-mode zoom limit reached)
+  const [maxZoomAlert, setMaxZoomAlert] = useState(false);
 
   // Hover tooltip state (rendered in website, not in core)
   const [hoverTooltip, setHoverTooltip] = useState(null); // { kind, x, y, title, rows[] }
@@ -780,6 +783,15 @@ function FileView() {
           dataTour="viewer-viewport"
         />
 
+        {/* Max zoom alert (lock-mode) */}
+        {maxZoomAlert && (
+          <ErrorAlert
+            message="Maximum zoom reached."
+            onDismiss={() => setMaxZoomAlert(false)}
+            variant="info"
+          />
+        )}
+
         {/* Error display */}
         {error && (
           <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-30">
@@ -834,6 +846,7 @@ function FileView() {
               showCompareDeletion={showCompareDeletion}
               edgeColor={edgeColor}
               lockModelMatrix={lockModelMatrix}
+              onMaxZoomReached={() => setMaxZoomAlert(true)}
               onPolygonClick={handlePolygonClick}
               onTipHover={(tip, info, event) => {
                 if (!tip) {

@@ -30,6 +30,9 @@
  * }
  */
 
+/** Minimum tree coverage (0–1) allowed when zooming in lock-mode. Below this, zoom-in is blocked. */
+export const LOCK_ZOOM_MIN_COVERAGE = 0.10;
+
 const CORNERS = [
   { corner: 'topLeft', getPixel: (width, _height) => [0, 0] },
   { corner: 'topRight', getPixel: (width, _height) => [width, 0] },
@@ -246,6 +249,65 @@ function computeDisplayArraySignature(ranges) {
 
   indices.sort((a, b) => a - b);
   return indices.join(',');
+}
+
+/**
+ * Compute the visible bbox coverage (fraction of tree area) for a given viewState.
+ * Used to restrict zoom-in in lock-mode when viewing a single tree.
+ *
+ * @param {Object} params
+ * @param {{ target: [number, number], zoom: [number, number] }} params.viewState - deck.gl ortho viewState
+ * @param {number} params.viewportWidth - Ortho viewport width in pixels
+ * @param {number} params.viewportHeight - Ortho viewport height in pixels
+ * @param {Map} params.localBins - Local bins with model matrices
+ * @returns {number|null} Coverage in [0,1], or null if not single-tree / cannot compute
+ */
+export function computeLocalBBoxCoverageFromViewState({ viewState, viewportWidth, viewportHeight, localBins }) {
+  if (!viewState || !(localBins instanceof Map) || localBins.size === 0) return null;
+  if (!Number.isFinite(viewportWidth) || !Number.isFinite(viewportHeight) || viewportWidth <= 0 || viewportHeight <= 0) {
+    return null;
+  }
+
+  const zoom = viewState.zoom;
+  const target = viewState.target;
+  const zoomX = Array.isArray(zoom) ? zoom[0] : zoom;
+  const zoomY = Array.isArray(zoom) ? zoom[1] : zoom;
+  const tx = target?.[0];
+  const ty = target?.[1];
+  if (!Number.isFinite(zoomX) || !Number.isFinite(zoomY) || !Number.isFinite(tx) || !Number.isFinite(ty)) {
+    return null;
+  }
+
+  const visibleWidth = viewportWidth / Math.pow(2, zoomX);
+  const visibleHeight = viewportHeight / Math.pow(2, zoomY);
+  const worldMinX = tx - visibleWidth / 2;
+  const worldMaxX = tx + visibleWidth / 2;
+  const worldMinY = ty - visibleHeight / 2;
+  const worldMaxY = ty + visibleHeight / 2;
+
+  const treeRanges = buildVisibleTreeRanges(localBins);
+  const rangesInsideBox = filterRangesInsideViewportX(treeRanges, worldMinX, worldMaxX);
+  if (rangesInsideBox.length !== 1) return null;
+
+  const range = rangesInsideBox[0];
+  const { minX: treeMinX, maxX: treeMaxX, minY: treeMinY, maxY: treeMaxY, scaleX, scaleY, translateX, translateY } = range;
+  if (!Number.isFinite(scaleX) || !Number.isFinite(scaleY) || Math.abs(scaleX) < 1e-12 || Math.abs(scaleY) < 1e-12) {
+    return null;
+  }
+
+  const overlapMinX = Math.max(worldMinX, treeMinX);
+  const overlapMaxX = Math.min(worldMaxX, treeMaxX);
+  const overlapMinY = Math.max(worldMinY, treeMinY);
+  const overlapMaxY = Math.min(worldMaxY, treeMaxY);
+  if (overlapMinX >= overlapMaxX || overlapMinY >= overlapMaxY) return null;
+
+  const localMinX = clamp((overlapMinX - translateX) / scaleX, 0, 1);
+  const localMaxX = clamp((overlapMaxX - translateX) / scaleX, 0, 1);
+  const localMinY = clamp((overlapMinY - translateY) / scaleY, 0, 1);
+  const localMaxY = clamp((overlapMaxY - translateY) / scaleY, 0, 1);
+
+  const coverage = (localMaxX - localMinX) * (localMaxY - localMinY);
+  return Number.isFinite(coverage) ? coverage : null;
 }
 
 /**
