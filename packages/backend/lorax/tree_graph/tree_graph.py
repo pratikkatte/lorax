@@ -492,6 +492,10 @@ def _process_single_tree(
     )
 
     if sparsification and sparsify_resolution is not None:
+        tip_x = x[is_tip]
+        all_tips_at_x1 = (len(tip_x) > 0) and np.all(np.isclose(tip_x, 1.0, rtol=0, atol=1e-6))
+        use_midpoint_only = not all_tips_at_x1
+
         order = np.argsort(node_ids)
         sorted_ids = node_ids[order]
         pos = np.searchsorted(sorted_ids, parent_ids)
@@ -512,14 +516,15 @@ def _process_single_tree(
                 float(bbox_max_x),
                 float(bbox_min_y),
                 float(bbox_max_y),
+                use_midpoint_only,
             )
         else:
-
             keep_mask = _sparsify_edges(
                 x.astype(np.float32),
                 y.astype(np.float32),
                 parent_indices.astype(np.int32),
                 sparsify_resolution,
+                use_midpoint_only,
             )
         node_ids = node_ids[keep_mask]
         parent_ids = parent_ids[keep_mask]
@@ -1020,7 +1025,6 @@ def construct_trees_batch(
             all_mut_node_id = all_mut_node_id[keep_mask]
 
             n_muts_removed_by_sparsify = n_muts_before - len(all_mut_tree_idx)
-            print(f"n_muts_removed_by_sparsify: {n_muts_removed_by_sparsify}")
             # When edge sparsification removed nodes and mutation sparsification removed
             # mutations, filter kept mutations to surviving nodes
             if sparsification and n_muts_removed_by_sparsify > 0:
@@ -1197,23 +1201,25 @@ def _sparsify_mutations_adaptive(
 
 
 @njit(cache=True)
-def _sparsify_edges(x, y, parent_indices, resolution):
+def _sparsify_edges(x, y, parent_indices, resolution, use_midpoint_only=False):
     """
     Edge-centric sparsification: grid-deduplicate edges by midpoint position.
 
     Algorithm:
     1. Always keep root and tip nodes
     2. For each non-root node (= edge to parent), compute edge midpoint (avg of endpoints)
-    3. Grid-dedupe by midpoint + coarse direction: first edge per key survives
+    3. Grid-dedupe by midpoint (and optionally coarse direction): first edge per key survives
     4. BFS from kept nodes toward roots to mark all ancestors (O(n))
 
     Uses geometric midpoint (same averaging as x/y coordinate computation).
+    When use_midpoint_only is True, dedupes by midpoint only; otherwise by midpoint + direction.
 
     Args:
         x: float32 array of x coordinates (normalized [0,1])
         y: float32 array of y coordinates (normalized [0,1])
         parent_indices: int32 array s.t. parent_indices[i] = index of parent in array (-1 for roots)
         resolution: Grid resolution (e.g., 500 for cell_size=0.002)
+        use_midpoint_only: If True, grid-dedupe by midpoint only; else by midpoint + coarse direction.
 
     Returns:
         keep: bool array indicating which nodes to keep
@@ -1233,13 +1239,12 @@ def _sparsify_edges(x, y, parent_indices, resolution):
         if parent_idx >= 0:
             child_counts[parent_idx] += 1
 
-    # Always keep root and tip nodes.
     for i in range(n):
         # if parent_indices[i] == -1 or child_counts[i] == 0:
         if parent_indices[i] == -1:
             keep[i] = True
 
-    # Grid-dedupe edges by midpoint and coarse direction.
+    # Grid-dedupe edges by midpoint (and optionally coarse direction).
     # Midpoint alone can collapse visually distinct edges when long branches cross the same bin.
     stride = resolution + 1
     for i in range(n):
@@ -1251,13 +1256,16 @@ def _sparsify_edges(x, y, parent_indices, resolution):
         mid_y = (y[i] + y[parent_idx]) / 2.0
         cx = min(int(mid_x * resolution), resolution - 1)
         cy = min(int(mid_y * resolution), resolution - 1)
-        dx = x[parent_idx] - x[i]
-        dy = y[parent_idx] - y[i]
-        sx = 1 if dx >= 0.0 else 0
-        sy = 1 if dy >= 0.0 else 0
-        steep = 1 if abs(dy) > abs(dx) else 0
-        direction_bin = sx + 2 * sy + 4 * steep  # 0..7
-        key = (cx * stride + cy) * 8 + direction_bin
+        if use_midpoint_only:
+            key = cx * stride + cy
+        else:
+            dx = x[parent_idx] - x[i]
+            dy = y[parent_idx] - y[i]
+            sx = 1 if dx >= 0.0 else 0
+            sy = 1 if dy >= 0.0 else 0
+            steep = 1 if abs(dy) > abs(dx) else 0
+            direction_bin = sx + 2 * sy + 4 * steep  # 0..7
+            key = (cx * stride + cy) * 8 + direction_bin
 
         if key not in seen_cells:
             seen_cells[key] = np.int32(i)
@@ -1295,9 +1303,11 @@ def _sparsify_edges_adaptive(
     bbox_max_x,
     bbox_min_y,
     bbox_max_y,
+    use_midpoint_only=False,
 ):
     """
     Adaptive edge sparsification on full tree: denser bins inside bbox, default outside.
+    When use_midpoint_only is True, grid-dedupe by midpoint only; else by midpoint + direction.
     """
     n = len(x)
     keep = np.zeros(n, dtype=np.bool_)
@@ -1337,13 +1347,16 @@ def _sparsify_edges_adaptive(
 
         cx = min(int(mid_x * resolution), resolution - 1)
         cy = min(int(mid_y * resolution), resolution - 1)
-        dx = x[parent_idx] - x[i]
-        dy = y[parent_idx] - y[i]
-        sx = 1 if dx >= 0.0 else 0
-        sy = 1 if dy >= 0.0 else 0
-        steep = 1 if abs(dy) > abs(dx) else 0
-        direction_bin = sx + 2 * sy + 4 * steep
-        key = ((((zone * stride) + cx) * stride + cy) * 8) + direction_bin
+        if use_midpoint_only:
+            key = ((zone * stride) + cx) * stride + cy
+        else:
+            dx = x[parent_idx] - x[i]
+            dy = y[parent_idx] - y[i]
+            sx = 1 if dx >= 0.0 else 0
+            sy = 1 if dy >= 0.0 else 0
+            steep = 1 if abs(dy) > abs(dx) else 0
+            direction_bin = sx + 2 * sy + 4 * steep
+            key = ((((zone * stride) + cx) * stride + cy) * 8) + direction_bin
 
         if key not in seen_cells:
             seen_cells[key] = np.int32(i)
