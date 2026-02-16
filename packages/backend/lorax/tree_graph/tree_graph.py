@@ -21,7 +21,7 @@ from typing import List, Optional, Tuple
 # Default cell size for sparsification (0.2% of normalized [0,1] space)
 DEFAULT_SPARSIFY_CELL_SIZE = 0.002
 MIN_SPARSIFY_CELL_SIZE = 0.0004
-MAX_SPARSIFY_CELL_SIZE = 0.008
+MAX_SPARSIFY_CELL_SIZE = 0.002
 ADAPTIVE_INSIDE_MAX_MULTIPLIER = 0.95
 
 # Minimum tree count to enable parallel processing (avoids executor overhead for small batches)
@@ -511,6 +511,7 @@ def _process_single_tree(
                 float(bbox_max_y),
             )
         else:
+            print("normal sparsification")
             keep_mask = _sparsify_edges(
                 x.astype(np.float32),
                 y.astype(np.float32),
@@ -820,7 +821,7 @@ def construct_trees_batch(
                 None if adaptive_mode_enabled else sparsify_cell_size_multiplier
             ),
         )
-        print(f"cell_size: {cell_size}")
+        print(f"cell_size sparsification: cell_size={cell_size}")
         sparsify_resolution = int(1.0 / cell_size)
 
         if adaptive_mode_enabled:
@@ -840,6 +841,8 @@ def construct_trees_batch(
             resolved_adaptive_outside_cell_size = outside_cell_size
             adaptive_outside_resolution = int(1.0 / outside_cell_size)
             adaptive_inside_resolution = int(1.0 / inside_cell_size)
+            print(f"inside_box sparsification: inside_cell_size={inside_cell_size}", sparsify_cell_size_multiplier)
+            print(f"outside bbox sparsification: outside_cell_size={outside_cell_size}")
             adaptive_bbox_bounds = (
                 float(normalized_adaptive_bbox["min_x"]),
                 float(normalized_adaptive_bbox["max_x"]),
