@@ -663,6 +663,14 @@ function FileView() {
     }
   }, [lockModelMatrix, handleLockModelMatrixChange]);
 
+  // Disable lock-view before mutation click navigation (Mutations tab).
+  const handleSetClickedGenomeInfo = useCallback((info) => {
+    if (lockModelMatrix) {
+      handleLockModelMatrixChange(false);
+    }
+    setClickedGenomeInfo(info);
+  }, [lockModelMatrix, handleLockModelMatrixChange]);
+
   // Track whether all trees are currently shown in the viewport.
   const handleShowingAllTreesChange = useCallback((showing) => {
     const nextShowing = Boolean(showing);
@@ -993,7 +1001,7 @@ function FileView() {
             activeTab={infoActiveTab}
             onTabChange={setInfoActiveTab}
             genomicCoords={genomicPosition}
-            setClickedGenomeInfo={setClickedGenomeInfo}
+            setClickedGenomeInfo={handleSetClickedGenomeInfo}
             setHighlightedMutationNode={setHighlightedMutationNode}
             setHighlightedMutationTreeIndex={setHighlightedMutationTreeIndex}
             treeDetails={treeDetails}
