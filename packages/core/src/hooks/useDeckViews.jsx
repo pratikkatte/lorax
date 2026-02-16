@@ -16,6 +16,7 @@ import { useGenomicCoordinates } from './useGenomicCoordinates.jsx';
  * @param {number} params.globalBpPerUnit - Base pairs per world unit (from config)
  * @param {number} params.genomeLength - Total genome length in base pairs (from config)
  * @param {[number, number]} params.tsconfigValue - Backend's initial_position [startBp, endBp]
+ * @param {boolean} params.isInteracting - Whether active viewport interaction is occurring
  * @returns {Object} View management state and functions
  */
 export function useDeckViews({
@@ -26,7 +27,8 @@ export function useDeckViews({
   wheelPanDeltaX,
   globalBpPerUnit = null,
   genomeLength = null,
-  tsconfigValue = null
+  tsconfigValue = null,
+  isInteracting = false
 }) {
   const [decksize, setDecksize] = useState(null);
   const [xzoom, setXzoom] = useState(INITIAL_VIEW_STATE.ortho.zoom[0]);
@@ -97,7 +99,8 @@ export function useDeckViews({
     globalBpPerUnit,
     genomeLength,
     tsconfigValue,
-    enabled: coordsEnabled
+    enabled: coordsEnabled,
+    isInteracting
   });
 
   // Apply initial viewState from URL/tsconfig (once)

@@ -22,6 +22,9 @@ import { genomicToWorld, worldToGenomic, clampGenomicCoords } from '../utils/gen
  * @param {number} params.genomeLength - Total genome length in base pairs
  * @param {[number, number]} params.tsconfigValue - Backend's initial_position [startBp, endBp]
  * @param {boolean} params.enabled - Whether coordinate management is enabled
+ * @param {boolean} params.isInteracting - Whether viewport interaction is active
+ * @param {number} params.interactionDebounceMs - Debounce while interacting (default: 80)
+ * @param {number} params.idleDebounceMs - Debounce while idle (default: 300)
  * @returns {Object} Coordinate state and methods
  */
 export function useGenomicCoordinates({
@@ -30,7 +33,10 @@ export function useGenomicCoordinates({
   globalBpPerUnit,
   genomeLength,
   tsconfigValue,
-  enabled = true
+  enabled = true,
+  isInteracting = false,
+  interactionDebounceMs = 80,
+  idleDebounceMs = 300
 }) {
   // Genomic coordinates state [startBp, endBp]
   const [genomicCoords, setGenomicCoordsState] = useState(null);
@@ -44,8 +50,11 @@ export function useGenomicCoordinates({
   // Debounce timer for viewState → genomic sync
   const debounceTimer = useRef(null);
 
-  // Debounce timing (ms)
-  const DEBOUNCE_MS = 300;
+  const debounceMs = useMemo(() => {
+    const active = Number.isFinite(interactionDebounceMs) ? interactionDebounceMs : 80;
+    const idle = Number.isFinite(idleDebounceMs) ? idleDebounceMs : 300;
+    return Math.max(16, isInteracting ? active : idle);
+  }, [isInteracting, interactionDebounceMs, idleDebounceMs]);
 
   // =========================================================================
   // Initialization Effect
@@ -125,7 +134,7 @@ export function useGenomicCoordinates({
         // Update URL
         setGenomicCoordsInURL(clamped);
       }
-    }, DEBOUNCE_MS);
+    }, debounceMs);
 
     // Cleanup
     return () => {
@@ -133,7 +142,7 @@ export function useGenomicCoordinates({
         clearTimeout(debounceTimer.current);
       }
     };
-  }, [enabled, viewState, deckWidth, globalBpPerUnit, genomeLength]);
+  }, [enabled, viewState, deckWidth, globalBpPerUnit, genomeLength, debounceMs]);
 
   // =========================================================================
   // Programmatic Setter

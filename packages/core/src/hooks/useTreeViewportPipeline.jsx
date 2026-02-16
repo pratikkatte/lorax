@@ -10,6 +10,8 @@ import { useRenderData } from './useRenderData.jsx';
  * interval query -> local bins -> backend tree fetch -> render arrays.
  */
 export function useTreeViewportPipeline({
+  intervalWorker = null,
+  localDataWorker = null,
   worker,
   workerConfigReady,
   genomicCoords,
@@ -21,18 +23,22 @@ export function useTreeViewportPipeline({
   lockViewPayload = null,
   metadataArrays = null,
   metadataColors = null,
-  populationFilter = null
+  populationFilter = null,
+  isInteracting = false
 }) {
+  const resolvedIntervalWorker = intervalWorker || worker;
+  const resolvedLocalDataWorker = localDataWorker || worker;
+
   const intervalState = useInterval({
-    worker,
+    worker: resolvedIntervalWorker,
     workerConfigReady,
-    genomicCoords
+    genomicCoords,
+    isInteracting
   });
 
   const localDataState = useLocalData({
-    worker,
+    worker: resolvedLocalDataWorker,
     workerConfigReady,
-    allIntervalsInView: intervalState.allIntervalsInView,
     intervalBounds: intervalState.intervalBounds,
     intervalsCoords: intervalState.intervalsCoords,
     genomicCoords,
@@ -47,11 +53,9 @@ export function useTreeViewportPipeline({
   }, [localDataState.localBins]);
 
   const treesInWindowCount = useMemo(() => {
-    if (!Array.isArray(intervalState.allIntervalsInView) || intervalState.allIntervalsInView.length < 2) {
-      return 0;
-    }
-    return intervalState.allIntervalsInView.length - 1;
-  }, [intervalState.allIntervalsInView]);
+    // intervalCount is the pre-decimation count of intervals (N breakpoints = N-1 trees)
+    return intervalState.intervalCount > 1 ? intervalState.intervalCount - 1 : 0;
+  }, [intervalState.intervalCount]);
 
   const treeDataState = useTreeData({
     displayArray: localDataState.displayArray,

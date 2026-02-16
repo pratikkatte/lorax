@@ -81,6 +81,8 @@ function getOrthoLocalXY(deckRef, info, event) {
 
 /** Debounce delay (ms) before capturing lock view snapshot after view state settles. */
 const LOCK_VIEW_SNAPSHOT_DEBOUNCE_MS = 150;
+/** Keep interaction mode active briefly after deck reports interaction end. */
+const INTERACTION_SETTLE_MS = 120;
 
 function getDisplayArraySignature(displayArray) {
   if (!Array.isArray(displayArray) || displayArray.length === 0) return '';
@@ -156,6 +158,8 @@ const LoraxDeckGL = forwardRef(({
 }, ref) => {
   const deckRef = useRef(null);
   const [lockViewPayload, setLockViewPayload] = useState(null);
+  const [isInteracting, setIsInteracting] = useState(false);
+  const interactionSettleTimerRef = useRef(null);
 
   // 1. Merge and validate config
   const viewConfig = mergeWithDefaults(userViewConfig);
@@ -170,6 +174,8 @@ const LoraxDeckGL = forwardRef(({
     globalBpPerUnit,
     genomeLength,
     tsconfig,
+    intervalWorker,
+    localDataWorker,
     worker,
     workerConfigReady,
     queryTreeLayout,
@@ -201,6 +207,33 @@ const LoraxDeckGL = forwardRef(({
   const includeTipData = Boolean(onTipHover || onTipClick);
   const includeEdgeData = Boolean(colorEdgesByTree || onEdgeHover || onEdgeClick);
 
+  const updateInteractionState = useCallback((interactionState) => {
+    const active = Boolean(
+      interactionState?.isDragging
+      || interactionState?.isPanning
+      || interactionState?.isZooming
+      || interactionState?.inTransition
+      || interactionState?.isRotating
+    );
+
+    if (active) {
+      if (interactionSettleTimerRef.current != null) {
+        clearTimeout(interactionSettleTimerRef.current);
+        interactionSettleTimerRef.current = null;
+      }
+      setIsInteracting(true);
+      return;
+    }
+
+    if (interactionSettleTimerRef.current != null) {
+      clearTimeout(interactionSettleTimerRef.current);
+    }
+    interactionSettleTimerRef.current = setTimeout(() => {
+      interactionSettleTimerRef.current = null;
+      setIsInteracting(false);
+    }, INTERACTION_SETTLE_MS);
+  }, []);
+
   // 4. Views and view state management (with genomic coordinates)
   const {
     views,
@@ -224,7 +257,8 @@ const LoraxDeckGL = forwardRef(({
     wheelPanDeltaX,
     globalBpPerUnit,
     genomeLength,
-    tsconfigValue: tsconfig?.value
+    tsconfigValue: tsconfig?.value,
+    isInteracting
   });
 
   // 5. Notify parent when genomicCoords changes
@@ -249,6 +283,8 @@ const LoraxDeckGL = forwardRef(({
     visibleTreeIndices,
     treesInWindowCount
   } = useTreeViewportPipeline({
+    intervalWorker,
+    localDataWorker,
     worker,
     workerConfigReady,
     genomicCoords,
@@ -261,6 +297,7 @@ const LoraxDeckGL = forwardRef(({
     metadataArrays,
     metadataColors,
     populationFilter,
+    isInteracting,
     includeTipData,
     includeEdgeData
   });
@@ -298,6 +335,13 @@ const LoraxDeckGL = forwardRef(({
     if (lockSnapshotDebounceRef.current != null) {
       clearTimeout(lockSnapshotDebounceRef.current);
       lockSnapshotDebounceRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => () => {
+    if (interactionSettleTimerRef.current != null) {
+      clearTimeout(interactionSettleTimerRef.current);
+      interactionSettleTimerRef.current = null;
     }
   }, []);
 
@@ -916,10 +960,11 @@ const LoraxDeckGL = forwardRef(({
   }, [setDecksize, externalOnResize]);
 
   const handleViewStateChange = useCallback((params) => {
+    updateInteractionState(params?.interactionState);
     internalHandleViewStateChange(params);
     debouncedScheduleLockSnapshotCapture();
     externalOnViewStateChange?.(params);
-  }, [internalHandleViewStateChange, externalOnViewStateChange, debouncedScheduleLockSnapshotCapture]);
+  }, [internalHandleViewStateChange, externalOnViewStateChange, debouncedScheduleLockSnapshotCapture, updateInteractionState]);
 
   const handleAfterRender = useCallback(() => {
     if (showPolygons && onPolygonsAfterRender && deckRef.current?.deck) {

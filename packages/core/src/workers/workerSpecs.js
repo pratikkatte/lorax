@@ -7,6 +7,8 @@
  */
 
 let localBackendWorkerPromise = null;
+let intervalWorkerPromise = null;
+let localDataWorkerPromise = null;
 let renderDataWorkerPromise = null;
 
 /**
@@ -28,6 +30,44 @@ export function getLocalBackendWorker() {
     })();
   }
   return localBackendWorkerPromise;
+}
+
+/**
+ * Lazy loader for intervalWorker.
+ * Used for viewport interval queries (genome-info line layer).
+ */
+export function getIntervalWorker() {
+  if (intervalWorkerPromise === null) {
+    intervalWorkerPromise = (async () => {
+      try {
+        const module = await import(/* webpackIgnore: true */ /* @vite-ignore */ './intervalWorker.js?worker&inline');
+        return module.default;
+      } catch (e) {
+        console.warn('[workerSpecs] intervalWorker import failed:', e.message);
+        return null;
+      }
+    })();
+  }
+  return intervalWorkerPromise;
+}
+
+/**
+ * Lazy loader for localDataWorker.
+ * Used for local bin/modelMatrix computation.
+ */
+export function getLocalDataWorker() {
+  if (localDataWorkerPromise === null) {
+    localDataWorkerPromise = (async () => {
+      try {
+        const module = await import(/* webpackIgnore: true */ /* @vite-ignore */ './localDataWorker.js?worker&inline');
+        return module.default;
+      } catch (e) {
+        console.warn('[workerSpecs] localDataWorker import failed:', e.message);
+        return null;
+      }
+    })();
+  }
+  return localDataWorkerPromise;
 }
 
 /**

@@ -1,5 +1,10 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 
+const DEBUG_INTERVAL_PERF = Boolean(globalThis?.__LORAX_PERF_DEBUG__);
+const now = () => (typeof performance !== 'undefined' && typeof performance.now === 'function'
+  ? performance.now()
+  : Date.now());
+
 /**
  * Hook to manage interval state for visualization with incremental fetching.
  *
@@ -15,25 +20,37 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
  * @param {[number, number]} params.genomicCoords - Current viewport [startBp, endBp]
  * @param {number} params.debounceMs - Debounce delay in ms (default: 16)
  * @param {number} params.maxIntervals - Max intervals to render (LOD threshold, default: 2000)
- * @returns {Object} { visibleIntervals, allIntervalsInView, isReady, reset }
+ * @param {number} params.previewMaxIntervals - Max intervals during interaction preview (default: 400)
+ * @param {boolean} params.isInteracting - Whether viewport is actively being manipulated
+ * @returns {Object} { visibleIntervals, intervalBounds, intervalCount, isReady, reset }
  *   - visibleIntervals: Decimated intervals for display (max maxIntervals)
- *   - allIntervalsInView: Pre-decimation intervals for useLocalData
+ *   - intervalBounds: { lo, hi } global index bounds for useLocalData (worker keeps full array)
+ *   - intervalCount: Pre-decimation interval count
  */
 export function useInterval({
   worker,
   workerConfigReady,
   genomicCoords,
   debounceMs = 16,
-  maxIntervals = 2000
+  maxIntervals = 2000,
+  previewMaxIntervals = 400,
+  isInteracting = false
 }) {
   const [visibleIntervals, setVisibleIntervals] = useState([]);
-  const [allIntervalsInView, setAllIntervalsInView] = useState([]); // Pre-decimation intervals for useLocalData
   const [intervalBounds, setIntervalBounds] = useState({ lo: 0, hi: 0 }); // Global index bounds
+  const [intervalCount, setIntervalCount] = useState(0); // Pre-decimation count
   const [intervalsCoords, setIntervalsCoords] = useState(null); // Genomic coords used to fetch intervals
 
   // For request cancellation
   const latestRequestIdRef = useRef(0);
   const debounceTimerRef = useRef(null);
+
+  const effectiveMaxIntervals = useMemo(() => {
+    if (!isInteracting) return maxIntervals;
+    const preview = Number.isFinite(previewMaxIntervals) ? previewMaxIntervals : 400;
+    const steady = Number.isFinite(maxIntervals) ? maxIntervals : 2000;
+    return Math.max(1, Math.min(preview, steady));
+  }, [isInteracting, previewMaxIntervals, maxIntervals]);
 
   // Main effect: incremental fetching with debounce
   useEffect(() => {
@@ -47,38 +64,46 @@ export function useInterval({
     debounceTimerRef.current = setTimeout(async () => {
       const [newLo, newHi] = genomicCoords;
       const requestId = ++latestRequestIdRef.current;
+      const startedAt = now();
 
       try {
-        // Query full viewport to get intervals AND global index bounds (lo, hi)
-        const result = await worker.request('intervals', { start: newLo, end: newHi });
+        // Worker returns decimated visibleIntervals + lo/hi bounds.
+        // Full interval array stays in worker — useLocalData references via lo/hi.
+        const result = await worker.request('intervals', {
+          start: newLo,
+          end: newHi,
+          maxIntervals: effectiveMaxIntervals
+        });
 
         // Check if this request is still current
         if (requestId !== latestRequestIdRef.current) return;
 
-        const intervals = result?.visibleIntervals || [];
         const lo = result?.lo ?? 0;
         const hi = result?.hi ?? 0;
-
 
         // Store global index bounds for useLocalData
         setIntervalBounds({ lo, hi });
 
-        // Store pre-decimation intervals for useLocalData
-        setAllIntervalsInView(intervals);
+        // Store pre-decimation count (for treesInWindowCount)
+        setIntervalCount(result?.count ?? 0);
 
         // Store genomic coords used for these intervals
         setIntervalsCoords(genomicCoords);
 
-        // Apply LOD decimation if too many intervals (for display only)
-        if (intervals.length > maxIntervals) {
-          const step = Math.ceil(intervals.length / maxIntervals);
-          const decimated = [];
-          for (let i = 0; i < intervals.length; i += step) {
-            decimated.push(intervals[i]);
-          }
-          setVisibleIntervals(decimated);
-        } else {
-          setVisibleIntervals(intervals);
+        // visibleIntervals already decimated by worker
+        setVisibleIntervals(result?.visibleIntervals || []);
+
+        if (DEBUG_INTERVAL_PERF) {
+          const elapsedMs = Number((now() - startedAt).toFixed(2));
+          console.debug('[lorax-perf] intervals', {
+            elapsedMs,
+            count: result?.count ?? 0,
+            visibleCount: result?.visibleIntervals?.length ?? 0,
+            lo,
+            hi,
+            maxIntervals: effectiveMaxIntervals,
+            isInteracting
+          });
         }
       } catch (error) {
         if (requestId === latestRequestIdRef.current) {
@@ -92,22 +117,22 @@ export function useInterval({
         clearTimeout(debounceTimerRef.current);
       }
     };
-  }, [workerConfigReady, genomicCoords, worker, debounceMs, maxIntervals]);
+  }, [workerConfigReady, genomicCoords, worker, debounceMs, effectiveMaxIntervals, isInteracting]);
 
   // Reset method - call when underlying data changes
   const reset = useCallback(() => {
     setVisibleIntervals([]);
-    setAllIntervalsInView([]);
     setIntervalBounds({ lo: 0, hi: 0 });
+    setIntervalCount(0);
   }, []);
 
   // Memoize return object to prevent unnecessary re-renders
   return useMemo(() => ({
-    visibleIntervals,      // Decimated intervals for display (max 2000)
-    allIntervalsInView,    // Pre-decimation intervals for useLocalData
+    visibleIntervals,      // Decimated intervals for display (max maxIntervals)
     intervalBounds,        // { lo, hi } - global index bounds for useLocalData
+    intervalCount,         // Pre-decimation count for treesInWindowCount
     intervalsCoords,       // Genomic coords for interval request
     isReady: workerConfigReady,
     reset
-  }), [visibleIntervals, allIntervalsInView, intervalBounds, intervalsCoords, workerConfigReady, reset]);
+  }), [visibleIntervals, intervalBounds, intervalCount, intervalsCoords, workerConfigReady, reset]);
 }

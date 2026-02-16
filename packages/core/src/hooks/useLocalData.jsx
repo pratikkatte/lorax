@@ -1,5 +1,10 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 
+const DEBUG_LOCAL_DATA_PERF = Boolean(globalThis?.__LORAX_PERF_DEBUG__);
+const now = () => (typeof performance !== 'undefined' && typeof performance.now === 'function'
+  ? performance.now()
+  : Date.now());
+
 // Compare arrays to avoid unnecessary state updates
 function arraysEqual(a, b) {
   if (!a || !b) return false;
@@ -29,8 +34,8 @@ function deserializeBins(serialized) {
 }
 
 /**
- * Hook to compute local bins and tree positioning based on intervals.
- * Receives pre-decimation intervals from useInterval.
+ * Hook to compute local bins and tree positioning based on interval bounds.
+ * Receives global index bounds from useInterval and resolves interval data in the worker.
  *
  * NOTE: This hook executes immediately without debounce.
  * Debouncing should be applied at the viewport/genomicCoords level (useInterval)
@@ -39,7 +44,6 @@ function deserializeBins(serialized) {
  * @param {Object} params
  * @param {Object} params.worker - Worker instance from useWorker
  * @param {boolean} params.workerConfigReady - Whether worker has config
- * @param {number[]} params.allIntervalsInView - Pre-decimation intervals from useInterval
  * @param {Object} params.intervalBounds - { lo, hi } global index bounds from useInterval
  * @param {[number, number]} params.genomicCoords - [startBp, endBp] viewport bounds
  * @param {Object} params.viewState - deck.gl viewState with zoom
@@ -50,7 +54,6 @@ function deserializeBins(serialized) {
 export function useLocalData({
   worker,
   workerConfigReady,
-  allIntervalsInView,
   intervalBounds = { lo: 0, hi: 0 },
   intervalsCoords = null,
   genomicCoords,
@@ -202,7 +205,7 @@ export function useLocalData({
   useEffect(() => {
     if (!worker) return;
     if (!workerConfigReady || !genomicCoords || !globalBpPerUnit) return;
-    if (!allIntervalsInView || allIntervalsInView.length === 0) return;
+    if (intervalBounds.hi <= intervalBounds.lo) return;
     if (!intervalsCoords || intervalsCoords[0] !== genomicCoords[0] || intervalsCoords[1] !== genomicCoords[1]) return;
     if (shouldSkipForLockedInteraction(!!localBins)) return;
 
@@ -211,12 +214,14 @@ export function useLocalData({
 
     const [start, end] = genomicCoords;
     const requestId = ++latestRequestId.current;
+    const startedAt = now();
+    const intervalCount = Math.max(0, (intervalBounds.hi ?? 0) - (intervalBounds.lo ?? 0));
 
     (async () => {
       try {
         const result = await worker.request('local-data', {
-          intervals: allIntervalsInView,
           lo: intervalBounds.lo,
+          hi: intervalBounds.hi,
           start,
           end,
           globalBpPerUnit,
@@ -233,11 +238,22 @@ export function useLocalData({
           return arraysEqual(prev, newArr) ? prev : newArr;
         });
         setShowingAllTrees(result.showing_all_trees || false);
+
+        if (DEBUG_LOCAL_DATA_PERF) {
+          const elapsedMs = Number((now() - startedAt).toFixed(2));
+          console.debug('[lorax-perf] local-data', {
+            elapsedMs,
+            intervalCount,
+            displayCount: result?.displayArray?.length ?? 0,
+            lo: intervalBounds.lo,
+            hi: intervalBounds.hi
+          });
+        }
       } catch (error) {
         console.error('Failed to query local data:', error);
       }
     })();
-  }, [workerConfigReady, genomicCoords, worker, globalBpPerUnit, allIntervalsInView, intervalBounds, displayOptionsKey, tsconfig, shouldSkipForLockedInteraction, computeNewGlobalBp]);
+  }, [workerConfigReady, genomicCoords, worker, globalBpPerUnit, intervalBounds, displayOptionsKey, tsconfig, shouldSkipForLockedInteraction, computeNewGlobalBp]);
 
   const reset = useCallback(() => {
     setLocalBins(null);

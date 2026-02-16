@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { getColor, assignUniqueColors } from "../utils/colorUtils.js";
 import { useWorker } from './useWorker.jsx';
-import { getLocalBackendWorker } from '../workers/workerSpecs.js';
+import { getIntervalWorker, getLocalDataWorker } from '../workers/workerSpecs.js';
 
 /**
  * Hook for managing Lorax config state and metadata operations.
@@ -48,31 +48,60 @@ function useLoraxConfig({ backend, enabled = true, onConfigLoaded, setStatusMess
     return tsconfig.genome_length / tsconfig.intervals.length;
   }, [tsconfig]);
 
-  // Worker for interval computations
-  const worker = useWorker(getLocalBackendWorker);
+  // Dedicated workers: interval queries and local-data/binning.
+  const intervalWorker = useWorker(getIntervalWorker);
+  const localDataWorker = useWorker(getLocalDataWorker);
   const [workerConfigReady, setWorkerConfigReady] = useState(false);
-  const configSentRef = useRef(false);
+  const configRequestVersionRef = useRef(0);
 
-  // Send config to worker when tsconfig changes
+  // Send config to both workers when tsconfig changes.
+  // workerConfigReady becomes true only after both workers acknowledge config.
   useEffect(() => {
-    if (!tsconfig || !worker.isReady) {
-      configSentRef.current = false;
+    if (!tsconfig || !intervalWorker.isReady || !localDataWorker.isReady) {
+      configRequestVersionRef.current += 1;
       setWorkerConfigReady(false);
       return;
     }
 
-    configSentRef.current = false;
+    const requestVersion = ++configRequestVersionRef.current;
     setWorkerConfigReady(false);
 
-    worker.request('config', tsconfig)
+    Promise.all([
+      intervalWorker.request('config', tsconfig),
+      localDataWorker.request('config', tsconfig)
+    ])
       .then(() => {
-        configSentRef.current = true;
+        if (requestVersion !== configRequestVersionRef.current) return;
         setWorkerConfigReady(true);
       })
       .catch((error) => {
-        console.error('Failed to send config to worker:', error);
+        if (requestVersion !== configRequestVersionRef.current) return;
+        console.error('Failed to send config to workers:', error);
+        setWorkerConfigReady(false);
       });
-  }, [tsconfig, worker]);
+  }, [tsconfig, intervalWorker, localDataWorker]);
+
+  // Backward-compatible worker alias that routes messages to the right worker.
+  // Legacy callers can continue using `worker.request(type, ...)`.
+  const worker = useMemo(() => ({
+    isReady: intervalWorker.isReady && localDataWorker.isReady,
+    request: (type, data, timeoutOrOpts) => {
+      if (type === 'intervals') {
+        return intervalWorker.request(type, data, timeoutOrOpts);
+      }
+      if (type === 'local-data') {
+        return localDataWorker.request(type, data, timeoutOrOpts);
+      }
+      if (type === 'config') {
+        return Promise.all([
+          intervalWorker.request(type, data, timeoutOrOpts),
+          localDataWorker.request(type, data, timeoutOrOpts)
+        ]).then(() => null);
+      }
+      // Prefer local-data worker as default fallback for unknown message types.
+      return localDataWorker.request(type, data, timeoutOrOpts);
+    }
+  }), [intervalWorker, localDataWorker]);
 
   /**
    * Process incoming config data from backend.
@@ -259,7 +288,10 @@ function useLoraxConfig({ backend, enabled = true, onConfigLoaded, setStatusMess
     // PyArrow-based metadata arrays
     metadataArrays,
 
-    // Worker for interval computations
+    // Workers for interval + local-data computations
+    intervalWorker,
+    localDataWorker,
+    // Backward-compatible alias
     worker,
     workerConfigReady,
 
@@ -278,6 +310,8 @@ function useLoraxConfig({ backend, enabled = true, onConfigLoaded, setStatusMess
     metadataLoading,
     loadedMetadata,
     metadataArrays,
+    intervalWorker,
+    localDataWorker,
     worker,
     workerConfigReady,
     handleConfigUpdate,

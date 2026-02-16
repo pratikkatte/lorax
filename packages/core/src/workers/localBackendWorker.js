@@ -21,24 +21,45 @@ export const queryConfig = async (data) => {
 };
 
 /**
- * Get visible intervals for a given viewport range
+ * Get visible intervals for a given viewport range.
+ * Returns only decimated intervals for display (max maxIntervals) plus lo/hi bounds.
+ * The full interval array stays in the worker — useLocalData uses lo/hi to reference it.
+ *
  * @param {number} start - Start position (bp)
  * @param {number} end - End position (bp)
- * @returns {Object} { visibleIntervals, lo, hi } - intervals and global index bounds
+ * @param {number} maxIntervals - Max intervals to return for display (LOD threshold)
+ * @returns {Object} { visibleIntervals, lo, hi, count }
  */
-function getIntervals(start, end) {
+function getIntervals(start, end, maxIntervals = 2000) {
   if (!normalizedIntervals || normalizedIntervals.length === 0) {
-    return { visibleIntervals: [], lo: 0, hi: 0 };
+    return { visibleIntervals: [], lo: 0, hi: 0, count: 0 };
   }
 
   // Use cached normalized array - no more .map() per query
   const lower = nearestIndex(normalizedIntervals, start);
   const upper = upperBound(normalizedIntervals, end);
+  const lo = lower;
+  const hi = upper + 1;  // Exclusive end
+  const fullSlice = normalizedIntervals.slice(lo, hi);
+  const count = fullSlice.length;
+
+  // Apply LOD decimation in worker to avoid sending huge arrays via postMessage
+  let visibleIntervals;
+  if (count > maxIntervals) {
+    const step = Math.ceil(count / maxIntervals);
+    visibleIntervals = [];
+    for (let i = 0; i < count; i += step) {
+      visibleIntervals.push(fullSlice[i]);
+    }
+  } else {
+    visibleIntervals = fullSlice;
+  }
 
   return {
-    visibleIntervals: normalizedIntervals.slice(lower, upper + 1),
-    lo: lower,        // Global start index
-    hi: upper + 1     // Global end index (exclusive)
+    visibleIntervals,  // Decimated for display only
+    lo,
+    hi,
+    count             // Pre-decimation count for downstream hooks
   };
 }
 
@@ -55,12 +76,12 @@ function serializeBinsForTransfer(bins) {
 }
 
 /**
- * Get local tree data from provided intervals
- * NOTE: Intervals are passed in (from useInterval), not recomputed here
+ * Get local tree data using cached normalizedIntervals and lo/hi bounds.
+ * Avoids round-tripping the full intervals array through postMessage.
  *
  * @param {Object} data
- * @param {number[]} data.intervals - Pre-decimation interval positions (from useInterval.allIntervalsInView)
- * @param {number} data.lo - Global start index (from getIntervals)
+ * @param {number} data.lo - Global start index (inclusive)
+ * @param {number} data.hi - Global end index (exclusive)
  * @param {number} data.start - Start genomic position (bp) - viewport bounds
  * @param {number} data.end - End genomic position (bp) - viewport bounds
  * @param {number} data.globalBpPerUnit - Base pairs per unit
@@ -71,20 +92,20 @@ function serializeBinsForTransfer(bins) {
  */
 function getLocalData(data) {
   const {
-    intervals,
-    lo = 0,  // Global start index
+    lo = 0,
+    hi = 0,
     start,
     end,
     globalBpPerUnit,
     new_globalBp,
     genome_length,
-    
+
     displayOptions = {}
   } = data;
 
   const { selectionStrategy = 'largestSpan' , showing_all_trees = false} = displayOptions;
 
-  if (!intervals || intervals.length === 0) {
+  if (!normalizedIntervals || hi <= lo) {
     return {
       local_bins: [],
       displayArray: [],
@@ -92,33 +113,34 @@ function getLocalData(data) {
     };
   }
 
-  // Build local_bins Map from provided intervals using GLOBAL indices
-  // intervals includes both endpoints (N+1 breakpoints for N trees), so iterate to length-1
-  // Tree i spans from intervals[i] to intervals[i+1]
+  // Use cached normalizedIntervals directly — no postMessage round-trip needed
+  // Interval range [lo, hi) maps to normalizedIntervals[lo..hi]
+  // Tree i spans from normalizedIntervals[i] to normalizedIntervals[i+1]
   const local_bins = new Map();
 
-  for (let i = 0; i < intervals.length - 1; i++) {
-    const globalIndex = lo + i;  // Convert to global tree index
-    const s = intervals[i];
-    const e = intervals[i + 1];
+  for (let i = lo; i < hi - 1; i++) {
+    const s = normalizedIntervals[i];
+    const e = normalizedIntervals[i + 1];
 
-    local_bins.set(globalIndex, {  // Key = global index
+    local_bins.set(i, {  // Key = global index
       s,
       e,
       span: e - s,
       midpoint: (s + e) / 2,
       path: null,
-      global_index: globalIndex,   // GLOBAL tree index for backend
+      global_index: i,
       precision: null
     });
   }
 
   // Apply binning/selection strategy
+  const minStart = normalizedIntervals[lo];
+  const maxEnd = normalizedIntervals[Math.min(hi, normalizedIntervals.length - 1)];
   const { return_local_bins, displayArray, showingAllTrees } = new_complete_experiment_map(
     local_bins,
     globalBpPerUnit,
     new_globalBp,
-    { selectionStrategy, viewportStart: start, viewportEnd: end, prevLocalBins: prevLocalBinsCache, minStart: intervals[0], maxEnd: intervals[intervals.length - 1]}
+    { selectionStrategy, viewportStart: start, viewportEnd: end, prevLocalBins: prevLocalBinsCache, minStart, maxEnd }
   );
 
   // Cache for next frame's position locking
@@ -140,9 +162,9 @@ onmessage = async (event) => {
   }
 
   if (type === "intervals") {
-    const { start, end } = data;
-    const result = getIntervals(start, end);
-    postMessage({ type: "intervals", id, data: result });  // { visibleIntervals, lo, hi }
+    const { start, end, maxIntervals } = data;
+    const result = getIntervals(start, end, maxIntervals);
+    postMessage({ type: "intervals", id, data: result });  // { visibleIntervals, lo, hi, count }
   }
 
   if (type === "local-data") {
