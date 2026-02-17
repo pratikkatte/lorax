@@ -59,8 +59,8 @@ MODE_CONFIGS = {
     ),
     "production": ModeConfig(
         mode="production",
-        ts_cache_size=2,  # Lower for memory efficiency with many workers
-        config_cache_size=2,
+        ts_cache_size=4,  # Lower for memory efficiency with many workers
+        config_cache_size=4,
         metadata_cache_size=5,
         disk_cache_enabled=True,
         disk_cache_max_gb=50,
