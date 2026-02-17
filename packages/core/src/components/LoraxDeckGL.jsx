@@ -149,6 +149,8 @@ const LoraxDeckGL = forwardRef(({
   lockModelMatrix = false,
   // Optional lock-view debug overlay (off by default)
   lockSnapshotDebug = false,
+  // Temporary feature flag: keep max-zoom guard disabled by default.
+  enableLockMaxZoomGuard = false,
   // Called when zoom-in is blocked due to lock-mode max zoom limit
   onMaxZoomReached,
   ...otherProps
@@ -966,7 +968,13 @@ const LoraxDeckGL = forwardRef(({
   const handleViewStateChange = useCallback((params) => {
     updateInteractionState(params?.interactionState);
 
-    if (lockModelMatrix && params?.viewId === 'ortho' && orthoViewportPx && localBins?.size > 0) {
+    if (
+      enableLockMaxZoomGuard
+      && lockModelMatrix
+      && params?.viewId === 'ortho'
+      && orthoViewportPx
+      && localBins?.size > 0
+    ) {
       const newZoom = params.viewState?.zoom;
       const oldZoom = params.oldViewState?.zoom;
       const newZ0 = Array.isArray(newZoom) ? newZoom[0] : newZoom;
@@ -996,7 +1004,7 @@ const LoraxDeckGL = forwardRef(({
     internalHandleViewStateChange(params);
     debouncedScheduleLockSnapshotCapture();
     externalOnViewStateChange?.(params);
-  }, [lockModelMatrix, orthoViewportPx, localBins, internalHandleViewStateChange, externalOnViewStateChange, debouncedScheduleLockSnapshotCapture, updateInteractionState, onMaxZoomReached]);
+  }, [enableLockMaxZoomGuard, lockModelMatrix, orthoViewportPx, localBins, internalHandleViewStateChange, externalOnViewStateChange, debouncedScheduleLockSnapshotCapture, updateInteractionState, onMaxZoomReached]);
 
   const handleAfterRender = useCallback(() => {
     if (showPolygons && onPolygonsAfterRender && deckRef.current?.deck) {

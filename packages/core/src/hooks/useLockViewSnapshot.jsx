@@ -196,7 +196,6 @@ export function useLockViewSnapshot({
     clearScheduledCapture();
   }, [clearScheduledCapture]);
 
-  console.log('[useLockViewSnapshot] lockViewPayload:', lockViewPayload);
   return {
     lockViewPayload,
     lockSnapshotDebugOverlay,
