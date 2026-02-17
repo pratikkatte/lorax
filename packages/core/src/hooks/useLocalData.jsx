@@ -65,13 +65,18 @@ export function useLocalData({
   const [displayArray, setDisplayArray] = useState([]);
   const [showingAllTrees, setShowingAllTrees] = useState(false);
 
-  const latestRequestId = useRef(0);
   const prevLiveXZoomRef = useRef(null);
   const prevGenomicCoordsRef = useRef(null);
   const lockWasEnabledRef = useRef(false);
   const lockedWindowRef = useRef(null);
   const lockedXZoomRef = useRef(null);
   const zoomDirtyRef = useRef(false);
+  const requestGenerationRef = useRef(0);
+  const isRequestInFlightRef = useRef(false);
+  const inFlightRequestKeyRef = useRef(null);
+  const queuedRequestRef = useRef(null);
+  const queueRunnerActiveRef = useRef(false);
+  const lastAppliedRequestKeyRef = useRef(null);
 
   // Serialize displayOptions to avoid object reference comparison issues
   const displayOptionsKey = JSON.stringify(displayOptions);
@@ -192,8 +197,90 @@ export function useLocalData({
     return false;
   }, [lockModelMatrix, getCurrentXZoom, genomicCoords]);
 
+  const runQueuedRequests = useCallback(async () => {
+    if (queueRunnerActiveRef.current) return;
+    queueRunnerActiveRef.current = true;
+
+    try {
+      while (worker && queuedRequestRef.current) {
+        if (isRequestInFlightRef.current) break;
+
+        const nextRequest = queuedRequestRef.current;
+        queuedRequestRef.current = null;
+        if (!nextRequest) continue;
+        if (nextRequest.key === lastAppliedRequestKeyRef.current) continue;
+
+        const {
+          key,
+          payload,
+          intervalCount,
+          generationAtEnqueue
+        } = nextRequest;
+
+        isRequestInFlightRef.current = true;
+        inFlightRequestKeyRef.current = key;
+        const startedAt = now();
+
+        try {
+          const result = await worker.request('local-data', payload);
+          const generationChanged = generationAtEnqueue !== requestGenerationRef.current;
+          const hasNewerPending = Boolean(
+            queuedRequestRef.current && queuedRequestRef.current.key !== key
+          );
+
+          if (!generationChanged && !hasNewerPending) {
+            setLocalBins(deserializeBins(result.local_bins));
+            setDisplayArray((prev) => {
+              const newArr = result.displayArray || [];
+              return arraysEqual(prev, newArr) ? prev : newArr;
+            });
+            setShowingAllTrees(result.showing_all_trees || false);
+            lastAppliedRequestKeyRef.current = key;
+
+            if (DEBUG_LOCAL_DATA_PERF) {
+              const elapsedMs = Number((now() - startedAt).toFixed(2));
+              console.debug('[lorax-perf] local-data', {
+                elapsedMs,
+                intervalCount,
+                displayCount: result?.displayArray?.length ?? 0,
+                lo: payload.lo,
+                hi: payload.hi
+              });
+            }
+          }
+        } catch (error) {
+          console.error('Failed to query local data:', error);
+        } finally {
+          isRequestInFlightRef.current = false;
+          inFlightRequestKeyRef.current = null;
+        }
+      }
+    } finally {
+      queueRunnerActiveRef.current = false;
+      if (worker && queuedRequestRef.current && !isRequestInFlightRef.current) {
+        queueMicrotask(() => {
+          void runQueuedRequests();
+        });
+      }
+    }
+  }, [worker]);
+
+  const enqueueRequest = useCallback((request) => {
+    if (!request) return;
+
+    if (request.key === lastAppliedRequestKeyRef.current) return;
+    if (queuedRequestRef.current?.key === request.key) return;
+    if (isRequestInFlightRef.current && inFlightRequestKeyRef.current === request.key) return;
+
+    queuedRequestRef.current = request;
+    void runQueuedRequests();
+  }, [runQueuedRequests]);
+
   // Reset zoom tracking when file/config changes to avoid stale lock baselines.
   useEffect(() => {
+    requestGenerationRef.current += 1;
+    queuedRequestRef.current = null;
+    lastAppliedRequestKeyRef.current = null;
     prevLiveXZoomRef.current = null;
     prevGenomicCoordsRef.current = null;
     lockWasEnabledRef.current = false;
@@ -213,49 +300,41 @@ export function useLocalData({
     if (!newGlobalBp) return;
 
     const [start, end] = genomicCoords;
-    const requestId = ++latestRequestId.current;
-    const startedAt = now();
     const intervalCount = Math.max(0, (intervalBounds.hi ?? 0) - (intervalBounds.lo ?? 0));
 
-    (async () => {
-      try {
-        const result = await worker.request('local-data', {
-          lo: intervalBounds.lo,
-          hi: intervalBounds.hi,
-          start,
-          end,
-          globalBpPerUnit,
-          new_globalBp: newGlobalBp,
-          genome_length: tsconfig.genome_length,
-          displayOptions: { ...displayOptions, showing_all_trees: showingAllTrees }
-        });
+    const requestPayload = {
+      lo: intervalBounds.lo,
+      hi: intervalBounds.hi,
+      start,
+      end,
+      globalBpPerUnit,
+      new_globalBp: newGlobalBp,
+      genome_length: tsconfig.genome_length,
+      displayOptions: { ...displayOptions, showing_all_trees: showingAllTrees }
+    };
+    const requestKey = [
+      requestPayload.lo,
+      requestPayload.hi,
+      requestPayload.start,
+      requestPayload.end,
+      requestPayload.globalBpPerUnit,
+      requestPayload.new_globalBp,
+      requestPayload.genome_length,
+      displayOptionsKey
+    ].join('|');
 
-        if (requestId !== latestRequestId.current) return;
-
-        setLocalBins(deserializeBins(result.local_bins));
-        setDisplayArray(prev => {
-          const newArr = result.displayArray || [];
-          return arraysEqual(prev, newArr) ? prev : newArr;
-        });
-        setShowingAllTrees(result.showing_all_trees || false);
-
-        if (DEBUG_LOCAL_DATA_PERF) {
-          const elapsedMs = Number((now() - startedAt).toFixed(2));
-          console.debug('[lorax-perf] local-data', {
-            elapsedMs,
-            intervalCount,
-            displayCount: result?.displayArray?.length ?? 0,
-            lo: intervalBounds.lo,
-            hi: intervalBounds.hi
-          });
-        }
-      } catch (error) {
-        console.error('Failed to query local data:', error);
-      }
-    })();
-  }, [workerConfigReady, genomicCoords, worker, globalBpPerUnit, intervalBounds, displayOptionsKey, tsconfig, shouldSkipForLockedInteraction, computeNewGlobalBp]);
+    enqueueRequest({
+      key: requestKey,
+      payload: requestPayload,
+      intervalCount,
+      generationAtEnqueue: requestGenerationRef.current
+    });
+  }, [workerConfigReady, genomicCoords, worker, globalBpPerUnit, intervalBounds, displayOptionsKey, tsconfig, shouldSkipForLockedInteraction, computeNewGlobalBp, enqueueRequest]);
 
   const reset = useCallback(() => {
+    requestGenerationRef.current += 1;
+    queuedRequestRef.current = null;
+    lastAppliedRequestKeyRef.current = null;
     setLocalBins(null);
     setDisplayArray([]);
     setShowingAllTrees(false);

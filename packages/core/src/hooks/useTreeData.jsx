@@ -255,6 +255,11 @@ export function useTreeData({
 
   // Request ID counter - only process response if it matches latest request
   const requestIdRef = useRef(0);
+  const requestGenerationRef = useRef(0);
+  const latestSnapshotRef = useRef(null);
+  const latestSnapshotVersionRef = useRef(0);
+  const pendingSyncRef = useRef(false);
+  const syncRunnerActiveRef = useRef(false);
 
   // Cache: Map<tree_idx, {node data for that tree}>
   const treeDataCacheRef = useRef(new Map());
@@ -305,6 +310,7 @@ export function useTreeData({
   useEffect(() => {
     if (cacheKeyRef.current.tsconfigId !== tsconfigId ||
         cacheKeyRef.current.inferredSparsification !== inferredSparsification) {
+      requestGenerationRef.current += 1;
       treeDataCacheRef.current.clear();
       timeBoundsRef.current = null;
       cacheKeyRef.current = { tsconfigId, inferredSparsification };
@@ -315,19 +321,43 @@ export function useTreeData({
 
   // Manual cache clear callback
   const clearCache = useCallback(() => {
+    requestGenerationRef.current += 1;
+    pendingSyncRef.current = false;
+    latestSnapshotRef.current = null;
     treeDataCacheRef.current.clear();
     timeBoundsRef.current = null;
     previousDisplayArrayRef.current = [];
     lastLockRefreshRef.current = { targetTreeIndex: null, targetLocalBBox: null };
+    setIsLoading(false);
+    setIsBackgroundRefresh(false);
   }, []);
 
-  // Fetch immediately when displayArray changes (no debounce)
-  useEffect(() => {
+  const processSnapshot = useCallback(async (snapshot) => {
+    if (!snapshot) return;
+
+    const {
+      displayArray: snapshotDisplayArray,
+      queryTreeLayout: snapshotQueryTreeLayout,
+      isConnected: snapshotIsConnected,
+      normalizedLockView: snapshotLockView,
+      lockTargetIndex: snapshotLockTargetIndex,
+      genomicCoords: snapshotGenomicCoords,
+      tsconfig: snapshotTsconfig,
+      version,
+      generation
+    } = snapshot;
+
+    if (generation !== requestGenerationRef.current) return;
+
     // Skip if not connected or no method available
-    if (!isConnected || !queryTreeLayout) return;
+    if (!snapshotIsConnected || !snapshotQueryTreeLayout) {
+      setIsLoading(false);
+      setIsBackgroundRefresh(false);
+      return;
+    }
 
     // Empty displayArray = no trees to fetch
-    if (!displayArray || displayArray.length === 0) {
+    if (!snapshotDisplayArray || snapshotDisplayArray.length === 0) {
       setTreeData(EMPTY_TREE_LAYOUT);
       setIsLoading(false);
       setIsBackgroundRefresh(false);
@@ -340,21 +370,21 @@ export function useTreeData({
     const cache = treeDataCacheRef.current;
 
     // Filter to only unfetched tree indices
-    const unfetchedIndices = displayArray.filter((idx) => !cache.has(idx));
+    const unfetchedIndices = snapshotDisplayArray.filter((idx) => !cache.has(idx));
 
     const hasCompleteCache = unfetchedIndices.length === 0 && !!timeBoundsRef.current;
-    const displayArrayUnchanged = arraysEqual(displayArray, previousDisplayArrayRef.current);
+    const displayArrayUnchanged = arraysEqual(snapshotDisplayArray, previousDisplayArrayRef.current);
     const displayArrayChanged = !displayArrayUnchanged;
-    const hasValidLockTarget = normalizedLockView != null && lockTargetIndex != null;
+    const hasValidLockTarget = snapshotLockView != null && snapshotLockTargetIndex != null;
     const lockTargetChanged = (
-      lockTargetIndex != null
-      && Number(lastLockRefreshRef.current.targetTreeIndex) !== Number(lockTargetIndex)
+      snapshotLockTargetIndex != null
+      && Number(lastLockRefreshRef.current.targetTreeIndex) !== Number(snapshotLockTargetIndex)
     );
     const lockBBoxChanged = lockTargetChanged
       ? true
       : !sameTargetLocalBBox(
         lastLockRefreshRef.current.targetLocalBBox,
-        normalizedLockView?.targetLocalBBox
+        snapshotLockView?.targetLocalBBox
       );
 
     let requestKind = 'cache-only';
@@ -374,7 +404,7 @@ export function useTreeData({
     }
 
     if (requestKind === 'cache-only') {
-      const cachedData = buildTreeDataFromCache(cache, displayArray);
+      const cachedData = buildTreeDataFromCache(cache, snapshotDisplayArray);
       const mergedData = { ...cachedData, ...timeBoundsRef.current };
       setTreeData((previousTreeData) => (
         treeDataContentEquivalent(mergedData, previousTreeData)
@@ -384,7 +414,7 @@ export function useTreeData({
       setIsLoading(false);
       setIsBackgroundRefresh(false);
       setFetchReason('cache-only');
-      previousDisplayArrayRef.current = displayArray.slice();
+      previousDisplayArrayRef.current = snapshotDisplayArray.slice();
       return;
     }
 
@@ -394,7 +424,7 @@ export function useTreeData({
     setFetchReason(requestKind);
     setError(null);
     // Lock mode + single tree: same tree with different sparsification, no overlay
-    const lockModeSingleTree = requestKind === 'full-fetch' && hasValidLockTarget && displayArray.length === 1;
+    const lockModeSingleTree = requestKind === 'full-fetch' && hasValidLockTarget && snapshotDisplayArray.length === 1;
     if (requestKind === 'lock-refresh' || lockModeSingleTree) {
       setIsLoading(false);
       setIsBackgroundRefresh(true);
@@ -403,92 +433,132 @@ export function useTreeData({
       setIsBackgroundRefresh(false);
     }
 
-    (async () => {
-      try {
-        const indicesToFetch = requestKind === 'lock-refresh'
-          ? [lockTargetIndex]
-          : (unfetchedIndices.length > 0 ? unfetchedIndices : displayArray);
-        const lockViewForRequest = requestKind === 'lock-refresh'
-          ? normalizedLockView
-          : null;
+    try {
+      const indicesToFetch = requestKind === 'lock-refresh'
+        ? [snapshotLockTargetIndex]
+        : (unfetchedIndices.length > 0 ? unfetchedIndices : snapshotDisplayArray);
+      const lockViewForRequest = requestKind === 'lock-refresh'
+        ? snapshotLockView
+        : null;
 
-        if (requestKind === 'full-fetch') {
-          lastLockRefreshRef.current = { targetTreeIndex: null, targetLocalBBox: null };
-        }
-
-        if (requestKind === 'lock-refresh' && lockTargetIndex != null) {
-
-          lastLockRefreshRef.current = {
-            targetTreeIndex: lockTargetIndex,
-            targetLocalBBox: lockViewForRequest?.targetLocalBBox ?? null
-          };
-        }
-
-        const response = await queryTreeLayout(indicesToFetch, {
-          actualDisplayArray: displayArray,
-          lockView: lockViewForRequest
-        });
-
-        // Ignore stale response if a newer request was sent
-        if (currentRequestId !== requestIdRef.current) {
-          return;
-        }
-
-        // Parse PyArrow buffer using utility
-        const parsed = parseTreeLayoutBuffer(response.buffer);
-
-        if (requestKind === 'lock-refresh' && lockTargetIndex != null) {
-          cache.delete(lockTargetIndex);
-        }
-
-        // Update cache with new trees
-        updateCacheFromResponse(cache, parsed);
-        if (requestKind === 'lock-refresh' && lockTargetIndex != null) {
-          const returnedTreeIndices = new Set(
-            (parsed?.tree_idx || [])
-              .map((value) => Number(value))
-              .filter((value) => Number.isFinite(value))
-          );
-          if (!returnedTreeIndices.has(lockTargetIndex)) {
-            cache.set(lockTargetIndex, createEmptyCachedTree(lockTargetIndex));
-          }
-        }
-
-        // Evict trees outside visible genomic window (with margin).
-        // Never evict displayArray trees (lock-mode zoom can narrow genomicCoords).
-        if (genomicCoords && tsconfig?.intervals) {
-          evictOutOfViewTrees(cache, tsconfig.intervals, genomicCoords, displayArray);
-        }
-
-        // Cache time bounds on first fetch (they're file-level constants)
-        if (!timeBoundsRef.current) {
-          timeBoundsRef.current = {
-            global_min_time: response.global_min_time,
-            global_max_time: response.global_max_time
-          };
-        }
-
-        // Build combined treeData from cache for full displayArray
-        const mergedData = buildTreeDataFromCache(cache, displayArray);
-        setTreeData({
-          ...mergedData,
-          ...timeBoundsRef.current
-        });
-        setIsLoading(false);
-        setIsBackgroundRefresh(false);
-        setFetchReason(requestKind);
-        previousDisplayArrayRef.current = displayArray.slice();
-      } catch (err) {
-        // Ignore errors from stale requests
-        if (currentRequestId !== requestIdRef.current) {
-          return;
-        }
-        console.error('[useTreeData] Failed to fetch tree data:', err);
-        setError(err);
-        setIsLoading(false);
-        setIsBackgroundRefresh(false);
+      if (requestKind === 'full-fetch') {
+        lastLockRefreshRef.current = { targetTreeIndex: null, targetLocalBBox: null };
       }
-    })();
+
+      if (requestKind === 'lock-refresh' && snapshotLockTargetIndex != null) {
+        lastLockRefreshRef.current = {
+          targetTreeIndex: snapshotLockTargetIndex,
+          targetLocalBBox: lockViewForRequest?.targetLocalBBox ?? null
+        };
+      }
+
+      const response = await snapshotQueryTreeLayout(indicesToFetch, {
+        actualDisplayArray: snapshotDisplayArray,
+        lockView: lockViewForRequest
+      });
+
+      // Ignore stale response if a newer request was sent or cache generation changed.
+      if (currentRequestId !== requestIdRef.current || generation !== requestGenerationRef.current) {
+        return;
+      }
+
+      // Parse PyArrow buffer using utility
+      const parsed = parseTreeLayoutBuffer(response.buffer);
+
+      if (requestKind === 'lock-refresh' && snapshotLockTargetIndex != null) {
+        cache.delete(snapshotLockTargetIndex);
+      }
+
+      // Update cache with new trees
+      updateCacheFromResponse(cache, parsed);
+      if (requestKind === 'lock-refresh' && snapshotLockTargetIndex != null) {
+        const returnedTreeIndices = new Set(
+          (parsed?.tree_idx || [])
+            .map((value) => Number(value))
+            .filter((value) => Number.isFinite(value))
+        );
+        if (!returnedTreeIndices.has(snapshotLockTargetIndex)) {
+          cache.set(snapshotLockTargetIndex, createEmptyCachedTree(snapshotLockTargetIndex));
+        }
+      }
+
+      // Evict trees outside visible genomic window (with margin).
+      // Never evict displayArray trees (lock-mode zoom can narrow genomicCoords).
+      if (snapshotGenomicCoords && snapshotTsconfig?.intervals) {
+        evictOutOfViewTrees(cache, snapshotTsconfig.intervals, snapshotGenomicCoords, snapshotDisplayArray);
+      }
+
+      // Cache time bounds on first fetch (they're file-level constants)
+      if (!timeBoundsRef.current) {
+        timeBoundsRef.current = {
+          global_min_time: response.global_min_time,
+          global_max_time: response.global_max_time
+        };
+      }
+
+      const hasNewerSnapshot = pendingSyncRef.current || version !== latestSnapshotVersionRef.current;
+      if (hasNewerSnapshot) return;
+
+      // Build combined treeData from cache for full displayArray
+      const mergedData = buildTreeDataFromCache(cache, snapshotDisplayArray);
+      setTreeData({
+        ...mergedData,
+        ...timeBoundsRef.current
+      });
+      setIsLoading(false);
+      setIsBackgroundRefresh(false);
+      setFetchReason(requestKind);
+      previousDisplayArrayRef.current = snapshotDisplayArray.slice();
+    } catch (err) {
+      // Ignore errors from stale requests
+      if (currentRequestId !== requestIdRef.current || generation !== requestGenerationRef.current) {
+        return;
+      }
+      const hasNewerSnapshot = pendingSyncRef.current || version !== latestSnapshotVersionRef.current;
+      if (hasNewerSnapshot) return;
+      console.error('[useTreeData] Failed to fetch tree data:', err);
+      setError(err);
+      setIsLoading(false);
+      setIsBackgroundRefresh(false);
+    }
+  }, []);
+
+  const runSyncQueue = useCallback(async () => {
+    if (syncRunnerActiveRef.current) return;
+    syncRunnerActiveRef.current = true;
+
+    try {
+      while (pendingSyncRef.current) {
+        pendingSyncRef.current = false;
+        const snapshot = latestSnapshotRef.current;
+        await processSnapshot(snapshot);
+      }
+    } finally {
+      syncRunnerActiveRef.current = false;
+      if (pendingSyncRef.current) {
+        queueMicrotask(() => {
+          void runSyncQueue();
+        });
+      }
+    }
+  }, [processSnapshot]);
+
+  // Fetch immediately when displayArray changes (no debounce), coalescing to latest snapshot.
+  useEffect(() => {
+    const version = ++latestSnapshotVersionRef.current;
+    latestSnapshotRef.current = {
+      displayArray,
+      queryTreeLayout,
+      isConnected,
+      normalizedLockView,
+      lockTargetIndex,
+      genomicCoords,
+      tsconfig,
+      version,
+      generation: requestGenerationRef.current
+    };
+    pendingSyncRef.current = true;
+    void runSyncQueue();
   }, [
     displayArray,
     queryTreeLayout,
@@ -496,7 +566,8 @@ export function useTreeData({
     normalizedLockView,
     lockTargetIndex,
     genomicCoords,
-    tsconfig
+    tsconfig,
+    runSyncQueue
   ]);
 
   return useMemo(() => ({
