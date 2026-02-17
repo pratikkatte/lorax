@@ -31,7 +31,8 @@ const Info = ({
   onNavigateToCoords,
   onPresetAction,
   onPresetMutationHighlight,
-  onBeforePresetApply
+  onBeforePresetApply,
+  isFetchingDetails = false
 }) => {
   const [activeTabInternal, setActiveTabInternal] = useState('details');
   const activeTab = activeTabProp ?? activeTabInternal;
@@ -130,6 +131,7 @@ const Info = ({
             selectedTipMetadata={selectedTipMetadata}
             setHighlightedMutationNode={setHighlightedMutationNode}
             setHighlightedMutationTreeIndex={setHighlightedMutationTreeIndex}
+            isFetchingDetails={isFetchingDetails}
           />
         )}
         {activeTab === 'mutations' && (

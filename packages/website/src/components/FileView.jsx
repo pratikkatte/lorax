@@ -73,6 +73,7 @@ function FileView() {
   const [populationDetails, setPopulationDetails] = useState(null);
   const [nodeMutations, setNodeMutations] = useState(null);
   const [nodeEdges, setNodeEdges] = useState(null);
+  const [isFetchingDetails, setIsFetchingDetails] = useState(false);
 
   // Extra: selected metadata key/value for a clicked tip
   const [selectedTipMetadata, setSelectedTipMetadata] = useState(null); // { key, value } | null
@@ -758,10 +759,13 @@ function FileView() {
     try {
       setShowInfo(true);
       resetDetails();
+      setIsFetchingDetails(true);
       const details = await queryDetails({ treeIndex: edge.tree_idx });
       applyDetailsResponse(details, edge.tree_idx);
     } catch (e) {
       console.error('[FileView] edge click queryDetails failed:', e);
+    } finally {
+      setIsFetchingDetails(false);
     }
   }, [tourOpen, tourActiveStepId, tourSelectedTreeIndex, handlePolygonClick, queryDetails, applyDetailsResponse, resetDetails]);
 
@@ -884,6 +888,7 @@ function FileView() {
                 try {
                   setShowInfo(true);
                   resetDetails();
+                  setIsFetchingDetails(true);
                   const details = await queryDetails({
                     treeIndex: tip.tree_idx,
                     node: tip.node_id,
@@ -896,6 +901,8 @@ function FileView() {
                   }
                 } catch (e) {
                   console.error('[FileView] tip click queryDetails failed:', e);
+                } finally {
+                  setIsFetchingDetails(false);
                 }
               }}
               onEdgeHover={(edge, info, event) => {
@@ -1024,6 +1031,7 @@ function FileView() {
             onPresetAction={handlePresetAction}
             onPresetMutationHighlight={handlePresetMutationHighlight}
             onBeforePresetApply={handleBeforePresetApply}
+            isFetchingDetails={isFetchingDetails}
           />
         </div>
       )}

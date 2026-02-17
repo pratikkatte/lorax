@@ -18,7 +18,8 @@ export default function InfoMetadata({
   nodeEdges,
   selectedTipMetadata,
   setHighlightedMutationNode,
-  setHighlightedMutationTreeIndex
+  setHighlightedMutationTreeIndex,
+  isFetchingDetails = false
 }) {
   const sampleNodeId = Number(nodeDetails?.id);
   const sampleMetadata = React.useMemo(() => {
@@ -40,6 +41,15 @@ export default function InfoMetadata({
 
     return Object.keys(details).length > 0 ? details : null;
   }, [sampleNodeId, metadataArrays, loadedMetadata]);
+
+  if (isFetchingDetails) {
+    return (
+      <div className="text-center py-6">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500 mx-auto mb-2"></div>
+        <div className="text-gray-400 text-sm">Fetching details...</div>
+      </div>
+    );
+  }
 
   return (
     <>

@@ -13,6 +13,7 @@ const baseProps = {
   selectedTipMetadata: null,
   setHighlightedMutationNode: vi.fn(),
   setHighlightedMutationTreeIndex: vi.fn(),
+  isFetchingDetails: false,
 };
 
 describe('InfoMetadata Arrow sample metadata', () => {
@@ -69,5 +70,17 @@ describe('InfoMetadata Arrow sample metadata', () => {
     );
 
     expect(screen.queryByText('Sample Metadata')).not.toBeInTheDocument();
+  });
+
+  it('shows fetching details spinner while details request is in flight', () => {
+    render(
+      <InfoMetadata
+        {...baseProps}
+        isFetchingDetails={true}
+      />
+    );
+
+    expect(screen.getByText('Fetching details...')).toBeInTheDocument();
+    expect(screen.queryByText('Select an element to view details')).not.toBeInTheDocument();
   });
 });
