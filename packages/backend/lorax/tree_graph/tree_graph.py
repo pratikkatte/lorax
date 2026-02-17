@@ -26,6 +26,7 @@ DEFAULT_SPARSIFY_CELL_SIZE = 0.002
 MIN_SPARSIFY_CELL_SIZE = 0.0004
 MAX_SPARSIFY_CELL_SIZE = 0.002
 ADAPTIVE_INSIDE_MAX_MULTIPLIER = 0.95
+LOW_COVERAGE_NO_INSIDE_SPARSIFY_MULTIPLIER = 0.35
 
 # Minimum tree count to enable parallel processing (avoids executor overhead for small batches)
 PARALLEL_TREE_THRESHOLD = 2
@@ -445,6 +446,7 @@ def _process_single_tree(
     adaptive_target_tree_idx,
     adaptive_outside_resolution,
     adaptive_inside_resolution,
+    disable_inside_sparsification_for_low_coverage,
 ):
     """
     Process a single tree: construct, optionally sparsify/collapse, collect mutations.
@@ -517,6 +519,7 @@ def _process_single_tree(
                 float(bbox_min_y),
                 float(bbox_max_y),
                 use_midpoint_only,
+                disable_inside_sparsification_for_low_coverage,
             )
         else:
             keep_mask = _sparsify_edges(
@@ -815,6 +818,7 @@ def construct_trees_batch(
     adaptive_inside_resolution = None
     adaptive_bbox_bounds = None
     resolved_adaptive_outside_cell_size = None
+    disable_inside_sparsification_for_low_coverage = False
     adaptive_mode_enabled = (
         sparsification
         and normalized_adaptive_bbox is not None
@@ -832,6 +836,18 @@ def construct_trees_batch(
         sparsify_resolution = int(1.0 / cell_size)
 
         if adaptive_mode_enabled:
+            parsed_adaptive_multiplier = _parse_positive_multiplier(
+                sparsify_cell_size_multiplier, default_multiplier=1.0
+            )
+            disable_inside_sparsification_for_low_coverage = bool(
+                np.isclose(
+                    parsed_adaptive_multiplier,
+                    LOW_COVERAGE_NO_INSIDE_SPARSIFY_MULTIPLIER,
+                    rtol=0.0,
+                    atol=1e-12,
+                )
+            )
+
             # `adaptive_outside_cell_size` is intentionally ignored in adaptive lock mode.
             # First request uses baseline density; later requests reuse recorded density.
             _ = adaptive_outside_cell_size
@@ -880,6 +896,7 @@ def construct_trees_batch(
             normalized_adaptive_target_tree_idx,
             adaptive_outside_resolution,
             adaptive_inside_resolution,
+            disable_inside_sparsification_for_low_coverage,
         )
 
     use_parallel = len(valid_indices) >= PARALLEL_TREE_THRESHOLD
@@ -993,6 +1010,7 @@ def construct_trees_batch(
                     float(bbox_max_x),
                     float(bbox_min_y),
                     float(bbox_max_y),
+                    disable_inside_sparsification_for_low_coverage,
                 )
                 logger.debug(
                     "mutation sparsification (adaptive): before=%d kept=%d removed=%d "
@@ -1160,6 +1178,7 @@ def _sparsify_mutations_adaptive(
     bbox_max_x,
     bbox_min_y,
     bbox_max_y,
+    disable_inside_sparsification_for_low_coverage=False,
 ):
     """
     Adaptive mutation dedupe: keep full-tree coordinates and use denser bins inside bbox.
@@ -1186,6 +1205,9 @@ def _sparsify_mutations_adaptive(
             and y >= bbox_min_y
             and y <= bbox_max_y
         )
+        if disable_inside_sparsification_for_low_coverage and in_bbox:
+            keep[i] = True
+            continue
         resolution = inside_resolution if in_bbox else outside_resolution
         zone = 1 if in_bbox else 0
 
@@ -1304,6 +1326,7 @@ def _sparsify_edges_adaptive(
     bbox_min_y,
     bbox_max_y,
     use_midpoint_only=False,
+    disable_inside_sparsification_for_low_coverage=False,
 ):
     """
     Adaptive edge sparsification on full tree: denser bins inside bbox, default outside.
@@ -1342,6 +1365,9 @@ def _sparsify_edges_adaptive(
             and mid_y >= bbox_min_y
             and mid_y <= bbox_max_y
         )
+        if disable_inside_sparsification_for_low_coverage and in_bbox:
+            keep[i] = True
+            continue
         resolution = inside_resolution if in_bbox else outside_resolution
         zone = 1 if in_bbox else 0
 

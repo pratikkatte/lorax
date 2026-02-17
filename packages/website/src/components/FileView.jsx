@@ -105,6 +105,8 @@ function FileView() {
   const autoLockModelMatrixRef = useRef(false);
   // User manual OFF should temporarily block auto re-enable until context reset.
   const manualLockOffOverrideRef = useRef(false);
+  // Temporary toggle so max zoom guard can be re-enabled quickly.
+  const ENABLE_MAX_ZOOM_GUARD = false;
   // Max zoom alert (lock-mode zoom limit reached)
   const [maxZoomAlert, setMaxZoomAlert] = useState(false);
 
@@ -797,7 +799,7 @@ function FileView() {
         />
 
         {/* Max zoom alert (lock-mode) */}
-        {maxZoomAlert && (
+        {ENABLE_MAX_ZOOM_GUARD && maxZoomAlert && (
           <ErrorAlert
             message="Maximum zoom reached."
             onDismiss={() => setMaxZoomAlert(false)}
@@ -859,7 +861,8 @@ function FileView() {
               showCompareDeletion={showCompareDeletion}
               edgeColor={edgeColor}
               lockModelMatrix={lockModelMatrix}
-              onMaxZoomReached={() => setMaxZoomAlert(true)}
+              enableLockMaxZoomGuard={ENABLE_MAX_ZOOM_GUARD}
+              onMaxZoomReached={ENABLE_MAX_ZOOM_GUARD ? () => setMaxZoomAlert(true) : undefined}
               onPolygonClick={handlePolygonClick}
               onTipHover={(tip, info, event) => {
                 if (!tip) {

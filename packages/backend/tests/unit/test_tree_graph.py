@@ -656,3 +656,99 @@ class TestSparsification:
         )
 
         assert graph.last_outside_cell_size == pytest.approx(0.004)
+
+    def test_low_coverage_disables_inside_edge_dedupe_only(self):
+        """Low-coverage mode should keep all in-bbox edges but leave outside dedupe unchanged."""
+        from lorax.tree_graph.tree_graph import _sparsify_edges_adaptive
+
+        x = np.array([0.0, 0.20, 0.22, 0.90, 0.92], dtype=np.float32)
+        y = np.array([0.0, 0.20, 0.22, 0.90, 0.92], dtype=np.float32)
+        parent_indices = np.array([-1, 0, 0, 0, 0], dtype=np.int32)
+
+        # bbox contains only the first two non-root edges by midpoint
+        bbox_min_x, bbox_max_x = 0.0, 0.2
+        bbox_min_y, bbox_max_y = 0.0, 0.2
+
+        regular_keep = _sparsify_edges_adaptive(
+            x,
+            y,
+            parent_indices,
+            outside_resolution=2,
+            inside_resolution=4,
+            bbox_min_x=bbox_min_x,
+            bbox_max_x=bbox_max_x,
+            bbox_min_y=bbox_min_y,
+            bbox_max_y=bbox_max_y,
+            use_midpoint_only=False,
+            disable_inside_sparsification_for_low_coverage=False,
+        )
+        low_coverage_keep = _sparsify_edges_adaptive(
+            x,
+            y,
+            parent_indices,
+            outside_resolution=2,
+            inside_resolution=4,
+            bbox_min_x=bbox_min_x,
+            bbox_max_x=bbox_max_x,
+            bbox_min_y=bbox_min_y,
+            bbox_max_y=bbox_max_y,
+            use_midpoint_only=False,
+            disable_inside_sparsification_for_low_coverage=True,
+        )
+
+        # In-bbox edges (indices 1,2): low coverage keeps both.
+        assert int(low_coverage_keep[1]) + int(low_coverage_keep[2]) == 2
+        assert int(regular_keep[1]) + int(regular_keep[2]) == 1
+
+        # Outside-bbox dedupe behavior (indices 3,4) stays identical.
+        assert bool(low_coverage_keep[3]) == bool(regular_keep[3])
+        assert bool(low_coverage_keep[4]) == bool(regular_keep[4])
+
+    def test_low_coverage_disables_inside_mutation_dedupe_only(self):
+        """Low-coverage mode should keep all in-bbox mutations but preserve outside dedupe."""
+        from lorax.tree_graph.tree_graph import _sparsify_mutations_adaptive
+
+        mut_x = np.array([0.10, 0.11, 0.90, 0.91], dtype=np.float32)
+        mut_y = np.array([0.10, 0.11, 0.90, 0.91], dtype=np.float32)
+        mut_tree_idx = np.array([0, 0, 0, 0], dtype=np.int32)
+        mut_node_id = np.array([10, 11, 12, 13], dtype=np.int32)
+
+        bbox_min_x, bbox_max_x = 0.0, 0.2
+        bbox_min_y, bbox_max_y = 0.0, 0.2
+
+        regular_keep = _sparsify_mutations_adaptive(
+            mut_x,
+            mut_y,
+            mut_tree_idx,
+            mut_node_id,
+            outside_resolution=2,
+            inside_resolution=4,
+            target_tree_idx=0,
+            bbox_min_x=bbox_min_x,
+            bbox_max_x=bbox_max_x,
+            bbox_min_y=bbox_min_y,
+            bbox_max_y=bbox_max_y,
+            disable_inside_sparsification_for_low_coverage=False,
+        )
+        low_coverage_keep = _sparsify_mutations_adaptive(
+            mut_x,
+            mut_y,
+            mut_tree_idx,
+            mut_node_id,
+            outside_resolution=2,
+            inside_resolution=4,
+            target_tree_idx=0,
+            bbox_min_x=bbox_min_x,
+            bbox_max_x=bbox_max_x,
+            bbox_min_y=bbox_min_y,
+            bbox_max_y=bbox_max_y,
+            disable_inside_sparsification_for_low_coverage=True,
+        )
+
+        # In-bbox mutations (indices 0,1): low coverage keeps both.
+        assert int(low_coverage_keep[0]) + int(low_coverage_keep[1]) == 2
+        assert int(regular_keep[0]) + int(regular_keep[1]) == 1
+
+        # Outside-bbox dedupe behavior (indices 2,3) stays identical.
+        assert bool(low_coverage_keep[2]) == bool(regular_keep[2])
+        assert bool(low_coverage_keep[3]) == bool(regular_keep[3])
