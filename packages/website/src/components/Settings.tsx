@@ -6,6 +6,8 @@ interface SettingsProps {
   setShowSettings: (show: boolean) => void;
   polygonFillColor: RgbaColor;
   setPolygonFillColor: (color: RgbaColor) => void;
+  defaultTipColor: RgbaColor;
+  setDefaultTipColor: (color: RgbaColor) => void;
   compareInsertionColor: RgbaColor;
   setCompareInsertionColor: (color: RgbaColor) => void;
   compareDeletionColor: RgbaColor;
@@ -43,6 +45,8 @@ const Settings: React.FC<SettingsProps> = ({
   setShowSettings,
   polygonFillColor,
   setPolygonFillColor,
+  defaultTipColor,
+  setDefaultTipColor,
   compareInsertionColor,
   setCompareInsertionColor,
   compareDeletionColor,
@@ -102,6 +106,23 @@ const Settings: React.FC<SettingsProps> = ({
               onChange={(e) => {
                 const [r, g, b] = hexToRgb(e.target.value);
                 setEdgeColor([r, g, b, edgeColor[3]]);
+              }}
+              className="shrink-0 w-6 h-6 cursor-pointer rounded-full border border-slate-300 p-0.5 bg-white shadow-inner [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:rounded-full [&::-moz-color-swatch]:rounded-full [&::-moz-color-swatch]:border-0"
+            />
+          </div>
+        </div>
+        <div className="bg-white rounded-lg overflow-hidden border border-slate-200 shadow-sm">
+          <div className="border-l-4 border-slate-400 flex items-center justify-between gap-4 pl-3 pr-4 py-3">
+            <div>
+              <h3 className="text-sm font-semibold text-slate-700 tracking-tight">Tree Tip Default</h3>
+              <p className="text-xs text-slate-500 mt-1 leading-relaxed">Fallback color used for tips when no metadata color is applied.</p>
+            </div>
+            <input
+              type="color"
+              value={rgbToHex(defaultTipColor[0], defaultTipColor[1], defaultTipColor[2])}
+              onChange={(e) => {
+                const [r, g, b] = hexToRgb(e.target.value);
+                setDefaultTipColor([r, g, b, defaultTipColor[3]]);
               }}
               className="shrink-0 w-6 h-6 cursor-pointer rounded-full border border-slate-300 p-0.5 bg-white shadow-inner [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:rounded-full [&::-moz-color-swatch]:rounded-full [&::-moz-color-swatch]:border-0"
             />

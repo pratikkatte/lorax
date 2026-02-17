@@ -99,6 +99,8 @@ function FileView() {
   const [showCompareDeletion, setShowCompareDeletion] = useState(true);
   // Tree edge color [r, g, b, a] (used when colorEdgesByTree is false)
   const [edgeColor, setEdgeColor] = useState([100, 100, 100, 255]);
+  // Default tip color [r, g, b, a] when metadata coloring is unavailable
+  const [defaultTipColor, setDefaultTipColor] = useState([150, 150, 150, 200]);
   // Controls whether model matrix recomputes on zoom interactions.
   const [lockModelMatrix, setLockModelMatrix] = useState(false);
   // Tracks whether lock view was auto-enabled from showingAllTrees behavior.
@@ -860,6 +862,7 @@ function FileView() {
               showCompareInsertion={showCompareInsertion}
               showCompareDeletion={showCompareDeletion}
               edgeColor={edgeColor}
+              defaultTipColor={defaultTipColor}
               lockModelMatrix={lockModelMatrix}
               enableLockMaxZoomGuard={ENABLE_MAX_ZOOM_GUARD}
               onMaxZoomReached={ENABLE_MAX_ZOOM_GUARD ? () => setMaxZoomAlert(true) : undefined}
@@ -1050,6 +1053,8 @@ function FileView() {
             setShowCompareDeletion={setShowCompareDeletion}
             edgeColor={edgeColor}
             setEdgeColor={setEdgeColor}
+            defaultTipColor={defaultTipColor}
+            setDefaultTipColor={setDefaultTipColor}
           />
         </div>
       )}

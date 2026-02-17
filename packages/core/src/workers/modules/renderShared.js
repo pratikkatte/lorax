@@ -125,8 +125,7 @@ export function createTipColorContext(metadataArrays, metadataColors, population
     nodeIdToIdx,
     enabledValueSet,
     resolvedColorByValue,
-    defaultColor,
-    filteredColor: [150, 150, 150, 100]
+    defaultColor
   };
 }
 
@@ -143,7 +142,7 @@ export function getTipColorFromContext(nodeId, colorContext) {
   const value = colorContext.uniqueValues[valueIdx];
 
   if (colorContext.enabledValueSet && !colorContext.enabledValueSet.has(value)) {
-    return colorContext.filteredColor;
+    return colorContext.defaultColor;
   }
 
   return colorContext.resolvedColorByValue.get(value) || colorContext.defaultColor;

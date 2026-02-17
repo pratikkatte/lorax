@@ -145,6 +145,8 @@ const LoraxDeckGL = forwardRef(({
   showCompareDeletion = true,
   // Tree edge color [r, g, b, a] (used when colorEdgesByTree is false)
   edgeColor = null,
+  // Default tip color [r, g, b, a] when metadata coloring is unavailable
+  defaultTipColor = null,
   // Disable modelMatrix recomputation on zoom; allow pan-driven recomputation
   lockModelMatrix = false,
   // Optional lock-view debug overlay (off by default)
@@ -296,6 +298,7 @@ const LoraxDeckGL = forwardRef(({
     metadataArrays,
     metadataColors,
     populationFilter,
+    defaultTipColor,
     isInteracting,
     includeTipData,
     includeEdgeData

@@ -113,6 +113,7 @@ function computeRenderArrays(data) {
     metadataArrays,
     metadataColors,
     populationFilter,
+    defaultTipColor: requestedDefaultTipColor,
     includeTipData = true,
     includeEdgeData = true,
     treeStructures: requestedTreeStructures
@@ -135,7 +136,20 @@ function computeRenderArrays(data) {
   const treeNodeIndicesMap = groupNodeIndicesByTree(tree_idx, displayArray);
   const treeMutationIndicesMap = groupMutationIndicesByTree(mut_tree_idx, displayArray);
 
-  const defaultTipColor = [150, 150, 150, 200];
+  const defaultTipColor = (
+    Array.isArray(requestedDefaultTipColor)
+    && requestedDefaultTipColor.length >= 3
+    && Number.isFinite(requestedDefaultTipColor[0])
+    && Number.isFinite(requestedDefaultTipColor[1])
+    && Number.isFinite(requestedDefaultTipColor[2])
+  )
+    ? [
+      requestedDefaultTipColor[0],
+      requestedDefaultTipColor[1],
+      requestedDefaultTipColor[2],
+      Number.isFinite(requestedDefaultTipColor[3]) ? requestedDefaultTipColor[3] : 200
+    ]
+    : [150, 150, 150, 200];
   const tipColorContext = createTipColorContext(
     metadataArrays,
     metadataColors,

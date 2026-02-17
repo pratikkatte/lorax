@@ -10,7 +10,8 @@ const EMPTY_TIP_COLOR_INPUTS = Object.freeze({
   colorBy: null,
   enabledValuesKey: '[]',
   metadataArrayRef: null,
-  metadataColorRef: null
+  metadataColorRef: null,
+  defaultTipColorKey: '150,150,150,200'
 });
 
 function toTypedArray(arr, ArrayType) {
@@ -19,7 +20,7 @@ function toTypedArray(arr, ArrayType) {
   return new ArrayType(arr);
 }
 
-function buildFullComputePayload(treeData, serializedModelMatrices, displayArray, metadataArrays, metadataColors, populationFilter, treeStructures) {
+function buildFullComputePayload(treeData, serializedModelMatrices, displayArray, metadataArrays, metadataColors, populationFilter, defaultTipColor, treeStructures) {
   const payload = {
     node_id: toTypedArray(treeData.node_id, Int32Array),
     parent_id: toTypedArray(treeData.parent_id, Int32Array),
@@ -36,6 +37,7 @@ function buildFullComputePayload(treeData, serializedModelMatrices, displayArray
     metadataArrays,
     metadataColors,
     populationFilter,
+    defaultTipColor,
     treeStructures
   };
 
@@ -147,16 +149,21 @@ function getEnabledValuesKey(enabledValues) {
   return JSON.stringify(enabledValues.map((value) => String(value)).sort());
 }
 
-function buildTipColorInputs(populationFilter, metadataArrays, metadataColors) {
+function buildTipColorInputs(populationFilter, metadataArrays, metadataColors, defaultTipColor) {
   const colorBy = populationFilter?.colorBy ?? null;
+  const defaultTipColorKey = Array.isArray(defaultTipColor) ? defaultTipColor.join(',') : '150,150,150,200';
   if (!colorBy) {
-    return EMPTY_TIP_COLOR_INPUTS;
+    return {
+      ...EMPTY_TIP_COLOR_INPUTS,
+      defaultTipColorKey
+    };
   }
   return {
     colorBy,
     enabledValuesKey: getEnabledValuesKey(populationFilter?.enabledValues),
     metadataArrayRef: metadataArrays?.[colorBy] ?? null,
-    metadataColorRef: metadataColors?.[colorBy] ?? null
+    metadataColorRef: metadataColors?.[colorBy] ?? null,
+    defaultTipColorKey
   };
 }
 
@@ -167,6 +174,7 @@ function tipColorInputsMatch(a, b) {
     && a.enabledValuesKey === b.enabledValuesKey
     && a.metadataArrayRef === b.metadataArrayRef
     && a.metadataColorRef === b.metadataColorRef
+    && a.defaultTipColorKey === b.defaultTipColorKey
   );
 }
 
@@ -184,6 +192,7 @@ function tipColorInputsMatch(a, b) {
  * @param {Object} params.metadataArrays - Optional metadata for tip coloring
  * @param {Object} params.metadataColors - Optional color mapping for metadata values
  * @param {Object} params.populationFilter - Optional { colorBy, enabledValues }
+ * @param {number[]|null} params.defaultTipColor - Optional [r, g, b, a] fallback color for tips
  * @returns {Object} { renderData, isLoading, error, isReady, clearBuffers }
  */
 export function useRenderData({
@@ -192,7 +201,8 @@ export function useRenderData({
   displayArray = null,
   metadataArrays = null,
   metadataColors = null,
-  populationFilter = null
+  populationFilter = null,
+  defaultTipColor = null
 }) {
   const [renderData, setRenderData] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -222,8 +232,8 @@ export function useRenderData({
   const structureUnchanged = useStructureCache && structuresMatch(lastTreeStructuresRef.current, currentTreeStructures);
   const modelMatricesUnchanged = getModelMatricesKey(serializedModelMatrices) === lastModelMatricesKeyRef.current;
   const currentTipColorInputs = useMemo(
-    () => buildTipColorInputs(populationFilter, metadataArrays, metadataColors),
-    [populationFilter, metadataArrays, metadataColors]
+    () => buildTipColorInputs(populationFilter, metadataArrays, metadataColors, defaultTipColor),
+    [populationFilter, metadataArrays, metadataColors, defaultTipColor]
   );
   const tipColorInputsUnchanged = tipColorInputsMatch(lastTipColorInputsRef.current, currentTipColorInputs);
 
@@ -252,6 +262,7 @@ export function useRenderData({
         metadataArrays,
         metadataColors,
         populationFilter,
+        defaultTipColor,
         useStructureCache ? structuresToPlain(currentTreeStructures) : null
       );
       return worker.request('compute-render-data', payload, { transfer });
@@ -302,6 +313,7 @@ export function useRenderData({
     metadataArrays,
     metadataColors,
     populationFilter,
+    defaultTipColor,
     serializedModelMatrices,
     visibleTreeIndices,
     currentTreeStructures,
