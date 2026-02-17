@@ -12,6 +12,151 @@ function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
 
+function GestureMedia({ gesture, label, style }) {
+  if (gesture === 'pan') {
+    return (
+      <svg
+        className="tour-gesture-media tour-gesture-svg"
+        viewBox="0 0 200 60"
+        role="img"
+        aria-label={label}
+        style={style}
+      >
+        <path d="M30 30H170" stroke="#cbd5e1" strokeWidth="6" strokeLinecap="round" />
+        <path
+          d="M30 30L45 20M30 30L45 40"
+          stroke="#94a3b8"
+          strokeWidth="4"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M170 30L155 20M170 30L155 40"
+          stroke="#94a3b8"
+          strokeWidth="4"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <g className="tour-gesture-pan-dot">
+          <circle cx="100" cy="30" r="12" fill="#e2e8f0" stroke="#94a3b8" strokeWidth="2" />
+          <circle cx="96" cy="26" r="4" fill="#ffffff" opacity="0.85" />
+        </g>
+      </svg>
+    );
+  }
+
+  if (gesture === 'two-finger-scroll') {
+    return (
+      <svg
+        className="tour-gesture-media tour-gesture-svg"
+        viewBox="0 0 200 60"
+        role="img"
+        aria-label={label}
+        style={style}
+      >
+        <path d="M100 10V50" stroke="#cbd5e1" strokeWidth="6" strokeLinecap="round" />
+        <path
+          d="M100 10L90 22M100 10L110 22"
+          stroke="#94a3b8"
+          strokeWidth="4"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M100 50L90 38M100 50L110 38"
+          stroke="#94a3b8"
+          strokeWidth="4"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <g className="tour-gesture-scroll-dots">
+          <circle cx="78" cy="30" r="10" fill="#e2e8f0" stroke="#94a3b8" strokeWidth="2" />
+          <circle cx="122" cy="30" r="10" fill="#e2e8f0" stroke="#94a3b8" strokeWidth="2" />
+          <circle cx="74" cy="26" r="3.5" fill="#ffffff" opacity="0.85" />
+          <circle cx="118" cy="26" r="3.5" fill="#ffffff" opacity="0.85" />
+        </g>
+      </svg>
+    );
+  }
+
+  if (gesture === 'zoom-both') {
+    return (
+      <svg
+        className="tour-gesture-media tour-gesture-svg"
+        viewBox="0 0 260 60"
+        role="img"
+        aria-label={label}
+        style={style}
+      >
+        <rect x="0.5" y="0.5" width="259" height="59" rx="10" fill="#ffffff" stroke="#e2e8f0" />
+
+        <text x="22" y="16" fontSize="9" fontWeight="700" fill="#64748b" letterSpacing="0.6">
+          VERTICAL
+        </text>
+        <g transform="translate(0,0)">
+          <path d="M70 20V48" stroke="#cbd5e1" strokeWidth="6" strokeLinecap="round" />
+          <path
+            d="M70 20L60 32M70 20L80 32"
+            stroke="#94a3b8"
+            strokeWidth="4"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M70 48L60 36M70 48L80 36"
+            stroke="#94a3b8"
+            strokeWidth="4"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <g className="tour-gesture-scroll-dots">
+            <circle cx="52" cy="34" r="10" fill="#e2e8f0" stroke="#94a3b8" strokeWidth="2" />
+            <circle cx="88" cy="34" r="10" fill="#e2e8f0" stroke="#94a3b8" strokeWidth="2" />
+            <circle cx="48" cy="30" r="3.5" fill="#ffffff" opacity="0.85" />
+            <circle cx="84" cy="30" r="3.5" fill="#ffffff" opacity="0.85" />
+          </g>
+        </g>
+
+        <path d="M130 10V50" stroke="#e2e8f0" strokeWidth="2" strokeLinecap="round" />
+
+        <text x="152" y="16" fontSize="9" fontWeight="700" fill="#64748b" letterSpacing="0.6">
+          HORIZONTAL
+        </text>
+        <g transform="translate(140,0)">
+          <rect x="72" y="6" width="32" height="14" rx="7" fill="#f1f5f9" stroke="#cbd5e1" />
+          <text x="88" y="16" fontSize="9" fontWeight="700" fill="#64748b" textAnchor="middle">
+            Ctrl
+          </text>
+
+          <path d="M70 20V48" stroke="#cbd5e1" strokeWidth="6" strokeLinecap="round" />
+          <path
+            d="M70 20L60 32M70 20L80 32"
+            stroke="#94a3b8"
+            strokeWidth="4"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M70 48L60 36M70 48L80 36"
+            stroke="#94a3b8"
+            strokeWidth="4"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <g className="tour-gesture-scroll-dots">
+            <circle cx="52" cy="34" r="10" fill="#e2e8f0" stroke="#94a3b8" strokeWidth="2" />
+            <circle cx="88" cy="34" r="10" fill="#e2e8f0" stroke="#94a3b8" strokeWidth="2" />
+            <circle cx="48" cy="30" r="3.5" fill="#ffffff" opacity="0.85" />
+            <circle cx="84" cy="30" r="3.5" fill="#ffffff" opacity="0.85" />
+          </g>
+        </g>
+      </svg>
+    );
+  }
+
+  return null;
+}
+
 export default function TourOverlay({
   open,
   steps = [],
@@ -151,6 +296,38 @@ export default function TourOverlay({
             height: 100%;
             object-fit: contain;
           }
+
+          .tour-gesture-svg {
+            width: 100%;
+            height: 100%;
+          }
+
+          .tour-gesture-pan-dot {
+            animation: tour-gesture-pan-x 1.4s ease-in-out infinite alternate;
+            transform-origin: 100px 30px;
+          }
+
+          .tour-gesture-scroll-dots {
+            animation: tour-gesture-pan-y 1.2s ease-in-out infinite alternate;
+            transform-origin: 100px 30px;
+          }
+
+          @keyframes tour-gesture-pan-x {
+            from { transform: translateX(-44px); }
+            to { transform: translateX(44px); }
+          }
+
+          @keyframes tour-gesture-pan-y {
+            from { transform: translateY(-14px); }
+            to { transform: translateY(14px); }
+          }
+
+          @media (prefers-reduced-motion: reduce) {
+            .tour-gesture-pan-dot,
+            .tour-gesture-scroll-dots {
+              animation: none;
+            }
+          }
         `}</style>
         {/* Dim background */}
         <div className="absolute inset-0 bg-black/50 pointer-events-none" />
@@ -244,6 +421,12 @@ export default function TourOverlay({
                     <source src={step.animation.mediaUrl} type="video/ogg" />
                     {step.animation.mediaAlt || step.animation.label}
                   </video>
+                ) : step.animation.mediaType === 'gesture' ? (
+                  <GestureMedia
+                    gesture={step.animation.gesture}
+                    label={step.animation.mediaAlt || step.animation.label}
+                    style={step.animation.rotate ? { transform: `rotate(${step.animation.rotate}deg)` } : undefined}
+                  />
                 ) : (
                   <img
                     className="tour-gesture-media"

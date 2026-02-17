@@ -11,8 +11,6 @@ import { useViewportDimensions } from '../hooks/useViewportDimensions';
 import TourOverlay from './TourOverlay';
 import useTourState from '../hooks/useTourState';
 import { metadataFeatureActions } from '../config/metadataFeatureActions';
-// TODO: Re-enable when the tutorial is complete.
-const TOUR_ENABLED = false;
 
 /**
  * FileView component - displays loaded file with viewport and position controls.
@@ -60,6 +58,8 @@ function FileView() {
   const [tourCenterTreeIndex, setTourCenterTreeIndex] = useState(null);
   const [tourTargetTick, setTourTargetTick] = useState(0);
   const lastTourTargetUpdateRef = useRef(0);
+
+  const canRunTour = Boolean(tsconfig && !loading && !error);
 
   // Navigation state for mutation tab
   const [clickedGenomeInfo, setClickedGenomeInfo] = useState(null);
@@ -225,14 +225,13 @@ function FileView() {
     return getPolygonBounds(polygon);
   }, [getCenterPolygon, getPolygonBounds]);
 
-  const tourSteps = useMemo(() => {
-    const panGestureMedia = '/gestures/gesture-flick.ogv';
-    const twoFingerScrollMedia = '/gestures/gesture-two-finger-scroll.ogv';
+	  const tourSteps = useMemo(() => {
+	    const advancedStepsEnabled = false;
 
-    return ([
-      {
-        id: 'viewer-position',
-        target: '[data-tour="viewer-position"]',
+	    return ([
+	      {
+	        id: 'viewer-position',
+	        target: '[data-tour="viewer-position"]',
         title: 'Genome window',
         content: 'Pan and set the genomic range you want to explore. Click Go to apply edits.'
       },
@@ -249,98 +248,93 @@ function FileView() {
         content: 'Drag horizontally on the viewport to pan across the genome.',
         animation: {
           label: 'Pan gesture',
-          mediaType: 'video',
-          mediaUrl: panGestureMedia,
-          mediaAlt: 'One finger swipe left and right',
-          attribution: 'Wikimedia Commons (CC BY-SA 3.0)'
+          mediaType: 'gesture',
+          gesture: 'pan',
+          mediaAlt: 'One finger drag left and right'
         }
       },
-      {
-        id: 'viewer-zoom-y',
-        target: '[data-tour="viewer-viewport"]',
-        title: 'Vertical zoom',
-        content: 'Use two fingers up or down to zoom vertically.',
-        animation: {
-          label: 'Two-finger vertical zoom',
-          mediaType: 'video',
-          mediaUrl: twoFingerScrollMedia,
-          mediaAlt: 'Two finger swipe up and down',
-          attribution: 'Wikimedia Commons (CC BY-SA 3.0)'
-        }
-      },
-      {
-        id: 'viewer-zoom-x',
-        target: '[data-tour="viewer-viewport"]',
-        title: 'Horizontal zoom',
-        content: 'Hold Ctrl and use two fingers left or right to zoom horizontally.',
-        animation: {
-          label: 'Ctrl + two-finger zoom',
-          mediaType: 'video',
-          mediaUrl: twoFingerScrollMedia,
-          mediaAlt: 'Two finger swipe left and right',
-          rotate: 90,
-          showCtrl: true,
-          attribution: 'Wikimedia Commons (CC BY-SA 3.0)'
-        }
-      },
-      {
-        id: 'viewer-tree-polygon',
-        title: 'Pick a tree',
-        content: 'The center tree is highlighted. Hover it to see details, then click any tree to zoom in.',
-        getTargetRect: () => getTourPolygonRect(tourCenterTreeIndex),
-        targetKey: tourTargetTick,
-        disableNext: !tourPolygonClicked
-      },
-      {
-        id: 'viewer-tree-edge',
-        title: 'Open tree details',
-        content: 'Click any edge on the highlighted tree to open the Info panel.',
-        getTargetRect: () => getTourPolygonRect(tourSelectedTreeIndex ?? tourCenterTreeIndex),
-        targetKey: tourTargetTick,
-        disableNext: !tourEdgeClicked
-      },
-      {
-        id: 'viewer-info-button',
-        target: '[data-tour="viewer-info-button"]',
-        title: 'Info & Filters',
+	      {
+	        id: 'viewer-zoom',
+	        target: '[data-tour="viewer-viewport"]',
+	        title: 'Zoom',
+	        content: 'Scroll up/down to zoom vertically. Hold Ctrl and scroll up/down to zoom horizontally.',
+	        animation: {
+	          label: 'Scroll to zoom',
+	          mediaType: 'gesture',
+	          gesture: 'zoom-both',
+	          mediaAlt: 'Scroll up and down, and Ctrl + scroll up and down',
+	        }
+	      },
+	      ...(advancedStepsEnabled ? [
+	        {
+	          id: 'viewer-tree-polygon',
+	          title: 'Pick a tree',
+	          content: 'The center tree is highlighted. Hover it to see details, then click any tree to zoom in.',
+	          getTargetRect: () => getTourPolygonRect(tourCenterTreeIndex),
+	          targetKey: tourTargetTick,
+	          disableNext: !tourPolygonClicked
+	        },
+	        {
+	          id: 'viewer-tree-edge',
+	          title: 'Open tree details',
+	          content: 'Click any edge on the highlighted tree to open the Info panel.',
+	          getTargetRect: () => getTourPolygonRect(tourSelectedTreeIndex ?? tourCenterTreeIndex),
+	          targetKey: tourTargetTick,
+	          disableNext: !tourEdgeClicked
+	        }
+	      ] : []),
+	      {
+	        id: 'viewer-info-button',
+	        target: '[data-tour="viewer-info-button"]',
+	        title: 'Info & Filters',
         content: 'Open metadata, mutations, and filtering controls for deeper inspection.',
-        offset: { x: -60, y: -60 },
-        arrowDir: 'right'
-      },
-      {
-        id: 'viewer-info-details',
-        target: '[data-tour="viewer-info-details-tab"]',
-        title: 'Details',
-        content: 'Explore tree, node, and sample details for the selected tree.',
-        offset: { x: 10, y: 20 },
-        arrowDir: 'up'
-      },
-      {
-        id: 'viewer-info-mutations',
-        target: '[data-tour="viewer-info-mutations-tab"]',
-        title: 'Mutations',
-        content: 'Browse mutations for the current window or search by position.',
-        offset: { x: 0, y: 20 },
-        arrowDir: 'up'
-      },
-      {
-        id: 'viewer-info-filter',
-        target: '[data-tour="viewer-info-filter-tab"]',
-        title: 'Filters',
-        content: 'Color and filter trees to focus on specific structures.',
-        offset: { x: 0, y: 20 },
-        arrowDir: 'up'
-      },
-      {
-        id: 'viewer-settings-button',
-        target: '[data-tour="viewer-settings-button"]',
-        title: 'Settings',
-        content: 'Customize display options like colors and view settings.',
-        offset: { x: -60, y: -60 },
-        arrowDir: 'right'
-      }
-    ]);
-  }, [getTourPolygonRect, tourCenterTreeIndex, tourSelectedTreeIndex, tourTargetTick, tourPolygonClicked, tourEdgeClicked]);
+	        offset: { x: -60, y: -60 },
+	        arrowDir: 'right'
+	      },
+	      ...(advancedStepsEnabled ? [
+	        {
+	          id: 'viewer-info-details',
+	          target: '[data-tour="viewer-info-details-tab"]',
+	          title: 'Details',
+	          content: 'Explore tree, node, and sample details for the selected tree.',
+	          offset: { x: 10, y: 20 },
+	          arrowDir: 'up'
+	        },
+	        {
+	          id: 'viewer-info-mutations',
+	          target: '[data-tour="viewer-info-mutations-tab"]',
+	          title: 'Mutations',
+	          content: 'Browse mutations for the current window or search by position.',
+	          offset: { x: 0, y: 20 },
+	          arrowDir: 'up'
+	        },
+	        {
+	          id: 'viewer-info-filter',
+	          target: '[data-tour="viewer-info-filter-tab"]',
+	          title: 'Filters',
+	          content: 'Color and filter trees to focus on specific structures.',
+	          offset: { x: 0, y: 20 },
+	          arrowDir: 'up'
+	        }
+	      ] : []),
+	      {
+	        id: 'viewer-settings-button',
+	        target: '[data-tour="viewer-settings-button"]',
+	        title: 'Settings',
+	        content: 'Customize display options like colors and view settings.',
+	        offset: { x: -60, y: -60 },
+	        arrowDir: 'right'
+	      },
+	      {
+	        id: 'viewer-screenshot-button',
+	        target: '[data-tour="viewer-screenshot-button"]',
+	        title: 'Screenshot',
+	        content: 'Capture a PNG or SVG of the current view.',
+	        offset: { x: -60, y: -60 },
+	        arrowDir: 'right'
+	      }
+	    ]);
+	  }, [getTourPolygonRect, tourCenterTreeIndex, tourSelectedTreeIndex, tourTargetTick, tourPolygonClicked, tourEdgeClicked]);
 
   const getSelectedMetadataValueForNode = useCallback((nodeId) => {
     const key = selectedColorBy;
@@ -439,11 +433,11 @@ function FileView() {
   }, [file, project, sid, genomiccoordstart, genomiccoordend, isConnected, tsconfig?.filename, queryFile, handleConfigUpdate]);
 
   useEffect(() => {
-    if (!TOUR_ENABLED) return;
-    if (!tourState.hasSeen && tsconfig && !loading && !error) {
+    if (tourState.hasSeen) return;
+    if (canRunTour) {
       setTourOpen(true);
     }
-  }, [tourState.hasSeen, tsconfig, loading, error]);
+  }, [tourState.hasSeen, canRunTour]);
 
   useEffect(() => {
     if (!tourOpen) return;
@@ -1058,7 +1052,8 @@ function FileView() {
       )}
 
       {/* Right: icon bar - always visible, side-by-side */}
-      <div className="flex-shrink-0 w-8 bg-slate-900 border-l border-slate-800 text-slate-400 z-[101] flex flex-col items-center py-4 space-y-4 shadow-2xl">
+      <div className="flex-shrink-0 w-8 bg-slate-900 border-l border-slate-800 text-slate-400 z-[101] flex flex-col items-center py-4 shadow-2xl">
+        <div className="flex flex-col items-center space-y-4">
           {/* Info button */}
           <button
             onClick={() => {
@@ -1115,6 +1110,7 @@ function FileView() {
               setShowSettings(false);
               setShowScreenshotModal(true);
             }}
+            data-tour="viewer-screenshot-button"
             className="group relative p-2 rounded-lg transition-colors hover:bg-slate-800 hover:text-white"
             title="Screenshot"
           >
@@ -1127,6 +1123,32 @@ function FileView() {
             </span>
           </button>
         </div>
+
+        {/* Tutorial button (bottom) */}
+        <div className="mt-auto pt-4 flex flex-col items-center">
+          <button
+            onClick={() => {
+              if (!canRunTour) return;
+              setShowInfo(false);
+              setShowSettings(false);
+              setTourOpen(true);
+            }}
+            disabled={!canRunTour}
+            className={`group relative p-2 rounded-lg transition-colors ${
+              tourOpen
+                ? 'bg-emerald-600 text-white'
+                : 'hover:bg-slate-800 hover:text-white'
+            } ${canRunTour ? '' : 'opacity-40 cursor-not-allowed'}`}
+            title="Tutorial"
+            aria-label="Tutorial"
+          >
+            <span className="h-5 w-5 flex items-center justify-center text-base font-bold leading-none">?</span>
+            <span className="absolute left-full ml-2 px-2 py-1 text-xs text-white bg-slate-800 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
+              Tutorial
+            </span>
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
