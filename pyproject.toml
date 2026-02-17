@@ -4,9 +4,9 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lorax-arg"
-version = "0.1.3"
+version = "0.1.5"
 description = "Interactive ARG visualization for genomics"
-readme = "packages/app/README.md"
+readme = {file = "packages/app/README.md", content-type = "text/markdown"}
 requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [{name = "Lorax Team"}]

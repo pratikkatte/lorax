@@ -4,8 +4,7 @@ Lorax is a web-native platform for real-time, interactive visualization and expl
 
 - CLI entrypoint: `lorax` (alias: `lorax-arg`)
 
-![Lorax demo](https://raw.githubusercontent.com/pratikkatte/lorax/main/docs/images/lorax-demo.gif)
-
+![Lorax demo](https://raw.githubusercontent.com/pratikkatte/lorax/main/docs/images/lorax-demo-2.gif)
 ## Key features
 - Scalable rendering: interactive visualization of ARGs at a biobank scale.
 - Genome-wide navigation: Traverse genomic coordinates and inspect local genealogies at recombination breakpoints.
