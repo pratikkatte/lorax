@@ -6,6 +6,12 @@ import { getRenderDataWorker } from '../workers/workerSpecs.js';
 
 const EMPTY_DISPLAY_ARRAY = [];
 const STRUCTURE_CACHE_MIN_NODES = 5000;
+const EMPTY_TIP_COLOR_INPUTS = Object.freeze({
+  colorBy: null,
+  enabledValuesKey: '[]',
+  metadataArrayRef: null,
+  metadataColorRef: null
+});
 
 function toTypedArray(arr, ArrayType) {
   if (!arr || arr.length === 0) return new ArrayType(0);
@@ -134,6 +140,36 @@ function shouldSkipRender(localBins, treeData) {
   return { skip: false, visibleCount };
 }
 
+function getEnabledValuesKey(enabledValues) {
+  if (!Array.isArray(enabledValues) || enabledValues.length === 0) {
+    return '[]';
+  }
+  return JSON.stringify(enabledValues.map((value) => String(value)).sort());
+}
+
+function buildTipColorInputs(populationFilter, metadataArrays, metadataColors) {
+  const colorBy = populationFilter?.colorBy ?? null;
+  if (!colorBy) {
+    return EMPTY_TIP_COLOR_INPUTS;
+  }
+  return {
+    colorBy,
+    enabledValuesKey: getEnabledValuesKey(populationFilter?.enabledValues),
+    metadataArrayRef: metadataArrays?.[colorBy] ?? null,
+    metadataColorRef: metadataColors?.[colorBy] ?? null
+  };
+}
+
+function tipColorInputsMatch(a, b) {
+  if (!a || !b) return false;
+  return (
+    a.colorBy === b.colorBy
+    && a.enabledValuesKey === b.enabledValuesKey
+    && a.metadataArrayRef === b.metadataArrayRef
+    && a.metadataColorRef === b.metadataColorRef
+  );
+}
+
 /**
  * Hook to compute render data (typed arrays) for tree visualization.
  * Sends tree data + localBins to worker, receives typed arrays for deck.gl layers.
@@ -165,6 +201,7 @@ export function useRenderData({
   const latestRequestId = useRef(0);
   const lastTreeStructuresRef = useRef(null);
   const lastModelMatricesKeyRef = useRef('');
+  const lastTipColorInputsRef = useRef(EMPTY_TIP_COLOR_INPUTS);
 
   const worker = useWorker(getRenderDataWorker);
 
@@ -184,6 +221,11 @@ export function useRenderData({
 
   const structureUnchanged = useStructureCache && structuresMatch(lastTreeStructuresRef.current, currentTreeStructures);
   const modelMatricesUnchanged = getModelMatricesKey(serializedModelMatrices) === lastModelMatricesKeyRef.current;
+  const currentTipColorInputs = useMemo(
+    () => buildTipColorInputs(populationFilter, metadataArrays, metadataColors),
+    [populationFilter, metadataArrays, metadataColors]
+  );
+  const tipColorInputsUnchanged = tipColorInputsMatch(lastTipColorInputsRef.current, currentTipColorInputs);
 
   useEffect(() => {
     if (!worker.isReady) return;
@@ -194,7 +236,7 @@ export function useRenderData({
       return;
     }
 
-    if (structureUnchanged && modelMatricesUnchanged) {
+    if (structureUnchanged && modelMatricesUnchanged && tipColorInputsUnchanged) {
       return;
     }
 
@@ -226,7 +268,7 @@ export function useRenderData({
       try {
         let result;
 
-        if (structureUnchanged && useStructureCache && lastTreeStructuresRef.current !== null) {
+        if (structureUnchanged && useStructureCache && lastTreeStructuresRef.current !== null && tipColorInputsUnchanged) {
           result = await doApplyTransform();
           if (result?.cacheMiss) {
             result = await doFullCompute();
@@ -239,6 +281,7 @@ export function useRenderData({
 
         setRenderData(result);
         setIsLoading(false);
+        lastTipColorInputsRef.current = currentTipColorInputs;
 
         if (result && useStructureCache && currentTreeStructures) {
           lastTreeStructuresRef.current = currentTreeStructures;
@@ -264,6 +307,8 @@ export function useRenderData({
     currentTreeStructures,
     structureUnchanged,
     modelMatricesUnchanged,
+    currentTipColorInputs,
+    tipColorInputsUnchanged,
     useStructureCache
   ]);
 
@@ -271,6 +316,7 @@ export function useRenderData({
     if (!worker.isReady) return Promise.resolve();
     lastTreeStructuresRef.current = null;
     lastModelMatricesKeyRef.current = '';
+    lastTipColorInputsRef.current = EMPTY_TIP_COLOR_INPUTS;
     return worker.request('clear-buffers', null);
   }, [worker]);
 
