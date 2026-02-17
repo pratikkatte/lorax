@@ -6,9 +6,9 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](https://pypi.org/project/lorax-arg/)
 
-> **Web platform:** [lorax.ucsc.edu](https://lorax.ucsc.edu/) 
+> **Web platform:** [lorax.ucsc.edu](https://lorax.ucsc.edu/) | **Pip package:** [lorax-arg](https://pypi.org/project/lorax-arg/)
 
-![Lorax demo](docs/images/lorax-demo.gif)
+![Lorax demo](https://raw.githubusercontent.com/pratikkatte/lorax/main/docs/images/lorax-demo.gif)
 
 ## Key Features
 
