@@ -33,14 +33,50 @@ export function computePolygonVertices(bin, genomeVP, orthoVP, globalBpPerUnit) 
   }
 
   const modelMatrix = bin.modelMatrix;
+  const startWorld = bin.s / globalBpPerUnit;
+  const endWorld = bin.e / globalBpPerUnit;
+  if (
+    !Number.isFinite(globalBpPerUnit)
+    || globalBpPerUnit <= 0
+    || !Number.isFinite(startWorld)
+    || !Number.isFinite(endWorld)
+    || !Number.isFinite(modelMatrix?.[0])
+    || !Number.isFinite(modelMatrix?.[12])
+  ) {
+    return null;
+  }
+
   // Project genome coordinates to screen space via genome viewport
-  const pixel_s = genomeVP.project([bin.s / globalBpPerUnit, 0]);
-  const pixel_e = genomeVP.project([bin.e / globalBpPerUnit, 0]);
+  let pixel_s;
+  let pixel_e;
+  try {
+    pixel_s = genomeVP.project([startWorld, 0]);
+    pixel_e = genomeVP.project([endWorld, 0]);
+  } catch (_error) {
+    return null;
+  }
 
   // Project model matrix bounds to screen space via ortho viewport
   // modelMatrix[12] = x translation, modelMatrix[0] = x scale
-  const [x0, _y0] = orthoVP.project([modelMatrix[12], 0]);
-  const [x1, _y1] = orthoVP.project([modelMatrix[12] + modelMatrix[0], 1]);
+  let x0;
+  let _y0;
+  let x1;
+  let _y1;
+  try {
+    [x0, _y0] = orthoVP.project([modelMatrix[12], 0]);
+    [x1, _y1] = orthoVP.project([modelMatrix[12] + modelMatrix[0], 1]);
+  } catch (_error) {
+    return null;
+  }
+  if (
+    !Number.isFinite(pixel_s?.[0])
+    || !Number.isFinite(pixel_e?.[0])
+    || !Number.isFinite(x0)
+    || !Number.isFinite(x1)
+    || !Number.isFinite(_y1)
+  ) {
+    return null;
+  }
 
   // Get ortho view bounds in screen coordinates
   // orthoVP.y is the top of the ortho view in pixels from canvas top
