@@ -8,8 +8,7 @@
 
 > **Web platform:** [lorax.ucsc.edu](https://lorax.ucsc.edu/) 
 
-<!-- TODO: Add a screenshot or GIF of the tool in action here -->
-<!-- ![Lorax screenshot](docs/images/screenshot.png) -->
+![Lorax demo](docs/images/lorax-demo.gif)
 
 ## Key Features
 
