@@ -80,7 +80,7 @@ export default function LandingPage({
                             <span className="text-transparent bg-clip-text bg-gradient-to-r from-green-600 to-green-500">The Lorax speaks for every tree.</span>
                         </h2>
                         <p className="text-slate-600 text-lg leading-relaxed mb-8">
-                            Lorax enables smooth, interactive exploration of local genealogies and ancestral recombination graphs directly from tree-sequence data.
+                            Lorax enables smooth, interactive exploration of local genealogies and ancestral recombination graphs directly from large-scale ancestry data.
                         </p>
 
                         <div className="flex flex-col sm:flex-row gap-4">
