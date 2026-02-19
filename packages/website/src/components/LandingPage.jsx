@@ -1,7 +1,7 @@
 import React, { useState } from "react";
-import { BsCloudUpload, BsGithub } from "react-icons/bs";
+import { BsCloudUpload, BsGithub, BsChevronDown } from "react-icons/bs";
 import { LuFileText, LuFolder } from "react-icons/lu";
-import { BsChevronDown } from "react-icons/bs";
+import { PiPackage } from "react-icons/pi";
 import ErrorAlert from "./ErrorAlert.jsx";
 import DatasetFiles from "./landing/DatasetFiles.jsx";
 
@@ -42,7 +42,13 @@ export default function LandingPage({
                         </div>
                     </div>
                     <div className="flex items-center gap-3">
-                        <Badge pill>{version}</Badge>
+                        {/* <Badge pill>{version}</Badge> */}
+                        <a
+                            href="https://pypi.org/project/lorax-arg/" target="_blank" rel="noreferrer"
+                            className="hidden sm:inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium hover:bg-slate-50 hover:text-slate-900 text-slate-600 transition-colors"
+                        >
+                            <PiPackage className="opacity-70" /> Install via <code>pip install lorax-arg</code>
+                        </a>
                         <a
                             href="https://github.com/pratikkatte/lorax/" target="_blank" rel="noreferrer"
                             className="hidden sm:inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium hover:bg-slate-50 hover:text-slate-900 text-slate-600 transition-colors"
