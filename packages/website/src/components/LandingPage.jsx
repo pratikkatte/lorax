@@ -60,6 +60,7 @@ export default function LandingPage({
                         <ErrorAlert
                             message={upload.error}
                             onDismiss={upload.dismissError}
+                            fullText
                         />
                     </div>
                 )}

@@ -152,7 +152,7 @@ export default function useFileUpload({
 
             const maxSize = 25 * 1024 * 1024; // 25 MB
             if (file?.size > maxSize) {
-                setError(`File "${file.name}" exceeds 25 MB limit.`);
+                setError(`File "${file.name}" exceeds the 25 MB limit. For larger files, please use our Python CLI tool: \`pip install lorax-arg\``);
                 if (inputRef.current) inputRef.current.value = "";
                 return;
             }
@@ -176,7 +176,7 @@ export default function useFileUpload({
             const file = e.dataTransfer?.files?.[0];
             const maxSize = 25 * 1024 * 1024;
             if (file?.size > maxSize) {
-                setError(`File "${file.name}" exceeds 25 MB limit.`);
+                setError(`File "${file.name}" exceeds the 25 MB limit. For larger files, please use our Python CLI tool: \`pip install lorax-arg\``);
                 return;
             }
             if (file) await uploadFile(file);
