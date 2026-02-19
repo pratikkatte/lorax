@@ -48,6 +48,22 @@ export default function useFileUpload({
 
     const acceptAttr = useMemo(() => (Array.isArray(accept) ? accept.join(",") : accept), [accept]);
 
+    const allowedExtensions = useMemo(() => {
+        return acceptAttr
+            .split(",")
+            .map((s) => s.trim().toLowerCase())
+            .filter((s) => s.startsWith("."));
+    }, [acceptAttr]);
+
+    const isFileTypeAllowed = useCallback(
+        (file) => {
+            if (!file?.name || allowedExtensions.length === 0) return false;
+            const name = file.name.toLowerCase();
+            return allowedExtensions.some((ext) => name.endsWith(ext));
+        },
+        [allowedExtensions]
+    );
+
     const browse = useCallback(() => {
         inputRef.current?.click();
     }, []);
@@ -174,14 +190,23 @@ export default function useFileUpload({
             e.preventDefault();
             setDragOver(false);
             const file = e.dataTransfer?.files?.[0];
+            if (!file) return;
+
+            if (!isFileTypeAllowed(file)) {
+                const supported = allowedExtensions.join(", ");
+                setError(`File "${file.name}" has an unsupported format. Supported formats: ${supported}`);
+                return;
+            }
+
             const maxSize = 25 * 1024 * 1024;
-            if (file?.size > maxSize) {
+            if (file.size > maxSize) {
                 setError(`File "${file.name}" exceeds the 25 MB limit. For larger files, please use our Python CLI tool: \`pip install lorax-arg\``);
                 return;
             }
-            if (file) await uploadFile(file);
+
+            await uploadFile(file);
         },
-        [uploadFile]
+        [uploadFile, isFileTypeAllowed, allowedExtensions]
     );
 
     const onDragEnter = useCallback((e) => { e.preventDefault(); setDragOver(true); }, []);
