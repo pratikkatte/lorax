@@ -45,13 +45,21 @@ export default function LandingPage({
                         {/* <Badge pill>{version}</Badge> */}
                         <a
                             href="https://pypi.org/project/lorax-arg/" target="_blank" rel="noreferrer"
-                            className="hidden sm:inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium hover:bg-slate-50 hover:text-slate-900 text-slate-600 transition-colors"
+                            className="hidden sm:inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 min-h-[48px] text-sm font-medium hover:bg-slate-50 hover:text-slate-900 text-slate-600 transition-colors"
                         >
-                            <PiPackage className="opacity-70" /> Install via <code>pip install lorax-arg</code>
+                            <PiPackage className="opacity-70 text-2xl shrink-0" />
+                            <span className="flex flex-col items-start text-left leading-tight">
+                                <img
+                                    src="https://img.shields.io/pypi/v/lorax-arg"
+                                    alt="PyPI version"
+                                    className="h-4 w-auto object-contain"
+                                />
+                                <code>pip install lorax-arg</code>
+                            </span>
                         </a>
                         <a
                             href="https://github.com/pratikkatte/lorax/" target="_blank" rel="noreferrer"
-                            className="hidden sm:inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium hover:bg-slate-50 hover:text-slate-900 text-slate-600 transition-colors"
+                            className="hidden sm:inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 min-h-[48px] text-sm font-medium hover:bg-slate-50 hover:text-slate-900 text-slate-600 transition-colors"
                         >
                             <BsGithub className="opacity-70" /> GitHub
                         </a>
