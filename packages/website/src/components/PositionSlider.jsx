@@ -223,6 +223,7 @@ export default function PositionSlider({
           type="button"
           role="switch"
           aria-checked={compareMode}
+          data-tour="viewer-compare-topology"
           onClick={() => {
             if (compareMode) {
               setCompareMode?.(false);
@@ -253,6 +254,7 @@ export default function PositionSlider({
           type="button"
           role="switch"
           aria-checked={lockModelMatrix}
+          data-tour="viewer-lock-view"
           onClick={() => {
             if (lockModelMatrix) {
               setLockModelMatrix?.(false);
@@ -435,6 +437,7 @@ export default function PositionSlider({
       {/* Reset view button */}
       <button
         onClick={handleReset}
+        data-tour="viewer-reset-view"
         className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
         title="Reset vertical view"
       >

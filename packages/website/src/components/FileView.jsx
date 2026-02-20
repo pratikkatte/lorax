@@ -240,6 +240,27 @@ function FileView() {
         content: 'Pan and set the genomic range you want to explore. Click Go to apply edits.'
       },
       {
+        id: 'viewer-reset-view',
+        target: '[data-tour="viewer-reset-view"]',
+        title: 'Reset view',
+        content: 'Reset the vertical zoom while keeping your current genomic window.',
+        offset: { x: 0, y: 20 }
+      },
+      {
+        id: 'viewer-compare-topology',
+        target: '[data-tour="viewer-compare-topology"]',
+        title: 'Compare topology',
+        content: 'Highlight edge differences between adjacent genealogies to compare their topologies.',
+        offset: { x: 0, y: 20 }
+      },
+      {
+        id: 'viewer-lock-view',
+        target: '[data-tour="viewer-lock-view"]',
+        title: 'Lock view',
+        content: 'Zoom/pan into the trees and inspect the specific region without the trees shifting around.',
+        offset: { x: 0, y: 20 }
+      },
+      {
         id: 'viewer-viewport',
         target: '[data-tour="viewer-viewport"]',
         title: 'Main viewport',
