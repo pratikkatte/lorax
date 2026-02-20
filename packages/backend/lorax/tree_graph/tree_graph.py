@@ -495,17 +495,10 @@ def _process_single_tree(
 
     if sparsification and sparsify_resolution is not None:
         tip_x = x[is_tip]
-        all_tips_at_x1 = (len(tip_x) > 0) and np.all(np.isclose(tip_x, 1.0, rtol=0, atol=1e-6))
+        all_tips_at_x1 = (len(tip_x) > 0) and np.all(tip_x > 0.999999)
         use_midpoint_only = not all_tips_at_x1
 
-        order = np.argsort(node_ids)
-        sorted_ids = node_ids[order]
-        pos = np.searchsorted(sorted_ids, parent_ids)
-        parent_indices = np.full(n, -1, dtype=np.int32)
-        # Avoid sorted_ids[pos] when pos>=n (searchsorted returns n when value not found)
-        safe_pos = np.minimum(pos, n - 1)
-        valid = (parent_ids != -1) & (pos < n) & (sorted_ids[safe_pos] == parent_ids)
-        parent_indices[valid] = order[pos[valid]]
+        parent_indices = _build_parent_local(node_ids, parent_ids, n)
         if adaptive_for_tree:
             bbox_min_x, bbox_max_x, bbox_min_y, bbox_max_y = adaptive_bbox_bounds
             keep_mask = _sparsify_edges_adaptive(
@@ -537,56 +530,10 @@ def _process_single_tree(
         n = len(node_ids)
 
         if n > 0:
-            original_is_tip = is_tip.copy()
-            order = np.argsort(node_ids)
-            sorted_ids = node_ids[order]
-            pos = np.searchsorted(sorted_ids, parent_ids)
-            parent_local = np.full(n, -1, dtype=np.int32)
-            safe_pos = np.minimum(pos, n - 1)
-            valid = (parent_ids != -1) & (pos < n) & (sorted_ids[safe_pos] == parent_ids)
-            parent_local[valid] = order[pos[valid]]
-            child_counts = np.bincount(parent_local[parent_local >= 0], minlength=n)
-            collapse_mask = child_counts != 1
-
-            if not np.all(collapse_mask):
-                new_parent_ids = parent_ids.copy()
-                for i in range(n):
-                    if collapse_mask[i]:
-                        continue
-                    parent_idx = parent_local[i]
-                    while parent_idx >= 0 and not collapse_mask[parent_idx]:
-                        parent_idx = parent_local[parent_idx]
-                    new_parent_ids[i] = node_ids[parent_idx] if parent_idx >= 0 else -1
-                # Update kept nodes whose parent was removed to point to effective parent
-                for i in range(n):
-                    if not collapse_mask[i]:
-                        continue
-                    parent_idx = parent_local[i]
-                    if parent_idx < 0:
-                        continue
-                    if not collapse_mask[parent_idx]:
-                        while parent_idx >= 0 and not collapse_mask[parent_idx]:
-                            parent_idx = parent_local[parent_idx]
-                        new_parent_ids[i] = node_ids[parent_idx] if parent_idx >= 0 else -1
-
-                node_ids = node_ids[collapse_mask]
-                parent_ids = new_parent_ids[collapse_mask]
-                x = x[collapse_mask]
-                y = y[collapse_mask]
-                n = len(node_ids)
-
-                if n > 0:
-                    order = np.argsort(node_ids)
-                    sorted_ids = node_ids[order]
-                    pos = np.searchsorted(sorted_ids, parent_ids)
-                    parent_local = np.full(n, -1, dtype=np.int32)
-                    safe_pos = np.minimum(pos, n - 1)
-                    valid = (parent_ids != -1) & (pos < n) & (sorted_ids[safe_pos] == parent_ids)
-                    parent_local[valid] = order[pos[valid]]
-                    child_counts = np.bincount(parent_local[parent_local >= 0], minlength=n)
-                    is_tip = (child_counts == 0) & original_is_tip[collapse_mask]
-                else:
-                    is_tip = is_tip[:0]
+            parent_local = _build_parent_local(node_ids, parent_ids, n)
+            node_ids, parent_ids, is_tip, x, y, n = _collapse_degree1_nodes(
+                node_ids, parent_ids, is_tip, x, y, parent_local, n
+            )
 
     if n == 0:
         return (tree_idx, graph if newly_built else None, newly_built, None, None, None, None, None, 0, None)
@@ -1042,31 +989,9 @@ def construct_trees_batch(
             all_mut_y = all_mut_y[keep_mask]
             all_mut_node_id = all_mut_node_id[keep_mask]
 
-            n_muts_removed_by_sparsify = n_muts_before - len(all_mut_tree_idx)
-            # When edge sparsification removed nodes and mutation sparsification removed
-            # mutations, filter kept mutations to surviving nodes
-            if sparsification and n_muts_removed_by_sparsify > 0:
-                max_node = int(max(all_node_ids.max(), all_mut_node_id.max())) + 1
-                surviving_keys = np.unique(
-                    all_tree_idx.astype(np.int64) * max_node + all_node_ids.astype(np.int64)
-                )
-                mut_keys = (
-                    all_mut_tree_idx.astype(np.int64) * max_node
-                    + all_mut_node_id.astype(np.int64)
-                )
-                node_filter = np.isin(mut_keys, surviving_keys)
-                n_before_node_filter = len(all_mut_tree_idx)
-                n_dropped_orphans = n_before_node_filter - int(np.sum(node_filter))
-                logger.debug(
-                    "mutation node filter: before=%d after=%d dropped_orphans=%d",
-                    n_before_node_filter,
-                    int(np.sum(node_filter)),
-                    n_dropped_orphans,
-                )
-                all_mut_tree_idx = all_mut_tree_idx[node_filter]
-                all_mut_x = all_mut_x[node_filter]
-                all_mut_y = all_mut_y[node_filter]
-                all_mut_node_id = all_mut_node_id[node_filter]
+            # Note: per-tree mutation filtering (_process_single_tree line 571) already
+            # ensures mutations only reference nodes that survived edge sparsification.
+            # No global orphan pass needed.
 
     # Build separate node table
     if offset == 0:
@@ -1220,6 +1145,102 @@ def _sparsify_mutations_adaptive(
             keep[i] = True
 
     return keep
+
+
+@njit(cache=True)
+def _collapse_degree1_nodes(node_ids, parent_ids, is_tip, x, y, parent_local, n):
+    """
+    Collapse degree-1 (single-child) internal nodes after sparsification.
+
+    Uses path compression: for each node whose parent was collapsed,
+    walks up the chain to find the first surviving ancestor.
+
+    Args:
+        node_ids: int32 array of node IDs
+        parent_ids: int32 array of parent node IDs (-1 for roots)
+        is_tip: bool array of tip flags (original, pre-collapse)
+        x: float32 array of x coordinates
+        y: float32 array of y coordinates
+        parent_local: int32 array mapping local index -> parent's local index (-1 for roots)
+        n: number of nodes
+
+    Returns:
+        (kept_node_ids, kept_parent_ids, kept_is_tip, kept_x, kept_y, kept_count)
+    """
+    # Count children per node
+    child_counts = np.zeros(n, dtype=np.int32)
+    for i in range(n):
+        p = parent_local[i]
+        if p >= 0:
+            child_counts[p] += 1
+
+    # collapse_mask[i] = True means KEEP this node (not degree-1, or is root/tip)
+    collapse_mask = np.empty(n, dtype=np.bool_)
+    for i in range(n):
+        collapse_mask[i] = child_counts[i] != 1 or parent_local[i] == -1
+
+    # Path compression: find effective parent for each node
+    # effective_parent[i] = the local index of the first non-collapsed ancestor
+    effective_parent = np.empty(n, dtype=np.int32)
+    for i in range(n):
+        p = parent_local[i]
+        while p >= 0 and not collapse_mask[p]:
+            p = parent_local[p]
+        effective_parent[i] = p
+
+    # Build output arrays - only keep non-collapsed nodes
+    kept_count = 0
+    for i in range(n):
+        if collapse_mask[i]:
+            kept_count += 1
+
+    kept_node_ids = np.empty(kept_count, dtype=np.int32)
+    kept_parent_ids = np.empty(kept_count, dtype=np.int32)
+    kept_is_tip = np.empty(kept_count, dtype=np.bool_)
+    kept_x = np.empty(kept_count, dtype=np.float32)
+    kept_y = np.empty(kept_count, dtype=np.float32)
+
+    j = 0
+    for i in range(n):
+        if not collapse_mask[i]:
+            continue
+        kept_node_ids[j] = node_ids[i]
+        ep = effective_parent[i]
+        kept_parent_ids[j] = node_ids[ep] if ep >= 0 else np.int32(-1)
+        kept_is_tip[j] = is_tip[i]
+        kept_x[j] = x[i]
+        kept_y[j] = y[i]
+        j += 1
+
+    return kept_node_ids, kept_parent_ids, kept_is_tip, kept_x, kept_y, kept_count
+
+
+@njit(cache=True)
+def _build_parent_local(node_ids, parent_ids, n):
+    """
+    Build local parent index mapping using a hash map (O(n) instead of O(n log n) sort).
+
+    Maps each node_id to its local array index, then resolves parent_ids to local indices.
+
+    Args:
+        node_ids: int32 array of node IDs
+        parent_ids: int32 array of parent node IDs (-1 for roots)
+        n: number of nodes
+
+    Returns:
+        parent_local: int32 array where parent_local[i] is the local index of node i's parent
+    """
+    id_to_idx = Dict.empty(key_type=types.int32, value_type=types.int32)
+    for i in range(n):
+        id_to_idx[node_ids[i]] = np.int32(i)
+
+    parent_local = np.full(n, -1, dtype=np.int32)
+    for i in range(n):
+        pid = parent_ids[i]
+        if pid != -1 and pid in id_to_idx:
+            parent_local[i] = id_to_idx[pid]
+
+    return parent_local
 
 
 @njit(cache=True)
