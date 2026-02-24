@@ -39,10 +39,12 @@ function FileView() {
   const [error, setError] = useState(null);
   const [genomicPosition, setGenomicPosition] = useState(null); // [start, end] - synced with deck
   const [statusMessage, setStatusMessage] = useState(null);
-  const [showInfo, setShowInfo] = useState(false);
+  const [showInfo, setShowInfo] = useState(() => searchParams.has('presetfeature'));
   const [showSettings, setShowSettings] = useState(false);
   const [showScreenshotModal, setShowScreenshotModal] = useState(false);
-  const [infoActiveTab, setInfoActiveTab] = useState('details');
+  const [infoActiveTab, setInfoActiveTab] = useState(() =>
+    searchParams.has('presetfeature') ? 'metadata' : 'details'
+  );
   const [treeIsLoading, setTreeIsLoading] = useState(false);
   const treeIsLoadingRef = useRef(false);
   const presetLoadResolversRef = useRef([]);
@@ -107,6 +109,10 @@ function FileView() {
   const autoLockModelMatrixRef = useRef(false);
   // User manual OFF should temporarily block auto re-enable until context reset.
   const manualLockOffOverrideRef = useRef(false);
+  // One-shot flag: suppress auto-lock on initial load when URL has specific genomic coords.
+  const hasInitialUrlCoordsRef = useRef(
+    Boolean(searchParams.get('genomiccoordstart') && searchParams.get('genomiccoordend'))
+  );
   // Temporary toggle so max zoom guard can be re-enabled quickly.
   const ENABLE_MAX_ZOOM_GUARD = false;
   // Max zoom alert (lock-mode zoom limit reached)
@@ -710,6 +716,13 @@ function FileView() {
   useEffect(() => {
     autoLockModelMatrixRef.current = false;
     manualLockOffOverrideRef.current = false;
+  }, [tsconfig?.file_path, tsconfig?.genome_length]);
+
+  useEffect(() => {
+    if (hasInitialUrlCoordsRef.current && tsconfig?.file_path) {
+      manualLockOffOverrideRef.current = true;
+      hasInitialUrlCoordsRef.current = false;
+    }
   }, [tsconfig?.file_path, tsconfig?.genome_length]);
 
   // When all trees are shown, enforce lock view.
