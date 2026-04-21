@@ -86,6 +86,9 @@ export {
 // DeckGL Controller
 export { MyOrthographicController, setGlobalControllers } from './controllers/MyOrthographicController.js';
 
+// RPC Utilities (JBrowse integration)
+export { createRpcWorker } from './rpc/createRpcWorker.js';
+
 // Pure Computation Utilities
 export {
   lowerBound,
@@ -95,8 +98,12 @@ export {
   getSelectionStrategy,
   new_complete_experiment_map,
   normalizeIntervals,
-  queryIntervalsSync
+  queryIntervalsSync,
+  serializeBinsForTransfer
 } from './utils/computations.js';
+
+// Render worker helpers (exported for JBrowse RPC integration)
+export { computeRenderArrays } from './workers/renderDataWorker.js';
 
 // Render Utilities
 export {

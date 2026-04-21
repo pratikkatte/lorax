@@ -28,6 +28,7 @@ export function useTreeViewportPipeline({
   isInteracting = false,
   treeEnabled = true,
   renderTrees = true,
+  renderWorkerOverride = null,
 }) {
   const resolvedIntervalWorker = intervalWorker || worker;
   const resolvedLocalDataWorker = localDataWorker || worker;
@@ -78,7 +79,8 @@ export function useTreeViewportPipeline({
     metadataArrays,
     metadataColors,
     populationFilter,
-    defaultTipColor
+    defaultTipColor,
+    workerOverride: renderWorkerOverride,
   });
 
   return useMemo(() => ({

@@ -142,7 +142,8 @@ out
 .pnp.*
 
 # --- Repo-specific ---
-packages/plugin/
+# packages/plugin/
+packages/plugin/jbrowse-components/website/static/genomes/
 packages/website/playwright-report/
 packages/website/test-results/
 

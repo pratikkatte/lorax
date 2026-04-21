@@ -1,4 +1,5 @@
 import { nearestIndex, upperBound, new_complete_experiment_map } from "./modules/binningUtils.js";
+import { serializeBinsForTransfer } from "../utils/computations.js";
 
 let tsconfig = null;
 let normalizedIntervals = null;  // Cached normalized array - computed once when config is set
@@ -61,18 +62,6 @@ function getIntervals(start, end, maxIntervals = 2000) {
     hi,
     count             // Pre-decimation count for downstream hooks
   };
-}
-
-/**
- * Serialize Map for postMessage transfer
- * Maps and Matrix4 cannot be transferred directly via postMessage
- */
-function serializeBinsForTransfer(bins) {
-  return Array.from(bins.entries()).map(([key, value]) => ({
-    key,
-    ...value,
-    modelMatrix: value.modelMatrix ? value.modelMatrix.toArray() : null
-  }));
 }
 
 /**

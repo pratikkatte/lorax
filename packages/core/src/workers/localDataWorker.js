@@ -1,5 +1,6 @@
 import { new_complete_experiment_map } from './modules/binningUtils.js';
 import { normalizeIntervalsFromConfig } from './modules/intervalUtils.js';
+import { serializeBinsForTransfer } from '../utils/computations.js';
 
 let normalizedIntervals = null;
 let prevLocalBinsCache = null;
@@ -7,14 +8,6 @@ let prevLocalBinsCache = null;
 export function configureLocalDataWorker(config) {
   normalizedIntervals = normalizeIntervalsFromConfig(config);
   prevLocalBinsCache = null;
-}
-
-function serializeBinsForTransfer(bins) {
-  return Array.from(bins.entries()).map(([key, value]) => ({
-    key,
-    ...value,
-    modelMatrix: value.modelMatrix ? value.modelMatrix.toArray() : null
-  }));
 }
 
 export function getLocalData(data) {

@@ -61,7 +61,6 @@ export function useLocalData({
   tsconfig,
   enabled = true,
   displayOptions = {},
-  enabled = true,
 }) {
   const [localBins, setLocalBins] = useState(null);
   const [displayArray, setDisplayArray] = useState([]);

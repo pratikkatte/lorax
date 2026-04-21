@@ -208,6 +208,7 @@ const LoraxDeckGL = forwardRef(({
     displayLineagePaths,  // Lineage display toggle
     compareMode,
     urlSyncEnabled,
+    rpcWorker,
   } = useLorax();
 
   // Stabilize population filter to avoid rerunning downstream effects every render
@@ -322,7 +323,7 @@ const LoraxDeckGL = forwardRef(({
     localDataWorker,
     worker,
     workerConfigReady,
-    genomicCoords,
+    genomicCoords: activeGenomicCoords,
     viewState,
     tsconfig,
     queryTreeLayout,
@@ -338,6 +339,7 @@ const LoraxDeckGL = forwardRef(({
     includeEdgeData,
     treeEnabled,
     renderTrees,
+    renderWorkerOverride: rpcWorker || null,
   });
 
   const {

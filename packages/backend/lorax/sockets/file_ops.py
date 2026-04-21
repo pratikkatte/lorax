@@ -113,6 +113,7 @@ def register_file_events(sio):
                     recoverable=False,
                 )
 
+            file_path_override = data.get("file_path")
             project = str(data.get("project") or "")
             filename = str(data.get("file") or "")
 
@@ -121,39 +122,48 @@ def register_file_events(sio):
             genomiccoordend = data.get("genomiccoordend")
             dev_print("lorax_sid", lorax_sid, project, filename)
 
-            if not project:
-                return _load_file_failure_payload(
-                    request_id=request_id,
-                    code="MISSING_PROJECT_PARAM",
-                    message="Missing required 'project' parameter.",
-                    recoverable=True,
-                )
+            if file_path_override:
+                # JBrowse adapter path: use the absolute path as-is, deriving
+                # a best-effort project/filename for status events and cache keys.
+                file_path = Path(str(file_path_override)).expanduser()
+                filename = file_path.name
+                project = file_path.parent.name if file_path.parent else ""
+                blob_path = None
+                gcs_allowed = False
+            else:
+                if not project:
+                    return _load_file_failure_payload(
+                        request_id=request_id,
+                        code="MISSING_PROJECT_PARAM",
+                        message="Missing required 'project' parameter.",
+                        recoverable=True,
+                    )
 
-            if not filename:
-                dev_print("Missing file param")
-                return _load_file_failure_payload(
-                    request_id=request_id,
-                    code="MISSING_FILE_PARAM",
-                    message="Missing required 'file' parameter.",
-                    recoverable=True,
-                )
+                if not filename:
+                    dev_print("Missing file param")
+                    return _load_file_failure_payload(
+                        request_id=request_id,
+                        code="MISSING_FILE_PARAM",
+                        message="Missing required 'file' parameter.",
+                        recoverable=True,
+                    )
 
-            gcs_allowed = True
-            if project == 'Uploads':
-                target_sid = share_sid if share_sid else lorax_sid
-                if CURRENT_MODE == "local":
-                    # Local mode keeps uploads flat and does not pull uploads from GCS
+                gcs_allowed = True
+                if project == 'Uploads':
+                    target_sid = share_sid if share_sid else lorax_sid
+                    if CURRENT_MODE == "local":
+                        # Local mode keeps uploads flat and does not pull uploads from GCS
+                        file_path = UPLOAD_DIR / project / filename
+                        blob_path = f"{project}/{filename}"
+                        gcs_allowed = False
+                    else:
+                        file_path = UPLOAD_DIR / project / target_sid / filename
+                        blob_path = f"{project}/{target_sid}/{filename}"
+                else:
                     file_path = UPLOAD_DIR / project / filename
                     blob_path = f"{project}/{filename}"
-                    gcs_allowed = False
-                else:
-                    file_path = UPLOAD_DIR / project / target_sid / filename
-                    blob_path = f"{project}/{target_sid}/{filename}"
-            else:
-                file_path = UPLOAD_DIR / project / filename
-                blob_path = f"{project}/{filename}"
 
-            if BUCKET_NAME and gcs_allowed:
+            if BUCKET_NAME and gcs_allowed and blob_path:
                 if file_path.exists():
                     dev_print(f"File {file_path} already exists, skipping download.")
                 else:
@@ -187,7 +197,10 @@ def register_file_events(sio):
             }, to=sid)
 
             dev_print("loading file", file_path, os.getpid())
-            ctx = await handle_upload(str(file_path), str(UPLOAD_DIR))
+            ctx = await handle_upload(
+                str(file_path),
+                None if file_path_override else str(UPLOAD_DIR),
+            )
 
             # Config is already computed and cached in FileContext
             config = ctx.config if ctx else None
