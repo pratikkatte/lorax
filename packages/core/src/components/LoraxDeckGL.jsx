@@ -194,6 +194,7 @@ const LoraxDeckGL = forwardRef(({
     searchTags,  // Multi-value search tags
     displayLineagePaths,  // Lineage display toggle
     compareMode,
+    urlSyncEnabled,
   } = useLorax();
 
   // Stabilize population filter to avoid rerunning downstream effects every render
@@ -259,7 +260,8 @@ const LoraxDeckGL = forwardRef(({
     globalBpPerUnit,
     genomeLength,
     tsconfigValue: tsconfig?.value,
-    isInteracting
+    isInteracting,
+    urlSyncEnabled
   });
 
   // 5. Notify parent when genomicCoords changes

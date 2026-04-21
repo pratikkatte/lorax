@@ -24,9 +24,16 @@ export function LoraxProvider({
   setGettingDetails,
   enableConfig = false,
   onConfigLoaded = null,
-  enableMetadataFilter = false
+  enableMetadataFilter = false,
+  urlSyncEnabled = true,
 }) {
   const connection = useLoraxConnection({ apiBase, isProd, setGettingDetails });
+
+  useEffect(() => {
+    if (!urlSyncEnabled) {
+      clearGenomicCoordsFromURL();
+    }
+  }, [urlSyncEnabled]);
 
   // Config state (always call hook to follow React rules, but pass enabled flag)
   const configState = useLoraxConfig({
@@ -50,6 +57,7 @@ export function LoraxProvider({
     ...connection,
     ...configState,
     configEnabled: enableConfig,
+    urlSyncEnabled,
     // Conditionally include filter state
     ...(enableMetadataFilter && enableConfig ? filterState : {})
   };
