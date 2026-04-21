@@ -113,6 +113,8 @@ const LoraxDeckGL = forwardRef(({
   glOptions = { preserveDrawingBuffer: true },
   // Polygon overlay props
   showPolygons = true,
+  treeLayersEnabled = true,
+  intervalsOnly = false,
   polygonOptions = {},
   onPolygonHover,
   onPolygonClick,
@@ -145,6 +147,13 @@ const LoraxDeckGL = forwardRef(({
   showCompareDeletion = true,
   // Tree edge color [r, g, b, a] (used when colorEdgesByTree is false)
   edgeColor = null,
+
+  // Optional: override genomic coords for interval/local data
+  externalGenomicCoords = null,
+  // Optional: require external coords before querying intervals
+  externalGenomicCoordsRequired = false,
+  // Optional: sync viewState to external coords
+  externalGenomicCoordsSync = false,
   // Default tip color [r, g, b, a] when metadata coloring is unavailable
   defaultTipColor = null,
   // Disable modelMatrix recomputation on zoom; allow pan-driven recomputation
@@ -158,6 +167,10 @@ const LoraxDeckGL = forwardRef(({
   ...otherProps
 }, ref) => {
   const deckRef = useRef(null);
+
+  const treeEnabled = !intervalsOnly;
+  const renderTrees = treeEnabled && treeLayersEnabled; // todo: remove these two variable to simplify code
+
   const [lockViewPayload, setLockViewPayload] = useState(null);
   const [isInteracting, setIsInteracting] = useState(false);
   const interactionSettleTimerRef = useRef(null);
@@ -264,12 +277,31 @@ const LoraxDeckGL = forwardRef(({
     urlSyncEnabled
   });
 
+  const activeGenomicCoords = externalGenomicCoordsRequired
+    ? externalGenomicCoords
+    : (externalGenomicCoords || genomicCoords);
+
+    const externalSyncKeyRef = useRef(null);
+
+    useEffect(() => {
+      if (!externalGenomicCoordsSync || !externalGenomicCoords) return;
+      if (!coordsReady) return;
+      const [start, end] = externalGenomicCoords;
+      if (!Number.isFinite(start) || !Number.isFinite(end) || start >= end) return;
+      const key = `${start}:${end}:${globalBpPerUnit}`;
+      if (externalSyncKeyRef.current === key) return;
+      // Keep Lorax viewState aligned to external coords (e.g., JBrowse blocks).
+      setGenomicCoords(externalGenomicCoords);
+      externalSyncKeyRef.current = key;
+    }, [externalGenomicCoordsSync, externalGenomicCoords, globalBpPerUnit, coordsReady, setGenomicCoords]);
+  
   // 5. Notify parent when genomicCoords changes
   useEffect(() => {
-    if (genomicCoords && externalOnGenomicCoordsChange) {
-      externalOnGenomicCoordsChange(genomicCoords);
+    // if (genomicCoords && externalOnGenomicCoordsChange) {
+      if (activeGenomicCoords && externalOnGenomicCoordsChange) {
+      externalOnGenomicCoordsChange(activeGenomicCoords);
     }
-  }, [genomicCoords, externalOnGenomicCoordsChange]);
+  }, [activeGenomicCoords, externalOnGenomicCoordsChange]);
 
   // 6. Worker-based viewport -> local bins -> tree fetch -> render pipeline
   const {
@@ -303,7 +335,9 @@ const LoraxDeckGL = forwardRef(({
     defaultTipColor,
     isInteracting,
     includeTipData,
-    includeEdgeData
+    includeEdgeData,
+    treeEnabled,
+    renderTrees,
   });
 
   const {
@@ -930,7 +964,8 @@ const LoraxDeckGL = forwardRef(({
     onTipHover,
     onTipClick,
     onEdgeHover,
-    onEdgeClick
+    onEdgeClick,
+    enableTreeLayers: treeEnabled && treeLayersEnabled,
   });
 
   // 9. Tree polygon overlay computation and animation
@@ -944,7 +979,7 @@ const LoraxDeckGL = forwardRef(({
     localBins,
     globalBpPerUnit,
     viewState,
-    enabled: showPolygons,
+    enabled: showPolygons && treeEnabled,
     animate: polygonOptions?.animate ?? true,
     animationDuration: polygonOptions?.animationDuration ?? 300,
     easing: polygonOptions?.easing ?? 'easeOut',
@@ -1012,16 +1047,16 @@ const LoraxDeckGL = forwardRef(({
   }, [enableLockMaxZoomGuard, lockModelMatrix, orthoViewportPx, localBins, internalHandleViewStateChange, externalOnViewStateChange, debouncedScheduleLockSnapshotCapture, updateInteractionState, onMaxZoomReached]);
 
   const handleAfterRender = useCallback(() => {
-    if (showPolygons && onPolygonsAfterRender && deckRef.current?.deck) {
+    if (showPolygons && treeEnabled && onPolygonsAfterRender && deckRef.current?.deck) {
       onPolygonsAfterRender(deckRef.current.deck);
     }
     flushPendingLockSnapshotCapture();
-  }, [showPolygons, onPolygonsAfterRender, flushPendingLockSnapshotCapture]);
+  }, [showPolygons, treeEnabled, onPolygonsAfterRender, flushPendingLockSnapshotCapture]);
 
   // Enable deck.gl picking loop for layer-level onHover/onClick and
   // implement polygon hover/click without letting the SVG overlay intercept pointer events.
   const handleDeckHover = useCallback((info, event) => {
-    if (!showPolygons) return;
+    if (!showPolygons || !treeEnabled) return;
     // Only do polygon hover when nothing pickable is hovered.
     if (info?.object) return;
     const xy = getOrthoLocalXY(deckRef, info, event);
@@ -1030,10 +1065,10 @@ const LoraxDeckGL = forwardRef(({
     if (!Number.isFinite(x) || !Number.isFinite(y)) return;
     const hit = findPolygonAtPoint(polygons, x, y);
     setHoveredPolygon(hit?.key ?? null);
-  }, [showPolygons, polygons, setHoveredPolygon]);
+  }, [showPolygons, polygons,treeEnabled, setHoveredPolygon]);
 
   const handleDeckClick = useCallback((info, event) => {
-    if (!showPolygons) return;
+    if (!showPolygons || !treeEnabled) return;
     if (lockModelMatrix) return; // no polygon click when locked-in
     // If a deck object was picked, its layer handler should handle it.
     if (info?.object) return;
@@ -1045,7 +1080,7 @@ const LoraxDeckGL = forwardRef(({
     if (hit?.treeIndex != null) {
       onPolygonClick?.({ key: hit.key, treeIndex: hit.treeIndex, polygon: hit });
     }
-  }, [showPolygons, polygons, onPolygonClick, lockModelMatrix]);
+  }, [showPolygons, treeEnabled, polygons, onPolygonClick, lockModelMatrix]);
 
   // Ensure hover-driven UI (tooltips, edge highlights) clears when pointer leaves the canvas.
   // DeckGL's onHover won't fire once the pointer is outside the canvas, so we proactively clear.
