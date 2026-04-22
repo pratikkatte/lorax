@@ -63,7 +63,30 @@ type HoverTooltipState = {
 }
 
 type DeckPickInfo = { x?: number; y?: number; object?: unknown }
-type DeckPickEvent = { srcEvent?: { clientX?: number; clientY?: number } }
+type DeckPickEvent = { srcEvent?: MouseEvent | PointerEvent | TouchEvent }
+
+/** Screen coords for `position: fixed` — deck `info.x/y` are canvas-relative, not client. */
+function getClientCoordsForTooltip(
+  info: DeckPickInfo,
+  event: DeckPickEvent,
+  trackRoot: HTMLElement | null,
+): { x: number; y: number } | null {
+  const src = event?.srcEvent
+  console.log('src', src, info, event)
+  // if (src && 'clientX' in src && 'clientY' in src) {
+  //   const cx = src.clientX
+  //   const cy = src.clientY
+  //   if (Number.isFinite(cx) && Number.isFinite(cy)) {
+  //     return { x: cx, y: cy }
+  //   }
+  // }
+  const ix = info?.x
+  const iy = info?.y
+  if (ix && iy) { 
+    return { x: ix, y: iy }
+  }
+  return null
+}
 
 function LoraxDeckContainer({
   loadResult,
@@ -138,13 +161,11 @@ const LoraxComponent = observer(function LoraxComponent({ model }: { model: Lora
 
   const setTooltipFromEvent = useCallback(
     (base: Omit<HoverTooltipState, 'x' | 'y'>, info: DeckPickInfo, event: DeckPickEvent) => {
-      const src = event?.srcEvent
-      const clientX = src?.clientX
-      const clientY = src?.clientY
-      const x = Number.isFinite(clientX) ? clientX : info?.x
-      const y = Number.isFinite(clientY) ? clientY : info?.y
-      if (!Number.isFinite(x) || !Number.isFinite(y)) return
-      setHoverTooltip({ ...base, x: x as number, y: y as number })
+      console.log('setTooltipFromEvent', base, info, event)
+      const xy = getClientCoordsForTooltip(info, event, trackContainerRef.current)
+      console.log('xy', xy)
+      if (!xy) return
+      setHoverTooltip({ ...base, x: xy.x, y: xy.y })
     },
     [],
   )
@@ -428,8 +449,8 @@ const LoraxComponent = observer(function LoraxComponent({ model }: { model: Lora
         <div
           style={{
             position: 'fixed',
-            left: hoverTooltip.x + 16,
-            top: hoverTooltip.y - 8,
+            left: hoverTooltip.x + 12,
+            top: hoverTooltip.y + 12,
             zIndex: 99999,
             pointerEvents: 'none',
             backgroundColor: '#fff',
