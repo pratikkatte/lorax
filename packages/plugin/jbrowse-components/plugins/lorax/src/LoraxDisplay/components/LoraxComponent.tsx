@@ -28,6 +28,22 @@ type LoadFileResult = {
   loraxSid?: string
 }
 
+function serializeLoadSnapshotForDrawer(result: LoadFileResult | null): unknown {
+  if (!result) {
+    return null
+  }
+  try {
+    return JSON.parse(
+      JSON.stringify({
+        loraxSid: result.loraxSid,
+        config: result.config,
+      }),
+    )
+  } catch {
+    return null
+  }
+}
+
 type OffsetPercent = {
   leftOffsetPercent: number
   rightOffsetPercent: number
@@ -147,6 +163,7 @@ const LoraxComponent = observer(function LoraxComponent({ model }: { model: Lora
   useEffect(() => {
     if (!adapterConfig) {
       console.log('[LoraxPlugin] adapter config not available')
+      model.setLoadResultSnapshot(null)
       return
     }
 
@@ -163,6 +180,7 @@ const LoraxComponent = observer(function LoraxComponent({ model }: { model: Lora
 
         if (!hasLoadFile(dataAdapter)) {
           console.warn('[LoraxPlugin] adapter does not implement loadFile')
+          model.setLoadResultSnapshot(null)
           return
         }
 
@@ -172,6 +190,7 @@ const LoraxComponent = observer(function LoraxComponent({ model }: { model: Lora
         }
         setLoadResult(result)
         setLoadError(null)
+        model.setLoadResultSnapshot(serializeLoadSnapshotForDrawer(result))
         console.log('[LoraxPlugin] load_file result', { hasConfig: !!result?.config, loraxSid: result?.loraxSid, intervalsCount: (result?.config as { intervals?: unknown[] })?.intervals?.length })
       } catch (error) {
         if (cancelled) {
@@ -179,6 +198,7 @@ const LoraxComponent = observer(function LoraxComponent({ model }: { model: Lora
         }
         const err = error instanceof Error ? error : new Error(String(error))
         setLoadError(err)
+        model.setLoadResultSnapshot(null)
         console.error('[LoraxPlugin] load_file error', err)
       }
     }

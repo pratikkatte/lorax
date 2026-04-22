@@ -5,6 +5,7 @@ import LoraxTrackF from './LoraxTrack'
 import LoraxDisplayF from './LoraxDisplay'
 import LoraxAdapterF from './LoraxAdapter'
 import LoraxRPCMethodsF from './LoraxRPC'
+import LoraxMetadataWidgetF from './LoraxMetadataWidget'
 
 /**
  * LoraxPlugin - JBrowse 2 plugin for Lorax ARG visualization
@@ -21,6 +22,7 @@ export default class LoraxPlugin extends Plugin {
     LoraxDisplayF(pluginManager)
     LoraxAdapterF(pluginManager)
     LoraxRPCMethodsF(pluginManager)
+    LoraxMetadataWidgetF(pluginManager)
   }
 
   configure(_pluginManager: PluginManager) {}
