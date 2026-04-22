@@ -23,6 +23,13 @@ type ParsedSnapshot = {
   config?: Record<string, unknown>
 }
 
+type ParsedSelectedDetail = {
+  kind?: string
+  title?: string
+  rows?: Array<{ k?: string; v?: unknown }>
+  raw?: unknown
+}
+
 function parseSnapshot(raw: unknown): ParsedSnapshot | null {
   if (raw === null || raw === undefined) {
     return null
@@ -38,6 +45,13 @@ function parseSnapshot(raw: unknown): ParsedSnapshot | null {
       ? (config as Record<string, unknown>)
       : undefined
   return { loraxSid, config: configObj }
+}
+
+function parseSelectedDetail(raw: unknown): ParsedSelectedDetail | null {
+  if (!raw || typeof raw !== 'object') {
+    return null
+  }
+  return raw as ParsedSelectedDetail
 }
 
 function formatScalar(value: unknown): string | undefined {
@@ -144,6 +158,7 @@ const LoraxMetadataWidget = observer(function LoraxMetadataWidget({
   const [tab, setTab] = useState(0)
   const trackLabel = (model.trackLabel as string) || 'Lorax'
   const parsed = parseSnapshot(model.snapshot as unknown)
+  const selectedDetail = parseSelectedDetail(model.selectedDetail as unknown)
 
   if (!parsed) {
     return (
@@ -182,6 +197,7 @@ const LoraxMetadataWidget = observer(function LoraxMetadataWidget({
         <Tab label="Details" id="lorax-metadata-tab-0" aria-controls="lorax-metadata-tabpanel-0" />
         <Tab label="Mutations" id="lorax-metadata-tab-1" aria-controls="lorax-metadata-tabpanel-1" />
         <Tab label="Metadata" id="lorax-metadata-tab-2" aria-controls="lorax-metadata-tabpanel-2" />
+        <Tab label="Selection" id="lorax-metadata-tab-3" aria-controls="lorax-metadata-tabpanel-3" />
       </Tabs>
 
       <TabPanel value={tab} index={0}>
@@ -261,6 +277,45 @@ const LoraxMetadataWidget = observer(function LoraxMetadataWidget({
               </Box>
             </AccordionDetails>
           </Accordion>
+        </div>
+      </TabPanel>
+      <TabPanel value={tab} index={3}>
+        <div className={classes.tabPanel}>
+          {!selectedDetail ? (
+            <Typography color="text.secondary">
+              No selected tip/edge yet. Click a tip or edge in the Lorax view.
+            </Typography>
+          ) : (
+            <>
+              <Typography variant="overline" component="h2" className={classes.sectionHeader}>
+                {selectedDetail.title ?? 'Selected item'}
+              </Typography>
+              <Divider sx={{ mb: 1 }} />
+              {Array.isArray(selectedDetail.rows) ? (
+                selectedDetail.rows.map((row, i) => (
+                  <SimpleField
+                    key={`${row.k ?? 'row'}-${i}`}
+                    name={String(row.k ?? `Field ${i + 1}`)}
+                    value={formatScalar(row.v) ?? '—'}
+                  />
+                ))
+              ) : (
+                <Typography color="text.secondary" sx={{ mb: 1 }}>
+                  No structured fields available for this selection.
+                </Typography>
+              )}
+              <Accordion defaultExpanded={false} sx={{ mt: 2 }}>
+                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                  <Typography variant="button">Selected payload (JSON)</Typography>
+                </AccordionSummary>
+                <AccordionDetails className={classes.accordionDetails}>
+                  <Box className={classes.pre} component="pre" aria-label="Selected Lorax payload JSON">
+                    {JSON.stringify(selectedDetail.raw ?? selectedDetail, null, 2)}
+                  </Box>
+                </AccordionDetails>
+              </Accordion>
+            </>
+          )}
         </div>
       </TabPanel>
     </Paper>

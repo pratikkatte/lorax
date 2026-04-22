@@ -1,11 +1,18 @@
 /// <reference path="../../lorax-core.d.ts" />
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { getContainingView, getEnv, getSession } from '@jbrowse/core/util'
+import {
+  getContainingTrack,
+  getContainingView,
+  getEnv,
+  getSession,
+  isSessionModelWithWidgets,
+} from '@jbrowse/core/util'
 import { readConfObject } from '@jbrowse/core/configuration'
 import { observer } from 'mobx-react'
 import { getAdapter } from '@jbrowse/core/data_adapters/dataAdapterCache'
 import { LoraxDeckGL, LoraxProvider, useLorax } from '@lorax/core'
 
+import { LORAX_METADATA_WIDGET_ID } from '../model'
 import type { LoraxDisplayModel } from '../model'
 import type { LinearGenomeViewModel } from '@jbrowse/plugin-linear-genome-view'
 
@@ -62,6 +69,19 @@ type HoverTooltipState = {
   y: number
 }
 
+type SelectionDetail = {
+  kind: 'tip' | 'edge'
+  title: string
+  rows: HoverTooltipRow[]
+  raw: unknown
+}
+
+type MetadataWidgetModel = {
+  id: string
+  setSnapshot?: (snapshot: unknown) => void
+  setSelectedDetail?: (detail: unknown) => void
+}
+
 type DeckPickInfo = { x?: number; y?: number; object?: unknown }
 type DeckPickEvent = { srcEvent?: MouseEvent | PointerEvent | TouchEvent }
 
@@ -72,7 +92,6 @@ function getClientCoordsForTooltip(
   trackRoot: HTMLElement | null,
 ): { x: number; y: number } | null {
   const src = event?.srcEvent
-  console.log('src', src, info, event)
   // if (src && 'clientX' in src && 'clientY' in src) {
   //   const cx = src.clientX
   //   const cy = src.clientY
@@ -158,12 +177,11 @@ const LoraxComponent = observer(function LoraxComponent({ model }: { model: Lora
   const [hoverTooltip, setHoverTooltip] = useState<HoverTooltipState | null>(null)
 
   const clearHoverTooltip = useCallback(() => setHoverTooltip(null), [])
+  const metadataWidgetRef = useRef<MetadataWidgetModel | null>(null)
 
   const setTooltipFromEvent = useCallback(
     (base: Omit<HoverTooltipState, 'x' | 'y'>, info: DeckPickInfo, event: DeckPickEvent) => {
-      console.log('setTooltipFromEvent', base, info, event)
       const xy = getClientCoordsForTooltip(info, event, trackContainerRef.current)
-      console.log('xy', xy)
       if (!xy) return
       setHoverTooltip({ ...base, x: xy.x, y: xy.y })
     },
@@ -217,13 +235,79 @@ const LoraxComponent = observer(function LoraxComponent({ model }: { model: Lora
     [clearHoverTooltip, setTooltipFromEvent],
   )
 
-  const onTipClick = useCallback((_tip: unknown, _info: DeckPickInfo, _event: DeckPickEvent) => {
-    // Reserved for future detail panel / queryDetails wiring (website parity).
-  }, [])
+  const showMetadataWidgetForSelection = useCallback(
+    (detail: SelectionDetail) => {
+      if (!isSessionModelWithWidgets(session)) {
+        return
+      }
+      const snapshot = serializeLoadSnapshotForDrawer(loadResult)
+      let trackLabel = 'Lorax'
+      try {
+        const track = getContainingTrack(model)
+        trackLabel = (readConfObject(track.configuration, 'name') as string) || trackLabel
+      } catch {
+        // display may not be mounted under a track yet
+      }
+      const existingWidget =
+        session.widgets.get(LORAX_METADATA_WIDGET_ID) as MetadataWidgetModel | undefined
+      const existing = metadataWidgetRef.current ?? existingWidget
+      if (existing && existingWidget) {
+        existing.setSnapshot?.(snapshot)
+        existing.setSelectedDetail?.(detail)
+        metadataWidgetRef.current = existing
+        session.showWidget(existingWidget)
+      } else {
+        const widget = session.addWidget('LoraxMetadataWidget', LORAX_METADATA_WIDGET_ID, {
+          trackLabel,
+          snapshot,
+          selectedDetail: detail,
+        }) as MetadataWidgetModel
+        metadataWidgetRef.current = widget
+        session.showWidget(widget)
+      }
+      model.setMetadataView(true)
+    },
+    [session, loadResult, model],
+  )
 
-  const onEdgeClick = useCallback((_edge: unknown, _info: DeckPickInfo, _event: DeckPickEvent) => {
-    // Reserved for future edge-detail wiring (website parity).
-  }, [])
+  const onTipClick = useCallback(
+    (tip: unknown, _info: DeckPickInfo, _event: DeckPickEvent) => {
+      if (!tip) {
+        return
+      }
+      const t = tip as { tree_idx?: number; node_id?: number }
+      showMetadataWidgetForSelection({
+        kind: 'tip',
+        title: 'Selected tip',
+        rows: [
+          { k: 'Tree', v: t.tree_idx },
+          { k: 'Node ID', v: t.node_id },
+        ],
+        raw: tip,
+      })
+    },
+    [showMetadataWidgetForSelection],
+  )
+
+  const onEdgeClick = useCallback(
+    (edge: unknown, _info: DeckPickInfo, _event: DeckPickEvent) => {
+      if (!edge) {
+        return
+      }
+      const e = edge as { tree_idx?: number; parent_id?: number; child_id?: number }
+      showMetadataWidgetForSelection({
+        kind: 'edge',
+        title: 'Selected edge',
+        rows: [
+          { k: 'Tree', v: e.tree_idx },
+          { k: 'Parent', v: e.parent_id },
+          { k: 'Child', v: e.child_id },
+        ],
+        raw: edge,
+      })
+    },
+    [showMetadataWidgetForSelection],
+  )
 
   const { offsetPx, width } = view as unknown as { offsetPx: number, width: number }
 

@@ -14,7 +14,16 @@ const stateModel = types.model('LoraxMetadataWidget', {
   type: types.literal('LoraxMetadataWidget'),
   trackLabel: types.optional(types.string, ''),
   snapshot: types.maybeNull(types.frozen()),
+  selectedDetail: types.maybeNull(types.frozen()),
 })
+  .actions(self => ({
+    setSnapshot(snapshot: unknown) {
+      self.snapshot = snapshot
+    },
+    setSelectedDetail(detail: unknown) {
+      self.selectedDetail = detail
+    },
+  }))
 
 export default function LoraxMetadataWidgetF(pluginManager: PluginManager) {
   pluginManager.addWidgetType(() => {
