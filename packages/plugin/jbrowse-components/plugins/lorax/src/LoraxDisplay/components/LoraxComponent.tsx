@@ -1,5 +1,5 @@
 /// <reference path="../../lorax-core.d.ts" />
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { getContainingView, getEnv, getSession } from '@jbrowse/core/util'
 import { readConfObject } from '@jbrowse/core/configuration'
 import { observer } from 'mobx-react'
@@ -53,18 +53,38 @@ type OffsetPercent = {
   isOffFlow: boolean
 }
 
+type HoverTooltipRow = { k: string; v: string | number | null | undefined }
+type HoverTooltipState = {
+  kind: 'tip' | 'edge'
+  title: string
+  rows: HoverTooltipRow[]
+  x: number
+  y: number
+}
+
+type DeckPickInfo = { x?: number; y?: number; object?: unknown }
+type DeckPickEvent = { srcEvent?: { clientX?: number; clientY?: number } }
+
 function LoraxDeckContainer({
   loadResult,
   height,
   viewConfig,
   intervalCoords,
   offsetPercent,
+  onTipHover,
+  onTipClick,
+  onEdgeHover,
+  onEdgeClick,
 }: {
   loadResult: LoadFileResult | null
   height: number
   viewConfig: Record<string, any>
   intervalCoords: [number, number] | null
   offsetPercent: OffsetPercent
+  onTipHover: (tip: unknown, info: DeckPickInfo, event: DeckPickEvent) => void
+  onTipClick: (tip: unknown, info: DeckPickInfo, event: DeckPickEvent) => void
+  onEdgeHover: (edge: unknown, info: DeckPickInfo, event: DeckPickEvent) => void
+  onEdgeClick: (edge: unknown, info: DeckPickInfo, event: DeckPickEvent) => void
 }) {
   const { handleConfigUpdate } = useLorax()
 
@@ -93,6 +113,10 @@ function LoraxDeckContainer({
         externalGenomicCoords={intervalCoords}
         externalGenomicCoordsRequired
         externalGenomicCoordsSync
+        onTipHover={onTipHover}
+        onTipClick={onTipClick}
+        onEdgeHover={onEdgeHover}
+        onEdgeClick={onEdgeClick}
       />
     </div>
   )
@@ -108,9 +132,79 @@ const LoraxComponent = observer(function LoraxComponent({ model }: { model: Lora
   const [loadResult, setLoadResult] = useState<LoadFileResult | null>(null)
   const [loadError, setLoadError] = useState<Error | null>(null)
   const [trackHeight, setTrackHeight] = useState(height)
+  const [hoverTooltip, setHoverTooltip] = useState<HoverTooltipState | null>(null)
+
+  const clearHoverTooltip = useCallback(() => setHoverTooltip(null), [])
+
+  const setTooltipFromEvent = useCallback(
+    (base: Omit<HoverTooltipState, 'x' | 'y'>, info: DeckPickInfo, event: DeckPickEvent) => {
+      const src = event?.srcEvent
+      const clientX = src?.clientX
+      const clientY = src?.clientY
+      const x = Number.isFinite(clientX) ? clientX : info?.x
+      const y = Number.isFinite(clientY) ? clientY : info?.y
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return
+      setHoverTooltip({ ...base, x: x as number, y: y as number })
+    },
+    [],
+  )
+
+  const onTipHover = useCallback(
+    (tip: unknown, info: DeckPickInfo, event: DeckPickEvent) => {
+      if (!tip) {
+        clearHoverTooltip()
+        return
+      }
+      const t = tip as { tree_idx?: number; node_id?: number }
+      setTooltipFromEvent(
+        {
+          kind: 'tip',
+          title: 'Tip',
+          rows: [
+            { k: 'Tree', v: t.tree_idx },
+            { k: 'Node ID', v: t.node_id },
+          ],
+        },
+        info,
+        event,
+      )
+    },
+    [clearHoverTooltip, setTooltipFromEvent],
+  )
+
+  const onEdgeHover = useCallback(
+    (edge: unknown, info: DeckPickInfo, event: DeckPickEvent) => {
+      if (!edge) {
+        clearHoverTooltip()
+        return
+      }
+      const e = edge as { tree_idx?: number; parent_id?: number; child_id?: number }
+      setTooltipFromEvent(
+        {
+          kind: 'edge',
+          title: 'Edge',
+          rows: [
+            { k: 'Tree', v: e.tree_idx },
+            { k: 'Parent', v: e.parent_id },
+            { k: 'Child', v: e.child_id },
+          ],
+        },
+        info,
+        event,
+      )
+    },
+    [clearHoverTooltip, setTooltipFromEvent],
+  )
+
+  const onTipClick = useCallback((_tip: unknown, _info: DeckPickInfo, _event: DeckPickEvent) => {
+    // Reserved for future detail panel / queryDetails wiring (website parity).
+  }, [])
+
+  const onEdgeClick = useCallback((_edge: unknown, _info: DeckPickInfo, _event: DeckPickEvent) => {
+    // Reserved for future edge-detail wiring (website parity).
+  }, [])
 
   const { offsetPx, width } = view as unknown as { offsetPx: number, width: number }
-
 
   const bpToPx = useMemo(() => {
     const blocks = view?.dynamicBlocks?.contentBlocks
@@ -232,10 +326,10 @@ const LoraxComponent = observer(function LoraxComponent({ model }: { model: Lora
         height: '2%' },
       genomePositions: { enabled: false },
 
-      treeTime: { enabled: false , x: '0%',
-        y: '0%',
-        width: '0%',
-        height: '0%'},
+      treeTime: { enabled: true , x: '0.5%',
+        y: '5%',
+        width: '4%',
+        height: '95%'},
     }),[])
 
   const intervalCoords = useMemo(() => {
@@ -303,7 +397,11 @@ const LoraxComponent = observer(function LoraxComponent({ model }: { model: Lora
   }
 
   return (
-    <div ref={trackContainerRef} style={{ height: '100%' }}>
+    <div
+      ref={trackContainerRef}
+      style={{ height: '100%', position: 'relative' }}
+      onMouseLeave={clearHoverTooltip}
+    >
       <LoraxProvider
         apiBase={apiBase}
         isProd={isProd}
@@ -320,8 +418,64 @@ const LoraxComponent = observer(function LoraxComponent({ model }: { model: Lora
           viewConfig={viewConfig}
           intervalCoords={intervalCoords}
           offsetPercent={offsetPercent}
+          onTipHover={onTipHover}
+          onTipClick={onTipClick}
+          onEdgeHover={onEdgeHover}
+          onEdgeClick={onEdgeClick}
         />
       </LoraxProvider>
+      {hoverTooltip && Number.isFinite(hoverTooltip.x) && Number.isFinite(hoverTooltip.y) && (
+        <div
+          style={{
+            position: 'fixed',
+            left: hoverTooltip.x + 16,
+            top: hoverTooltip.y - 8,
+            zIndex: 99999,
+            pointerEvents: 'none',
+            backgroundColor: '#fff',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.12), 0 1px 4px rgba(0,0,0,0.08)',
+            borderRadius: 10,
+            minWidth: 180,
+            maxWidth: 320,
+            border: '1px solid rgba(0,0,0,0.08)',
+            overflow: 'hidden',
+            fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+          }}
+        >
+          <div style={{ padding: '10px 12px', fontSize: 13, color: '#374151' }}>
+            {hoverTooltip.title && (
+              <div style={{ fontWeight: 700, color: '#111827', marginBottom: 6 }}>
+                {hoverTooltip.title}
+              </div>
+            )}
+            {Array.isArray(hoverTooltip.rows) &&
+              hoverTooltip.rows.map(row => (
+                <div
+                  key={row.k}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    padding: '3px 0',
+                    borderBottom: '1px solid #f3f4f6',
+                  }}
+                >
+                  <span style={{ color: '#6b7280', fontWeight: 500 }}>{row.k}</span>
+                  <span
+                    style={{
+                      fontWeight: 600,
+                      color: '#111827',
+                      maxWidth: 180,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                    }}
+                  >
+                    {String(row.v)}
+                  </span>
+                </div>
+              ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 })
