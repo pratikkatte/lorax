@@ -6,6 +6,19 @@ import ViewportOverlay from './ViewportOverlay';
 import Info from './Info';
 import ErrorAlert from './ErrorAlert';
 import Settings from './Settings';
+
+const TIMESCALE_STORAGE_KEY = 'lorax-timescale';
+
+function readStoredTimescale() {
+  if (typeof window === 'undefined') return 'linear';
+  try {
+    const raw = localStorage.getItem(TIMESCALE_STORAGE_KEY);
+    if (raw === 'log' || raw === 'linear') return raw;
+  } catch {
+    // ignore quota / private mode
+  }
+  return 'linear';
+}
 import ScreenshotModal from './ScreenshotModal';
 import { useViewportDimensions } from '../hooks/useViewportDimensions';
 import TourOverlay from './TourOverlay';
@@ -103,6 +116,16 @@ function FileView() {
   const [edgeColor, setEdgeColor] = useState([100, 100, 100, 255]);
   // Default tip color [r, g, b, a] when metadata coloring is unavailable
   const [defaultTipColor, setDefaultTipColor] = useState([150, 150, 150, 200]);
+  // Timescale preference (Linear / Log); persisted for future @lorax/core wiring
+  const [timeScale, setTimeScaleState] = useState(readStoredTimescale);
+  const setTimeScale = useCallback((mode) => {
+    setTimeScaleState(mode);
+    try {
+      localStorage.setItem(TIMESCALE_STORAGE_KEY, mode);
+    } catch {
+      // ignore
+    }
+  }, []);
   // Controls whether model matrix recomputes on zoom interactions.
   const [lockModelMatrix, setLockModelMatrix] = useState(false);
   // Tracks whether lock view was auto-enabled from showingAllTrees behavior.
@@ -1089,6 +1112,8 @@ function FileView() {
             setEdgeColor={setEdgeColor}
             defaultTipColor={defaultTipColor}
             setDefaultTipColor={setDefaultTipColor}
+            timeScale={timeScale}
+            setTimeScale={setTimeScale}
           />
         </div>
       )}

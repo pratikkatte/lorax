@@ -2,6 +2,8 @@ import React from 'react';
 
 type RgbaColor = [number, number, number, number];
 
+export type TimescaleMode = 'linear' | 'log';
+
 interface SettingsProps {
   setShowSettings: (show: boolean) => void;
   polygonFillColor: RgbaColor;
@@ -18,6 +20,8 @@ interface SettingsProps {
   setShowCompareDeletion: (show: boolean) => void;
   edgeColor: RgbaColor;
   setEdgeColor: (color: RgbaColor) => void;
+  timeScale: TimescaleMode;
+  setTimeScale: (mode: TimescaleMode) => void;
 }
 
 // Convert RGB array to hex string
@@ -56,7 +60,9 @@ const Settings: React.FC<SettingsProps> = ({
   showCompareDeletion,
   setShowCompareDeletion,
   edgeColor,
-  setEdgeColor
+  setEdgeColor,
+  timeScale,
+  setTimeScale
 }) => {
   return (
     <div className="w-full h-full bg-slate-50 flex flex-col font-sans">
@@ -126,6 +132,50 @@ const Settings: React.FC<SettingsProps> = ({
               }}
               className="shrink-0 w-6 h-6 cursor-pointer rounded-full border border-slate-300 p-0.5 bg-white shadow-inner [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:rounded-full [&::-moz-color-swatch]:rounded-full [&::-moz-color-swatch]:border-0"
             />
+          </div>
+        </div>
+        <div className="bg-white rounded-lg overflow-hidden border border-slate-200 shadow-sm">
+          <div className="border-l-4 border-slate-400 pl-3 pr-4 pt-4 pb-3">
+            <h3 className="text-sm font-semibold text-slate-700 tracking-tight">Timescale</h3>
+            <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+              Linear is uniform in time; log emphasizes recent time. Preference is saved in this browser.
+            </p>
+          </div>
+          <div className="flex gap-3 px-4 pb-4 pt-1" role="radiogroup" aria-label="Timescale">
+            <label
+              className={`flex flex-1 items-center justify-center gap-2 rounded-lg border px-3 py-2.5 cursor-pointer transition-colors ${
+                timeScale === 'linear'
+                  ? 'border-slate-600 bg-slate-100 ring-1 ring-slate-400'
+                  : 'border-slate-200 bg-slate-50/80 hover:bg-slate-100/80'
+              }`}
+            >
+              <input
+                type="radio"
+                name="lorax-timescale"
+                value="linear"
+                checked={timeScale === 'linear'}
+                onChange={() => setTimeScale('linear')}
+                className="border-slate-300 text-slate-700 focus:ring-slate-400"
+              />
+              <span className="text-sm font-medium text-slate-600">Linear</span>
+            </label>
+            <label
+              className={`flex flex-1 items-center justify-center gap-2 rounded-lg border px-3 py-2.5 cursor-pointer transition-colors ${
+                timeScale === 'log'
+                  ? 'border-slate-600 bg-slate-100 ring-1 ring-slate-400'
+                  : 'border-slate-200 bg-slate-50/80 hover:bg-slate-100/80'
+              }`}
+            >
+              <input
+                type="radio"
+                name="lorax-timescale"
+                value="log"
+                checked={timeScale === 'log'}
+                onChange={() => setTimeScale('log')}
+                className="border-slate-300 text-slate-700 focus:ring-slate-400"
+              />
+              <span className="text-sm font-medium text-slate-600">Log</span>
+            </label>
           </div>
         </div>
         <div className="bg-white rounded-lg overflow-hidden border border-slate-200 shadow-sm">
