@@ -32,6 +32,7 @@ export function useDeckLayers({
   treeEdgeColors = null,
   // Default edge color [r, g, b, a] when colorEdgesByTree is false
   edgeColor = null,
+  descendantEdgeColor = null,
   // Tree interactions (UI handled by packages/website)
   onTipHover,
   onTipClick,
@@ -165,6 +166,7 @@ export function useDeckLayers({
         renderData: renderData || null,
         xzoom,
         edgeColor: resolvedEdgeColor,
+        descendantEdgeColor,
         edgeWidth: 1,
         tipRadius: 2,
         pickable: wantsPicking,
@@ -181,7 +183,7 @@ export function useDeckLayers({
     }
 
     return result;
-  }, [enabledViews, globalBpPerUnit, visibleIntervals, genomePositions, timePositions, renderData, xzoom, hoveredEdgeIndex, resolvedEdgeColor, dispatchHover, dispatchClick]);
+  }, [enabledViews, globalBpPerUnit, visibleIntervals, genomePositions, timePositions, renderData, xzoom, hoveredEdgeIndex, resolvedEdgeColor, descendantEdgeColor, dispatchHover, dispatchClick]);
 
   return { layers, layerFilter, clearHover };
 }

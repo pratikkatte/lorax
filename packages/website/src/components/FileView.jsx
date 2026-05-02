@@ -99,6 +99,8 @@ function FileView() {
   const [compareDeletionColor, setCompareDeletionColor] = useState([255, 0, 0, 200]);
   const [showCompareInsertion, setShowCompareInsertion] = useState(true);
   const [showCompareDeletion, setShowCompareDeletion] = useState(true);
+  const [highlightDescendantsOnHover, setHighlightDescendantsOnHover] = useState(false);
+  const [descendantsHighlightColor, setDescendantsHighlightColor] = useState([56, 189, 248, 255]);
   // Tree edge color [r, g, b, a] (used when colorEdgesByTree is false)
   const [edgeColor, setEdgeColor] = useState([100, 100, 100, 255]);
   // Default tip color [r, g, b, a] when metadata coloring is unavailable
@@ -895,6 +897,8 @@ function FileView() {
               compareDeletionColor={compareDeletionColor}
               showCompareInsertion={showCompareInsertion}
               showCompareDeletion={showCompareDeletion}
+              highlightDescendantsOnHover={highlightDescendantsOnHover}
+              descendantsHighlightColor={descendantsHighlightColor}
               edgeColor={edgeColor}
               defaultTipColor={defaultTipColor}
               lockModelMatrix={lockModelMatrix}
@@ -1085,6 +1089,10 @@ function FileView() {
             setShowCompareInsertion={setShowCompareInsertion}
             showCompareDeletion={showCompareDeletion}
             setShowCompareDeletion={setShowCompareDeletion}
+            highlightDescendantsOnHover={highlightDescendantsOnHover}
+            setHighlightDescendantsOnHover={setHighlightDescendantsOnHover}
+            descendantsHighlightColor={descendantsHighlightColor}
+            setDescendantsHighlightColor={setDescendantsHighlightColor}
             edgeColor={edgeColor}
             setEdgeColor={setEdgeColor}
             defaultTipColor={defaultTipColor}

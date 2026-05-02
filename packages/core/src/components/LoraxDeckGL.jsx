@@ -87,6 +87,9 @@ function getOrthoLocalXY(deckRef, info, event) {
 const LOCK_VIEW_SNAPSHOT_DEBOUNCE_MS = 150;
 /** Keep interaction mode active briefly after deck reports interaction end. */
 const INTERACTION_SETTLE_MS = 120;
+const DESCENDANT_HIGHLIGHT_COLOR = [56, 189, 248, 255];
+const DESCENDANT_EDGE_ALPHA = 220;
+const DESCENDANT_HIGHLIGHT_RADIUS = 4;
 
 /**
  * LoraxDeckGL - Configurable deck.gl component with 4 views:
@@ -143,6 +146,8 @@ const LoraxDeckGL = forwardRef(({
   compareDeletionColor = null,
   showCompareInsertion = true,
   showCompareDeletion = true,
+  highlightDescendantsOnHover = false,
+  descendantsHighlightColor = null,
   // Tree edge color [r, g, b, a] (used when colorEdgesByTree is false)
   edgeColor = null,
   // Default tip color [r, g, b, a] when metadata coloring is unavailable
@@ -160,6 +165,7 @@ const LoraxDeckGL = forwardRef(({
   const deckRef = useRef(null);
   const [lockViewPayload, setLockViewPayload] = useState(null);
   const [isInteracting, setIsInteracting] = useState(false);
+  const [hoveredEdgeForDescendants, setHoveredEdgeForDescendants] = useState(null);
   const interactionSettleTimerRef = useRef(null);
 
   // 1. Merge and validate config
@@ -206,7 +212,24 @@ const LoraxDeckGL = forwardRef(({
   }, [selectedColorBy, enabledValues]);
 
   const includeTipData = Boolean(onTipHover || onTipClick);
-  const includeEdgeData = Boolean(colorEdgesByTree || onEdgeHover || onEdgeClick);
+  const includeEdgeData = Boolean(colorEdgesByTree || onEdgeHover || onEdgeClick || highlightDescendantsOnHover);
+  const resolvedDescendantHighlightColor = useMemo(() => {
+    if (
+      Array.isArray(descendantsHighlightColor)
+      && descendantsHighlightColor.length >= 3
+      && Number.isFinite(descendantsHighlightColor[0])
+      && Number.isFinite(descendantsHighlightColor[1])
+      && Number.isFinite(descendantsHighlightColor[2])
+    ) {
+      return [
+        descendantsHighlightColor[0],
+        descendantsHighlightColor[1],
+        descendantsHighlightColor[2],
+        Number.isFinite(descendantsHighlightColor[3]) ? descendantsHighlightColor[3] : 255
+      ];
+    }
+    return DESCENDANT_HIGHLIGHT_COLOR;
+  }, [descendantsHighlightColor]);
 
   const updateInteractionState = useCallback((interactionState) => {
     const active = Boolean(
@@ -234,6 +257,30 @@ const LoraxDeckGL = forwardRef(({
       setIsInteracting(false);
     }, INTERACTION_SETTLE_MS);
   }, []);
+
+  const handleEdgeHover = useCallback((edge, info, event) => {
+    if (
+      highlightDescendantsOnHover
+      && edge
+      && Number.isFinite(edge.tree_idx)
+      && Number.isFinite(edge.child_id)
+    ) {
+      setHoveredEdgeForDescendants({
+        tree_idx: edge.tree_idx,
+        parent_id: edge.parent_id,
+        child_id: edge.child_id
+      });
+    } else {
+      setHoveredEdgeForDescendants(null);
+    }
+    onEdgeHover?.(edge, info, event);
+  }, [highlightDescendantsOnHover, onEdgeHover]);
+
+  useEffect(() => {
+    if (!highlightDescendantsOnHover) {
+      setHoveredEdgeForDescendants(null);
+    }
+  }, [highlightDescendantsOnHover]);
 
   // 4. Views and view state management (with genomic coordinates)
   const {
@@ -782,6 +829,101 @@ const LoraxDeckGL = forwardRef(({
     return edges;
   }, [compareMode, compareTreesResult, localBins, compareInsertionColor, compareDeletionColor, showCompareInsertion, showCompareDeletion]);
 
+  const descendantLookup = useMemo(() => {
+    const childrenByTree = new Map();
+    const edgeIndexByTreeAndPair = new Map();
+    const edges = baseRenderData?.edgeData;
+    if (!Array.isArray(edges) || edges.length === 0) {
+      return { childrenByTree, edgeIndexByTreeAndPair };
+    }
+
+    for (let edgeIndex = 0; edgeIndex < edges.length; edgeIndex++) {
+      const edge = edges[edgeIndex];
+      const treeIdx = Number(edge?.tree_idx);
+      const parentId = Number(edge?.parent_id);
+      const childId = Number(edge?.child_id);
+      if (!Number.isFinite(treeIdx) || !Number.isFinite(parentId) || !Number.isFinite(childId)) {
+        continue;
+      }
+
+      if (!childrenByTree.has(treeIdx)) {
+        childrenByTree.set(treeIdx, new Map());
+      }
+      const childrenForTree = childrenByTree.get(treeIdx);
+      if (!childrenForTree.has(parentId)) {
+        childrenForTree.set(parentId, []);
+      }
+      childrenForTree.get(parentId).push(childId);
+
+      if (!edgeIndexByTreeAndPair.has(treeIdx)) {
+        edgeIndexByTreeAndPair.set(treeIdx, new Map());
+      }
+      edgeIndexByTreeAndPair.get(treeIdx).set(`${parentId}|${childId}`, edgeIndex);
+    }
+
+    return { childrenByTree, edgeIndexByTreeAndPair };
+  }, [baseRenderData?.edgeData]);
+
+  const computedDescendantHoverOverlay = useMemo(() => {
+    const emptyResult = { tipHighlights: [], edgeIndices: [] };
+    if (!highlightDescendantsOnHover) return emptyResult;
+    if (!hoveredEdgeForDescendants || !Number.isFinite(hoveredEdgeForDescendants.child_id)) return emptyResult;
+    const tipData = baseRenderData?.tipData;
+    if (!Array.isArray(tipData) || tipData.length === 0) return emptyResult;
+
+    // Best-effort descendant closure over currently loaded edges only.
+    const descendantNodesByTree = new Map();
+    const descendantEdgeIndices = new Set();
+    const rootNodeId = Number(hoveredEdgeForDescendants.child_id);
+
+    for (const [treeIdx, childrenForTree] of descendantLookup.childrenByTree.entries()) {
+      const visited = new Set([rootNodeId]);
+      const stack = [rootNodeId];
+
+      while (stack.length > 0) {
+        const parentId = stack.pop();
+        const childIds = childrenForTree.get(parentId);
+        if (!Array.isArray(childIds) || childIds.length === 0) continue;
+
+        for (const childId of childIds) {
+          const edgeIndex = descendantLookup.edgeIndexByTreeAndPair
+            .get(treeIdx)
+            ?.get(`${parentId}|${childId}`);
+          if (Number.isInteger(edgeIndex)) {
+            descendantEdgeIndices.add(edgeIndex);
+          }
+          if (!visited.has(childId)) {
+            visited.add(childId);
+            stack.push(childId);
+          }
+        }
+      }
+
+      descendantNodesByTree.set(treeIdx, visited);
+    }
+
+    const tipHighlights = [];
+    for (const tip of tipData) {
+      const treeIdx = Number(tip?.tree_idx);
+      const nodeId = Number(tip?.node_id);
+      const position = tip?.position;
+      if (!Number.isFinite(treeIdx) || !Number.isFinite(nodeId) || !Array.isArray(position)) continue;
+      if (!descendantNodesByTree.get(treeIdx)?.has(nodeId)) continue;
+      tipHighlights.push({
+        position,
+        color: resolvedDescendantHighlightColor,
+        radius: DESCENDANT_HIGHLIGHT_RADIUS,
+        tree_idx: treeIdx,
+        node_id: nodeId
+      });
+    }
+
+    return {
+      tipHighlights,
+      edgeIndices: Array.from(descendantEdgeIndices).sort((a, b) => a - b)
+    };
+  }, [highlightDescendantsOnHover, hoveredEdgeForDescendants, baseRenderData?.tipData, descendantLookup, resolvedDescendantHighlightColor]);
+
   // Merge highlight data into render data
   // Multi-value search takes priority over single-value highlight
   const renderData = useMemo(() => {
@@ -803,8 +945,16 @@ const LoraxDeckGL = forwardRef(({
       mergedHighlights.push(...computedMutationHighlightData);
     }
 
+    if (computedDescendantHoverOverlay.tipHighlights.length > 0) {
+      mergedHighlights.push(...computedDescendantHoverOverlay.tipHighlights);
+    }
+
     if (mergedHighlights.length > 0) {
       result.highlightData = mergedHighlights;
+    }
+
+    if (computedDescendantHoverOverlay.edgeIndices.length > 0) {
+      result.descendantEdgeIndices = computedDescendantHoverOverlay.edgeIndices;
     }
 
     // Add lineage data when enabled
@@ -818,7 +968,7 @@ const LoraxDeckGL = forwardRef(({
     }
 
     return result;
-  }, [baseRenderData, computedHighlightData, computedMultiHighlightData, computedMutationHighlightData, computedLineageData, computedCompareEdgesData]);
+  }, [baseRenderData, computedHighlightData, computedMultiHighlightData, computedMutationHighlightData, computedDescendantHoverOverlay, computedLineageData, computedCompareEdgesData]);
 
   // 7. Compute genome position tick marks
   const genomePositions = useGenomePositions(genomicCoords);
@@ -924,10 +1074,16 @@ const LoraxDeckGL = forwardRef(({
     colorEdgesByTree,
     treeEdgeColors,
     edgeColor,
+    descendantEdgeColor: [
+      resolvedDescendantHighlightColor[0],
+      resolvedDescendantHighlightColor[1],
+      resolvedDescendantHighlightColor[2],
+      Number.isFinite(resolvedDescendantHighlightColor[3]) ? resolvedDescendantHighlightColor[3] : DESCENDANT_EDGE_ALPHA
+    ],
     // Tree interactions
     onTipHover,
     onTipClick,
-    onEdgeHover,
+    onEdgeHover: handleEdgeHover,
     onEdgeClick
   });
 
@@ -1049,6 +1205,7 @@ const LoraxDeckGL = forwardRef(({
   // DeckGL's onHover won't fire once the pointer is outside the canvas, so we proactively clear.
   const handlePointerLeave = useCallback(() => {
     clearPickingHover?.();
+    setHoveredEdgeForDescendants(null);
     setHoveredPolygon(null);
   }, [clearPickingHover, setHoveredPolygon]);
 

@@ -35,6 +35,8 @@ export class TreeCompositeLayer extends CompositeLayer {
     onEdgeClick: null,
     onEdgeHover: null,
     hoveredEdgeIndex: null,
+    descendantEdgeColor: [56, 189, 248, 220],
+    descendantEdgeWidth: 2,
   };
 
   updateState({ props, oldProps }) {
@@ -69,7 +71,9 @@ export class TreeCompositeLayer extends CompositeLayer {
       // Lineage path data
       lineageData,
       // Compare edges (inserted/removed between trees)
-      compareEdgesData
+      compareEdgesData,
+      // Descendant edge indices (subset of edgeData/path buffers)
+      descendantEdgeIndices
     } = processedData;
 
     const {
@@ -84,7 +88,9 @@ export class TreeCompositeLayer extends CompositeLayer {
       onTipHover,
       onEdgeClick,
       onEdgeHover,
-      hoveredEdgeIndex
+      hoveredEdgeIndex,
+      descendantEdgeColor,
+      descendantEdgeWidth
     } = this.props;
 
     const layers = [];
@@ -151,6 +157,60 @@ export class TreeCompositeLayer extends CompositeLayer {
             parameters: { depthTest: false },
             pickable: false
           }));
+        }
+      }
+
+      if (Array.isArray(descendantEdgeIndices) && descendantEdgeIndices.length > 0) {
+        const validIndices = descendantEdgeIndices
+          .filter((idx) => Number.isInteger(idx) && idx >= 0 && idx < pathStartIndices.length - 1);
+
+        if (validIndices.length > 0) {
+          let coordLength = 0;
+          for (const idx of validIndices) {
+            const start = pathStartIndices[idx] * 2;
+            const end = pathStartIndices[idx + 1] * 2;
+            coordLength += Math.max(0, end - start);
+          }
+
+          if (coordLength >= 4) {
+            const descendantPathPositions = new Float64Array(coordLength);
+            const descendantStartIndices = new Uint32Array(validIndices.length + 1);
+            let coordOffset = 0;
+            let vertexOffset = 0;
+            descendantStartIndices[0] = 0;
+
+            for (let i = 0; i < validIndices.length; i++) {
+              const idx = validIndices[i];
+              const start = pathStartIndices[idx] * 2;
+              const end = pathStartIndices[idx + 1] * 2;
+              const segment = pathPositions.subarray(start, end);
+              descendantPathPositions.set(segment, coordOffset);
+              coordOffset += segment.length;
+              vertexOffset += segment.length / 2;
+              descendantStartIndices[i + 1] = vertexOffset;
+            }
+
+            layers.push(new PathLayer({
+              id: `${this.props.id}-descendant-edges`,
+              data: {
+                length: validIndices.length,
+                startIndices: descendantStartIndices,
+                attributes: {
+                  getPath: { value: descendantPathPositions, size: 2 }
+                }
+              },
+              _pathType: 'open',
+              getColor: descendantEdgeColor,
+              getWidth: descendantEdgeWidth,
+              fp64: true,
+              widthUnits: 'pixels',
+              coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+              parameters: { depthTest: false },
+              pickable: false,
+              capRounded: false,
+              jointRounded: false
+            }));
+          }
         }
       }
     }
