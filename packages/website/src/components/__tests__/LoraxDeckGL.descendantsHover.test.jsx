@@ -217,6 +217,71 @@ describe('LoraxDeckGL descendant hover overlays', () => {
     expect(descendantTips.map((item) => item.node_id).sort((a, b) => a - b)).toEqual([12, 15]);
   });
 
+  it('adds raw node time to tip hover payloads', async () => {
+    const onTipHover = vi.fn();
+    treeDataState = {
+      treeData: {
+        node_id: [12],
+        parent_id: [-1],
+        is_tip: [true],
+        tree_idx: [0],
+        x: [0.5],
+        y: [0.75],
+        time: [42],
+        global_min_time: 0,
+        global_max_time: 100
+      }
+    };
+
+    render(<LoraxDeckGL viewConfig={{ ortho: { enabled: true } }} onTipHover={onTipHover} />);
+
+    await act(async () => {
+      capturedDeckLayersArgs.onTipHover?.({ tree_idx: 0, node_id: 12, position: [1, 2] }, { index: 0 }, null);
+    });
+
+    expect(onTipHover).toHaveBeenCalledWith(
+      expect.objectContaining({ tree_idx: 0, node_id: 12, node_time: 42 }),
+      expect.any(Object),
+      null
+    );
+  });
+
+  it('adds parent and child raw times to edge hover payloads using the active time scale', async () => {
+    const onEdgeHover = vi.fn();
+    const childTime = 9;
+    const childY = 1 - Math.log1p(childTime) / Math.log1p(100);
+    treeDataState = {
+      treeData: {
+        node_id: [7, 9],
+        parent_id: [-1, 7],
+        is_tip: [false, false],
+        tree_idx: [0, 0],
+        x: [0.2, 0.8],
+        y: [1, childY],
+        time: [],
+        global_min_time: 0,
+        global_max_time: 100
+      }
+    };
+
+    render(<LoraxDeckGL viewConfig={{ ortho: { enabled: true } }} timeScale="log" onEdgeHover={onEdgeHover} />);
+
+    await act(async () => {
+      capturedDeckLayersArgs.onEdgeHover?.({ tree_idx: 0, parent_id: 7, child_id: 9 }, { index: 0 }, null);
+    });
+
+    const [edgePayload, infoPayload, eventPayload] = onEdgeHover.mock.calls[0];
+    expect(edgePayload).toMatchObject({
+      tree_idx: 0,
+      parent_id: 7,
+      child_id: 9,
+      parent_time: 0
+    });
+    expect(edgePayload.child_time).toBeCloseTo(childTime, 6);
+    expect(infoPayload).toEqual(expect.any(Object));
+    expect(eventPayload).toBeNull();
+  });
+
   it('clears descendant overlays when hover clears', async () => {
     render(<LoraxDeckGL viewConfig={{ ortho: { enabled: true } }} highlightDescendantsOnHover />);
     await act(async () => {

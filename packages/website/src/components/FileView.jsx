@@ -12,6 +12,15 @@ import TourOverlay from './TourOverlay';
 import useTourState from '../hooks/useTourState';
 import { metadataFeatureActions } from '../config/metadataFeatureActions';
 
+function formatTooltipTime(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return '-';
+  if (n === 0) return '0';
+  const abs = Math.abs(n);
+  if (abs < 0.001 || abs >= 1000000) return n.toExponential(3);
+  return Number(n.toPrecision(6)).toString();
+}
+
 /**
  * FileView component - displays loaded file with viewport and position controls.
  * Handles both navigation from LandingPage and direct URL access.
@@ -918,7 +927,8 @@ function FileView() {
                   title: 'Tip',
                   rows: [
                     { k: 'Tree', v: tip.tree_idx },
-                    { k: 'Node ID', v: tip.node_id || tip.node_id },
+                    { k: 'Node ID', v: tip.node_id },
+                    { k: 'Node time', v: formatTooltipTime(tip.node_time) },
                     ...(selectedColorBy ? [{ k: selectedColorBy, v: value ?? '-' }] : [])
                   ]
                 }, info, event);
@@ -956,7 +966,9 @@ function FileView() {
                   rows: [
                     { k: 'Tree', v: edge.tree_idx },
                     { k: 'Parent', v: edge.parent_id },
-                    { k: 'Child', v: edge.child_id }
+                    { k: 'Parent time', v: formatTooltipTime(edge.parent_time) },
+                    { k: 'Child', v: edge.child_id },
+                    { k: 'Child time', v: formatTooltipTime(edge.child_time) }
                   ]
                 }, info, event);
               }}

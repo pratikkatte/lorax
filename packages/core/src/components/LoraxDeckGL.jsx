@@ -21,6 +21,7 @@ import { useTreePolygons } from '../hooks/useTreePolygons.jsx';
 import TreePolygonOverlay from './TreePolygonOverlay.jsx';
 import { mergeWithDefaults, validateViewConfig, getEnabledViews } from '../utils/deckViewConfig.js';
 import { getSVG } from '../utils/deckglToSvg.js';
+import { yToTime } from '../utils/timeScale.js';
 
 function pointInPolygon(point, vs) {
   // Ray-casting algorithm: point = [x,y], vs = [[x,y], ...]
@@ -260,24 +261,6 @@ const LoraxDeckGL = forwardRef(({
     }, INTERACTION_SETTLE_MS);
   }, []);
 
-  const handleEdgeHover = useCallback((edge, info, event) => {
-    if (
-      highlightDescendantsOnHover
-      && edge
-      && Number.isFinite(edge.tree_idx)
-      && Number.isFinite(edge.child_id)
-    ) {
-      setHoveredEdgeForDescendants({
-        tree_idx: edge.tree_idx,
-        parent_id: edge.parent_id,
-        child_id: edge.child_id
-      });
-    } else {
-      setHoveredEdgeForDescendants(null);
-    }
-    onEdgeHover?.(edge, info, event);
-  }, [highlightDescendantsOnHover, onEdgeHover]);
-
   useEffect(() => {
     if (!highlightDescendantsOnHover) {
       setHoveredEdgeForDescendants(null);
@@ -353,6 +336,84 @@ const LoraxDeckGL = forwardRef(({
     includeTipData,
     includeEdgeData
   });
+
+  const nodePositionsLookup = useMemo(() => {
+    if (!treeData?.node_id) return new Map();
+
+    const minTime = Number(treeData.global_min_time);
+    const maxTime = Number(treeData.global_max_time);
+    const canDeriveTime = Number.isFinite(minTime) && Number.isFinite(maxTime);
+
+    // Map<tree_idx, Map<node_id, {x, y, time}>>
+    const lookup = new Map();
+    for (let i = 0; i < treeData.node_id.length; i++) {
+      const treeIdx = treeData.tree_idx[i];
+      const nodeId = treeData.node_id[i];
+      const y = Number(treeData.y?.[i]);
+      const rawTimeValue = treeData.time?.[i];
+      const rawTime = rawTimeValue == null ? NaN : Number(rawTimeValue);
+      const time = Number.isFinite(rawTime)
+        ? rawTime
+        : (canDeriveTime && Number.isFinite(y) ? yToTime(y, minTime, maxTime, timeScale) : null);
+
+      if (!lookup.has(treeIdx)) {
+        lookup.set(treeIdx, new Map());
+      }
+      lookup.get(treeIdx).set(nodeId, {
+        x: treeData.x[i],
+        y,
+        time
+      });
+    }
+    return lookup;
+  }, [treeData, timeScale]);
+
+  const getNodePosition = useCallback((treeIdx, nodeId) => (
+    nodePositionsLookup.get(Number(treeIdx))?.get(Number(nodeId)) || null
+  ), [nodePositionsLookup]);
+
+  const enrichTipHoverPayload = useCallback((tip) => {
+    if (!tip) return null;
+    const node = getNodePosition(tip.tree_idx, tip.node_id);
+    return {
+      ...tip,
+      node_time: Number.isFinite(node?.time) ? node.time : null
+    };
+  }, [getNodePosition]);
+
+  const enrichEdgeHoverPayload = useCallback((edge) => {
+    if (!edge) return null;
+    const parentNode = getNodePosition(edge.tree_idx, edge.parent_id);
+    const childNode = getNodePosition(edge.tree_idx, edge.child_id);
+    return {
+      ...edge,
+      parent_time: Number.isFinite(parentNode?.time) ? parentNode.time : null,
+      child_time: Number.isFinite(childNode?.time) ? childNode.time : null
+    };
+  }, [getNodePosition]);
+
+  const handleTipHover = useCallback((tip, info, event) => {
+    onTipHover?.(enrichTipHoverPayload(tip), info, event);
+  }, [enrichTipHoverPayload, onTipHover]);
+
+  const handleEdgeHover = useCallback((edge, info, event) => {
+    const enrichedEdge = enrichEdgeHoverPayload(edge);
+    if (
+      highlightDescendantsOnHover
+      && enrichedEdge
+      && Number.isFinite(enrichedEdge.tree_idx)
+      && Number.isFinite(enrichedEdge.child_id)
+    ) {
+      setHoveredEdgeForDescendants({
+        tree_idx: enrichedEdge.tree_idx,
+        parent_id: enrichedEdge.parent_id,
+        child_id: enrichedEdge.child_id
+      });
+    } else {
+      setHoveredEdgeForDescendants(null);
+    }
+    onEdgeHover?.(enrichedEdge, info, event);
+  }, [enrichEdgeHoverPayload, highlightDescendantsOnHover, onEdgeHover]);
 
   const {
     lockViewPayload: latestLockViewPayload,
@@ -681,25 +742,6 @@ const LoraxDeckGL = forwardRef(({
 
     return out;
   }, [highlightedMutationNode, highlightedMutationTreeIndex, treeData, localBins]);
-
-  // Build nodePositions lookup from treeData for lineage path rendering
-  const nodePositionsLookup = useMemo(() => {
-    if (!treeData?.node_id) return new Map();
-
-    // Map<tree_idx, Map<node_id, {x, y}>>
-    const lookup = new Map();
-    for (let i = 0; i < treeData.node_id.length; i++) {
-      const treeIdx = treeData.tree_idx[i];
-      if (!lookup.has(treeIdx)) {
-        lookup.set(treeIdx, new Map());
-      }
-      lookup.get(treeIdx).set(treeData.node_id[i], {
-        x: treeData.x[i],
-        y: treeData.y[i]
-      });
-    }
-    return lookup;
-  }, [treeData]);
 
   // Compute lineage path data when displayLineagePaths is enabled
   const computedLineageData = useMemo(() => {
@@ -1085,7 +1127,7 @@ const LoraxDeckGL = forwardRef(({
       Number.isFinite(resolvedDescendantHighlightColor[3]) ? resolvedDescendantHighlightColor[3] : DESCENDANT_EDGE_ALPHA
     ],
     // Tree interactions
-    onTipHover,
+    onTipHover: handleTipHover,
     onTipClick,
     onEdgeHover: handleEdgeHover,
     onEdgeClick

@@ -110,6 +110,16 @@ vi.mock('@lorax/core', async () => {
         <div>
           <button onClick={() => props.onEdgeClick?.({ tree_idx: 1 })}>edge-click</button>
           <button onClick={() => props.onTipClick?.({ tree_idx: 2, node_id: 42 })}>tip-click</button>
+          <button onMouseEnter={() => props.onTipHover?.(
+            { tree_idx: 2, node_id: 42, node_time: 42.5 },
+            { x: 10, y: 20 },
+            null
+          )}>tip-hover</button>
+          <button onMouseEnter={() => props.onEdgeHover?.(
+            { tree_idx: 1, parent_id: 7, child_id: 9, parent_time: 100, child_time: 25.25 },
+            { x: 10, y: 20 },
+            null
+          )}>edge-hover</button>
         </div>
       );
     })
@@ -191,5 +201,29 @@ describe('FileView details loading wiring', () => {
       expect(screen.getByTestId('info-panel')).toHaveTextContent('false');
     });
     expect(infoFetchStates).toContain(true);
+  });
+
+  it('shows node time in the tip hover tooltip', async () => {
+    const user = userEvent.setup();
+
+    render(<FileView />);
+
+    await user.hover(screen.getByRole('button', { name: 'tip-hover' }));
+
+    expect(await screen.findByText('Node time')).toBeInTheDocument();
+    expect(screen.getByText('42.5')).toBeInTheDocument();
+  });
+
+  it('shows parent and child times in the edge hover tooltip', async () => {
+    const user = userEvent.setup();
+
+    render(<FileView />);
+
+    await user.hover(screen.getByRole('button', { name: 'edge-hover' }));
+
+    expect(await screen.findByText('Parent time')).toBeInTheDocument();
+    expect(screen.getByText('100')).toBeInTheDocument();
+    expect(screen.getByText('Child time')).toBeInTheDocument();
+    expect(screen.getByText('25.25')).toBeInTheDocument();
   });
 });
