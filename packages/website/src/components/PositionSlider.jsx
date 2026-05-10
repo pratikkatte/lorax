@@ -23,6 +23,41 @@ const getInputWidth = (value) => {
   return `${Math.max(digits + 6, 10)}ch`; // +6 for padding and spinner arrows, min 10 chars
 };
 
+const isEmptyObject = (value) => (
+  value &&
+  typeof value === 'object' &&
+  !Array.isArray(value) &&
+  Object.keys(value).length === 0
+);
+
+const hasDisplayValue = (value) => (
+  value != null &&
+  value !== '' &&
+  !(Array.isArray(value) && value.length === 0) &&
+  !isEmptyObject(value)
+);
+
+const formatJson = (value) => {
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+};
+
+function FileInfoJsonBlock({ title, value }) {
+  if (!hasDisplayValue(value)) return null;
+
+  return (
+    <div className="pt-2 mt-2 border-t border-slate-100">
+      <div className="font-semibold text-slate-700 mb-1">{title}</div>
+      <pre className="max-h-48 overflow-auto rounded bg-slate-50 border border-slate-100 p-2 text-[11px] leading-snug text-slate-700 whitespace-pre-wrap break-words">
+        {formatJson(value)}
+      </pre>
+    </div>
+  );
+}
+
 /**
  * PositionSlider - Header bar with genome position controls
  * Based on frontend's PositionSlider + EditableRange
@@ -39,7 +74,7 @@ export default function PositionSlider({
   setLockModelMatrix = () => {}
 }) {
   const { compareMode = false, setCompareMode } = useLorax();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [, setSearchParams] = useSearchParams();
   const [start, setStart] = useState(value?.[0] || 0);
   const [end, setEnd] = useState(value?.[1] || genomeLength || 0);
   const [hasChanges, setHasChanges] = useState(false);
@@ -49,13 +84,16 @@ export default function PositionSlider({
   const fileInfoRef = useRef(null);
   const valueRef = useRef(value);
   const panIntervalRef = useRef(null);
+  const tableCounts = tsconfig?.table_counts;
+  const topLevelMetadata = tsconfig?.top_level_metadata;
+  const provenance = tsconfig?.provenance;
+  const provenanceRecords = Array.isArray(provenance?.records) ? provenance.records : [];
+  const latestProvenance = provenance?.latest;
+  const currentStart = hasChanges ? start : (value?.[0] ?? 0);
+  const currentEnd = hasChanges ? end : (value?.[1] ?? genomeLength ?? 0);
 
-  // Sync local state with prop value
+  // Keep the latest prop range available to continuous pan handlers.
   useEffect(() => {
-    if (value) {
-      setStart(value[0]);
-      setEnd(value[1]);
-    }
     valueRef.current = value;
   }, [value]);
 
@@ -86,12 +124,14 @@ export default function PositionSlider({
 
   const handleStartChange = (e) => {
     const val = parseInt(e.target.value) || 0;
+    if (!hasChanges) setEnd(currentEnd);
     setStart(val);
     setHasChanges(true);
   };
 
   const handleEndChange = (e) => {
     const val = parseInt(e.target.value) || 0;
+    if (!hasChanges) setStart(currentStart);
     setEnd(val);
     setHasChanges(true);
   };
@@ -99,8 +139,8 @@ export default function PositionSlider({
   const handleSubmit = useCallback(() => {
     if (!hasChanges) return;
 
-    let newStart = Math.max(0, start);
-    let newEnd = Math.min(end, genomeLength || end);
+    let newStart = Math.max(0, currentStart);
+    let newEnd = Math.min(currentEnd, genomeLength || currentEnd);
 
     if (newStart >= newEnd) {
       console.warn('Invalid range: start must be less than end');
@@ -110,7 +150,7 @@ export default function PositionSlider({
     if (lockModelMatrix) setLockModelMatrix(false);
     onChange?.([newStart, newEnd]);
     setHasChanges(false);
-  }, [hasChanges, start, end, genomeLength, onChange, lockModelMatrix, setLockModelMatrix]);
+  }, [hasChanges, currentStart, currentEnd, genomeLength, onChange, lockModelMatrix, setLockModelMatrix]);
 
   const handleKeyPress = (e) => {
     if (e.key === 'Enter') {
@@ -336,7 +376,10 @@ export default function PositionSlider({
 
           {/* File info dropdown */}
           {showFileInfo && (
-            <div className="absolute top-full left-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg p-3 text-xs w-fit whitespace-nowrap z-50">
+            <div
+              className="absolute top-full left-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg p-3 text-xs w-max min-w-72 max-h-[70vh] overflow-y-auto whitespace-normal z-50"
+              style={{ maxWidth: 'min(34rem, calc(100vw - 2rem))' }}
+            >
               <h4 className="font-semibold text-slate-800 mb-2">File Info</h4>
               <div className="space-y-1 text-slate-600">
                 <p>
@@ -359,6 +402,60 @@ export default function PositionSlider({
                     {tsconfig.project}
                   </p>
                 )}
+                {tableCounts && (
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 pt-2 mt-2 border-t border-slate-100">
+                    {Object.entries(tableCounts).map(([label, count]) => (
+                      <p key={label}>
+                        <span className="text-slate-400">{label}:</span>{' '}
+                        {count?.toLocaleString?.() ?? count}
+                      </p>
+                    ))}
+                  </div>
+                )}
+                {provenance && (
+                  <div className="pt-2 mt-2 border-t border-slate-100">
+                    <div className="font-semibold text-slate-700 mb-1">Provenance</div>
+                    <p>
+                      <span className="text-slate-400">records:</span>{' '}
+                      {provenance.count?.toLocaleString?.() ?? provenanceRecords.length}
+                    </p>
+                    {latestProvenance && (
+                      <div className="mt-1 space-y-1">
+                        <p>
+                          <span className="text-slate-400">latest timestamp:</span>{' '}
+                          {latestProvenance.timestamp || '-'}
+                        </p>
+                        {(latestProvenance.software || latestProvenance.software_version) && (
+                          <p>
+                            <span className="text-slate-400">latest software:</span>{' '}
+                            {[latestProvenance.software, latestProvenance.software_version].filter(Boolean).join(' ')}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                    {provenanceRecords.length > 0 && (
+                      <details className="mt-2" open>
+                        <summary className="cursor-pointer font-medium text-slate-600">
+                          Full provenance records
+                        </summary>
+                        <div className="mt-2 space-y-2">
+                          {provenanceRecords.map((record, index) => (
+                            <div key={record.id ?? index}>
+                              <div className="mb-1 font-medium text-slate-500">
+                                Record {record.id ?? index}
+                                {record.timestamp ? ` - ${record.timestamp}` : ''}
+                              </div>
+                              <pre className="max-h-48 overflow-auto rounded bg-slate-50 border border-slate-100 p-2 text-[11px] leading-snug text-slate-700 whitespace-pre-wrap break-words">
+                                {formatJson(record.record)}
+                              </pre>
+                            </div>
+                          ))}
+                        </div>
+                      </details>
+                    )}
+                  </div>
+                )}
+                <FileInfoJsonBlock title="Top-level metadata" value={topLevelMetadata} />
               </div>
             </div>
           )}
@@ -384,22 +481,22 @@ export default function PositionSlider({
       <div className="flex items-center gap-1 px-2 py-1 bg-white border border-slate-200 rounded-md shadow-sm">
         <input
           type="number"
-          value={start}
+          value={currentStart}
           onChange={handleStartChange}
           onKeyPress={handleKeyPress}
           className="px-2 py-1 text-center text-sm font-mono border-none outline-none bg-transparent"
-          style={{ width: getInputWidth(start) }}
+          style={{ width: getInputWidth(currentStart) }}
           min={0}
           max={genomeLength}
         />
         <span className="text-slate-400 text-sm">...</span>
         <input
           type="number"
-          value={end}
+          value={currentEnd}
           onChange={handleEndChange}
           onKeyPress={handleKeyPress}
           className="px-2 py-1 text-center text-sm font-mono border-none outline-none bg-transparent"
-          style={{ width: getInputWidth(end) }}
+          style={{ width: getInputWidth(currentEnd) }}
           min={0}
           max={genomeLength}
         />

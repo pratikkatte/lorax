@@ -1,6 +1,7 @@
 import os
-import tskit
+import json
 from lorax.metadata.loader import get_metadata_schema
+from lorax.utils import make_json_serializable
 
 
 def _get_project_name(file_path, root_dir):
@@ -16,6 +17,115 @@ def _get_project_name(file_path, root_dir):
     if root_dir:
         return os.path.basename(os.path.normpath(str(root_dir)))
     return None
+
+
+def _json_safe(value):
+    """Return a value that can safely travel through JSON socket payloads."""
+    try:
+        converted = make_json_serializable(value)
+    except Exception:
+        converted = str(value)
+
+    try:
+        json.dumps(converted)
+        return converted
+    except (TypeError, ValueError):
+        pass
+
+    if isinstance(converted, dict):
+        return {str(k): _json_safe(v) for k, v in converted.items()}
+    if isinstance(converted, (list, tuple)):
+        return [_json_safe(v) for v in converted]
+    if isinstance(converted, set):
+        return sorted((_json_safe(v) for v in converted), key=str)
+    if hasattr(converted, "item"):
+        try:
+            return _json_safe(converted.item())
+        except Exception:
+            pass
+    return str(converted)
+
+
+def _get_top_level_metadata(ts):
+    """Extract tree-sequence-level metadata as JSON-safe data."""
+    metadata = getattr(ts, "metadata", None)
+    if metadata is None:
+        return None
+    if isinstance(metadata, (bytes, bytearray, str)) and len(metadata) == 0:
+        return None
+    return _json_safe(metadata)
+
+
+def _parse_provenance_record(record):
+    if isinstance(record, (bytes, bytearray)):
+        record = record.decode("utf-8", errors="replace")
+    if isinstance(record, str):
+        try:
+            return _json_safe(json.loads(record)), True
+        except Exception:
+            return record, False
+    return _json_safe(record), True
+
+
+def _summarize_provenance_record(provenance):
+    record = provenance.get("record")
+    summary = {
+        "id": provenance.get("id"),
+        "timestamp": provenance.get("timestamp"),
+        "software": None,
+        "software_version": None,
+    }
+    if isinstance(record, dict):
+        software = record.get("software")
+        if isinstance(software, dict):
+            summary["software"] = software.get("name")
+            summary["software_version"] = software.get("version")
+        elif software is not None:
+            summary["software"] = str(software)
+    return summary
+
+
+def _get_provenance(ts):
+    """Extract full provenance records with best-effort JSON parsing."""
+    records = []
+    try:
+        provenances = ts.provenances()
+    except Exception:
+        provenances = []
+
+    for provenance in provenances:
+        record, record_is_json = _parse_provenance_record(getattr(provenance, "record", None))
+        provenance_id = getattr(provenance, "id", len(records))
+        try:
+            provenance_id = int(provenance_id)
+        except (TypeError, ValueError):
+            provenance_id = len(records)
+        records.append({
+            "id": provenance_id,
+            "timestamp": getattr(provenance, "timestamp", None),
+            "record": record,
+            "record_is_json": record_is_json,
+        })
+
+    latest = _summarize_provenance_record(records[-1]) if records else None
+    return {
+        "count": len(records),
+        "latest": latest,
+        "records": records,
+    }
+
+
+def _get_table_counts(ts):
+    """Expose commonly useful table counts for the File Info dropdown."""
+    return {
+        "trees": int(getattr(ts, "num_trees", 0)),
+        "nodes": int(getattr(ts, "num_nodes", 0)),
+        "edges": int(getattr(ts, "num_edges", 0)),
+        "sites": int(getattr(ts, "num_sites", 0)),
+        "mutations": int(getattr(ts, "num_mutations", 0)),
+        "individuals": int(getattr(ts, "num_individuals", 0)),
+        "populations": int(getattr(ts, "num_populations", 0)),
+    }
 
 def get_config_tskit(ts, file_path, root_dir):
     """Extract configuration and metadata from a tree sequence file.
@@ -41,6 +151,9 @@ def get_config_tskit(ts, file_path, root_dir):
         sample_names = {}
         # Use schema-only extraction for lightweight initial load
         metadata_schema = get_metadata_schema(ts, sources=("individual", "node", "population"))
+        top_level_metadata = _get_top_level_metadata(ts)
+        provenance = _get_provenance(ts)
+        table_counts = _get_table_counts(ts)
 
         filename = os.path.basename(file_path)
         project_name = _get_project_name(file_path, root_dir)
@@ -54,7 +167,10 @@ def get_config_tskit(ts, file_path, root_dir):
             'project': project_name,
             'num_samples': ts.num_samples,
             'sample_names': sample_names,
-            'metadata_schema': metadata_schema
+            'metadata_schema': metadata_schema,
+            'top_level_metadata': top_level_metadata,
+            'provenance': provenance,
+            'table_counts': table_counts
         }
         return config
     except Exception as e:
