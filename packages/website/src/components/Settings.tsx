@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 
 type RgbaColor = [number, number, number, number];
 type TimeScale = 'linear' | 'log';
@@ -71,6 +71,8 @@ const Settings: React.FC<SettingsProps> = ({
   descendantsHighlightColor,
   setDescendantsHighlightColor
 }) => {
+  const [showTimeAxisTooltip, setShowTimeAxisTooltip] = useState(false);
+
   return (
     <div className="w-full h-full bg-slate-50 flex flex-col font-sans">
       {/* Header */}
@@ -109,8 +111,37 @@ const Settings: React.FC<SettingsProps> = ({
         </div>
         <div className="bg-white rounded-lg overflow-hidden border border-slate-200 shadow-sm">
           <div className="border-l-4 border-slate-400 pl-3 pr-4 pt-4 pb-3">
-            <h3 className="text-sm font-semibold text-slate-700 tracking-tight">Time Axis Scale</h3>
-            <p className="text-xs text-slate-500 mt-1 leading-relaxed">Scale used for vertical tree time coordinates.</p>
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0 flex-1">
+                <h3 className="text-sm font-semibold text-slate-700 tracking-tight">Time Axis Scale</h3>
+                <p className="text-xs text-slate-500 mt-1 leading-relaxed">Scale used for vertical tree time coordinates.</p>
+              </div>
+              <div className="relative shrink-0">
+                <button
+                  type="button"
+                  className="rounded-full text-slate-400 hover:text-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-1"
+                  aria-label="Explain Time Axis Scale"
+                  aria-describedby={showTimeAxisTooltip ? 'time-axis-scale-tooltip' : undefined}
+                  onMouseEnter={() => setShowTimeAxisTooltip(true)}
+                  onMouseLeave={() => setShowTimeAxisTooltip(false)}
+                  onFocus={() => setShowTimeAxisTooltip(true)}
+                  onBlur={() => setShowTimeAxisTooltip(false)}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M12 20a8 8 0 100-16 8 8 0 000 16z" />
+                  </svg>
+                </button>
+                {showTimeAxisTooltip && (
+                  <div
+                    id="time-axis-scale-tooltip"
+                    role="tooltip"
+                    className="absolute right-0 top-full z-20 mt-2 w-64 rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-xs font-medium leading-5 text-slate-600 shadow-lg"
+                  >
+                    Linear spaces time evenly on the axis. Log compresses older time to emphasize recent branches.
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
           <div className="flex gap-2 px-4 pb-4 pt-1">
             {(['linear', 'log'] as TimeScale[]).map((scale) => (
