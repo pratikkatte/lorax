@@ -255,6 +255,7 @@ export function useLoraxConnection({
    * @param {Object} options - Query options
    * @param {number[]} options.actualDisplayArray - All visible tree indices for backend cache eviction
    * @param {Object|null} options.lockView - Optional lock-view bbox metadata
+   * @param {string} options.timeScale - Time scale for emitted y coordinates ("linear" or "log")
    * @returns {Promise<{buffer, global_min_time, global_max_time, tree_indices}>}
    */
   const queryTreeLayout = useCallback((displayArray, options = {}) => {
@@ -268,6 +269,7 @@ export function useLoraxConnection({
         ? options.actualDisplayArray
         : displayArray;
       const lockView = options?.lockView ?? null;
+      const timeScale = options?.timeScale === 'log' ? 'log' : 'linear';
 
       // Generate unique request ID for this request
       const requestId = ++requestIdRef.current;
@@ -275,6 +277,7 @@ export function useLoraxConnection({
       const payload = {
         displayArray,
         actualDisplayArray,  // All visible trees for backend cache eviction
+        timeScale,
         lorax_sid: sidRef.current,
         request_id: requestId
       };
@@ -412,9 +415,11 @@ export function useLoraxConnection({
    * @param {string} metadataKey - Metadata key to filter by
    * @param {string} metadataValue - Metadata value to match
    * @param {number[]} treeIndices - Tree indices to compute positions for
+   * @param {Object} options - Query options
+   * @param {string} options.timeScale - Time scale for emitted y coordinates ("linear" or "log")
    * @returns {Promise<{positions: [{node_id, tree_idx, x, y}]}>}
    */
-  const queryHighlightPositions = useCallback((metadataKey, metadataValue, treeIndices) => {
+  const queryHighlightPositions = useCallback((metadataKey, metadataValue, treeIndices, options = {}) => {
     return new Promise((resolve, reject) => {
       if (!socketRef.current) {
         reject(new Error("Socket not available"));
@@ -448,7 +453,8 @@ export function useLoraxConnection({
         lorax_sid: sidRef.current,
         metadata_key: metadataKey,
         metadata_value: String(metadataValue),
-        tree_indices: treeIndices
+        tree_indices: treeIndices,
+        timeScale: options?.timeScale === 'log' ? 'log' : 'linear'
       });
     });
   }, [emit, once, off, socketRef, sidRef]);
@@ -460,9 +466,11 @@ export function useLoraxConnection({
    * @param {string[]} metadataValues - Array of metadata values to match (OR logic)
    * @param {number[]} treeIndices - Tree indices to compute positions for
    * @param {boolean} showLineages - Whether to compute lineage paths (default false)
+   * @param {Object} options - Query options
+   * @param {string} options.timeScale - Time scale for emitted y coordinates ("linear" or "log")
    * @returns {Promise<{positions_by_value: Object, lineages: Object, total_count: number}>}
    */
-  const queryMultiValueSearch = useCallback((metadataKey, metadataValues, treeIndices, showLineages = false) => {
+  const queryMultiValueSearch = useCallback((metadataKey, metadataValues, treeIndices, showLineages = false, options = {}) => {
     return new Promise((resolve, reject) => {
       if (!socketRef.current) {
         reject(new Error("Socket not available"));
@@ -506,7 +514,8 @@ export function useLoraxConnection({
         metadata_key: metadataKey,
         metadata_values: metadataValues.map(String),
         tree_indices: treeIndices,
-        show_lineages: showLineages
+        show_lineages: showLineages,
+        timeScale: options?.timeScale === 'log' ? 'log' : 'linear'
       });
     });
   }, [emit, once, off, socketRef, sidRef]);
@@ -515,13 +524,15 @@ export function useLoraxConnection({
    * Emit visible tree indices to backend when compare mode is enabled.
    * Fire-and-forget; no response handler.
    * @param {number[]} treeIndices - Tree indices to send
+   * @param {Object} options - Emit options
+   * @param {string} options.timeScale - Time scale for emitted y coordinates ("linear" or "log")
    */
-  const emitCompareTrees = useCallback((treeIndices) => {
-    console.log('emitCompareTrees', treeIndices);
+  const emitCompareTrees = useCallback((treeIndices, options = {}) => {
     if (!socketRef.current) return;
     emit("compare_trees_event", {
       lorax_sid: sidRef.current,
-      tree_indices: Array.isArray(treeIndices) ? treeIndices : []
+      tree_indices: Array.isArray(treeIndices) ? treeIndices : [],
+      timeScale: options?.timeScale === 'log' ? 'log' : 'linear'
     });
   }, [emit, socketRef, sidRef]);
 

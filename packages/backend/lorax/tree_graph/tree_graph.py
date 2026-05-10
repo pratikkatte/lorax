@@ -10,17 +10,18 @@ This module provides:
 import logging
 import struct
 from concurrent.futures import ThreadPoolExecutor
-
-import numpy as np
-
-logger = logging.getLogger(__name__)
-import pyarrow as pa
-from numba import njit
-from numba.typed import Dict
-from numba import types
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
+import numpy as np
+import pyarrow as pa
+from numba import njit
+from numba import types
+from numba.typed import Dict
+
+from lorax.tree_graph.time_scale import normalize_time_scale, times_to_y
+
+logger = logging.getLogger(__name__)
 # Default cell size for sparsification (0.2% of normalized [0,1] space)
 DEFAULT_SPARSIFY_CELL_SIZE = 0.002
 MIN_SPARSIFY_CELL_SIZE = 0.0004
@@ -447,6 +448,7 @@ def _process_single_tree(
     adaptive_outside_resolution,
     adaptive_inside_resolution,
     disable_inside_sparsification_for_low_coverage,
+    time_scale,
 ):
     """
     Process a single tree: construct, optionally sparsify/collapse, collect mutations.
@@ -474,7 +476,7 @@ def _process_single_tree(
     node_ids = indices
     parent_ids = graph.parent[indices]
     x = graph.x[indices]
-    y = graph.y[indices]
+    y = times_to_y(graph.time[indices], min_time, max_time, time_scale)
 
     adaptive_bbox_bounds = None
     if isinstance(adaptive_sparsify_bbox, dict):
@@ -550,17 +552,20 @@ def _process_single_tree(
             mut_times = mutations.time[mut_indices]
             mut_parent_ids = graph.parent[mut_node_ids].astype(np.int32)
             mut_layout = graph.x[mut_node_ids].astype(np.float32)
-            time_range = max_time - min_time if max_time > min_time else 1.0
-            mut_time_norm = (max_time - mut_times) / time_range
+            mut_time_norm = times_to_y(mut_times, min_time, max_time, time_scale)
             nan_mask = np.isnan(mut_times)
             if np.any(nan_mask):
-                node_y = graph.y[mut_node_ids[nan_mask]]
+                node_y = times_to_y(graph.time[mut_node_ids[nan_mask]], min_time, max_time, time_scale)
                 parent_ids_for_nan = mut_parent_ids[nan_mask]
-                parent_y = np.where(
-                    parent_ids_for_nan >= 0,
-                    graph.y[np.maximum(parent_ids_for_nan, 0)],
-                    0.0,
-                )
+                valid_parent_mask = parent_ids_for_nan >= 0
+                parent_y = np.zeros(parent_ids_for_nan.shape, dtype=np.float32)
+                if np.any(valid_parent_mask):
+                    parent_y[valid_parent_mask] = times_to_y(
+                        graph.time[parent_ids_for_nan[valid_parent_mask]],
+                        min_time,
+                        max_time,
+                        time_scale,
+                    )
                 mut_time_norm[nan_mask] = (node_y + parent_y) / 2.0
             mut_time_norm = mut_time_norm.astype(np.float32)
             mut_x = mut_layout
@@ -613,6 +618,7 @@ def construct_trees_batch(
     adaptive_sparsify_bbox: Optional[dict] = None,
     adaptive_target_tree_idx: Optional[int] = None,
     adaptive_outside_cell_size: Optional[float] = None,
+    time_scale: str = "linear",
 ) -> Tuple[bytes, float, float, List[int], dict]:
     """
     Construct multiple trees and return combined PyArrow buffer.
@@ -631,6 +637,7 @@ def construct_trees_batch(
         adaptive_sparsify_bbox: Optional local bbox {min_x,max_x,min_y,max_y} for in-bbox densification.
         adaptive_target_tree_idx: Optional target tree index for adaptive in-bbox densification.
         adaptive_outside_cell_size: Legacy outside override (kept for API compatibility).
+        time_scale: Time coordinate scale for emitted y coordinates ("linear" or "log").
 
     Returns:
         Tuple of (buffer, global_min_time, global_max_time, tree_indices, newly_built_graphs)
@@ -643,6 +650,7 @@ def construct_trees_batch(
 
     min_time = float(ts.min_time)
     max_time = float(ts.max_time)
+    time_scale = normalize_time_scale(time_scale)
 
     # Check if tree sequence has mutations
     has_mutations = include_mutations and ts.num_mutations > 0
@@ -844,6 +852,7 @@ def construct_trees_batch(
             adaptive_outside_resolution,
             adaptive_inside_resolution,
             disable_inside_sparsification_for_low_coverage,
+            time_scale,
         )
 
     use_parallel = len(valid_indices) >= PARALLEL_TREE_THRESHOLD

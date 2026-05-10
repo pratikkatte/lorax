@@ -11,6 +11,7 @@ from lorax.context import tree_graph_cache, csv_tree_graph_cache
 from lorax.handlers import handle_tree_graph_query, ensure_trees_cached
 from lorax.sockets.decorators import require_session
 from lorax.sockets.utils import is_csv_session_file
+from lorax.tree_graph.time_scale import normalize_time_scale
 
 logger = logging.getLogger(__name__)
 
@@ -202,6 +203,7 @@ def register_tree_layout_events(sio):
                 actual_display_array = parsed_actual_display_array
 
             request_id = data.get("request_id")
+            time_scale = normalize_time_scale(data.get("timeScale"))
             raw_lock_view = data.get("lockView")
             lock_view_info = _parse_lock_view_payload(raw_lock_view)
 
@@ -219,7 +221,7 @@ def register_tree_layout_events(sio):
 
             logger.debug(
                 "[process_postorder_layout] session=%s request_id=%s display_count=%s "
-                "lock_enabled=%s target_tree_idx=%s adaptive=%s multiplier=%s bbox=%s sparsification=%s",
+                "lock_enabled=%s target_tree_idx=%s adaptive=%s multiplier=%s bbox=%s sparsification=%s time_scale=%s",
                 lorax_sid,
                 request_id,
                 len(display_array),
@@ -229,6 +231,7 @@ def register_tree_layout_events(sio):
                 target_sparsify_multiplier,
                 target_sparsify_bbox,
                 "sparse" if sparsification else "full",
+                time_scale,
             )
 
             result = await handle_tree_graph_query(
@@ -243,6 +246,7 @@ def register_tree_layout_events(sio):
                 adaptive_sparsify_bbox=target_sparsify_bbox,
                 adaptive_target_tree_idx=target_tree_idx,
                 adaptive_outside_cell_size=None,
+                time_scale=time_scale,
             )
 
             if "error" in result:

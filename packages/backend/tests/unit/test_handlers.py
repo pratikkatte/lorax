@@ -587,6 +587,7 @@ class TestCompareTreesDiff:
         """Test compare topology with CSV file (different Newick topologies)."""
         from lorax.cache import CsvTreeGraphCache, get_file_context
         from lorax.handlers import get_compare_trees_diff
+        from lorax.tree_graph.time_scale import newick_edge_coordinates
 
         def _node_index(graph, node_id):
             matches = np.where(graph.node_id == int(node_id))[0]
@@ -604,9 +605,9 @@ class TestCompareTreesDiff:
 
         # Create CSV with genomic_positions and newick (different topologies)
         csv_content = """genomic_positions,newick
-0,((A:0.1,B:0.2):0.3,C:0.4);
-1000,((A:0.1,C:0.2):0.3,B:0.4);
-2000,((B:0.1,C:0.2):0.3,A:0.4);
+0,"((A:0.1,B:0.2):0.3,C:0.4);"
+1000,"((A:0.1,C:0.2):0.3,B:0.4);"
+2000,"((B:0.1,C:0.2):0.3,A:0.4);"
 """
         csv_path = temp_dir / "compare_test.csv"
         csv_path.write_text(csv_content)
@@ -649,6 +650,32 @@ class TestCompareTreesDiff:
             for e in comp["removed"]:
                 _assert_edge_coords_match_graph(e, prev_graph)
 
+        log_result = await get_compare_trees_diff(
+            str(csv_path),
+            tree_indices=[0, 1, 2],
+            session_id=session_id,
+            tree_graph_cache=None,
+            csv_tree_graph_cache=csv_cache,
+            time_scale="log",
+        )
+        times_values = ctx.config.get("times", {}).get("values", [0.0, 1.0])
+        max_branch_length = float(times_values[1]) if len(times_values) > 1 else 1.0
+        for comp in log_result["comparisons"]:
+            prev_graph = await csv_cache.get(session_id, int(comp["prev_idx"]))
+            next_graph = await csv_cache.get(session_id, int(comp["next_idx"]))
+            for edge in comp["inserted"]:
+                expected = newick_edge_coordinates(
+                    next_graph, edge["parent"], edge["child"], max_branch_length, "log"
+                )
+                assert edge["parent_y"] == pytest.approx(expected["parent_y"])
+                assert edge["child_y"] == pytest.approx(expected["child_y"])
+            for edge in comp["removed"]:
+                expected = newick_edge_coordinates(
+                    prev_graph, edge["parent"], edge["child"], max_branch_length, "log"
+                )
+                assert edge["parent_y"] == pytest.approx(expected["parent_y"])
+                assert edge["child_y"] == pytest.approx(expected["child_y"])
+
             # Basic payload shape checks.
             for e in comp["inserted"] + comp["removed"]:
                 assert "parent_x" in e
@@ -663,7 +690,7 @@ class TestCompareTreesDiff:
         from lorax.handlers import get_compare_trees_diff
 
         csv_content = """genomic_positions,newick
-0,((A:0.1,B:0.2):0.3,C:0.4);
+0,"((A:0.1,B:0.2):0.3,C:0.4);"
 """
         csv_path = temp_dir / "single.csv"
         csv_path.write_text(csv_content)

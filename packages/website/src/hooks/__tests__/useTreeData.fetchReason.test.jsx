@@ -92,6 +92,53 @@ describe('useTreeData fetch classification', () => {
     expect(result.current.fetchReason).toBe('full-fetch');
   });
 
+  it('invalidates cached tree data when time scale changes', async () => {
+    const first = deferred();
+    const second = deferred();
+    const queryTreeLayout = vi
+      .fn()
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+
+    const { result, rerender } = renderHook((props) => useTreeData(props), {
+      initialProps: {
+        displayArray: [7],
+        queryTreeLayout,
+        isConnected: true,
+        lockView: null,
+        timeScale: 'linear',
+        tsconfig: { intervals: [0, 100, 200] },
+        genomicCoords: [0, 100]
+      }
+    });
+
+    await waitFor(() => expect(queryTreeLayout).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      first.resolve(createResponse(7));
+      await first.promise;
+    });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    rerender({
+      displayArray: [7],
+      queryTreeLayout,
+      isConnected: true,
+      lockView: null,
+      timeScale: 'log',
+      tsconfig: { intervals: [0, 100, 200] },
+      genomicCoords: [0, 100]
+    });
+
+    await waitFor(() => expect(queryTreeLayout).toHaveBeenCalledTimes(2));
+    const [, options] = queryTreeLayout.mock.calls.at(-1);
+    expect(options.timeScale).toBe('log');
+
+    await act(async () => {
+      second.resolve(createResponse(7));
+      await second.promise;
+    });
+  });
+
   it('marks warm-cache target+bbox updates as lock-refresh without blocking loading', async () => {
     const warm = deferred();
     const refresh = deferred();

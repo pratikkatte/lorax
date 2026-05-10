@@ -261,8 +261,8 @@ describe('LoraxDeckGL canonical local-coordinate mapping', () => {
 
     expect(capturedRenderData).not.toBeNull();
     expect(capturedRenderData.highlightData).toHaveLength(1);
-    expect(capturedRenderData.highlightData[0].localPosition[0]).toBeCloseTo(0.3);
-    expect(capturedRenderData.highlightData[0].localPosition[1]).toBeCloseTo(0.7);
+    expect(capturedRenderData.highlightData[0].position[0]).toBeCloseTo(103);
+    expect(capturedRenderData.highlightData[0].position[1]).toBeCloseTo(0.7);
   });
 
   it('maps compare edges using local parent_x/child_x and parent_y/child_y', () => {
@@ -302,18 +302,54 @@ describe('LoraxDeckGL canonical local-coordinate mapping', () => {
       (edge) => edge.color[0] === 255 && edge.color[1] === 0
     );
 
-    expect(inserted.tree_idx).toBe(1);
-    expectPathClose(inserted.pathLocal, [
-      [0.1, 0.2],
-      [0.6, 0.2],
-      [0.6, 0.9]
+    expectPathClose(inserted.path, [
+      [202, 7.6],
+      [212, 7.6],
+      [212, 9.7]
     ]);
-    expect(removed.tree_idx).toBe(0);
-    expectPathClose(removed.pathLocal, [
-      [0.5, 0.4],
-      [0.9, 0.4],
-      [0.9, 0.1]
+    expectPathClose(removed.path, [
+      [105, 5.8],
+      [109, 5.8],
+      [109, 5.2]
     ]);
+  });
+
+  it('re-emits compare topology when time scale changes', async () => {
+    vi.useFakeTimers();
+
+    localDataState = {
+      ...localDataState,
+      localBins: new Map([
+        [0, { global_index: 0, modelMatrix: createModelMatrix({ scaleX: 10, translateX: 100 }) }],
+        [1, { global_index: 1, modelMatrix: createModelMatrix({ scaleX: 10, translateX: 200 }) }]
+      ]),
+      displayArray: [0, 1]
+    };
+
+    loraxState = {
+      ...loraxState,
+      compareMode: true,
+      isConnected: true,
+      emitCompareTrees: vi.fn()
+    };
+
+    const { rerender } = render(
+      <LoraxDeckGL viewConfig={{ ortho: { enabled: true } }} timeScale="linear" />
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(200);
+    });
+
+    expect(loraxState.emitCompareTrees).toHaveBeenLastCalledWith([0, 1], { timeScale: 'linear' });
+
+    rerender(<LoraxDeckGL viewConfig={{ ortho: { enabled: true } }} timeScale="log" />);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(200);
+    });
+
+    expect(loraxState.emitCompareTrees).toHaveBeenLastCalledWith([0, 1], { timeScale: 'log' });
   });
 
   it('maps lineage paths from node x/y using canonical local transform', async () => {
@@ -354,11 +390,11 @@ describe('LoraxDeckGL canonical local-coordinate mapping', () => {
 
     expect(capturedRenderData?.lineageData?.length).toBe(1);
 
-    expect(capturedRenderData.lineageData[0].tree_idx).toBe(0);
-    expectPathClose(capturedRenderData.lineageData[0].pathLocal, [
-      [0.2, 0.4],
-      [0.8, 0.4],
-      [0.8, 0.9]
+    expect(capturedRenderData.lineageData[0].treeIdx).toBe(0);
+    expectPathClose(capturedRenderData.lineageData[0].path, [
+      [102, 5.8],
+      [108, 5.8],
+      [108, 6.8]
     ]);
   });
 });

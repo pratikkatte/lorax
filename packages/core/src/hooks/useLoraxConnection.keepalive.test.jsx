@@ -137,6 +137,7 @@ describe("useLoraxConnection diagnostics keepalive", () => {
     expect(payload).toMatchObject({
       displayArray: [1],
       actualDisplayArray: [1, 2],
+      timeScale: "linear",
       lockView,
       lorax_sid: "sid-1",
       request_id: expect.any(Number)
@@ -180,6 +181,73 @@ describe("useLoraxConnection diagnostics keepalive", () => {
     const [eventName, payload] = socketEmit.mock.calls[0];
     expect(eventName).toBe("process_postorder_layout");
     expect(payload.actualDisplayArray).toEqual([4, 5]);
+    expect(payload.timeScale).toBe("linear");
     expect(payload).not.toHaveProperty("lockView");
+  });
+
+  it("queryTreeLayout forwards log time scale", async () => {
+    const socketEmit = vi.fn();
+    socketEmit.mockImplementation((_event, payload, ack) => {
+      ack({
+        buffer: new Uint8Array(0),
+        global_min_time: 0,
+        global_max_time: 1,
+        tree_indices: payload.displayArray
+      });
+    });
+
+    mocked.useSocket.mockReturnValue({
+      socketRef: { current: { emit: socketEmit } },
+      isConnected: true,
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+      emit: socketEmit,
+      on: vi.fn(),
+      off: vi.fn(),
+      once: vi.fn(),
+      statusMessage: { message: null },
+      setStatusMessage: vi.fn()
+    });
+
+    const { result } = renderHook(() =>
+      useLoraxConnection({ apiBase: "/api", diagnosticPingEnabled: false })
+    );
+
+    await act(async () => {
+      await result.current.queryTreeLayout([2], { timeScale: "log" });
+    });
+
+    const [, payload] = socketEmit.mock.calls[0];
+    expect(payload.timeScale).toBe("log");
+  });
+
+  it("emitCompareTrees forwards log time scale", () => {
+    const socketEmit = vi.fn();
+    mocked.useSocket.mockReturnValue({
+      socketRef: { current: { emit: socketEmit } },
+      isConnected: true,
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+      emit: socketEmit,
+      on: vi.fn(),
+      off: vi.fn(),
+      once: vi.fn(),
+      statusMessage: { message: null },
+      setStatusMessage: vi.fn()
+    });
+
+    const { result } = renderHook(() =>
+      useLoraxConnection({ apiBase: "/api", diagnosticPingEnabled: false })
+    );
+
+    act(() => {
+      result.current.emitCompareTrees([1, 2], { timeScale: "log" });
+    });
+
+    expect(socketEmit).toHaveBeenCalledWith("compare_trees_event", {
+      lorax_sid: "sid-1",
+      tree_indices: [1, 2],
+      timeScale: "log"
+    });
   });
 });

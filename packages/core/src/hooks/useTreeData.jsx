@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { parseTreeLayoutBuffer, EMPTY_TREE_LAYOUT } from '../utils/arrowUtils.js';
+import { normalizeTimeScale } from '../utils/timeScale.js';
 
 function arraysEqual(a, b) {
   if (!Array.isArray(a) || !Array.isArray(b)) return false;
@@ -234,6 +235,7 @@ function buildTreeDataFromCache(cache, displayArray) {
  * @param {Function} params.queryTreeLayout - Socket method from useLorax
  * @param {boolean} params.isConnected - Socket connection status
  * @param {Object|null} params.lockView - Optional lock-view bbox payload
+ * @param {string} params.timeScale - Time scale for emitted y coordinates ("linear" or "log")
  * @param {Object} params.tsconfig - Tree sequence config (for cache invalidation on file change)
  * @param {number[]} params.genomicCoords - Viewport bounds [startBp, endBp] for cache eviction
  * @returns {Object} { treeData, isLoading, isBackgroundRefresh, fetchReason, error, clearCache }
@@ -243,6 +245,7 @@ export function useTreeData({
   queryTreeLayout,
   isConnected,
   lockView = null,
+  timeScale = 'linear',
   tsconfig = null,
   genomicCoords = null,
 }) {
@@ -269,7 +272,7 @@ export function useTreeData({
 
   // Cache key for invalidation (file identity + effective detail mode).
   // Backend now infers sparsification from tree count.
-  const cacheKeyRef = useRef({ tsconfigId: null, inferredSparsification: null });
+  const cacheKeyRef = useRef({ tsconfigId: null, inferredSparsification: null, timeScale: 'linear' });
 
   // Previous display array, used to classify lock-view heartbeat refreshes.
   const previousDisplayArrayRef = useRef([]);
@@ -282,6 +285,7 @@ export function useTreeData({
   const tsconfigId = tsconfig?.file_path || tsconfig?.genome_length || null;
 
   const inferredSparsification = (displayArray?.length ?? 0) > 1;
+  const resolvedTimeScale = normalizeTimeScale(timeScale);
 
   const normalizedLockView = useMemo(() => {
     if (!lockView || typeof lockView !== 'object') return null;
@@ -309,15 +313,16 @@ export function useTreeData({
   // Invalidate cache when file or inferred detail mode changes
   useEffect(() => {
     if (cacheKeyRef.current.tsconfigId !== tsconfigId ||
-        cacheKeyRef.current.inferredSparsification !== inferredSparsification) {
+        cacheKeyRef.current.inferredSparsification !== inferredSparsification ||
+        cacheKeyRef.current.timeScale !== resolvedTimeScale) {
       requestGenerationRef.current += 1;
       treeDataCacheRef.current.clear();
       timeBoundsRef.current = null;
-      cacheKeyRef.current = { tsconfigId, inferredSparsification };
+      cacheKeyRef.current = { tsconfigId, inferredSparsification, timeScale: resolvedTimeScale };
       previousDisplayArrayRef.current = [];
       lastLockRefreshRef.current = { targetTreeIndex: null, targetLocalBBox: null };
     }
-  }, [tsconfigId, inferredSparsification]);
+  }, [tsconfigId, inferredSparsification, resolvedTimeScale]);
 
   // Manual cache clear callback
   const clearCache = useCallback(() => {
@@ -341,6 +346,7 @@ export function useTreeData({
       isConnected: snapshotIsConnected,
       normalizedLockView: snapshotLockView,
       lockTargetIndex: snapshotLockTargetIndex,
+      timeScale: snapshotTimeScale,
       genomicCoords: snapshotGenomicCoords,
       tsconfig: snapshotTsconfig,
       version,
@@ -454,7 +460,8 @@ export function useTreeData({
 
       const response = await snapshotQueryTreeLayout(indicesToFetch, {
         actualDisplayArray: snapshotDisplayArray,
-        lockView: lockViewForRequest
+        lockView: lockViewForRequest,
+        timeScale: snapshotTimeScale
       });
 
       // Ignore stale response if a newer request was sent or cache generation changed.
@@ -552,6 +559,7 @@ export function useTreeData({
       isConnected,
       normalizedLockView,
       lockTargetIndex,
+      timeScale: resolvedTimeScale,
       genomicCoords,
       tsconfig,
       version,
@@ -565,6 +573,7 @@ export function useTreeData({
     isConnected,
     normalizedLockView,
     lockTargetIndex,
+    resolvedTimeScale,
     genomicCoords,
     tsconfig,
     runSyncQueue

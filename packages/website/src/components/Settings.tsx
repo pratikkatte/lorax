@@ -1,6 +1,7 @@
 import React from 'react';
 
 type RgbaColor = [number, number, number, number];
+type TimeScale = 'linear' | 'log';
 
 interface SettingsProps {
   setShowSettings: (show: boolean) => void;
@@ -8,6 +9,8 @@ interface SettingsProps {
   setPolygonFillColor: (color: RgbaColor) => void;
   defaultTipColor: RgbaColor;
   setDefaultTipColor: (color: RgbaColor) => void;
+  timeScale: TimeScale;
+  setTimeScale: (scale: TimeScale) => void;
   compareInsertionColor: RgbaColor;
   setCompareInsertionColor: (color: RgbaColor) => void;
   compareDeletionColor: RgbaColor;
@@ -51,6 +54,8 @@ const Settings: React.FC<SettingsProps> = ({
   setPolygonFillColor,
   defaultTipColor,
   setDefaultTipColor,
+  timeScale,
+  setTimeScale,
   compareInsertionColor,
   setCompareInsertionColor,
   compareDeletionColor,
@@ -100,6 +105,28 @@ const Settings: React.FC<SettingsProps> = ({
               }}
               className="shrink-0 w-6 h-6 cursor-pointer rounded-full border border-slate-300 p-0.5 bg-white shadow-inner [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:rounded-full [&::-moz-color-swatch]:rounded-full [&::-moz-color-swatch]:border-0"
             />
+          </div>
+        </div>
+        <div className="bg-white rounded-lg overflow-hidden border border-slate-200 shadow-sm">
+          <div className="border-l-4 border-slate-400 pl-3 pr-4 pt-4 pb-3">
+            <h3 className="text-sm font-semibold text-slate-700 tracking-tight">Time Axis Scale</h3>
+            <p className="text-xs text-slate-500 mt-1 leading-relaxed">Scale used for vertical tree time coordinates.</p>
+          </div>
+          <div className="flex gap-2 px-4 pb-4 pt-1">
+            {(['linear', 'log'] as TimeScale[]).map((scale) => (
+              <button
+                key={scale}
+                type="button"
+                onClick={() => setTimeScale(scale)}
+                className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+                  timeScale === scale
+                    ? 'border-slate-700 bg-slate-800 text-white'
+                    : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                {scale === 'linear' ? 'Linear' : 'Log'}
+              </button>
+            ))}
           </div>
         </div>
         <div className="bg-white rounded-lg overflow-hidden border border-slate-200 shadow-sm">

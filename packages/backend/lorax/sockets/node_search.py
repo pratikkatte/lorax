@@ -18,6 +18,7 @@ from lorax.handlers import (
 from lorax.cache import get_file_context
 from lorax.sockets.decorators import require_session
 from lorax.sockets.utils import is_csv_session_file
+from lorax.tree_graph.time_scale import newick_node_position, normalize_time_scale
 
 
 async def _get_or_parse_csv_tree_graph(ctx, session_id: str, tree_idx: int):
@@ -52,6 +53,11 @@ def _build_node_id_to_index(graph):
         return {int(nid): i for i, nid in enumerate(graph.node_id)}
     except Exception:
         return {}
+
+
+def _get_csv_max_branch_length(ctx) -> float:
+    times_values = ctx.config.get("times", {}).get("values", [0.0, 1.0])
+    return float(times_values[1]) if len(times_values) > 1 else 1.0
 
 
 def _compute_csv_lineage_path(graph, seed_node_id: int, node_id_to_index: dict):
@@ -244,6 +250,7 @@ def register_node_search_events(sio):
                 metadata_key = data.get("metadata_key")
                 metadata_value = data.get("metadata_value")
                 tree_indices = data.get("tree_indices", [])
+                time_scale = normalize_time_scale(data.get("timeScale"))
 
                 if metadata_key != "sample":
                     await sio.emit("highlight-positions-result", {"positions": []}, to=sid)
@@ -258,6 +265,7 @@ def register_node_search_events(sio):
                     await sio.emit("highlight-positions-result", {"error": "Failed to load CSV"}, to=sid)
                     return
 
+                max_branch_length = _get_csv_max_branch_length(ctx)
                 samples_order = ctx.config.get("samples") or []
                 sample_id_map = {str(name): idx for idx, name in enumerate(samples_order)}
                 target_node_id = sample_id_map.get(str(metadata_value))
@@ -275,14 +283,22 @@ def register_node_search_events(sio):
                     arr_idx = _find_node_index(graph, target_node_id)
                     if arr_idx is None:
                         continue
+                    node_pos = newick_node_position(
+                        graph,
+                        target_node_id,
+                        max_branch_length,
+                        time_scale,
+                    )
+                    if node_pos is None:
+                        continue
 
                     positions.append(
                         {
                             "node_id": int(target_node_id),
                             "tree_idx": int(tree_idx),
                             # Canonical axis contract: x=layout, y=time.
-                            "x": float(graph.x[arr_idx]),
-                            "y": float(graph.y[arr_idx]),
+                            "x": node_pos["x"],
+                            "y": node_pos["y"],
                         }
                     )
 
@@ -292,6 +308,7 @@ def register_node_search_events(sio):
             metadata_key = data.get("metadata_key")
             metadata_value = data.get("metadata_value")
             tree_indices = data.get("tree_indices", [])
+            time_scale = normalize_time_scale(data.get("timeScale"))
 
             if not metadata_key or metadata_value is None:
                 await sio.emit("highlight-positions-result", {
@@ -321,6 +338,7 @@ def register_node_search_events(sio):
                 lorax_sid,
                 tree_graph_cache,
                 ctx=ctx,
+                time_scale=time_scale,
             )
 
             await sio.emit("highlight-positions-result", result, to=sid)
@@ -369,6 +387,7 @@ def register_node_search_events(sio):
                 metadata_values = data.get("metadata_values", [])
                 tree_indices = data.get("tree_indices", [])
                 show_lineages = bool(data.get("show_lineages", False))
+                time_scale = normalize_time_scale(data.get("timeScale"))
 
                 if metadata_key != "sample":
                     await sio.emit(
@@ -391,6 +410,7 @@ def register_node_search_events(sio):
                     await sio.emit("search-metadata-multi-result", {"error": "Failed to load CSV"}, to=sid)
                     return
 
+                max_branch_length = _get_csv_max_branch_length(ctx)
                 samples_order = ctx.config.get("samples") or []
                 sample_id_map = {str(name): idx for idx, name in enumerate(samples_order)}
 
@@ -416,14 +436,22 @@ def register_node_search_events(sio):
                         arr_idx = _find_node_index(graph, node_id)
                         if arr_idx is None:
                             continue
+                        node_pos = newick_node_position(
+                            graph,
+                            node_id,
+                            max_branch_length,
+                            time_scale,
+                        )
+                        if node_pos is None:
+                            continue
 
                         positions_by_value[value].append(
                             {
                                 "node_id": int(node_id),
                                 "tree_idx": int(tree_idx),
                                 # Canonical axis contract: x=layout, y=time.
-                                "x": float(graph.x[arr_idx]),
-                                "y": float(graph.y[arr_idx]),
+                                "x": node_pos["x"],
+                                "y": node_pos["y"],
                             }
                         )
                         total_count += 1
@@ -451,6 +479,7 @@ def register_node_search_events(sio):
             metadata_values = data.get("metadata_values", [])
             tree_indices = data.get("tree_indices", [])
             show_lineages = data.get("show_lineages", False)
+            time_scale = normalize_time_scale(data.get("timeScale"))
 
             if not metadata_key:
                 await sio.emit("search-metadata-multi-result", {
@@ -485,6 +514,7 @@ def register_node_search_events(sio):
                 tree_graph_cache,
                 show_lineages,
                 ctx=ctx,
+                time_scale=time_scale,
             )
 
             await sio.emit("search-metadata-multi-result", result, to=sid)
@@ -507,6 +537,7 @@ def register_node_search_events(sio):
             if not session:
                 return
             tree_indices = data.get("tree_indices", [])
+            time_scale = normalize_time_scale(data.get("timeScale"))
             if not session.file_path:
                 await sio.emit(
                     "compare-trees-result",
@@ -521,6 +552,7 @@ def register_node_search_events(sio):
                 lorax_sid,
                 tree_graph_cache,
                 csv_tree_graph_cache=csv_tree_graph_cache,
+                time_scale=time_scale,
             )
             await sio.emit("compare-trees-result", result, to=sid)
         except Exception as e:

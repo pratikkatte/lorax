@@ -7,6 +7,8 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 
+from lorax.tree_graph.time_scale import normalized_y_to_scaled_y, normalize_time_scale
+
 
 def build_empty_tree_layout_arrow_ipc() -> bytes:
     """Return a valid (possibly empty) PyArrow IPC stream for tree layout.
@@ -54,6 +56,7 @@ def build_csv_layout_response(
     samples_order: List[str] | None = None,
     pre_parsed_graphs: Dict[int, Any] | None = None,
     shift_tips_to_one: bool = False,
+    time_scale: str = "linear",
 ) -> Dict[str, Any]:
     """Build PyArrow IPC buffer for CSV trees.
 
@@ -70,6 +73,8 @@ def build_csv_layout_response(
         {buffer, global_min_time, global_max_time, tree_indices}
     """
     from lorax.csv.newick_tree import parse_newick_to_tree
+
+    time_scale = normalize_time_scale(time_scale)
 
     # Collect all nodes from all trees
     all_node_ids: List[np.ndarray] = []
@@ -126,7 +131,7 @@ def build_csv_layout_response(
         all_is_tip.append(graph.is_tip)
         all_tree_idx.append(np.full(n, tree_idx, dtype=np.int32))
         all_x.append(graph.x.astype(np.float32))
-        all_y.append(graph.y.astype(np.float32))
+        all_y.append(normalized_y_to_scaled_y(graph.y, 0.0, max_branch_length, time_scale))
         all_names.append(np.array(graph.name, dtype=object))
 
         processed_indices.append(tree_idx)

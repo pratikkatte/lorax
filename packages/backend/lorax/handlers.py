@@ -14,6 +14,12 @@ import tskit
 from lorax.modes import CURRENT_MODE
 from lorax.cloud.gcs_utils import get_public_gcs_dict
 from lorax.tree_graph import construct_trees_batch, construct_tree, TreeGraph
+from lorax.tree_graph.time_scale import (
+    newick_edge_coordinates,
+    normalize_time_scale,
+    tree_graph_edge_coordinates,
+    tree_graph_node_position,
+)
 from lorax.csv.layout import build_empty_layout_response, build_csv_layout_response
 from lorax.utils import (
     ensure_json_dict,
@@ -527,6 +533,7 @@ async def handle_tree_graph_query(
     adaptive_sparsify_bbox: dict | None = None,
     adaptive_target_tree_idx: int | None = None,
     adaptive_outside_cell_size: float | None = None,
+    time_scale: str = "linear",
 ):
     """
     Construct trees using Numba-optimized tree_graph module.
@@ -541,6 +548,7 @@ async def handle_tree_graph_query(
         adaptive_sparsify_bbox: Optional normalized local bbox for adaptive in-bbox densification.
         adaptive_target_tree_idx: Optional tree index that adaptive bbox applies to.
         adaptive_outside_cell_size: Optional fixed outside-bbox cell size for adaptive sparsification.
+        time_scale: Time coordinate scale for emitted y coordinates ("linear" or "log").
 
     Returns:
         dict with:
@@ -560,6 +568,7 @@ async def handle_tree_graph_query(
         return {"error": "Tree sequence not loaded. Please load a file first."}
 
     ts = ctx.tree_sequence
+    time_scale = normalize_time_scale(time_scale)
 
     # CSV support: parse Newick strings and build tree layout
     if isinstance(ts, pd.DataFrame):
@@ -621,6 +630,7 @@ async def handle_tree_graph_query(
             samples_order=samples_order,
             pre_parsed_graphs=pre_parsed_graphs,
             shift_tips_to_one=shift_tips_to_one,
+            time_scale=time_scale,
         )
 
     # Collect pre-cached TreeGraphs
@@ -645,6 +655,7 @@ async def handle_tree_graph_query(
             adaptive_sparsify_bbox=adaptive_sparsify_bbox,
             adaptive_target_tree_idx=adaptive_target_tree_idx,
             adaptive_outside_cell_size=adaptive_outside_cell_size,
+            time_scale=time_scale,
         )
 
     buffer, min_time, max_time, processed_indices, newly_built = await asyncio.to_thread(process_trees)
@@ -736,18 +747,6 @@ def _edges_from_tree_graph(tg) -> set:
     return edges
 
 
-def _edge_with_coords(tg, parent: int, child: int) -> dict:
-    """Get edge dict with canonical x/y coordinates (x=layout, y=time)."""
-    return {
-        "parent": parent,
-        "child": child,
-        "parent_x": float(tg.x[parent]),
-        "parent_y": float(tg.y[parent]),
-        "child_x": float(tg.x[child]),
-        "child_y": float(tg.y[child]),
-    }
-
-
 def _edges_from_newick_tree_graph(ng) -> set:
     """Extract (parent, child) edge set from NewickTreeGraph."""
     edges = set()
@@ -759,34 +758,13 @@ def _edges_from_newick_tree_graph(ng) -> set:
     return edges
 
 
-def _newick_node_id_to_index(ng, node_id: int) -> int | None:
-    """Map node_id to array index in NewickTreeGraph (node_id can differ from index)."""
-    idxs = np.where(ng.node_id == int(node_id))[0]
-    return int(idxs[0]) if idxs.size > 0 else None
-
-
-def _edge_with_coords_newick(ng, parent: int, child: int) -> dict | None:
-    """Edge dict with canonical x/y coordinates (x=layout, y=time) for NewickTreeGraph."""
-    pi = _newick_node_id_to_index(ng, parent)
-    ci = _newick_node_id_to_index(ng, child)
-    if pi is None or ci is None:
-        return None
-    return {
-        "parent": parent,
-        "child": child,
-        "parent_x": float(ng.x[pi]),
-        "parent_y": float(ng.y[pi]),
-        "child_x": float(ng.x[ci]),
-        "child_y": float(ng.y[ci]),
-    }
-
-
 async def get_compare_trees_diff(
     file_path: str,
     tree_indices: list,
     session_id: str,
     tree_graph_cache,
     csv_tree_graph_cache=None,
+    time_scale: str = "linear",
 ) -> dict:
     """
     Compare consecutive trees and return inserted/removed edges with coordinates.
@@ -797,6 +775,7 @@ async def get_compare_trees_diff(
         session_id: Session ID for cache key
         tree_graph_cache: TreeGraphCache instance (tskit)
         csv_tree_graph_cache: CsvTreeGraphCache instance (for CSV)
+        time_scale: Time coordinate scale for emitted y coordinates ("linear" or "log").
 
     Returns:
         dict with comparisons: [{prev_idx, next_idx, inserted: [...], removed: [...]}]
@@ -812,6 +791,7 @@ async def get_compare_trees_diff(
         return {"comparisons": [], "error": "No file loaded"}
 
     ts = ctx.tree_sequence
+    time_scale = normalize_time_scale(time_scale)
     is_csv = is_csv_session_file(file_path) or isinstance(ts, pd.DataFrame)
 
     if is_csv:
@@ -820,6 +800,8 @@ async def get_compare_trees_diff(
         num_trees = len(ts)
         indices = [int(i) for i in tree_indices if 0 <= int(i) < num_trees]
         shift_tips_to_one = should_shift_csv_tips(file_path)
+        times_values = ctx.config.get("times", {}).get("values", [0.0, 1.0])
+        max_branch_length = float(times_values[1]) if len(times_values) > 1 else 1.0
 
         comparisons = []
         for i in range(len(indices) - 1):
@@ -843,12 +825,12 @@ async def get_compare_trees_diff(
 
             inserted_list = []
             for p, c in inserted:
-                e = _edge_with_coords_newick(ng_next, p, c)
+                e = newick_edge_coordinates(ng_next, p, c, max_branch_length, time_scale)
                 if e is not None:
                     inserted_list.append(e)
             removed_list = []
             for p, c in removed:
-                e = _edge_with_coords_newick(ng_prev, p, c)
+                e = newick_edge_coordinates(ng_prev, p, c, max_branch_length, time_scale)
                 if e is not None:
                     removed_list.append(e)
 
@@ -863,6 +845,8 @@ async def get_compare_trees_diff(
 
     comparisons = []
     indices = [int(i) for i in tree_indices if 0 <= int(i) < ts.num_trees]
+    min_time = float(ts.min_time)
+    max_time = float(ts.max_time)
 
     for i in range(len(indices) - 1):
         prev_idx = indices[i]
@@ -884,10 +868,10 @@ async def get_compare_trees_diff(
         removed = edges_prev - edges_next
 
         inserted_list = [
-            _edge_with_coords(tg_next, p, c) for p, c in inserted
+            tree_graph_edge_coordinates(tg_next, p, c, min_time, max_time, time_scale) for p, c in inserted
         ]
         removed_list = [
-            _edge_with_coords(tg_prev, p, c) for p, c in removed
+            tree_graph_edge_coordinates(tg_prev, p, c, min_time, max_time, time_scale) for p, c in removed
         ]
 
         comparisons.append({
@@ -1160,6 +1144,7 @@ async def get_highlight_positions(
     sources=("individual", "node", "population"),
     sample_name_key="name",
     ctx=None,
+    time_scale: str = "linear",
 ):
     """
     Get positions for all tip nodes with a specific metadata value.
@@ -1213,6 +1198,7 @@ async def get_highlight_positions(
     breakpoints = list(ts.breakpoints())
     min_time = float(ts.min_time)
     max_time = float(ts.max_time)
+    time_scale = normalize_time_scale(time_scale)
 
     valid_tree_indices = []
     for raw_tree_idx in tree_indices:
@@ -1237,16 +1223,12 @@ async def get_highlight_positions(
         hits = matching_node_ids[graph.in_tree[matching_node_ids]]
         if hits.size == 0:
             continue
-        x_coords = graph.x[hits]
-        y_coords = graph.y[hits]
         positions.extend(
             {
-                "node_id": int(node_id),
                 "tree_idx": tree_idx,
-                "x": float(x_coord),
-                "y": float(y_coord),
+                **tree_graph_node_position(graph, node_id, min_time, max_time, time_scale),
             }
-            for node_id, x_coord, y_coord in zip(hits, x_coords, y_coords)
+            for node_id in hits
         )
 
     return {"positions": positions}
@@ -1264,6 +1246,7 @@ async def get_multi_value_highlight_positions(
     sources=("individual", "node", "population"),
     sample_name_key="name",
     ctx=None,
+    time_scale: str = "linear",
 ):
     """
     Get positions for tip nodes matching ANY of the metadata values.
@@ -1323,6 +1306,7 @@ async def get_multi_value_highlight_positions(
     breakpoints = list(ts.breakpoints())
     min_time = float(ts.min_time)
     max_time = float(ts.max_time)
+    time_scale = normalize_time_scale(time_scale)
 
     valid_tree_indices = []
     for raw_tree_idx in tree_indices:
@@ -1368,16 +1352,12 @@ async def get_multi_value_highlight_positions(
             if hits.size == 0:
                 continue
 
-            x_coords = graph.x[hits]
-            y_coords = graph.y[hits]
             value_positions.extend(
                 {
-                    "node_id": int(node_id),
                     "tree_idx": tree_idx,
-                    "x": float(x_coord),
-                    "y": float(y_coord),
+                    **tree_graph_node_position(graph, node_id, min_time, max_time, time_scale),
                 }
-                for node_id, x_coord, y_coord in zip(hits, x_coords, y_coords)
+                for node_id in hits
             )
 
             # Compute lineage paths if requested

@@ -105,6 +105,7 @@ function FileView() {
   const [edgeColor, setEdgeColor] = useState([100, 100, 100, 255]);
   // Default tip color [r, g, b, a] when metadata coloring is unavailable
   const [defaultTipColor, setDefaultTipColor] = useState([150, 150, 150, 200]);
+  const [timeScale, setTimeScale] = useState('linear');
   // Controls whether model matrix recomputes on zoom interactions.
   const [lockModelMatrix, setLockModelMatrix] = useState(false);
   // Tracks whether lock view was auto-enabled from showingAllTrees behavior.
@@ -901,6 +902,7 @@ function FileView() {
               descendantsHighlightColor={descendantsHighlightColor}
               edgeColor={edgeColor}
               defaultTipColor={defaultTipColor}
+              timeScale={timeScale}
               lockModelMatrix={lockModelMatrix}
               enableLockMaxZoomGuard={ENABLE_MAX_ZOOM_GUARD}
               onMaxZoomReached={ENABLE_MAX_ZOOM_GUARD ? () => setMaxZoomAlert(true) : undefined}
@@ -1097,6 +1099,8 @@ function FileView() {
             setEdgeColor={setEdgeColor}
             defaultTipColor={defaultTipColor}
             setDefaultTipColor={setDefaultTipColor}
+            timeScale={timeScale}
+            setTimeScale={setTimeScale}
           />
         </div>
       )}

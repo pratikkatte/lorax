@@ -21,6 +21,7 @@ export function useTreeViewportPipeline({
   isConnected,
   lockModelMatrix = false,
   lockViewPayload = null,
+  timeScale = 'linear',
   metadataArrays = null,
   metadataColors = null,
   populationFilter = null,
@@ -63,6 +64,7 @@ export function useTreeViewportPipeline({
     queryTreeLayout,
     isConnected,
     lockView: lockModelMatrix ? lockViewPayload : null,
+    timeScale,
     tsconfig,
     genomicCoords
   });

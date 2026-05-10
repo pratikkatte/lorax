@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { niceStep } from '../utils/genomeCoordinates.js';
+import { normalizeTimeScale, timeToY, yToTime } from '../utils/timeScale.js';
 
 /**
  * Compute time axis tick positions for the tree-time view
@@ -9,16 +10,17 @@ import { niceStep } from '../utils/genomeCoordinates.js';
  * @param {number} params.maxTime - Maximum time value (root/oldest)
  * @param {Object} params.viewState - tree-time view state with zoom and target
  * @param {number} params.viewHeight - Height of tree-time view in pixels
+ * @param {string} params.timeScale - Time scale: "linear" or "log"
  * @returns {Array<{time: number, y: number, text: string}>} Array of tick positions
  */
-export function useTimePositions({ minTime, maxTime, viewState, viewHeight }) {
+export function useTimePositions({ minTime, maxTime, viewState, viewHeight, timeScale = 'linear' }) {
   return useMemo(() => {
     // Validate inputs
     if (minTime == null || maxTime == null || minTime >= maxTime) return [];
     if (!viewState?.zoom || !viewState?.target) return [];
     if (!viewHeight || viewHeight <= 0) return [];
 
-    const timeRange = maxTime - minTime;
+    const resolvedTimeScale = normalizeTimeScale(timeScale);
     const [, yZoom] = viewState.zoom;
     const [, yTarget] = viewState.target;
 
@@ -28,11 +30,8 @@ export function useTimePositions({ minTime, maxTime, viewState, viewHeight }) {
     const yMin = Math.max(0, yTarget - visibleYHeight / 2);
     const yMax = Math.min(1, yTarget + visibleYHeight / 2);
 
-    // Convert visible Y range to time values
-    // Y coordinate system: y=1 is tips (minTime), y=0 is roots (maxTime)
-    // So yMin close to 0 means viewing maxTime region, yMax close to 1 means viewing minTime region
-    const visibleTimeMax = maxTime - yMin * timeRange;  // y=0 → maxTime
-    const visibleTimeMin = maxTime - yMax * timeRange;  // y=1 → minTime
+    const visibleTimeMax = yToTime(yMin, minTime, maxTime, resolvedTimeScale);
+    const visibleTimeMin = yToTime(yMax, minTime, maxTime, resolvedTimeScale);
     const visibleTimeRange = visibleTimeMax - visibleTimeMin;
 
     if (visibleTimeRange <= 0) return [];
@@ -46,8 +45,7 @@ export function useTimePositions({ minTime, maxTime, viewState, viewHeight }) {
       // Skip if outside the global time range
       if (time < minTime || time > maxTime) continue;
 
-      // Normalize to [0, 1] with y=1 at minTime (bottom), y=0 at maxTime (top)
-      const normalizedY = 1 - (time - minTime) / timeRange;
+      const normalizedY = timeToY(time, minTime, maxTime, resolvedTimeScale);
 
       // Skip values too close to boundaries
       if (normalizedY < 0.02 || normalizedY > 0.98) continue;
@@ -72,7 +70,7 @@ export function useTimePositions({ minTime, maxTime, viewState, viewHeight }) {
     });
 
     return ticks;
-  }, [minTime, maxTime, viewState, viewHeight]);
+  }, [minTime, maxTime, viewState, viewHeight, timeScale]);
 }
 
 /**
