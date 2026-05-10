@@ -22,8 +22,6 @@ const Info = ({
   visibleTrees = [],
   treeColors = {},
   setTreeColors,
-  treeEdgeColors = {},
-  setTreeEdgeColors,
   colorByTree = false,
   setColorByTree,
   hoveredTreeIndex = null,
@@ -35,6 +33,7 @@ const Info = ({
   isFetchingDetails = false
 }) => {
   const [activeTabInternal, setActiveTabInternal] = useState('details');
+  const [showMetadataTooltip, setShowMetadataTooltip] = useState(false);
   const activeTab = activeTabProp ?? activeTabInternal;
   const setActiveTab = onTabChange ?? setActiveTabInternal;
 
@@ -102,17 +101,42 @@ const Info = ({
           >
             Mutations
           </button>
-          <button
-            className={`flex-1 px-4 py-2 rounded-md text-sm font-semibold transition-all duration-200
-              ${activeTab === 'metadata'
-                ? "bg-white text-emerald-700 shadow-sm ring-1 ring-slate-200"
-                : "text-slate-500 hover:text-slate-700"}
-            `}
-            onClick={() => setActiveTab('metadata')}
-            data-tour="viewer-info-filter-tab"
-          >
-            Metadata
-          </button>
+          <div className="relative flex-1">
+            <button
+              className={`w-full px-4 pr-8 py-2 rounded-md text-sm font-semibold transition-all duration-200
+                ${activeTab === 'metadata'
+                  ? "bg-white text-emerald-700 shadow-sm ring-1 ring-slate-200"
+                  : "text-slate-500 hover:text-slate-700"}
+              `}
+              onClick={() => setActiveTab('metadata')}
+              data-tour="viewer-info-filter-tab"
+            >
+              Metadata
+            </button>
+            <button
+              type="button"
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full text-slate-400 hover:text-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-1"
+              aria-label="Explain Metadata tab"
+              aria-describedby={showMetadataTooltip ? "metadata-tab-tooltip" : undefined}
+              onMouseEnter={() => setShowMetadataTooltip(true)}
+              onMouseLeave={() => setShowMetadataTooltip(false)}
+              onFocus={() => setShowMetadataTooltip(true)}
+              onBlur={() => setShowMetadataTooltip(false)}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M12 20a8 8 0 100-16 8 8 0 000 16z" />
+              </svg>
+            </button>
+            {showMetadataTooltip && (
+              <div
+                id="metadata-tab-tooltip"
+                role="tooltip"
+                className="absolute right-0 top-full z-20 mt-2 w-64 rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-xs font-medium leading-5 text-slate-600 shadow-lg"
+              >
+                Use Metadata to color trees and apply filters or presets based on sample metadata.
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
