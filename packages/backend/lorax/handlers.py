@@ -340,7 +340,7 @@ def get_tree_details(ts, tree_index):
     return {
         "interval": tree.interval,
         "num_roots": tree.num_roots,
-        "num_nodes": tree.num_nodes,
+        "num_nodes": len(tree.preorder()),
         "mutations": mutations
     }
 
