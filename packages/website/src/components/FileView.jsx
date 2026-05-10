@@ -813,6 +813,12 @@ function FileView() {
     }
   }, [tourOpen, tourActiveStepId, tourSelectedTreeIndex, handlePolygonClick, queryDetails, applyDetailsResponse, resetDetails]);
 
+  const timelineLabel = useMemo(() => {
+    const currentFilename = String(tsconfig?.filename || filename || file || '').toLowerCase();
+    const isCsvFile = currentFilename.endsWith('.csv') || Boolean(tsconfig?.tree_info);
+    return isCsvFile ? 'branch length' : tsconfig?.times?.type;
+  }, [file, filename, tsconfig?.filename, tsconfig?.times?.type, tsconfig?.tree_info]);
+
   return (
     <div className="h-screen flex min-h-0 overflow-hidden bg-slate-50 relative">
       {/* Main content column (PositionSlider + viewport) - full width, panels overlay */}
@@ -842,7 +848,7 @@ function FileView() {
           onViewChange={updateView}
           resizable={!loading && !error && tsconfig}
           treeIsLoading={treeIsLoading}
-          timelineLabel={tsconfig?.times?.type}
+          timelineLabel={timelineLabel}
           dataTour="viewer-viewport"
         />
 
@@ -991,7 +997,7 @@ function FileView() {
                   maxWidth: 320,
                   border: '1px solid rgba(0,0,0,0.08)',
                   overflow: 'hidden',
-                  fontFamily: '-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, sans-serif',
+                  fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
                 }}
               >
                 <div style={{ padding: '10px 12px', fontSize: '13px', color: '#374151' }}>

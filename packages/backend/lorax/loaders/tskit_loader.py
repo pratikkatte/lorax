@@ -28,10 +28,9 @@ def get_config_tskit(ts, file_path, root_dir):
         times = [ts.min_time, ts.max_time]
         genome_length = ts.sequence_length
 
-        # Timeline unit label for UI: normalize unknown -> "Time"
+        # Preserve raw tskit time_units for the UI label.
         time_units = getattr(ts, "time_units", None)
-        time_units_str = str(time_units) if time_units is not None else "unknown"
-        timeline_type = "Coalescent Time" if time_units_str.strip().lower() == "unknown" else time_units_str
+        timeline_type = str(time_units) if time_units is not None else "unknown"
 
         # Compute centered initial position (10% of genome, minimum 1kb)
         window_size = max(genome_length * 0.1, 1000)
