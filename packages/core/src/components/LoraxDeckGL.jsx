@@ -91,6 +91,38 @@ const INTERACTION_SETTLE_MS = 120;
 const DESCENDANT_HIGHLIGHT_COLOR = [56, 189, 248, 255];
 const DESCENDANT_EDGE_ALPHA = 220;
 const DESCENDANT_HIGHLIGHT_RADIUS = 4;
+const DEFAULT_LINEAGE_COLOR = [255, 200, 0, 255];
+
+function normalizeRgbaColor(color, fallback = DEFAULT_LINEAGE_COLOR) {
+  const source = Array.isArray(color) ? color : fallback;
+  return [
+    Number.isFinite(source[0]) ? source[0] : fallback[0],
+    Number.isFinite(source[1]) ? source[1] : fallback[1],
+    Number.isFinite(source[2]) ? source[2] : fallback[2],
+    Number.isFinite(source[3]) ? source[3] : fallback[3]
+  ];
+}
+
+function mergeLineageColors(colorsByValue) {
+  const colors = Array.from(colorsByValue.values()).map((color) => normalizeRgbaColor(color));
+  if (colors.length === 0) return DEFAULT_LINEAGE_COLOR;
+  if (colors.length === 1) return colors[0];
+
+  const totals = colors.reduce((acc, color) => {
+    acc[0] += color[0];
+    acc[1] += color[1];
+    acc[2] += color[2];
+    acc[3] = Math.max(acc[3], color[3]);
+    return acc;
+  }, [0, 0, 0, 0]);
+
+  return [
+    Math.round(totals[0] / colors.length),
+    Math.round(totals[1] / colors.length),
+    Math.round(totals[2] / colors.length),
+    totals[3]
+  ];
+}
 
 /**
  * LoraxDeckGL - Configurable deck.gl component with 4 views:
@@ -770,12 +802,11 @@ const LoraxDeckGL = forwardRef(({
       return [];
     }
 
-    const lineages = [];
+    const lineageSegments = new Map();
     const valueToColor = metadataColors?.[selectedColorBy] || {};
 
     for (const [value, treeLineages] of Object.entries(multiHighlightData.lineages)) {
-      // Get color for this value, or use lineage-specific color if provided
-      const defaultColor = valueToColor[value] || [255, 200, 0, 255];
+      const defaultColor = valueToColor[value] || DEFAULT_LINEAGE_COLOR;
 
       for (const [treeIdxStr, pathsForTree] of Object.entries(treeLineages)) {
         const treeIdx = parseInt(treeIdxStr, 10);
@@ -795,45 +826,57 @@ const LoraxDeckGL = forwardRef(({
           const pathNodeIds = lineage.path_node_ids;
           if (!pathNodeIds || pathNodeIds.length < 2) continue;
 
-          // Use lineage-specific color if provided, otherwise use value color
-          const lineageColor = lineage.color || defaultColor;
+          const lineageColor = normalizeRgbaColor(lineage.color || defaultColor, defaultColor);
 
-          // Build L-shaped path coordinates
-          // For each consecutive pair of nodes, create horizontal-then-vertical path
-          const pathCoords = [];
+          for (let i = 0; i < pathNodeIds.length - 1; i++) {
+            const parentId = pathNodeIds[i];
+            const childId = pathNodeIds[i + 1];
+            const parentPos = nodePositions.get(parentId);
+            const childPos = nodePositions.get(childId);
+            if (!parentPos || !childPos) continue;
 
-          for (let i = 0; i < pathNodeIds.length; i++) {
-            const nodeId = pathNodeIds[i];
-            // Look up node position from treeData
-            const nodePos = nodePositions.get(nodeId);
-            if (!nodePos) continue;
+            const parentWorldX = parentPos.x * scaleX + translateX;
+            const parentWorldY = parentPos.y * scaleY + translateY;
+            const childWorldX = childPos.x * scaleX + translateX;
+            const childWorldY = childPos.y * scaleY + translateY;
 
-            // Apply model matrix transform using canonical x/y semantics.
-            const worldX = nodePos.x * scaleX + translateX;
-            const worldY = nodePos.y * scaleY + translateY;
-
-            if (i > 0 && pathCoords.length > 0) {
-              // Insert L-shaped corner: horizontal then vertical
-              const prevCoord = pathCoords[pathCoords.length - 1];
-              // Move horizontally first (same Y as previous), then vertically to current
-              pathCoords.push([worldX, prevCoord[1]]);
+            const segmentKey = `${treeIdx}:${parentId}:${childId}`;
+            let segment = lineageSegments.get(segmentKey);
+            if (!segment) {
+              segment = {
+                path: [
+                  [parentWorldX, parentWorldY],
+                  [childWorldX, parentWorldY],
+                  [childWorldX, childWorldY]
+                ],
+                treeIdx,
+                parentNodeId: parentId,
+                childNodeId: childId,
+                colorsByValue: new Map()
+              };
+              lineageSegments.set(segmentKey, segment);
             }
-            pathCoords.push([worldX, worldY]);
-          }
 
-          if (pathCoords.length >= 2) {
-            lineages.push({
-              path: pathCoords,
-              color: lineageColor,
-              treeIdx,
-              value
-            });
+            if (!segment.colorsByValue.has(value)) {
+              segment.colorsByValue.set(value, lineageColor);
+            }
           }
         }
       }
     }
 
-    return lineages;
+    return Array.from(lineageSegments.values()).map((segment) => {
+      const values = Array.from(segment.colorsByValue.keys());
+      return {
+        path: segment.path,
+        color: mergeLineageColors(segment.colorsByValue),
+        treeIdx: segment.treeIdx,
+        value: values.length === 1 ? values[0] : values.join(', '),
+        values,
+        parentNodeId: segment.parentNodeId,
+        childNodeId: segment.childNodeId
+      };
+    });
   }, [displayLineagePaths, multiHighlightData, localBins, nodePositionsLookup, metadataColors, selectedColorBy]);
 
   // Compute compare edges (inserted/removed) from compare_trees result

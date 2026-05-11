@@ -397,4 +397,99 @@ describe('LoraxDeckGL canonical local-coordinate mapping', () => {
       [108, 6.8]
     ]);
   });
+
+  it('merges colors for overlapping lineage tree segments before rendering', async () => {
+    vi.useFakeTimers();
+
+    treeDataState = {
+      ...treeDataState,
+      treeData: {
+        ...treeDataState.treeData,
+        node_id: [1, 2, 3, 4],
+        parent_id: [-1, 1, 2, 2],
+        is_tip: [false, false, true, true],
+        tree_idx: [0, 0, 0, 0],
+        x: [0.1, 0.4, 0.8, 0.6],
+        y: [0.1, 0.4, 0.7, 0.9]
+      }
+    };
+
+    loraxState = {
+      ...loraxState,
+      isConnected: true,
+      selectedColorBy: 'group',
+      metadataColors: {
+        group: {
+          A: [10, 20, 30, 100],
+          B: [110, 120, 130, 200]
+        }
+      },
+      searchTags: ['A', 'B'],
+      displayLineagePaths: true,
+      queryMultiValueSearch: vi.fn().mockResolvedValue({
+        positions_by_value: {
+          A: [{ node_id: 3, tree_idx: 0, x: 0.8, y: 0.7 }],
+          B: [{ node_id: 4, tree_idx: 0, x: 0.6, y: 0.9 }]
+        },
+        lineages: {
+          A: {
+            0: [{ path_node_ids: [1, 2, 3] }]
+          },
+          B: {
+            0: [{ path_node_ids: [1, 2, 4] }]
+          }
+        },
+        total_count: 2
+      })
+    };
+
+    render(<LoraxDeckGL viewConfig={{ ortho: { enabled: true } }} />);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(200);
+    });
+
+    expect(loraxState.queryMultiValueSearch).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(capturedRenderData?.lineageData).toHaveLength(3);
+
+    const shared = capturedRenderData.lineageData.find(
+      (segment) => segment.parentNodeId === 1 && segment.childNodeId === 2
+    );
+    const aOnly = capturedRenderData.lineageData.find(
+      (segment) => segment.parentNodeId === 2 && segment.childNodeId === 3
+    );
+    const bOnly = capturedRenderData.lineageData.find(
+      (segment) => segment.parentNodeId === 2 && segment.childNodeId === 4
+    );
+
+    expect(shared?.color).toEqual([60, 70, 80, 200]);
+    expect(shared?.values).toEqual(['A', 'B']);
+    expectPathClose(shared.path, [
+      [101, 5.2],
+      [104, 5.2],
+      [104, 5.8]
+    ]);
+
+    expect(aOnly?.color).toEqual([10, 20, 30, 100]);
+    expect(aOnly?.values).toEqual(['A']);
+    expectPathClose(aOnly.path, [
+      [104, 5.8],
+      [108, 5.8],
+      [108, 6.4]
+    ]);
+
+    expect(bOnly?.color).toEqual([110, 120, 130, 200]);
+    expect(bOnly?.values).toEqual(['B']);
+    expectPathClose(bOnly.path, [
+      [104, 5.8],
+      [106, 5.8],
+      [106, 6.8]
+    ]);
+  });
 });
