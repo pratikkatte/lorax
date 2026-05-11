@@ -30,7 +30,7 @@ function App() {
   return (
     <Routes>
       <Route path="/" element={<LandingPage upload={upload} />} />
-      <Route path="/documentation" element={<DocumentationPage />} />
+      <Route path="/documentation/*" element={<DocumentationPage />} />
       <Route path="/view/:file" element={<FileView />} />
       <Route path="/ucgb" element={<UcgbRedirect />} />
       <Route path="/:file" element={<LegacyFileRedirect />} />

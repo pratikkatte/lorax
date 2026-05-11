@@ -18,6 +18,7 @@ import { useViewportDimensions } from '../hooks/useViewportDimensions';
 import TourOverlay from './TourOverlay';
 import useTourState from '../hooks/useTourState';
 import { metadataFeatureActions } from '../config/metadataFeatureActions';
+import { viewerTourNarrationById } from '../data/viewerTourNarration';
 
 const HOVER_DETAILS_DEBOUNCE_MS = 180;
 
@@ -296,137 +297,93 @@ function FileView() {
     return getPolygonBounds(polygon);
   }, [getCenterPolygon, getPolygonBounds]);
 
-	  const tourSteps = useMemo(() => {
-	    const advancedStepsEnabled = false;
+  const tourSteps = useMemo(() => {
+    const advancedStepsEnabled = false;
+    const step = (id, extra) => ({ id, ...viewerTourNarrationById[id], ...extra });
 
-	    return ([
-	      {
-	        id: 'viewer-position',
-	        target: '[data-tour="viewer-position"]',
-        title: 'Genome window',
-        content: 'Pan and set the genomic range you want to explore. Click Go to apply edits.'
-      },
-      {
-        id: 'viewer-reset-view',
+    return [
+      step("viewer-position", { target: '[data-tour="viewer-position"]' }),
+      step("viewer-reset-view", {
         target: '[data-tour="viewer-reset-view"]',
-        title: 'Reset view',
-        content: 'Reset the vertical zoom while keeping your current genomic window.',
         offset: { x: 0, y: 20 }
-      },
-      {
-        id: 'viewer-compare-topology',
+      }),
+      step("viewer-compare-topology", {
         target: '[data-tour="viewer-compare-topology"]',
-        title: 'Compare topology',
-        content: 'Highlight edge differences between adjacent genealogies to compare their topologies.',
         offset: { x: 0, y: 20 }
-      },
-      {
-        id: 'viewer-lock-view',
+      }),
+      step("viewer-lock-view", {
         target: '[data-tour="viewer-lock-view"]',
-        title: 'Lock view',
-        content: 'Zoom/pan into the trees and inspect the specific region without the trees shifting around.',
         offset: { x: 0, y: 20 }
-      },
-      {
-        id: 'viewer-viewport',
+      }),
+      step("viewer-viewport", { target: '[data-tour="viewer-viewport"]' }),
+      step("viewer-pan", {
         target: '[data-tour="viewer-viewport"]',
-        title: 'Main viewport',
-        content: 'Interact with trees in the viewport. Hover for details and click nodes or edges.'
-      },
-      {
-        id: 'viewer-pan',
-        target: '[data-tour="viewer-viewport"]',
-        title: 'Pan left and right',
-        content: 'Drag horizontally on the viewport to pan across the genome.',
         animation: {
-          label: 'Pan gesture',
-          mediaType: 'gesture',
-          gesture: 'pan',
-          mediaAlt: 'One finger drag left and right'
+          label: "Pan gesture",
+          mediaType: "gesture",
+          gesture: "pan",
+          mediaAlt: "One finger drag left and right"
         }
-      },
-	      {
-	        id: 'viewer-zoom',
-	        target: '[data-tour="viewer-viewport"]',
-	        title: 'Zoom',
-	        content: 'Scroll up/down to zoom vertically. Hold Ctrl and scroll up/down to zoom horizontally.',
-	        animation: {
-	          label: 'Scroll to zoom',
-	          mediaType: 'gesture',
-	          gesture: 'zoom-both',
-	          mediaAlt: 'Scroll up and down, and Ctrl + scroll up and down',
-	        }
-	      },
-	      ...(advancedStepsEnabled ? [
-	        {
-	          id: 'viewer-tree-polygon',
-	          title: 'Pick a tree',
-	          content: 'The center tree is highlighted. Hover it to see details, then click any tree to zoom in.',
-	          getTargetRect: () => getTourPolygonRect(tourCenterTreeIndex),
-	          targetKey: tourTargetTick,
-	          disableNext: !tourPolygonClicked
-	        },
-	        {
-	          id: 'viewer-tree-edge',
-	          title: 'Open tree details',
-	          content: 'Click any edge on the highlighted tree to open the Info panel.',
-	          getTargetRect: () => getTourPolygonRect(tourSelectedTreeIndex ?? tourCenterTreeIndex),
-	          targetKey: tourTargetTick,
-	          disableNext: !tourEdgeClicked
-	        }
-	      ] : []),
-	      {
-	        id: 'viewer-info-button',
-	        target: '[data-tour="viewer-info-button"]',
-	        title: 'Info & Filters',
-        content: 'Open metadata, mutations, and filtering controls for deeper inspection.',
-	        offset: { x: -60, y: -60 },
-	        arrowDir: 'right'
-	      },
-	      ...(advancedStepsEnabled ? [
-	        {
-	          id: 'viewer-info-details',
-	          target: '[data-tour="viewer-info-details-tab"]',
-	          title: 'Details',
-	          content: 'Explore tree, node, and sample details for the selected tree.',
-	          offset: { x: 10, y: 20 },
-	          arrowDir: 'up'
-	        },
-	        {
-	          id: 'viewer-info-mutations',
-	          target: '[data-tour="viewer-info-mutations-tab"]',
-	          title: 'Mutations',
-	          content: 'Browse mutations for the current window or search by position.',
-	          offset: { x: 0, y: 20 },
-	          arrowDir: 'up'
-	        },
-	        {
-	          id: 'viewer-info-filter',
-	          target: '[data-tour="viewer-info-filter-tab"]',
-	          title: 'Filters',
-	          content: 'Color and filter trees to focus on specific structures.',
-	          offset: { x: 0, y: 20 },
-	          arrowDir: 'up'
-	        }
-	      ] : []),
-	      {
-	        id: 'viewer-settings-button',
-	        target: '[data-tour="viewer-settings-button"]',
-	        title: 'Settings',
-	        content: 'Customize display options like colors and view settings.',
-	        offset: { x: -60, y: -60 },
-	        arrowDir: 'right'
-	      },
-	      {
-	        id: 'viewer-screenshot-button',
-	        target: '[data-tour="viewer-screenshot-button"]',
-	        title: 'Screenshot',
-	        content: 'Capture a PNG or SVG of the current view.',
-	        offset: { x: -60, y: -60 },
-	        arrowDir: 'right'
-	      }
-	    ]);
-	  }, [getTourPolygonRect, tourCenterTreeIndex, tourSelectedTreeIndex, tourTargetTick, tourPolygonClicked, tourEdgeClicked]);
+      }),
+      step("viewer-zoom", {
+        target: '[data-tour="viewer-viewport"]',
+        animation: {
+          label: "Scroll to zoom",
+          mediaType: "gesture",
+          gesture: "zoom-both",
+          mediaAlt: "Scroll up and down, and Ctrl + scroll up and down"
+        }
+      }),
+      ...(advancedStepsEnabled
+        ? [
+            step("viewer-tree-polygon", {
+              getTargetRect: () => getTourPolygonRect(tourCenterTreeIndex),
+              targetKey: tourTargetTick,
+              disableNext: !tourPolygonClicked
+            }),
+            step("viewer-tree-edge", {
+              getTargetRect: () => getTourPolygonRect(tourSelectedTreeIndex ?? tourCenterTreeIndex),
+              targetKey: tourTargetTick,
+              disableNext: !tourEdgeClicked
+            })
+          ]
+        : []),
+      step("viewer-info-button", {
+        target: '[data-tour="viewer-info-button"]',
+        offset: { x: -60, y: -60 },
+        arrowDir: "right"
+      }),
+      ...(advancedStepsEnabled
+        ? [
+            step("viewer-info-details", {
+              target: '[data-tour="viewer-info-details-tab"]',
+              offset: { x: 10, y: 20 },
+              arrowDir: "up"
+            }),
+            step("viewer-info-mutations", {
+              target: '[data-tour="viewer-info-mutations-tab"]',
+              offset: { x: 0, y: 20 },
+              arrowDir: "up"
+            }),
+            step("viewer-info-filter", {
+              target: '[data-tour="viewer-info-filter-tab"]',
+              offset: { x: 0, y: 20 },
+              arrowDir: "up"
+            })
+          ]
+        : []),
+      step("viewer-settings-button", {
+        target: '[data-tour="viewer-settings-button"]',
+        offset: { x: -60, y: -60 },
+        arrowDir: "right"
+      }),
+      step("viewer-screenshot-button", {
+        target: '[data-tour="viewer-screenshot-button"]',
+        offset: { x: -60, y: -60 },
+        arrowDir: "right"
+      })
+    ];
+  }, [getTourPolygonRect, tourCenterTreeIndex, tourSelectedTreeIndex, tourTargetTick, tourPolygonClicked, tourEdgeClicked]);
 
   const getSelectedMetadataValueForNode = useCallback((nodeId) => {
     const key = selectedColorBy;

@@ -1,7 +1,6 @@
 import {
   LuBookOpen,
   LuCircleHelp,
-  LuCode,
   LuCompass,
   LuDatabase,
   LuFileInput,
@@ -9,7 +8,8 @@ import {
   LuPackage,
   LuRoute,
   LuSettings,
-  LuShare2
+  LuShare2,
+  LuTarget
 } from "react-icons/lu";
 
 export const documentationSections = [
@@ -23,5 +23,5 @@ export const documentationSections = [
   { id: "sharing", label: "File URLs and Sharing", icon: LuShare2 },
   { id: "environment", label: "Environment Variables", icon: LuSettings },
   { id: "troubleshooting", label: "Troubleshooting", icon: LuCircleHelp },
-  { id: "resources", label: "Resources", icon: LuCode }
+  { id: "usecases", label: "Use cases", icon: LuTarget }
 ];
