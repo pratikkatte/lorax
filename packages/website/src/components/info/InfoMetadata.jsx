@@ -6,17 +6,40 @@ const formatLabel = (key) => {
   return key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ' ');
 };
 
+const numberOrNull = (value) => {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+};
+
+const getMutationIdentity = (mut) => ({
+  id: numberOrNull(mut?.id),
+  site_id: numberOrNull(mut?.site_id),
+  position: numberOrNull(mut?.position)
+});
+
+const isSelectedMutation = (selected, mut) => {
+  if (!selected || !mut) return false;
+  const identity = getMutationIdentity(mut);
+  if (selected.id != null && identity.id != null) return selected.id === identity.id;
+  if (selected.site_id != null && identity.site_id != null) return selected.site_id === identity.site_id;
+  if (selected.position != null && identity.position != null) {
+    return Math.abs(selected.position - identity.position) < 0.5;
+  }
+  return false;
+};
+
 export default function InfoMetadata({
   treeDetails,
   nodeDetails,
   individualDetails,
   metadataArrays,
   loadedMetadata,
-  tsconfig,
   populationDetails,
   nodeMutations,
   nodeEdges,
   selectedTipMetadata,
+  selectedMutationIdentity,
+  setSelectedMutationIdentity,
   setHighlightedMutationNode,
   setHighlightedMutationTreeIndex,
   isFetchingDetails = false
@@ -62,27 +85,33 @@ export default function InfoMetadata({
             <>
               <div className="my-2 border-t border-gray-100"></div>
               <div className="text-xs font-semibold text-gray-500 mb-1">Mutations ({treeDetails.mutations.length})</div>
-              {treeDetails.mutations.map((mut) => (
-                <div
-                  key={mut.id}
-                  className="cursor-pointer hover:bg-emerald-50 transition-colors rounded px-1 -mx-1"
-                  onClick={() => {
-                    // Reuse the same highlight mechanism as the Mutations tab.
-                    // treeDetails.mutations entries come from backend `get_tree_details` and include `node`.
-                    if (setHighlightedMutationTreeIndex && treeDetails?.tree_idx != null) {
-                      setHighlightedMutationTreeIndex(treeDetails.tree_idx);
-                    }
-                    if (setHighlightedMutationNode && mut?.node != null) {
-                      setHighlightedMutationNode(String(mut.node));
-                    }
-                  }}
-                >
-                  <DetailRow
-                    label={`Mut ${mut.id}`}
-                    value={`${mut.inherited_state} → ${mut.derived_state} (Pos: ${Math.round(mut.position)})`}
-                  />
-                </div>
-              ))}
+              {treeDetails.mutations.map((mut) => {
+                const selected = isSelectedMutation(selectedMutationIdentity, mut);
+                return (
+                  <div
+                    key={mut.id}
+                    className={`cursor-pointer transition-colors rounded px-1 -mx-1 ${
+                      selected ? 'bg-emerald-100 ring-1 ring-emerald-300' : 'hover:bg-emerald-50'
+                    }`}
+                    onClick={() => {
+                      setSelectedMutationIdentity?.(getMutationIdentity(mut));
+                      // Reuse the same highlight mechanism as the Mutations tab.
+                      // treeDetails.mutations entries come from backend `get_tree_details` and include `node`.
+                      if (setHighlightedMutationTreeIndex && treeDetails?.tree_idx != null) {
+                        setHighlightedMutationTreeIndex(treeDetails.tree_idx);
+                      }
+                      if (setHighlightedMutationNode && mut?.node != null) {
+                        setHighlightedMutationNode(String(mut.node));
+                      }
+                    }}
+                  >
+                    <DetailRow
+                      label={`Mut ${mut.id}`}
+                      value={`${mut.inherited_state} → ${mut.derived_state} (Pos: ${Math.round(mut.position)})`}
+                    />
+                  </div>
+                );
+              })}
             </>
           )}
         </DetailCard>

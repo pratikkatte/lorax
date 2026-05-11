@@ -38,7 +38,8 @@ export function useDeckLayers({
   onTipClick,
   onEdgeHover,
   onEdgeClick,
-  onMutationHover
+  onMutationHover,
+  onMutationClick
 }) {
   const [hoveredEdgeIndex, setHoveredEdgeIndex] = useState(null);
 
@@ -116,7 +117,11 @@ export function useDeckLayers({
       onEdgeClick?.(edge || null, info, event);
       return;
     }
-  }, [renderData?.edgeData, onTipClick, onEdgeClick]);
+    if (sourceLayerId.includes('mutations')) {
+      onMutationClick?.(info?.object || null, info, event);
+      return;
+    }
+  }, [renderData?.edgeData, onTipClick, onEdgeClick, onMutationClick]);
 
   /**
    * Layer filter function - maps layer IDs to view IDs
@@ -171,7 +176,7 @@ export function useDeckLayers({
 
     // Tree visualization layer (ortho view)
     if (enabledViews.includes('ortho')) {
-      const wantsPicking = Boolean(onTipHover || onTipClick || onEdgeHover || onEdgeClick || onMutationHover);
+      const wantsPicking = Boolean(onTipHover || onTipClick || onEdgeHover || onEdgeClick || onMutationHover || onMutationClick);
 
       result.push(new TreeCompositeLayer({
         id: 'main-trees',
@@ -191,12 +196,13 @@ export function useDeckLayers({
         onTipClick,
         onEdgeHover,
         onEdgeClick,
-        onMutationHover
+        onMutationHover,
+        onMutationClick
       }));
     }
 
     return result;
-  }, [enabledViews, globalBpPerUnit, visibleIntervals, genomePositions, timePositions, renderData, xzoom, hoveredEdgeIndex, resolvedEdgeColor, descendantEdgeColor, dispatchHover, dispatchClick, onTipHover, onTipClick, onEdgeHover, onEdgeClick, onMutationHover]);
+  }, [enabledViews, globalBpPerUnit, visibleIntervals, genomePositions, timePositions, renderData, xzoom, hoveredEdgeIndex, resolvedEdgeColor, descendantEdgeColor, dispatchHover, dispatchClick, onTipHover, onTipClick, onEdgeHover, onEdgeClick, onMutationHover, onMutationClick]);
 
   return { layers, layerFilter, clearHover };
 }

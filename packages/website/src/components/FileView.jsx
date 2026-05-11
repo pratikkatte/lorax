@@ -83,6 +83,22 @@ function appendMetadataRows(rows, metadata, prefix, limit = 4) {
   }
 }
 
+function numberOrNull(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function getMutationSelection(mutation) {
+  if (!mutation) return null;
+  return {
+    id: numberOrNull(mutation.mutation_id ?? mutation.id),
+    site_id: numberOrNull(mutation.site_id),
+    position: numberOrNull(mutation.position_bp ?? mutation.position),
+    node_id: numberOrNull(mutation.node_id ?? mutation.node),
+    tree_idx: numberOrNull(mutation.tree_idx)
+  };
+}
+
 /**
  * FileView component - displays loaded file with viewport and position controls.
  * Handles both navigation from LandingPage and direct URL access.
@@ -138,6 +154,8 @@ function FileView() {
   const [clickedGenomeInfo, setClickedGenomeInfo] = useState(null);
   const [highlightedMutationNode, setHighlightedMutationNode] = useState(null);
   const [highlightedMutationTreeIndex, setHighlightedMutationTreeIndex] = useState(null);
+  const [hoveredMutationHighlight, setHoveredMutationHighlight] = useState(null);
+  const [selectedMutationIdentity, setSelectedMutationIdentity] = useState(null);
 
   // Right-panel details (populated by queryDetails)
   const [treeDetails, setTreeDetails] = useState(null);
@@ -209,6 +227,7 @@ function FileView() {
   const clearHoverTooltip = useCallback(() => {
     activeHoverKeyRef.current = null;
     clearHoverDetailsTimer();
+    setHoveredMutationHighlight(null);
     setHoverTooltip(null);
   }, [clearHoverDetailsTimer]);
 
@@ -573,6 +592,7 @@ function FileView() {
     setNodeMutations(null);
     setNodeEdges(null);
     setSelectedTipMetadata(null);
+    setSelectedMutationIdentity(null);
   }, []);
 
   // Convenience: populate right-panel from queryDetails response
@@ -977,11 +997,39 @@ function FileView() {
     }
   }, [tourOpen, tourActiveStepId, tourSelectedTreeIndex, handlePolygonClick, queryDetails, applyDetailsResponse, resetDetails]);
 
+  const handleMutationClick = useCallback(async (mutation) => {
+    if (mutation?.tree_idx == null || mutation?.node_id == null) return;
+    const selection = getMutationSelection(mutation);
+
+    try {
+      setShowInfo(true);
+      setInfoActiveTab('details');
+      resetDetails();
+      setSelectedMutationIdentity(selection);
+      setHighlightedMutationNode(String(mutation.node_id));
+      setHighlightedMutationTreeIndex(mutation.tree_idx);
+      setIsFetchingDetails(true);
+      const details = await queryDetails({ treeIndex: mutation.tree_idx });
+      applyDetailsResponse(details, mutation.tree_idx);
+    } catch (e) {
+      console.error('[FileView] mutation click queryDetails failed:', e);
+    } finally {
+      setIsFetchingDetails(false);
+    }
+  }, [queryDetails, applyDetailsResponse, resetDetails]);
+
   const timelineLabel = useMemo(() => {
     const currentFilename = String(tsconfig?.filename || filename || file || '').toLowerCase();
     const isCsvFile = currentFilename.endsWith('.csv') || Boolean(tsconfig?.tree_info);
     return isCsvFile ? 'branch length' : tsconfig?.times?.type;
   }, [file, filename, tsconfig?.filename, tsconfig?.times?.type, tsconfig?.tree_info]);
+
+  const effectiveHighlightedMutationNode = hoveredMutationHighlight?.node_id != null
+    ? String(hoveredMutationHighlight.node_id)
+    : highlightedMutationNode;
+  const effectiveHighlightedMutationTreeIndex = hoveredMutationHighlight?.tree_idx != null
+    ? hoveredMutationHighlight.tree_idx
+    : highlightedMutationTreeIndex;
 
   return (
     <div className="h-screen flex min-h-0 overflow-hidden bg-slate-50 relative">
@@ -1063,8 +1111,8 @@ function FileView() {
               }}
               colorEdgesByTree={colorByTree}
               treeEdgeColors={treeEdgeColors}
-              highlightedMutationNode={highlightedMutationNode}
-              highlightedMutationTreeIndex={highlightedMutationTreeIndex}
+              highlightedMutationNode={effectiveHighlightedMutationNode}
+              highlightedMutationTreeIndex={effectiveHighlightedMutationTreeIndex}
               onGenomicCoordsChange={handleGenomicCoordsChange}
               onViewStateChange={handleDeckViewStateChange}
               onTreeLoadingChange={handleTreeLoadingChange}
@@ -1146,11 +1194,13 @@ function FileView() {
               }}
               onMutationHover={(mutation, info, event) => {
                 if (!mutation) {
+                  setHoveredMutationHighlight(null);
                   clearHoverTooltip();
                   return;
                 }
                 activeHoverKeyRef.current = null;
                 clearHoverDetailsTimer();
+                setHoveredMutationHighlight(getMutationSelection(mutation));
                 const stateChange = mutation.inherited_state || mutation.derived_state
                   ? `${mutation.inherited_state || mutation.ancestral_state || '?'} → ${mutation.derived_state || '?'}`
                   : '-';
@@ -1169,6 +1219,7 @@ function FileView() {
                   ]
                 }, info, event);
               }}
+              onMutationClick={handleMutationClick}
               onEdgeClick={handleEdgeClick}
             />
 
@@ -1266,6 +1317,8 @@ function FileView() {
             nodeMutations={nodeMutations}
             nodeEdges={nodeEdges}
             selectedTipMetadata={selectedTipMetadata}
+            selectedMutationIdentity={selectedMutationIdentity}
+            setSelectedMutationIdentity={setSelectedMutationIdentity}
             visibleTrees={visibleTrees}
             treeColors={treeColors}
             setTreeColors={setTreeColors}

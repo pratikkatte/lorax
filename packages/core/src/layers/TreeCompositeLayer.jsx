@@ -35,6 +35,7 @@ export class TreeCompositeLayer extends CompositeLayer {
     onEdgeClick: null,
     onEdgeHover: null,
     onMutationHover: null,
+    onMutationClick: null,
     hoveredEdgeIndex: null,
     descendantEdgeColor: [56, 189, 248, 220],
     descendantEdgeWidth: 2,
@@ -91,6 +92,7 @@ export class TreeCompositeLayer extends CompositeLayer {
       onEdgeClick,
       onEdgeHover,
       onMutationHover,
+      onMutationClick,
       hoveredEdgeIndex,
       descendantEdgeColor,
       descendantEdgeWidth
@@ -343,9 +345,12 @@ export class TreeCompositeLayer extends CompositeLayer {
         getSize: mutationRadius * 4,
         sizeUnits: 'pixels',
         coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
-        pickable: Boolean(onMutationHover && hasPickableMutationData),
+        pickable: Boolean((onMutationHover || onMutationClick) && hasPickableMutationData),
         onHover: (info, event) => {
           onMutationHover?.(info?.object || null, info, event);
+        },
+        onClick: (info, event) => {
+          onMutationClick?.(info?.object || null, info, event);
         }
       }));
     }

@@ -19,6 +19,8 @@ const Info = ({
   nodeMutations,
   nodeEdges,
   selectedTipMetadata,
+  selectedMutationIdentity,
+  setSelectedMutationIdentity,
   visibleTrees = [],
   treeColors = {},
   setTreeColors,
@@ -153,6 +155,8 @@ const Info = ({
             loadedMetadata={loadedMetadata}
             tsconfig={tsconfig}
             selectedTipMetadata={selectedTipMetadata}
+            selectedMutationIdentity={selectedMutationIdentity}
+            setSelectedMutationIdentity={setSelectedMutationIdentity}
             setHighlightedMutationNode={setHighlightedMutationNode}
             setHighlightedMutationTreeIndex={setHighlightedMutationTreeIndex}
             isFetchingDetails={isFetchingDetails}
