@@ -1,14 +1,29 @@
-import { useRef, useState, useCallback } from "react";
+import { useRef, useState, useCallback, useEffect } from "react";
 import { initSession } from "../services/api.js";
 
 const SESSION_KEY = 'lorax_sid';
 
-export function useSession({ apiBase }) {
+export function useSession({ apiBase, sessionOverride = null }) {
   const sidRef = useRef(null);
   const initSessionPromiseRef = useRef(null);
   const [loraxSid, setLoraxSid] = useState(null);
 
+  // When sessionOverride is provided (e.g. from JBrowse LoraxAdapter.loadFile),
+  // adopt it directly so the rest of the app shares the adapter's Lorax sid.
+  useEffect(() => {
+    if (!sessionOverride) return;
+    sidRef.current = sessionOverride;
+    setLoraxSid(sessionOverride);
+  }, [sessionOverride]);
+
   const initializeSession = useCallback(() => {
+    // If the adapter already handed us a sid, don't reinitialize.
+    if (sessionOverride) {
+      sidRef.current = sessionOverride;
+      setLoraxSid(sessionOverride);
+      return Promise.resolve(sessionOverride);
+    }
+
     if (initSessionPromiseRef.current) {
       return initSessionPromiseRef.current;
     }
@@ -41,7 +56,7 @@ export function useSession({ apiBase }) {
     })();
 
     return initSessionPromiseRef.current;
-  }, [apiBase]);
+  }, [apiBase, sessionOverride]);
 
   const clearSession = useCallback(() => {
     localStorage.removeItem(SESSION_KEY);

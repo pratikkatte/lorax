@@ -59,7 +59,8 @@ export function useLocalData({
   genomicCoords,
   viewState,
   tsconfig,
-  displayOptions = {}
+  enabled = true,
+  displayOptions = {},
 }) {
   const [localBins, setLocalBins] = useState(null);
   const [displayArray, setDisplayArray] = useState([]);

@@ -26,7 +26,10 @@ export function useTreeViewportPipeline({
   metadataColors = null,
   populationFilter = null,
   defaultTipColor = null,
-  isInteracting = false
+  isInteracting = false,
+  treeEnabled = true,
+  renderTrees = true,
+  renderWorkerOverride = null,
 }) {
   const resolvedIntervalWorker = intervalWorker || worker;
   const resolvedLocalDataWorker = localDataWorker || worker;
@@ -46,7 +49,8 @@ export function useTreeViewportPipeline({
     genomicCoords,
     viewState,
     tsconfig,
-    displayOptions: { selectionStrategy: 'largestSpan', lockModelMatrix }
+    displayOptions: { selectionStrategy: 'largestSpan', lockModelMatrix },
+    enabled: treeEnabled,
   });
 
   const visibleTreeIndices = useMemo(() => {
@@ -66,7 +70,8 @@ export function useTreeViewportPipeline({
     lockView: lockModelMatrix ? lockViewPayload : null,
     timeScale,
     tsconfig,
-    genomicCoords
+    genomicCoords,
+    enabled: renderTrees,
   });
 
   const renderState = useRenderData({
@@ -76,7 +81,8 @@ export function useTreeViewportPipeline({
     metadataArrays,
     metadataColors,
     populationFilter,
-    defaultTipColor
+    defaultTipColor,
+    workerOverride: renderWorkerOverride,
   });
 
   return useMemo(() => ({

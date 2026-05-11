@@ -14,7 +14,13 @@ import { getIntervalWorker, getLocalDataWorker } from '../workers/workerSpecs.js
  * @param {Function} options.setStatusMessage - Optional callback for status messages
  * @returns {Object} Config state and methods
  */
-function useLoraxConfig({ backend, enabled = true, onConfigLoaded, setStatusMessage }) {
+function useLoraxConfig({
+  backend,
+  enabled = true,
+  onConfigLoaded,
+  setStatusMessage,
+  workerOverride = null,
+}) {
   const { isConnected } = backend || {};
 
   // Core config state
@@ -54,15 +60,28 @@ function useLoraxConfig({ backend, enabled = true, onConfigLoaded, setStatusMess
   }, [tsconfig]);
 
   // Dedicated workers: interval queries and local-data/binning.
-  const intervalWorker = useWorker(getIntervalWorker);
-  const localDataWorker = useWorker(getLocalDataWorker);
+  // When a workerOverride is provided (e.g. JBrowse rpcWorker), skip creating
+  // local web workers entirely and route all worker traffic through it.
+  const intervalWorkerSpec = workerOverride ? null : getIntervalWorker;
+  const localDataWorkerSpec = workerOverride ? null : getLocalDataWorker;
+  const intervalWorkerLocal = useWorker(intervalWorkerSpec);
+  const localDataWorkerLocal = useWorker(localDataWorkerSpec);
+  const intervalWorker = workerOverride || intervalWorkerLocal;
+  const localDataWorker = workerOverride || localDataWorkerLocal;
   const [workerConfigReady, setWorkerConfigReady] = useState(false);
   const configRequestVersionRef = useRef(0);
+
+  const intervalWorkerIsReady = workerOverride
+    ? workerOverride.isReady
+    : intervalWorkerLocal.isReady;
+  const localDataWorkerIsReady = workerOverride
+    ? workerOverride.isReady
+    : localDataWorkerLocal.isReady;
 
   // Send config to both workers when tsconfig changes.
   // workerConfigReady becomes true only after both workers acknowledge config.
   useEffect(() => {
-    if (!tsconfig || !intervalWorker.isReady || !localDataWorker.isReady) {
+    if (!tsconfig || !intervalWorkerIsReady || !localDataWorkerIsReady) {
       configRequestVersionRef.current += 1;
       setWorkerConfigReady(false);
       return;
@@ -71,10 +90,15 @@ function useLoraxConfig({ backend, enabled = true, onConfigLoaded, setStatusMess
     const requestVersion = ++configRequestVersionRef.current;
     setWorkerConfigReady(false);
 
-    Promise.all([
-      intervalWorker.request('config', tsconfig),
-      localDataWorker.request('config', tsconfig)
-    ])
+    // When using a single override worker, only send config once.
+    const configPromise = workerOverride
+      ? workerOverride.request('config', tsconfig)
+      : Promise.all([
+          intervalWorkerLocal.request('config', tsconfig),
+          localDataWorkerLocal.request('config', tsconfig)
+        ]);
+
+    Promise.resolve(configPromise)
       .then(() => {
         if (requestVersion !== configRequestVersionRef.current) return;
         setWorkerConfigReady(true);
@@ -84,29 +108,39 @@ function useLoraxConfig({ backend, enabled = true, onConfigLoaded, setStatusMess
         console.error('Failed to send config to workers:', error);
         setWorkerConfigReady(false);
       });
-  }, [tsconfig, intervalWorker, localDataWorker]);
+  }, [
+    tsconfig,
+    workerOverride,
+    intervalWorkerLocal,
+    localDataWorkerLocal,
+    intervalWorkerIsReady,
+    localDataWorkerIsReady,
+  ]);
 
   // Backward-compatible worker alias that routes messages to the right worker.
   // Legacy callers can continue using `worker.request(type, ...)`.
-  const worker = useMemo(() => ({
-    isReady: intervalWorker.isReady && localDataWorker.isReady,
-    request: (type, data, timeoutOrOpts) => {
-      if (type === 'intervals') {
-        return intervalWorker.request(type, data, timeoutOrOpts);
+  const worker = useMemo(() => {
+    if (workerOverride) return workerOverride;
+    return {
+      isReady: intervalWorkerLocal.isReady && localDataWorkerLocal.isReady,
+      request: (type, data, timeoutOrOpts) => {
+        if (type === 'intervals') {
+          return intervalWorkerLocal.request(type, data, timeoutOrOpts);
+        }
+        if (type === 'local-data') {
+          return localDataWorkerLocal.request(type, data, timeoutOrOpts);
+        }
+        if (type === 'config') {
+          return Promise.all([
+            intervalWorkerLocal.request(type, data, timeoutOrOpts),
+            localDataWorkerLocal.request(type, data, timeoutOrOpts)
+          ]).then(() => null);
+        }
+        // Prefer local-data worker as default fallback for unknown message types.
+        return localDataWorkerLocal.request(type, data, timeoutOrOpts);
       }
-      if (type === 'local-data') {
-        return localDataWorker.request(type, data, timeoutOrOpts);
-      }
-      if (type === 'config') {
-        return Promise.all([
-          intervalWorker.request(type, data, timeoutOrOpts),
-          localDataWorker.request(type, data, timeoutOrOpts)
-        ]).then(() => null);
-      }
-      // Prefer local-data worker as default fallback for unknown message types.
-      return localDataWorker.request(type, data, timeoutOrOpts);
-    }
-  }), [intervalWorker, localDataWorker]);
+    };
+  }, [workerOverride, intervalWorkerLocal, localDataWorkerLocal]);
 
   /**
    * Process incoming config data from backend.

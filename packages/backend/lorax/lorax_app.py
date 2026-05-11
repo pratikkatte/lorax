@@ -27,7 +27,24 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 
 ALLOWED_ORIGINS = [
-    o.strip() for o in os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:3001,http://localhost:3000").split(",")
+    o.strip()
+    for o in os.getenv(
+        "ALLOWED_ORIGINS",
+        ",".join(
+            [
+                "http://localhost:5173",
+                "http://127.0.0.1:5173",
+                "http://localhost:3000",
+                "http://127.0.0.1:3000",
+                "http://localhost:3001",
+                "http://127.0.0.1:3001",
+                "http://localhost:8999",
+                "http://127.0.0.1:8999",
+                "http://localhost:9000",
+                "http://127.0.0.1:9000",
+            ]
+        ),
+    ).split(",")
 ]
 
 app.add_middleware(

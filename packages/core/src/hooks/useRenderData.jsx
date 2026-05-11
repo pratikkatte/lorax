@@ -20,7 +20,48 @@ function toTypedArray(arr, ArrayType) {
   return new ArrayType(arr);
 }
 
-function buildFullComputePayload(treeData, serializedModelMatrices, displayArray, metadataArrays, metadataColors, populationFilter, defaultTipColor, treeStructures) {
+function buildFullComputePayload(
+  treeData,
+  serializedModelMatrices,
+  displayArray,
+  metadataArrays,
+  metadataColors,
+  populationFilter,
+  defaultTipColor,
+  treeStructures,
+  useTypedArrays
+) {
+  // JBrowse RPC path: send plain arrays. JBrowse's BaseRpcDriver.filterArgs
+  // rebuilds typed arrays as keyed plain objects via Object.fromEntries(
+  // Object.entries(...)), which drops `.length` and arrives empty on the
+  // worker side. Plain arrays hit the fast Array.isArray branch and survive.
+  // The local renderDataWorker via useWorker.postMessage supports zero-copy
+  // transfer of typed arrays, so we still produce typed + transfer for that path.
+  if (!useTypedArrays) {
+    return {
+      payload: {
+        node_id: treeData.node_id,
+        parent_id: treeData.parent_id,
+        is_tip: treeData.is_tip,
+        tree_idx: treeData.tree_idx,
+        x: treeData.x,
+        y: treeData.y,
+        name: treeData.name,
+        mut_x: treeData.mut_x,
+        mut_y: treeData.mut_y,
+        mut_tree_idx: treeData.mut_tree_idx,
+        modelMatrices: serializedModelMatrices,
+        displayArray: displayArray ?? EMPTY_DISPLAY_ARRAY,
+        metadataArrays,
+        metadataColors,
+        populationFilter,
+        defaultTipColor,
+        treeStructures
+      },
+      transfer: []
+    };
+  }
+
   const payload = {
     node_id: toTypedArray(treeData.node_id, Int32Array),
     parent_id: toTypedArray(treeData.parent_id, Int32Array),
@@ -215,7 +256,8 @@ export function useRenderData({
   metadataArrays = null,
   metadataColors = null,
   populationFilter = null,
-  defaultTipColor = null
+  defaultTipColor = null,
+  workerOverride = null,
 }) {
   const [renderData, setRenderData] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -226,7 +268,17 @@ export function useRenderData({
   const lastModelMatricesKeyRef = useRef('');
   const lastTipColorInputsRef = useRef(EMPTY_TIP_COLOR_INPUTS);
 
-  const worker = useWorker(getRenderDataWorker);
+  // When a workerOverride is provided (e.g. JBrowse rpcWorker), bypass the
+  // local renderData web worker entirely.
+  const renderWorkerSpec = workerOverride ? null : getRenderDataWorker;
+  const internalWorker = useWorker(renderWorkerSpec);
+  const worker = workerOverride || internalWorker;
+
+  // Local renderDataWorker goes through useWorker.postMessage which supports
+  // zero-copy transfer of typed arrays. JBrowse RPC goes through
+  // BaseRpcDriver.filterArgs which mangles typed arrays (it rebuilds them as
+  // keyed plain objects, dropping .length), so we must send plain arrays.
+  const useTypedArrays = !workerOverride;
 
   const serializedModelMatrices = useMemo(() => serializeModelMatrices(localBins), [localBins]);
   const visibleTreeIndices = useMemo(
@@ -276,9 +328,12 @@ export function useRenderData({
         metadataColors,
         populationFilter,
         defaultTipColor,
-        useStructureCache ? structuresToPlain(currentTreeStructures) : null
+        useStructureCache ? structuresToPlain(currentTreeStructures) : null,
+        useTypedArrays
       );
-      return worker.request('compute-render-data', payload, { transfer });
+      return transfer.length > 0
+        ? worker.request('compute-render-data', payload, { transfer })
+        : worker.request('compute-render-data', payload);
     };
 
     const doApplyTransform = () => {
@@ -334,7 +389,8 @@ export function useRenderData({
     modelMatricesUnchanged,
     currentTipColorInputs,
     tipColorInputsUnchanged,
-    useStructureCache
+    useStructureCache,
+    useTypedArrays
   ]);
 
   const clearBuffers = useCallback(() => {

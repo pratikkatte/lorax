@@ -1,6 +1,8 @@
 lorax/data/
 packages/app/lorax_app/static/
 packages/backend/notebooks/
+packages/plugin/
+packages/plugin/jbrowse-components/
 # --- Python ---
 __pycache__/
 *.py[cod]
@@ -142,7 +144,8 @@ out
 .pnp.*
 
 # --- Repo-specific ---
-packages/plugin/
+# packages/plugin/
+packages/plugin/jbrowse-components/website/static/genomes/
 packages/website/playwright-report/
 packages/website/test-results/
 

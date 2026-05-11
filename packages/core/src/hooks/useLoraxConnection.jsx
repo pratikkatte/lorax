@@ -9,15 +9,16 @@ export function useLoraxConnection({
   apiBase,
   isProd = false,
   diagnosticPingEnabled,
-  diagnosticPingIntervalMs
+  diagnosticPingIntervalMs,
+  sessionOverride = null,
 }) {
-  // Use extracted session hook
+  // Use extracted session hook (sessionOverride enables JBrowse adapter session unification)
   const {
     loraxSid,
     sidRef,
     initializeSession,
     clearSession
-  } = useSession({ apiBase });
+  } = useSession({ apiBase, sessionOverride });
 
   // Ref to hold reconnect function (avoids circular dependency)
   const reconnectRef = useRef(null);

@@ -1,7 +1,9 @@
-import React, { createContext, useContext } from 'react';
+import React, { createContext, useContext, useEffect, useMemo } from 'react';
 import { useLoraxConnection } from '../hooks/useLoraxConnection.jsx';
 import { useLoraxConfig } from '../hooks/useLoraxConfig.jsx';
 import { useMetadataFilter } from '../hooks/useMetadataFilter.jsx';
+import { createRpcWorker } from '../rpc/createRpcWorker.js';
+import { clearGenomicCoordsFromURL } from '../utils/urlSync.js';
 
 export const LoraxContext = createContext(null);
 
@@ -16,6 +18,12 @@ export const LoraxContext = createContext(null);
  * @param {boolean} props.enableConfig - Enable config management (default: false)
  * @param {Function} props.onConfigLoaded - Callback when config is loaded
  * @param {boolean} props.enableMetadataFilter - Enable metadata filter management (default: false)
+ * @param {boolean} props.urlSyncEnabled - Sync viewport state to URL (default: true)
+ * @param {Object|null} props.rpcManager - JBrowse RPC manager for cross-origin integration (optional)
+ * @param {string|null} props.rpcSessionId - JBrowse session id paired with rpcManager (optional)
+ * @param {string|null} props.rpcDriverName - Optional driver name passed to rpcManager.call
+ * @param {boolean} props.disableInlineWorkers - If true, never create local web workers even when rpcManager is missing
+ * @param {string|null} props.sessionOverride - Pre-initialized Lorax sid from adapter (JBrowse session unification)
  */
 export function LoraxProvider({
   children,
@@ -24,16 +32,50 @@ export function LoraxProvider({
   setGettingDetails,
   enableConfig = false,
   onConfigLoaded = null,
-  enableMetadataFilter = false
+  enableMetadataFilter = false,
+  urlSyncEnabled = true,
+  rpcManager = null,
+  rpcSessionId = null,
+  rpcDriverName = null,
+  disableInlineWorkers = false,
+  sessionOverride = null,
 }) {
-  const connection = useLoraxConnection({ apiBase, isProd, setGettingDetails });
+  const connection = useLoraxConnection({ apiBase, isProd, setGettingDetails, sessionOverride });
 
-  // Config state (always call hook to follow React rules, but pass enabled flag)
+  useEffect(() => {
+    if (!urlSyncEnabled) {
+      clearGenomicCoordsFromURL();
+    }
+  }, [urlSyncEnabled]);
+
+  // Build an RPC-backed worker when a JBrowse rpcManager+session are supplied.
+  // When the caller wants to disable inline workers but has not provided an
+  // rpcManager yet, expose a not-ready stub so downstream hooks skip work.
+  const rpcWorker = useMemo(() => {
+    if (!rpcManager || !rpcSessionId) {
+      if (!disableInlineWorkers) {
+        return null;
+      }
+      return {
+        isReady: false,
+        request() {
+          return Promise.reject(new Error('RPC worker not ready'));
+        },
+      };
+    }
+    return createRpcWorker({
+      rpcManager,
+      sessionId: rpcSessionId,
+      rpcDriverName,
+    });
+  }, [rpcManager, rpcSessionId, rpcDriverName, disableInlineWorkers]);
+
   const configState = useLoraxConfig({
     backend: connection,
     enabled: enableConfig,
     onConfigLoaded,
-    setStatusMessage: connection.setStatusMessage
+    setStatusMessage: connection.setStatusMessage,
+    workerOverride: rpcWorker,
   });
 
   // Metadata filter state (always call hook to follow React rules)
@@ -50,6 +92,8 @@ export function LoraxProvider({
     ...connection,
     ...configState,
     configEnabled: enableConfig,
+    urlSyncEnabled,
+    rpcWorker,
     // Conditionally include filter state
     ...(enableMetadataFilter && enableConfig ? filterState : {})
   };

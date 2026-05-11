@@ -307,6 +307,7 @@ export function useTreeData({
   timeScale = 'linear',
   tsconfig = null,
   genomicCoords = null,
+  enabled = true,
 }) {
 
   const [treeData, setTreeData] = useState(null);
@@ -431,7 +432,7 @@ export function useTreeData({
       lastLockRefreshRef.current = { targetTreeIndex: null, targetLocalBBox: null };
       return;
     }
-
+    
     const cache = treeDataCacheRef.current;
 
     // Filter to only unfetched tree indices

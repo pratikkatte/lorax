@@ -550,7 +550,19 @@ function clearBuffers() {
 
 const workerScope = typeof self !== 'undefined' ? self : globalThis;
 
-workerScope.onmessage = (event) => {
+// Only install the message handler when this module is loaded as a dedicated
+// worker entry point. When imported for its named exports (e.g. the JBrowse
+// plugin pulling in `computeRenderArrays`), we must not clobber any
+// pre-existing `onmessage` set by the host runtime.
+const isDedicatedWorkerScope =
+  typeof self !== 'undefined' &&
+  typeof WorkerGlobalScope !== 'undefined' &&
+  // eslint-disable-next-line no-undef
+  self instanceof WorkerGlobalScope &&
+  typeof window === 'undefined';
+
+if (isDedicatedWorkerScope) {
+  workerScope.onmessage = (event) => {
   const { type, id, data } = event.data;
 
   if (type === 'compute-render-data') {
@@ -603,7 +615,8 @@ workerScope.onmessage = (event) => {
     clearBuffers();
     workerScope.postMessage({ type: 'clear-buffers-result', id, success: true });
   }
-};
+  };
+}
 
 /**
  * Clear worker state (buffers + structure cache). For testing.

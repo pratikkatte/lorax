@@ -38,6 +38,22 @@ export function normalizeIntervals(intervals) {
 }
 
 /**
+ * Serialize a Map of local bins for postMessage / RPC transfer.
+ * `Map`s and deck.gl `Matrix4` instances cannot cross the worker boundary
+ * directly — flatten matrices to plain arrays and convert entries to a list.
+ *
+ * @param {Map<number, Object>} bins
+ * @returns {Array<Object>}
+ */
+export function serializeBinsForTransfer(bins) {
+  return Array.from(bins.entries()).map(([key, value]) => ({
+    key,
+    ...value,
+    modelMatrix: value?.modelMatrix ? value.modelMatrix.toArray() : null
+  }));
+}
+
+/**
  * Query intervals for a given viewport range (synchronous).
  *
  * @param {number[]} normalizedIntervals - Pre-normalized interval positions
