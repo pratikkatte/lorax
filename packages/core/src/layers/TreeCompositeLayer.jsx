@@ -34,6 +34,7 @@ export class TreeCompositeLayer extends CompositeLayer {
     onTipHover: null,
     onEdgeClick: null,
     onEdgeHover: null,
+    onMutationHover: null,
     hoveredEdgeIndex: null,
     descendantEdgeColor: [56, 189, 248, 220],
     descendantEdgeWidth: 2,
@@ -65,6 +66,7 @@ export class TreeCompositeLayer extends CompositeLayer {
       tipData,
       // Mutation data (simplified: only positions)
       mutPositions,
+      mutationData,
       mutCount,
       // Highlight data for metadata value clicks
       highlightData,
@@ -88,6 +90,7 @@ export class TreeCompositeLayer extends CompositeLayer {
       onTipHover,
       onEdgeClick,
       onEdgeHover,
+      onMutationHover,
       hoveredEdgeIndex,
       descendantEdgeColor,
       descendantEdgeWidth
@@ -318,24 +321,32 @@ export class TreeCompositeLayer extends CompositeLayer {
         this._iconIdsCache = new Uint8Array(mutCount).fill(0);
       }
       const iconIds = this._iconIdsCache.subarray(0, mutCount);
+      const hasPickableMutationData = Array.isArray(mutationData) && mutationData.length === mutCount;
       layers.push(new IconLayer({
         id: `${this.props.id}-mutations`,
-        data: {
-          length: mutCount,
-          attributes: {
-            getPosition: { value: mutPositions, size: 2 },
-            getIcon: { value: iconIds, size: 1 }
-          }
-        },
+        data: hasPickableMutationData
+          ? mutationData
+          : {
+              length: mutCount,
+              attributes: {
+                getPosition: { value: mutPositions, size: 2 },
+                getIcon: { value: iconIds, size: 1 }
+              }
+            },
         iconAtlas: X_ICON_DATA_URL,
         iconMapping: {
           0: { x: 0, y: 0, width: 128, height: 128, mask: true }
         },
+        getPosition: hasPickableMutationData ? (d) => d.position : undefined,
+        getIcon: hasPickableMutationData ? (() => 0) : undefined,
         getColor: mutationColor,
         getSize: mutationRadius * 4,
         sizeUnits: 'pixels',
         coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
-        pickable: false
+        pickable: Boolean(onMutationHover && hasPickableMutationData),
+        onHover: (info, event) => {
+          onMutationHover?.(info?.object || null, info, event);
+        }
       }));
     }
 

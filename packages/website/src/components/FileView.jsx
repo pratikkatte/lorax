@@ -21,6 +21,68 @@ function formatTooltipTime(value) {
   return Number(n.toPrecision(6)).toString();
 }
 
+const HOVER_DETAILS_DEBOUNCE_MS = 180;
+const TOOLTIP_OFFSET_X = 16;
+const TOOLTIP_OFFSET_Y = -8;
+const TOOLTIP_VIEWPORT_PADDING = 12;
+const TOOLTIP_MAX_WIDTH = 320;
+const TOOLTIP_MAX_HEIGHT = 360;
+
+function getHoverTooltipViewportStyle(tooltip) {
+  const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 0;
+  const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 0;
+  const maxHeight = viewportHeight > 0
+    ? Math.min(TOOLTIP_MAX_HEIGHT, Math.max(120, viewportHeight - TOOLTIP_VIEWPORT_PADDING * 2))
+    : TOOLTIP_MAX_HEIGHT;
+  const rowCount = Array.isArray(tooltip.rows) ? tooltip.rows.length : 0;
+  const estimatedHeight = Math.min(
+    maxHeight,
+    28 + (tooltip.title ? 28 : 0) + rowCount * 30
+  );
+
+  let left = tooltip.x + TOOLTIP_OFFSET_X;
+  if (viewportWidth > 0 && left + TOOLTIP_MAX_WIDTH > viewportWidth - TOOLTIP_VIEWPORT_PADDING) {
+    left = tooltip.x - TOOLTIP_MAX_WIDTH - TOOLTIP_OFFSET_X;
+  }
+  if (viewportWidth > 0) {
+    left = Math.min(
+      Math.max(TOOLTIP_VIEWPORT_PADDING, left),
+      Math.max(TOOLTIP_VIEWPORT_PADDING, viewportWidth - TOOLTIP_MAX_WIDTH - TOOLTIP_VIEWPORT_PADDING)
+    );
+  }
+
+  let top = tooltip.y + TOOLTIP_OFFSET_Y;
+  if (viewportHeight > 0) {
+    top = Math.min(
+      Math.max(TOOLTIP_VIEWPORT_PADDING, top),
+      Math.max(TOOLTIP_VIEWPORT_PADDING, viewportHeight - estimatedHeight - TOOLTIP_VIEWPORT_PADDING)
+    );
+  }
+
+  return { left, top, maxHeight };
+}
+
+function formatTooltipValue(value) {
+  if (value === null || value === undefined || value === '') return '-';
+  if (typeof value === 'object') return JSON.stringify(value);
+  return String(value);
+}
+
+function appendMetadataRows(rows, metadata, prefix, limit = 4) {
+  if (!metadata || typeof metadata !== 'object') return;
+  let count = 0;
+  for (const [key, value] of Object.entries(metadata)) {
+    if (value === null || value === undefined || value === '') continue;
+    rows.push({ k: `${prefix} ${key}`, v: formatTooltipValue(value) });
+    count += 1;
+    if (count >= limit) {
+      const remaining = Object.values(metadata).filter((v) => v !== null && v !== undefined && v !== '').length - count;
+      if (remaining > 0) rows.push({ k: `${prefix} metadata`, v: `+${remaining} more` });
+      break;
+    }
+  }
+}
+
 /**
  * FileView component - displays loaded file with viewport and position controls.
  * Handles both navigation from LandingPage and direct URL access.
@@ -132,8 +194,23 @@ function FileView() {
 
   // Hover tooltip state (rendered in website, not in core)
   const [hoverTooltip, setHoverTooltip] = useState(null); // { kind, x, y, title, rows[] }
+  const hoverDetailsCacheRef = useRef(new Map());
+  const hoverDetailsTimerRef = useRef(null);
+  const activeHoverKeyRef = useRef(null);
+  const hoverDetailsRequestSeqRef = useRef(0);
 
-  const clearHoverTooltip = useCallback(() => setHoverTooltip(null), []);
+  const clearHoverDetailsTimer = useCallback(() => {
+    if (hoverDetailsTimerRef.current != null) {
+      clearTimeout(hoverDetailsTimerRef.current);
+      hoverDetailsTimerRef.current = null;
+    }
+  }, []);
+
+  const clearHoverTooltip = useCallback(() => {
+    activeHoverKeyRef.current = null;
+    clearHoverDetailsTimer();
+    setHoverTooltip(null);
+  }, [clearHoverDetailsTimer]);
 
   const getOrthoViewport = useCallback(() => {
     const deck = deckRef.current?.getDeck?.();
@@ -400,6 +477,93 @@ function FileView() {
     if (!Number.isFinite(x) || !Number.isFinite(y)) return;
     setHoverTooltip({ ...base, x, y });
   }, []);
+
+  const buildTipTooltipRows = useCallback((tip, selectedValue, details = null, loadingDetails = false) => {
+    const rows = [
+      { k: 'Tree', v: tip.tree_idx },
+      { k: 'Node ID', v: tip.node_id },
+      { k: 'Node time', v: formatTooltipTime(tip.node_time) },
+      ...(tip.name ? [{ k: 'Name', v: tip.name }] : []),
+      ...(selectedColorBy ? [{ k: selectedColorBy, v: selectedValue ?? '-' }] : [])
+    ];
+
+    if (loadingDetails) {
+      rows.push({ k: 'Metadata', v: 'Loading...' });
+      return rows;
+    }
+
+    const node = details?.node;
+    if (node) {
+      if (node.individual !== undefined && node.individual !== -1) {
+        rows.push({ k: 'Individual', v: node.individual });
+      }
+      if (node.population !== undefined && node.population !== -1) {
+        rows.push({ k: 'Population', v: node.population });
+      }
+      appendMetadataRows(rows, node.metadata, 'Node');
+    }
+
+    if (details?.individual) {
+      rows.push({ k: 'Individual ID', v: details.individual.id });
+      appendMetadataRows(rows, details.individual.metadata, 'Individual');
+    }
+
+    if (details?.population) {
+      rows.push({ k: 'Population ID', v: details.population.id });
+      appendMetadataRows(rows, details.population.metadata, 'Population');
+    }
+
+    return rows;
+  }, [selectedColorBy]);
+
+  const updateTipTooltipWithDetails = useCallback((hoverKey, tip, selectedValue, details) => {
+    setHoverTooltip((current) => {
+      if (!current || current.hoverKey !== hoverKey) return current;
+      return {
+        ...current,
+        rows: buildTipTooltipRows(tip, selectedValue, details, false)
+      };
+    });
+  }, [buildTipTooltipRows]);
+
+  const scheduleHoverDetailsFetch = useCallback((hoverKey, tip, selectedValue) => {
+    clearHoverDetailsTimer();
+
+    const cached = hoverDetailsCacheRef.current.get(hoverKey);
+    if (cached) {
+      updateTipTooltipWithDetails(hoverKey, tip, selectedValue, cached);
+      return;
+    }
+
+    hoverDetailsTimerRef.current = setTimeout(async () => {
+      hoverDetailsTimerRef.current = null;
+      const requestSeq = ++hoverDetailsRequestSeqRef.current;
+
+      try {
+        const details = await queryDetails({
+          treeIndex: tip.tree_idx,
+          node: tip.node_id,
+          comprehensive: true
+        });
+        hoverDetailsCacheRef.current.set(hoverKey, details);
+
+        if (activeHoverKeyRef.current !== hoverKey || requestSeq !== hoverDetailsRequestSeqRef.current) {
+          return;
+        }
+        updateTipTooltipWithDetails(hoverKey, tip, selectedValue, details);
+      } catch (e) {
+        console.warn('[FileView] hover details query failed:', e);
+      }
+    }, HOVER_DETAILS_DEBOUNCE_MS);
+  }, [clearHoverDetailsTimer, queryDetails, updateTipTooltipWithDetails]);
+
+  useEffect(() => () => {
+    clearHoverDetailsTimer();
+  }, [clearHoverDetailsTimer]);
+
+  useEffect(() => {
+    hoverDetailsCacheRef.current.clear();
+  }, [tsconfig?.file_path, tsconfig?.filename]);
 
   const resetDetails = useCallback(() => {
     setTreeDetails(null);
@@ -927,17 +1091,17 @@ function FileView() {
                   clearHoverTooltip();
                   return;
                 }
+                const hoverKey = `tip:${tip.tree_idx}:${tip.node_id}`;
+                activeHoverKeyRef.current = hoverKey;
                 const value = getSelectedMetadataValueForNode(tip.node_id);
+                const cachedDetails = hoverDetailsCacheRef.current.get(hoverKey);
                 setTooltipFromEvent({
                   kind: 'tip',
+                  hoverKey,
                   title: 'Tip',
-                  rows: [
-                    { k: 'Tree', v: tip.tree_idx },
-                    { k: 'Node ID', v: tip.node_id },
-                    { k: 'Node time', v: formatTooltipTime(tip.node_time) },
-                    ...(selectedColorBy ? [{ k: selectedColorBy, v: value ?? '-' }] : [])
-                  ]
+                  rows: buildTipTooltipRows(tip, value, cachedDetails, !cachedDetails)
                 }, info, event);
+                scheduleHoverDetailsFetch(hoverKey, tip, value);
               }}
               onTipClick={async (tip) => {
                 if (tip?.tree_idx == null || tip?.node_id == null) return;
@@ -966,6 +1130,8 @@ function FileView() {
                   clearHoverTooltip();
                   return;
                 }
+                activeHoverKeyRef.current = null;
+                clearHoverDetailsTimer();
                 setTooltipFromEvent({
                   kind: 'edge',
                   title: 'Edge',
@@ -978,6 +1144,31 @@ function FileView() {
                   ]
                 }, info, event);
               }}
+              onMutationHover={(mutation, info, event) => {
+                if (!mutation) {
+                  clearHoverTooltip();
+                  return;
+                }
+                activeHoverKeyRef.current = null;
+                clearHoverDetailsTimer();
+                const stateChange = mutation.inherited_state || mutation.derived_state
+                  ? `${mutation.inherited_state || mutation.ancestral_state || '?'} → ${mutation.derived_state || '?'}`
+                  : '-';
+                setTooltipFromEvent({
+                  kind: 'mutation',
+                  title: 'Mutation',
+                  rows: [
+                    { k: 'Tree', v: mutation.tree_idx },
+                    { k: 'Mutation ID', v: mutation.mutation_id ?? '-' },
+                    { k: 'Site ID', v: mutation.site_id ?? '-' },
+                    { k: 'Position', v: Number.isFinite(Number(mutation.position_bp)) ? Math.round(Number(mutation.position_bp)) : '-' },
+                    { k: 'Node ID', v: mutation.node_id ?? '-' },
+                    { k: 'Node time', v: formatTooltipTime(mutation.node_time) },
+                    { k: 'Mutation time', v: formatTooltipTime(mutation.mutation_time) },
+                    { k: 'Change', v: stateChange }
+                  ]
+                }, info, event);
+              }}
               onEdgeClick={handleEdgeClick}
             />
 
@@ -986,8 +1177,7 @@ function FileView() {
               <div
                 style={{
                   position: 'fixed',
-                  left: hoverTooltip.x + 16,
-                  top: hoverTooltip.y - 8,
+                  ...getHoverTooltipViewportStyle(hoverTooltip),
                   zIndex: 99999,
                   pointerEvents: 'none',
                   backgroundColor: '#fff',
@@ -996,7 +1186,7 @@ function FileView() {
                   minWidth: 180,
                   maxWidth: 320,
                   border: '1px solid rgba(0,0,0,0.08)',
-                  overflow: 'hidden',
+                  overflowY: 'auto',
                   fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
                 }}
               >
@@ -1006,8 +1196,8 @@ function FileView() {
                       {hoverTooltip.title}
                     </div>
                   )}
-                  {Array.isArray(hoverTooltip.rows) && hoverTooltip.rows.map((row) => (
-                    <div key={row.k} style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', borderBottom: '1px solid #f3f4f6' }}>
+                  {Array.isArray(hoverTooltip.rows) && hoverTooltip.rows.map((row, idx) => (
+                    <div key={`${row.k}-${idx}`} style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', borderBottom: '1px solid #f3f4f6' }}>
                       <span style={{ color: '#6b7280', fontWeight: 500 }}>{row.k}</span>
                       <span style={{ fontWeight: 600, color: '#111827', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {String(row.v)}

@@ -32,6 +32,14 @@ function buildFullComputePayload(treeData, serializedModelMatrices, displayArray
     mut_x: toTypedArray(treeData.mut_x, Float64Array),
     mut_y: toTypedArray(treeData.mut_y, Float64Array),
     mut_tree_idx: toTypedArray(treeData.mut_tree_idx, Uint32Array),
+    mut_node_id: toTypedArray(treeData.mut_node_id, Int32Array),
+    mut_id: toTypedArray(treeData.mut_id, Int32Array),
+    mut_site_id: toTypedArray(treeData.mut_site_id, Int32Array),
+    mut_position: toTypedArray(treeData.mut_position, Float64Array),
+    mut_time: toTypedArray(treeData.mut_time, Float64Array),
+    mut_ancestral_state: treeData.mut_ancestral_state,
+    mut_derived_state: treeData.mut_derived_state,
+    mut_inherited_state: treeData.mut_inherited_state,
     modelMatrices: serializedModelMatrices,
     displayArray: displayArray ?? EMPTY_DISPLAY_ARRAY,
     metadataArrays,
@@ -56,6 +64,11 @@ function buildFullComputePayload(treeData, serializedModelMatrices, displayArray
   addTransfer(payload.mut_x);
   addTransfer(payload.mut_y);
   addTransfer(payload.mut_tree_idx);
+  addTransfer(payload.mut_node_id);
+  addTransfer(payload.mut_id);
+  addTransfer(payload.mut_site_id);
+  addTransfer(payload.mut_position);
+  addTransfer(payload.mut_time);
 
   return { payload, transfer };
 }

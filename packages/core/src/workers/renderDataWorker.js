@@ -35,6 +35,7 @@ let cachedPathStartIndices = null;
 let cachedTipColors = null;
 let cachedEdgeData = null;
 let cachedTipMeta = null;
+let cachedMutationMeta = null;
 let cachedTreeStructures = null;
 let cachedEdgeCount = 0;
 let cachedTipCount = 0;
@@ -64,6 +65,7 @@ function getEmptyRenderData() {
     edgeCount: 0,
     tipCount: 0,
     mutPositions: new Float64Array(0),
+    mutationData: [],
     mutCount: 0
   };
 }
@@ -108,6 +110,14 @@ function computeRenderArrays(data) {
     mut_x,
     mut_y,
     mut_tree_idx,
+    mut_node_id,
+    mut_id,
+    mut_site_id,
+    mut_position,
+    mut_time,
+    mut_ancestral_state,
+    mut_derived_state,
+    mut_inherited_state,
     modelMatrices,
     displayArray,
     metadataArrays,
@@ -199,6 +209,8 @@ function computeRenderArrays(data) {
   const treeLabelMeta = [];
   const edgeData = includeEdgeData ? [] : null;
   const tipMeta = includeTipData ? [] : null;
+  const mutationData = [];
+  const mutationMeta = requestedTreeStructures ? [] : null;
 
   const builtTreeStructures = new Map();
 
@@ -315,14 +327,45 @@ function computeRenderArrays(data) {
       for (let i = 0; i < treeMutationIndices.length; i++) {
         const row = treeMutationIndices[i];
         const mutIdx = mutOffset;
-        mutBuffer[mutIdx] = mut_x[row] * scaleX + translateX;
-        mutBuffer[mutIdx + 1] = mut_y[row];
+        const transformedX = mut_x[row] * scaleX + translateX;
+        const transformedY = mut_y[row];
+        mutBuffer[mutIdx] = transformedX;
+        mutBuffer[mutIdx + 1] = transformedY;
         mutOffset += 2;
 
         if (requestedTreeStructures) {
           mutPositionsLocal[mutIdx] = mut_x[row];
           mutPositionsLocal[mutIdx + 1] = mut_y[row];
           mutTreeIndices[mutIdx / 2] = treeIdx;
+        }
+
+        const mutationRecord = {
+          tree_idx: treeIdx,
+          node_id: mut_node_id?.[row] ?? null,
+          mutation_id: mut_id?.[row] ?? null,
+          site_id: mut_site_id?.[row] ?? null,
+          position_bp: mut_position?.[row] ?? null,
+          mutation_time: mut_time?.[row] ?? null,
+          ancestral_state: mut_ancestral_state?.[row] ?? '',
+          derived_state: mut_derived_state?.[row] ?? '',
+          inherited_state: mut_inherited_state?.[row] ?? '',
+          marker_time: mut_y[row],
+          position: [transformedX, transformedY]
+        };
+        mutationData.push(mutationRecord);
+        if (mutationMeta) {
+          mutationMeta.push({
+            tree_idx: mutationRecord.tree_idx,
+            node_id: mutationRecord.node_id,
+            mutation_id: mutationRecord.mutation_id,
+            site_id: mutationRecord.site_id,
+            position_bp: mutationRecord.position_bp,
+            mutation_time: mutationRecord.mutation_time,
+            ancestral_state: mutationRecord.ancestral_state,
+            derived_state: mutationRecord.derived_state,
+            inherited_state: mutationRecord.inherited_state,
+            marker_time: mutationRecord.marker_time
+          });
         }
       }
     }
@@ -333,6 +376,7 @@ function computeRenderArrays(data) {
     cachedTipColors = colorBuffer.slice(0, colorOffset);
     cachedEdgeData = edgeData ? [...edgeData] : [];
     cachedTipMeta = tipMeta ? tipMeta.map((t) => ({ ...t })) : [];
+    cachedMutationMeta = mutationMeta ? mutationMeta.map((m) => ({ ...m })) : [];
     cachedTreeStructures = new Map(builtTreeStructures);
     cachedEdgeCount = edgeCount;
     cachedTipCount = tipOffset / 2;
@@ -351,6 +395,7 @@ function computeRenderArrays(data) {
     edgeCount,
     tipCount: tipOffset / 2,
     mutPositions: mutBuffer.slice(0, mutOffset),
+    mutationData,
     mutCount: mutOffset / 2
   };
 }
@@ -451,6 +496,22 @@ function applyTransform(data) {
       }))
     : [];
 
+  const mutationData = cachedMutationMeta
+    ? cachedMutationMeta.map((meta, i) => ({
+        tree_idx: meta.tree_idx,
+        node_id: meta.node_id,
+        mutation_id: meta.mutation_id,
+        site_id: meta.site_id,
+        position_bp: meta.position_bp,
+        mutation_time: meta.mutation_time,
+        ancestral_state: meta.ancestral_state,
+        derived_state: meta.derived_state,
+        inherited_state: meta.inherited_state,
+        marker_time: meta.marker_time,
+        position: [mutBuffer[i * 2], mutBuffer[i * 2 + 1]]
+      }))
+    : [];
+
   return {
     pathPositions: pathBuffer.slice(0, pathCoordCount),
     pathStartIndices: cachedPathStartIndices,
@@ -462,6 +523,7 @@ function applyTransform(data) {
     edgeCount,
     tipCount,
     mutPositions: mutBuffer.slice(0, mutCoordCount),
+    mutationData,
     mutCount
   };
 }
@@ -482,6 +544,7 @@ function clearBuffers() {
   cachedTipColors = null;
   cachedEdgeData = null;
   cachedTipMeta = null;
+  cachedMutationMeta = null;
   cachedTreeStructures = null;
 }
 

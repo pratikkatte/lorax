@@ -37,7 +37,8 @@ export function useDeckLayers({
   onTipHover,
   onTipClick,
   onEdgeHover,
-  onEdgeClick
+  onEdgeClick,
+  onMutationHover
 }) {
   const [hoveredEdgeIndex, setHoveredEdgeIndex] = useState(null);
 
@@ -47,7 +48,8 @@ export function useDeckLayers({
     setHoveredEdgeIndex(null);
     onTipHover?.(null, null, null);
     onEdgeHover?.(null, null, null);
-  }, [onTipHover, onEdgeHover]);
+    onMutationHover?.(null, null, null);
+  }, [onTipHover, onEdgeHover, onMutationHover]);
 
   const defaultEdgeColor = edgeColor ?? DEFAULT_EDGE_COLOR;
   const resolvedEdgeColor = useMemo(() => {
@@ -75,21 +77,31 @@ export function useDeckLayers({
     const sourceLayerId = info?.sourceLayer?.id || '';
     if (sourceLayerId.includes('tips-pickable')) {
       setHoveredEdgeIndex(null);
+      onMutationHover?.(null, info, event);
       onTipHover?.(info?.object || null, info, event);
       return;
     }
     if (sourceLayerId.includes('edges')) {
       setHoveredEdgeIndex(info?.index ?? null);
+      onMutationHover?.(null, info, event);
       const edge = (renderData?.edgeData && info?.index != null && info.index >= 0)
         ? renderData.edgeData[info.index]
         : null;
       onEdgeHover?.(edge || null, info, event);
       return;
     }
+    if (sourceLayerId.includes('mutations')) {
+      setHoveredEdgeIndex(null);
+      onTipHover?.(null, info, event);
+      onEdgeHover?.(null, info, event);
+      onMutationHover?.(info?.object || null, info, event);
+      return;
+    }
     setHoveredEdgeIndex(null);
     onTipHover?.(null, info, event);
     onEdgeHover?.(null, info, event);
-  }, [renderData?.edgeData, onTipHover, onEdgeHover]);
+    onMutationHover?.(null, info, event);
+  }, [renderData?.edgeData, onTipHover, onEdgeHover, onMutationHover]);
 
   const dispatchClick = useCallback((info, event) => {
     const sourceLayerId = info?.sourceLayer?.id || '';
@@ -159,7 +171,7 @@ export function useDeckLayers({
 
     // Tree visualization layer (ortho view)
     if (enabledViews.includes('ortho')) {
-      const wantsPicking = Boolean(onTipHover || onTipClick || onEdgeHover || onEdgeClick);
+      const wantsPicking = Boolean(onTipHover || onTipClick || onEdgeHover || onEdgeClick || onMutationHover);
 
       result.push(new TreeCompositeLayer({
         id: 'main-trees',
@@ -178,12 +190,13 @@ export function useDeckLayers({
         onTipHover,
         onTipClick,
         onEdgeHover,
-        onEdgeClick
+        onEdgeClick,
+        onMutationHover
       }));
     }
 
     return result;
-  }, [enabledViews, globalBpPerUnit, visibleIntervals, genomePositions, timePositions, renderData, xzoom, hoveredEdgeIndex, resolvedEdgeColor, descendantEdgeColor, dispatchHover, dispatchClick]);
+  }, [enabledViews, globalBpPerUnit, visibleIntervals, genomePositions, timePositions, renderData, xzoom, hoveredEdgeIndex, resolvedEdgeColor, descendantEdgeColor, dispatchHover, dispatchClick, onTipHover, onTipClick, onEdgeHover, onEdgeClick, onMutationHover]);
 
   return { layers, layerFilter, clearHover };
 }

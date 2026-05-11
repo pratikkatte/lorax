@@ -315,7 +315,11 @@ export function useLoraxConnection({
         return;
       }
 
+      const requestId = ++requestIdRef.current;
       const handleResult = (message) => {
+        if (message?.request_id != null && message.request_id !== requestId) {
+          return;
+        }
         off("details-result", handleResult);
 
         if (message?.error) {
@@ -326,10 +330,10 @@ export function useLoraxConnection({
         resolve(message?.data);
       };
 
-      once("details-result", handleResult);
-      emit("details", { ...detailsPayload, lorax_sid: sidRef.current });
+      on("details-result", handleResult);
+      emit("details", { ...detailsPayload, request_id: requestId, lorax_sid: sidRef.current });
     });
-  }, [emit, once, off, socketRef, sidRef]);
+  }, [emit, on, off, socketRef, sidRef]);
 
   /**
    * Query mutations in a genomic window.

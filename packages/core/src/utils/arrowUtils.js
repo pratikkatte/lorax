@@ -30,6 +30,13 @@ export function parseTreeLayoutBuffer(buffer) {
       mut_y: [],
       mut_tree_idx: [],
       mut_node_id: [],
+      mut_id: [],
+      mut_site_id: [],
+      mut_position: [],
+      mut_time: [],
+      mut_ancestral_state: [],
+      mut_derived_state: [],
+      mut_inherited_state: [],
     };
   }
 
@@ -62,6 +69,13 @@ export function parseTreeLayoutBuffer(buffer) {
     mut_y: Array.from(mutTable?.getChild('mut_y')?.toArray() || []),
     mut_tree_idx: Array.from(mutTable?.getChild('mut_tree_idx')?.toArray() || []),
     mut_node_id: Array.from(mutTable?.getChild('mut_node_id')?.toArray() || []),
+    mut_id: Array.from(mutTable?.getChild('mut_id')?.toArray() || []),
+    mut_site_id: Array.from(mutTable?.getChild('mut_site_id')?.toArray() || []),
+    mut_position: Array.from(mutTable?.getChild('mut_position')?.toArray() || []),
+    mut_time: Array.from(mutTable?.getChild('mut_time')?.toArray() || []),
+    mut_ancestral_state: Array.from(mutTable?.getChild('mut_ancestral_state')?.toArray() || []),
+    mut_derived_state: Array.from(mutTable?.getChild('mut_derived_state')?.toArray() || []),
+    mut_inherited_state: Array.from(mutTable?.getChild('mut_inherited_state')?.toArray() || []),
   };
 }
 
@@ -82,6 +96,13 @@ export const EMPTY_TREE_LAYOUT = {
   mut_y: [],
   mut_tree_idx: [],
   mut_node_id: [],
+  mut_id: [],
+  mut_site_id: [],
+  mut_position: [],
+  mut_time: [],
+  mut_ancestral_state: [],
+  mut_derived_state: [],
+  mut_inherited_state: [],
   // Metadata
   global_min_time: null,
   global_max_time: null,

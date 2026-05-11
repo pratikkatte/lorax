@@ -73,6 +73,13 @@ function createEmptyCachedTree(treeIdx) {
     mut_x: [],
     mut_y: [],
     mut_node_id: [],
+    mut_id: [],
+    mut_site_id: [],
+    mut_position: [],
+    mut_time: [],
+    mut_ancestral_state: [],
+    mut_derived_state: [],
+    mut_inherited_state: [],
     tree_idx: treeIdx
   };
 }
@@ -82,7 +89,27 @@ function createEmptyCachedTree(treeIdx) {
  * Groups nodes and mutations by tree_idx and stores in cache.
  */
 function updateCacheFromResponse(cache, parsed) {
-  const { node_id, parent_id, is_tip, tree_idx, x, y, time, name, mut_x, mut_y, mut_tree_idx, mut_node_id } = parsed;
+  const {
+    node_id,
+    parent_id,
+    is_tip,
+    tree_idx,
+    x,
+    y,
+    time,
+    name,
+    mut_x,
+    mut_y,
+    mut_tree_idx,
+    mut_node_id,
+    mut_id,
+    mut_site_id,
+    mut_position,
+    mut_time,
+    mut_ancestral_state,
+    mut_derived_state,
+    mut_inherited_state
+  } = parsed;
 
   // Group node data by tree_idx
   const treeIndices = [...new Set(tree_idx)];
@@ -111,13 +138,31 @@ function updateCacheFromResponse(cache, parsed) {
     }
 
     // Get mutations for this tree
-    const mutData = { mut_x: [], mut_y: [], mut_node_id: [] };
+    const mutData = {
+      mut_x: [],
+      mut_y: [],
+      mut_node_id: [],
+      mut_id: [],
+      mut_site_id: [],
+      mut_position: [],
+      mut_time: [],
+      mut_ancestral_state: [],
+      mut_derived_state: [],
+      mut_inherited_state: []
+    };
     const hasMutNodeId = Array.isArray(mut_node_id) && mut_node_id.length === mut_tree_idx.length;
     for (let i = 0; i < mut_tree_idx.length; i++) {
       if (mut_tree_idx[i] === idx) {
         mutData.mut_x.push(mut_x[i]);
         mutData.mut_y.push(mut_y[i]);
         mutData.mut_node_id.push(hasMutNodeId ? mut_node_id[i] : null);
+        mutData.mut_id.push(mut_id?.[i] ?? null);
+        mutData.mut_site_id.push(mut_site_id?.[i] ?? null);
+        mutData.mut_position.push(mut_position?.[i] ?? null);
+        mutData.mut_time.push(mut_time?.[i] ?? null);
+        mutData.mut_ancestral_state.push(mut_ancestral_state?.[i] ?? '');
+        mutData.mut_derived_state.push(mut_derived_state?.[i] ?? '');
+        mutData.mut_inherited_state.push(mut_inherited_state?.[i] ?? '');
       }
     }
 
@@ -188,6 +233,13 @@ function buildTreeDataFromCache(cache, displayArray) {
     mut_y: [],
     mut_tree_idx: [],
     mut_node_id: [],
+    mut_id: [],
+    mut_site_id: [],
+    mut_position: [],
+    mut_time: [],
+    mut_ancestral_state: [],
+    mut_derived_state: [],
+    mut_inherited_state: [],
     tree_indices: []
   };
 
@@ -209,6 +261,13 @@ function buildTreeDataFromCache(cache, displayArray) {
       result.mut_x.push(...cached.mut_x);
       result.mut_y.push(...cached.mut_y);
       result.mut_node_id.push(...(cached.mut_node_id || []));
+      result.mut_id.push(...(cached.mut_id || []));
+      result.mut_site_id.push(...(cached.mut_site_id || []));
+      result.mut_position.push(...(cached.mut_position || []));
+      result.mut_time.push(...(cached.mut_time || []));
+      result.mut_ancestral_state.push(...(cached.mut_ancestral_state || []));
+      result.mut_derived_state.push(...(cached.mut_derived_state || []));
+      result.mut_inherited_state.push(...(cached.mut_inherited_state || []));
       for (let i = 0; i < cached.mut_x.length; i++) {
         result.mut_tree_idx.push(idx);
       }

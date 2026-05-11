@@ -126,6 +126,7 @@ const LoraxDeckGL = forwardRef(({
   onTipClick,
   onEdgeHover,
   onEdgeClick,
+  onMutationHover,
   // Tree loading state callback
   onTreeLoadingChange,
   // Visible trees change callback
@@ -392,6 +393,17 @@ const LoraxDeckGL = forwardRef(({
     };
   }, [getNodePosition]);
 
+  const enrichMutationHoverPayload = useCallback((mutation) => {
+    if (!mutation) return null;
+    const node = getNodePosition(mutation.tree_idx, mutation.node_id);
+    const mutationTime = Number(mutation.mutation_time);
+    return {
+      ...mutation,
+      mutation_time: Number.isFinite(mutationTime) ? mutationTime : null,
+      node_time: Number.isFinite(node?.time) ? node.time : null
+    };
+  }, [getNodePosition]);
+
   const handleTipHover = useCallback((tip, info, event) => {
     onTipHover?.(enrichTipHoverPayload(tip), info, event);
   }, [enrichTipHoverPayload, onTipHover]);
@@ -414,6 +426,10 @@ const LoraxDeckGL = forwardRef(({
     }
     onEdgeHover?.(enrichedEdge, info, event);
   }, [enrichEdgeHoverPayload, highlightDescendantsOnHover, onEdgeHover]);
+
+  const handleMutationHover = useCallback((mutation, info, event) => {
+    onMutationHover?.(enrichMutationHoverPayload(mutation), info, event);
+  }, [enrichMutationHoverPayload, onMutationHover]);
 
   const {
     lockViewPayload: latestLockViewPayload,
@@ -1130,7 +1146,8 @@ const LoraxDeckGL = forwardRef(({
     onTipHover: handleTipHover,
     onTipClick,
     onEdgeHover: handleEdgeHover,
-    onEdgeClick
+    onEdgeClick,
+    onMutationHover: handleMutationHover
   });
 
   // 9. Tree polygon overlay computation and animation

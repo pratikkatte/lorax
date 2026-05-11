@@ -269,6 +269,8 @@ def register_file_events(sio):
 
     @sio.event
     async def details(sid, data):
+        data = data or {}
+        request_id = data.get("request_id")
         try:
             lorax_sid = data.get("lorax_sid")
             session = await require_session(lorax_sid, sid, sio)
@@ -285,6 +287,7 @@ def register_file_events(sio):
 
             if is_csv_session_file(session.file_path):
                 await sio.emit("details-result", {
+                    "request_id": request_id,
                     "data": {"error": "Details are not supported for CSV yet."}
                 }, to=sid)
                 return
@@ -292,10 +295,10 @@ def register_file_events(sio):
             dev_print("fetch details in ", session.sid, os.getpid())
 
             result = await handle_details(session.file_path, data)
-            await sio.emit("details-result", {"data": json.loads(result)}, to=sid)
+            await sio.emit("details-result", {"request_id": request_id, "data": json.loads(result)}, to=sid)
         except Exception as e:
             dev_print(f"❌ Details error: {e}")
-            await sio.emit("details-result", {"error": str(e)}, to=sid)
+            await sio.emit("details-result", {"request_id": request_id, "error": str(e)}, to=sid)
 
     @sio.event
     async def query(sid, data):

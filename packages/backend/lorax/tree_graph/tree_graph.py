@@ -32,6 +32,46 @@ LOW_COVERAGE_NO_INSIDE_SPARSIFY_MULTIPLIER = 0.35
 # Minimum tree count to enable parallel processing (avoids executor overhead for small batches)
 PARALLEL_TREE_THRESHOLD = 2
 
+
+def _empty_mutation_table():
+    return pa.table({
+        'mut_x': pa.array([], type=pa.float32()),
+        'mut_y': pa.array([], type=pa.float32()),
+        'mut_tree_idx': pa.array([], type=pa.int32()),
+        'mut_node_id': pa.array([], type=pa.int32()),
+        'mut_id': pa.array([], type=pa.int32()),
+        'mut_site_id': pa.array([], type=pa.int32()),
+        'mut_position': pa.array([], type=pa.float64()),
+        'mut_time': pa.array([], type=pa.float64()),
+        'mut_ancestral_state': pa.array([], type=pa.string()),
+        'mut_derived_state': pa.array([], type=pa.string()),
+        'mut_inherited_state': pa.array([], type=pa.string()),
+    })
+
+
+def _mutation_state_rows(sites, mutations, mut_ids, mut_site_ids):
+    ancestral_states = []
+    derived_states = []
+    inherited_states = []
+    for mut_id, site_id in zip(mut_ids, mut_site_ids):
+        mut = mutations[int(mut_id)]
+        site = sites[int(site_id)]
+        ancestral_state = site.ancestral_state
+        parent_id = int(mut.parent)
+        inherited_state = (
+            mutations[parent_id].derived_state
+            if parent_id != -1
+            else ancestral_state
+        )
+        ancestral_states.append(ancestral_state)
+        derived_states.append(mut.derived_state)
+        inherited_states.append(inherited_state)
+    return ancestral_states, derived_states, inherited_states
+
+
+def _filter_list_by_mask(values, keep_mask):
+    return [value for value, keep in zip(values, keep_mask) if keep]
+
 def sparsify_cell_size_for_nodes(num_nodes: int) -> float:
     """Cell size s.t. resolution² ≈ num_nodes / target_nodes_per_cell.
     target_nodes_per_cell scales with tree size: smaller trees get finer detail."""
@@ -440,6 +480,7 @@ def _process_single_tree(
     sparsification,
     sparsify_resolution,
     has_mutations,
+    sites,
     mutations,
     mutation_positions,
     pre_cached_graph,
@@ -453,7 +494,7 @@ def _process_single_tree(
     """
     Process a single tree: construct, optionally sparsify/collapse, collect mutations.
     Returns (tree_idx, graph, newly_built, node_ids, parent_ids, is_tip, x, y, n, mut_arrays)
-    where mut_arrays is (mut_tree_idx, mut_x, mut_y, mut_node_id, n_muts) or None.
+    where mut_arrays includes transformed coordinates plus mutation table details.
     """
     tree_idx = int(tree_idx)
     if tree_idx < 0 or tree_idx >= ts.num_trees:
@@ -549,10 +590,20 @@ def _process_single_tree(
         n_muts = len(mut_indices)
         if n_muts > 0:
             mut_node_ids = mutations.node[mut_indices].astype(np.int32)
+            mut_ids = mut_indices.astype(np.int32)
+            mut_site_ids = mutations.site[mut_indices].astype(np.int32)
+            mut_positions = mutation_positions[mut_indices].astype(np.float64)
             mut_times = mutations.time[mut_indices]
             mut_parent_ids = graph.parent[mut_node_ids].astype(np.int32)
             mut_layout = graph.x[mut_node_ids].astype(np.float32)
             mut_time_norm = times_to_y(mut_times, min_time, max_time, time_scale)
+            mut_raw_times = mut_times.astype(np.float64)
+            ancestral_states, derived_states, inherited_states = _mutation_state_rows(
+                sites,
+                mutations,
+                mut_ids,
+                mut_site_ids,
+            )
             nan_mask = np.isnan(mut_times)
             if np.any(nan_mask):
                 node_y = times_to_y(graph.time[mut_node_ids[nan_mask]], min_time, max_time, time_scale)
@@ -577,8 +628,15 @@ def _process_single_tree(
                 keep = np.isin(mut_node_ids, node_ids)
                 if not np.all(keep):  # Only slice if we'd actually drop something
                     mut_node_ids = mut_node_ids[keep]
+                    mut_ids = mut_ids[keep]
+                    mut_site_ids = mut_site_ids[keep]
+                    mut_positions = mut_positions[keep]
+                    mut_raw_times = mut_raw_times[keep]
                     mut_x = mut_x[keep]
                     mut_y = mut_y[keep]
+                    ancestral_states = _filter_list_by_mask(ancestral_states, keep)
+                    derived_states = _filter_list_by_mask(derived_states, keep)
+                    inherited_states = _filter_list_by_mask(inherited_states, keep)
                     n_muts = len(mut_node_ids)
 
             if n_muts > 0:
@@ -587,6 +645,13 @@ def _process_single_tree(
                     mut_x,
                     mut_y,
                     mut_node_ids,
+                    mut_ids,
+                    mut_site_ids,
+                    mut_positions,
+                    mut_raw_times,
+                    ancestral_states,
+                    derived_states,
+                    inherited_states,
                     n_muts,
                 )
             else:
@@ -675,11 +740,7 @@ def construct_trees_batch(
             'x': pa.array([], type=pa.float32()),
             'y': pa.array([], type=pa.float32()),
         })
-        mut_table = pa.table({
-            'mut_x': pa.array([], type=pa.float32()),
-            'mut_y': pa.array([], type=pa.float32()),
-            'mut_tree_idx': pa.array([], type=pa.int32()),
-        })
+        mut_table = _empty_mutation_table()
 
         node_sink = pa.BufferOutputStream()
         node_writer = pa.ipc.new_stream(node_sink, node_table.schema)
@@ -711,12 +772,7 @@ def construct_trees_batch(
             'x': pa.array([], type=pa.float32()),
             'y': pa.array([], type=pa.float32()),
         })
-        mut_table = pa.table({
-            'mut_x': pa.array([], type=pa.float32()),
-            'mut_y': pa.array([], type=pa.float32()),
-            'mut_tree_idx': pa.array([], type=pa.int32()),
-            'mut_node_id': pa.array([], type=pa.int32()),
-        })
+        mut_table = _empty_mutation_table()
         node_sink = pa.BufferOutputStream()
         node_writer = pa.ipc.new_stream(node_sink, node_table.schema)
         node_writer.write_table(node_table)
@@ -743,12 +799,18 @@ def construct_trees_batch(
     all_y = np.empty(total_estimated, dtype=np.float32)
 
     # Pre-allocate mutation arrays (estimate based on mutation density)
-    # Simplified: only x, y, tree_idx needed
     estimated_mutations = max(1000, ts.num_mutations // max(1, ts.num_trees) * len(tree_indices) * 2)
     all_mut_tree_idx = np.empty(estimated_mutations, dtype=np.int32) if has_mutations else None
     all_mut_x = np.empty(estimated_mutations, dtype=np.float32) if has_mutations else None
     all_mut_y = np.empty(estimated_mutations, dtype=np.float32) if has_mutations else None
     all_mut_node_id = np.empty(estimated_mutations, dtype=np.int32) if has_mutations else None
+    all_mut_id = np.empty(estimated_mutations, dtype=np.int32) if has_mutations else None
+    all_mut_site_id = np.empty(estimated_mutations, dtype=np.int32) if has_mutations else None
+    all_mut_position = np.empty(estimated_mutations, dtype=np.float64) if has_mutations else None
+    all_mut_time = np.empty(estimated_mutations, dtype=np.float64) if has_mutations else None
+    all_mut_ancestral_state = []
+    all_mut_derived_state = []
+    all_mut_inherited_state = []
 
     offset = 0
     mut_offset = 0
@@ -844,6 +906,7 @@ def construct_trees_batch(
             sparsification,
             sparsify_resolution,
             has_mutations,
+            sites,
             mutations,
             mutation_positions,
             pre_cached_graphs.get(int(tidx)),
@@ -911,17 +974,41 @@ def construct_trees_batch(
         offset += n
 
         if mut_arrays is not None:
-            mut_tree_idx_a, mut_x_a, mut_y_a, mut_node_id_a, n_muts = mut_arrays
+            (
+                mut_tree_idx_a,
+                mut_x_a,
+                mut_y_a,
+                mut_node_id_a,
+                mut_id_a,
+                mut_site_id_a,
+                mut_position_a,
+                mut_time_a,
+                mut_ancestral_state_a,
+                mut_derived_state_a,
+                mut_inherited_state_a,
+                n_muts,
+            ) = mut_arrays
             while mut_offset + n_muts > len(all_mut_tree_idx):
                 new_size = len(all_mut_tree_idx) * 2
                 all_mut_tree_idx.resize(new_size, refcheck=False)
                 all_mut_x.resize(new_size, refcheck=False)
                 all_mut_y.resize(new_size, refcheck=False)
                 all_mut_node_id.resize(new_size, refcheck=False)
+                all_mut_id.resize(new_size, refcheck=False)
+                all_mut_site_id.resize(new_size, refcheck=False)
+                all_mut_position.resize(new_size, refcheck=False)
+                all_mut_time.resize(new_size, refcheck=False)
             all_mut_tree_idx[mut_offset:mut_offset+n_muts] = mut_tree_idx_a
             all_mut_x[mut_offset:mut_offset+n_muts] = mut_x_a
             all_mut_y[mut_offset:mut_offset+n_muts] = mut_y_a
             all_mut_node_id[mut_offset:mut_offset+n_muts] = mut_node_id_a
+            all_mut_id[mut_offset:mut_offset+n_muts] = mut_id_a
+            all_mut_site_id[mut_offset:mut_offset+n_muts] = mut_site_id_a
+            all_mut_position[mut_offset:mut_offset+n_muts] = mut_position_a
+            all_mut_time[mut_offset:mut_offset+n_muts] = mut_time_a
+            all_mut_ancestral_state.extend(mut_ancestral_state_a)
+            all_mut_derived_state.extend(mut_derived_state_a)
+            all_mut_inherited_state.extend(mut_inherited_state_a)
             mut_offset += n_muts
 
         processed_indices.append(tree_idx)
@@ -940,6 +1027,10 @@ def construct_trees_batch(
         all_mut_x = all_mut_x[:mut_offset]
         all_mut_y = all_mut_y[:mut_offset]
         all_mut_node_id = all_mut_node_id[:mut_offset]
+        all_mut_id = all_mut_id[:mut_offset]
+        all_mut_site_id = all_mut_site_id[:mut_offset]
+        all_mut_position = all_mut_position[:mut_offset]
+        all_mut_time = all_mut_time[:mut_offset]
 
         # Apply mutation sparsification when requested (grid-deduplicate by x,y per tree)
         # Resolution aligns with edge sparsification: normal mode uses sparsify_resolution;
@@ -997,6 +1088,13 @@ def construct_trees_batch(
             all_mut_x = all_mut_x[keep_mask]
             all_mut_y = all_mut_y[keep_mask]
             all_mut_node_id = all_mut_node_id[keep_mask]
+            all_mut_id = all_mut_id[keep_mask]
+            all_mut_site_id = all_mut_site_id[keep_mask]
+            all_mut_position = all_mut_position[keep_mask]
+            all_mut_time = all_mut_time[keep_mask]
+            all_mut_ancestral_state = _filter_list_by_mask(all_mut_ancestral_state, keep_mask)
+            all_mut_derived_state = _filter_list_by_mask(all_mut_derived_state, keep_mask)
+            all_mut_inherited_state = _filter_list_by_mask(all_mut_inherited_state, keep_mask)
 
             # Note: per-tree mutation filtering (_process_single_tree line 571) already
             # ensures mutations only reference nodes that survived edge sparsification.
@@ -1022,21 +1120,23 @@ def construct_trees_batch(
             'y': pa.array(all_y, type=pa.float32()),
         })
 
-    # Build separate mutation table (simplified: only x, y, tree_idx, node_id)
+    # Build separate mutation table with enough detail for frontend hover tooltips.
     if has_mutations and mut_offset > 0:
         mut_table = pa.table({
             'mut_x': pa.array(all_mut_x, type=pa.float32()),
             'mut_y': pa.array(all_mut_y, type=pa.float32()),
             'mut_tree_idx': pa.array(all_mut_tree_idx, type=pa.int32()),
             'mut_node_id': pa.array(all_mut_node_id, type=pa.int32()),
+            'mut_id': pa.array(all_mut_id, type=pa.int32()),
+            'mut_site_id': pa.array(all_mut_site_id, type=pa.int32()),
+            'mut_position': pa.array(all_mut_position, type=pa.float64()),
+            'mut_time': pa.array(all_mut_time, type=pa.float64()),
+            'mut_ancestral_state': pa.array(all_mut_ancestral_state, type=pa.string()),
+            'mut_derived_state': pa.array(all_mut_derived_state, type=pa.string()),
+            'mut_inherited_state': pa.array(all_mut_inherited_state, type=pa.string()),
         })
     else:
-        mut_table = pa.table({
-            'mut_x': pa.array([], type=pa.float32()),
-            'mut_y': pa.array([], type=pa.float32()),
-            'mut_tree_idx': pa.array([], type=pa.int32()),
-            'mut_node_id': pa.array([], type=pa.int32()),
-        })
+        mut_table = _empty_mutation_table()
 
     # Serialize node table to IPC
     node_sink = pa.BufferOutputStream()
