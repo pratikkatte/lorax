@@ -69,6 +69,7 @@ export default function InfoFilter({
     selectedColorBy = null,
     setSelectedColorBy,
     coloryby = {},
+    metadataOptionGroups = [],
     metadataColors = {},
     setMetadataColors,
     loadedMetadata,
@@ -424,6 +425,21 @@ export default function InfoFilter({
           >
             {Object.keys(coloryby).length === 0 ? (
               <option value="">No metadata available</option>
+            ) : metadataOptionGroups.length > 0 ? (
+              <>
+                {coloryby.sample && (
+                  <option value="sample">{coloryby.sample}</option>
+                )}
+                {metadataOptionGroups.map(group => (
+                  <optgroup key={group.source} label={group.label}>
+                    {group.options.map(option => (
+                      <option key={`${group.source}:${option.key}`} value={option.key}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </>
             ) : (
               Object.entries(coloryby).map(([key, label]) => (
                 <option key={key} value={key}>{label}</option>

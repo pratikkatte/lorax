@@ -62,6 +62,42 @@ class TestTskitLoader:
         # Should include metadata-related config
         assert "metadata_keys" in config or "node_metadata_keys" in config or True  # May be empty
 
+    def test_metadata_schema_groups_keys_by_source(self, minimal_ts):
+        """Test that metadata schema keeps flat keys and source-grouped keys."""
+        import tskit
+        from lorax.metadata.loader import get_metadata_schema
+
+        tables = minimal_ts.dump_tables()
+        tables.individuals.metadata_schema = tskit.MetadataSchema({
+            "codec": "json",
+            "type": "object",
+            "properties": {"individual_label": {"type": "string"}},
+        })
+        tables.nodes.metadata_schema = tskit.MetadataSchema({
+            "codec": "json",
+            "type": "object",
+            "properties": {"node_label": {"type": "string"}},
+        })
+        tables.populations.metadata_schema = tskit.MetadataSchema({
+            "codec": "json",
+            "type": "object",
+            "properties": {"population_label": {"type": "string"}},
+        })
+
+        schema = get_metadata_schema(tables.tree_sequence())
+
+        assert schema["metadata_keys"] == [
+            "sample",
+            "individual_label",
+            "node_label",
+            "population_label",
+        ]
+        assert schema["metadata_keys_by_source"] == {
+            "individual": ["individual_label"],
+            "node": ["node_label"],
+            "population": ["population_label"],
+        }
+
     def test_config_includes_initial_position(self, minimal_ts, temp_dir):
         """Test that config includes initial position."""
         from lorax.loaders.loader import compute_config

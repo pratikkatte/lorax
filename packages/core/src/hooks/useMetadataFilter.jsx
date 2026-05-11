@@ -1,5 +1,32 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 
+const SOURCE_ORDER = ['individual', 'node', 'population'];
+const SOURCE_LABELS = {
+  individual: 'Individuals',
+  node: 'Nodes',
+  population: 'Populations'
+};
+const SOURCE_LABELS_SINGULAR = {
+  individual: 'Individual',
+  node: 'Node',
+  population: 'Population'
+};
+
+const formatMetadataLabel = (key, tsconfig) => {
+  let label = key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+
+  if (tsconfig?.project === "1000Genomes") {
+    if (key === 'name') {
+      label = "Population";
+    }
+    if (key === "other_comments" || key === "description") {
+      return null;
+    }
+  }
+
+  return label;
+};
+
 // Module-level constant for disabled state - frozen to prevent accidental mutations
 const DISABLED_FILTER_STATE = Object.freeze({
   selectedColorBy: null,
@@ -11,6 +38,7 @@ const DISABLED_FILTER_STATE = Object.freeze({
   searchTerm: "",
   setSearchTerm: () => {},
   coloryby: Object.freeze({}),
+  metadataOptionGroups: Object.freeze([]),
   metadataColors: null,
   setMetadataColors: () => {},
   highlightedMetadataValue: null,
@@ -33,6 +61,7 @@ const DISABLED_FILTER_STATE = Object.freeze({
 function useMetadataFilter({ enabled = false, config = {} }) {
   const {
     metadataKeys = [],
+    metadataKeysBySource = {},
     metadataColors,
     setMetadataColors,
     fetchMetadataArrayForKey,
@@ -58,23 +87,57 @@ function useMetadataFilter({ enabled = false, config = {} }) {
 
     const options = {};
     metadataKeys.forEach(key => {
-      // Convert key to display label (capitalize, replace underscores)
-
-      let label = key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-
-      if (tsconfig?.project === "1000Genomes") {
-        if (key === 'name') {
-           label = "Population";
-        }
-        if (key === "other_comments" || key === "description") {
-          // skip this metadata key
-          return;
-        }
-      }
+      const label = formatMetadataLabel(key, tsconfig);
+      if (!label) return;
       options[key] = label;
     });
     return options;
-  }, [enabled, metadataKeys]);
+  }, [enabled, metadataKeys, tsconfig]);
+
+  const metadataOptionGroups = useMemo(() => {
+    if (!enabled || !Object.keys(coloryby).length) return [];
+
+    const visibleKeys = new Set(Object.keys(coloryby));
+    const keySources = new Map();
+    const primarySourceByKey = new Map();
+
+    SOURCE_ORDER.forEach(source => {
+      const keys = metadataKeysBySource?.[source] || [];
+      keys.forEach(key => {
+        if (!visibleKeys.has(key)) return;
+        if (!keySources.has(key)) {
+          keySources.set(key, []);
+        }
+        keySources.get(key).push(source);
+        if (!primarySourceByKey.has(key)) {
+          primarySourceByKey.set(key, source);
+        }
+      });
+    });
+
+    return SOURCE_ORDER.map(source => {
+      const options = Array.from(primarySourceByKey.entries())
+        .filter(([, primarySource]) => primarySource === source)
+        .map(([key]) => {
+          const sources = keySources.get(key) || [];
+          const alsoSources = sources
+            .filter(item => item !== source)
+            .map(item => SOURCE_LABELS_SINGULAR[item]);
+          return {
+            key,
+            label: alsoSources.length
+              ? `${coloryby[key]} (also ${alsoSources.join(', ')})`
+              : coloryby[key]
+          };
+        });
+
+      return {
+        source,
+        label: SOURCE_LABELS[source],
+        options
+      };
+    }).filter(group => group.options.length > 0);
+  }, [enabled, coloryby, metadataKeysBySource]);
 
   // Auto-select first metadata key when keys are loaded
   useEffect(() => {
@@ -181,6 +244,7 @@ function useMetadataFilter({ enabled = false, config = {} }) {
 
       // Derived
       coloryby,
+      metadataOptionGroups,
 
       // Pass-through from config
       metadataColors,
@@ -198,6 +262,7 @@ function useMetadataFilter({ enabled = false, config = {} }) {
     displayLineagePaths,
     compareMode,
     coloryby,
+    metadataOptionGroups,
     metadataColors,
     setMetadataColors
   ]);

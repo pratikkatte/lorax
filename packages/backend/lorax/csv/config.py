@@ -240,7 +240,12 @@ def build_csv_config(
         "metadata_schema": {
             # Always expose "sample" as the only supported metadata key for CSV.
             # (CSV metadata Socket.IO handlers currently support only key == "sample".)
-            "metadata_keys": ["sample"]
+            "metadata_keys": ["sample"],
+            "metadata_keys_by_source": {
+                "individual": [],
+                "node": [],
+                "population": [],
+            },
         },
     }
 

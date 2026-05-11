@@ -25,6 +25,11 @@ function useLoraxConfig({ backend, enabled = true, onConfigLoaded, setStatusMess
   // Metadata state
   const [metadataColors, setMetadataColors] = useState(null); // {metadata_key: {metadata_value: [r,g,b,a]}}
   const [metadataKeys, setMetadataKeys] = useState([]);  // List of available metadata keys for coloring
+  const [metadataKeysBySource, setMetadataKeysBySource] = useState({
+    individual: [],
+    node: [],
+    population: []
+  });
   const [metadataLoading, setMetadataLoading] = useState(false); // Loading state for metadata fetch
 
   // Unified metadata loading tracking: Map<key, 'pyarrow' | 'loading'>
@@ -141,15 +146,21 @@ function useLoraxConfig({ backend, enabled = true, onConfigLoaded, setStatusMess
     setSampleNames({ sample_names: assignUniqueColors(data.sample_names) });
 
     // Process metadata_schema from backend (lightweight - keys only, values fetched on-demand)
-    // Backend format: { metadata_keys: [key1, key2, ...] }
+    // Backend format: { metadata_keys: [key1, key2, ...], metadata_keys_by_source: {...} }
     const metadataSchema = data.metadata_schema || {};
     const mKeys = metadataSchema.metadata_keys || [];
+    const sourceKeys = metadataSchema.metadata_keys_by_source || {};
 
     // Reset state for new file - colors will be assigned when fetchMetadataArrayForKey returns
     setLoadedMetadata(new Map());
     setMetadataArrays({});
     setMetadataColors({});  // Start empty, colors assigned on-demand
     setMetadataKeys(mKeys);
+    setMetadataKeysBySource({
+      individual: sourceKeys.individual || [],
+      node: sourceKeys.node || [],
+      population: sourceKeys.population || []
+    });
 
     // Call the onConfigLoaded callback if provided
     if (onConfigLoaded) {
@@ -280,6 +291,7 @@ function useLoraxConfig({ backend, enabled = true, onConfigLoaded, setStatusMess
     metadataColors,
     setMetadataColors,
     metadataKeys,
+    metadataKeysBySource,
     metadataLoading,
 
     // Unified metadata tracking: Map<key, 'pyarrow' | 'loading'>
@@ -307,6 +319,7 @@ function useLoraxConfig({ backend, enabled = true, onConfigLoaded, setStatusMess
     sampleNames,
     metadataColors,
     metadataKeys,
+    metadataKeysBySource,
     metadataLoading,
     loadedMetadata,
     metadataArrays,

@@ -315,14 +315,31 @@ def get_metadata_schema(
     -------
     dict
         {
-            "metadata_keys": [key1, key2, ...]
+            "metadata_keys": [key1, key2, ...],
+            "metadata_keys_by_source": {
+                "individual": [key1, ...],
+                "node": [key2, ...],
+                "population": [key3, ...]
+            }
         }
     """
     keys = set()
+    keys_by_source = {
+        "individual": set(),
+        "node": set(),
+        "population": set(),
+    }
 
     # Early return for empty tree sequence
     if not ts.num_samples:
-        return {"metadata_keys": ["sample"]}
+        return {
+            "metadata_keys": ["sample"],
+            "metadata_keys_by_source": {
+                "individual": [],
+                "node": [],
+                "population": [],
+            },
+        }
 
     tables = ts.tables
 
@@ -330,19 +347,19 @@ def get_metadata_schema(
         if source == "individual":
             schema_keys = _keys_from_schema(tables.individuals.metadata_schema)
             if schema_keys is not None:
-                keys.update(schema_keys)
+                keys_by_source[source].update(schema_keys)
             else:
                 for i in range(ts.num_individuals):
                     meta = ts.individual(i).metadata or {}
                     meta = ensure_json_dict(meta)
                     if meta:
-                        keys.update(meta.keys())
+                        keys_by_source[source].update(meta.keys())
                         break
 
         elif source == "node":
             schema_keys = _keys_from_schema(tables.nodes.metadata_schema)
             if schema_keys is not None:
-                keys.update(schema_keys)
+                keys_by_source[source].update(schema_keys)
             else:
                 node = ts.node(next(iter(ts.samples())))
                 node_meta = node.metadata or {}
@@ -351,26 +368,31 @@ def get_metadata_schema(
                 except (TypeError, json.JSONDecodeError):
                     node_meta = {}
                 if node_meta:
-                    keys.update(node_meta.keys())
+                    keys_by_source[source].update(node_meta.keys())
 
         elif source == "population":
             schema_keys = _keys_from_schema(tables.populations.metadata_schema)
             if schema_keys is not None:
-                keys.update(schema_keys)
+                keys_by_source[source].update(schema_keys)
             else:
                 for p in range(ts.num_populations):
                     meta = ts.population(p).metadata or {}
                     meta = ensure_json_dict(meta)
                     if meta:
-                        keys.update(meta.keys())
+                        keys_by_source[source].update(meta.keys())
                         break
 
         else:
             raise ValueError(f"Unknown source: {source}")
 
     # Prepend "sample" to keys - this makes it the default colorBy option
-
+    for source_keys in keys_by_source.values():
+        keys.update(source_keys)
 
     return {
-        "metadata_keys": ["sample"] + sorted(list(keys))
+        "metadata_keys": ["sample"] + sorted(list(keys)),
+        "metadata_keys_by_source": {
+            source: sorted(list(source_keys))
+            for source, source_keys in keys_by_source.items()
+        },
     }

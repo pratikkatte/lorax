@@ -96,6 +96,7 @@ const renderWithLorax = ({
       highlightedMetadataValue: null,
       setHighlightedMetadataValue: vi.fn(),
       coloryby: loraxOverrides.coloryby ?? { name: 'Population' },
+      metadataOptionGroups: loraxOverrides.metadataOptionGroups ?? [],
     };
 
     return (
@@ -120,6 +121,43 @@ const renderWithLorax = ({
     ...render(<TestHarness />),
   };
 };
+
+describe('InfoFilter metadata dropdown', () => {
+  it('renders source groups while keeping bare metadata keys as option values', async () => {
+    const { user } = renderWithLorax({
+      loraxOverrides: {
+        tsconfig: { project: 'Test', filename: 'test.trees' },
+        coloryby: {
+          sample: 'Sample',
+          name: 'Name',
+          region: 'Region'
+        },
+        metadataOptionGroups: [
+          {
+            source: 'individual',
+            label: 'Individuals',
+            options: [{ key: 'name', label: 'Name' }]
+          },
+          {
+            source: 'population',
+            label: 'Populations',
+            options: [{ key: 'region', label: 'Region' }]
+          }
+        ]
+      }
+    });
+
+    const select = screen.getByRole('combobox');
+    expect(select.querySelector('optgroup[label="Individuals"]')).not.toBeNull();
+    expect(select.querySelector('optgroup[label="Populations"]')).not.toBeNull();
+    expect(screen.getByRole('option', { name: 'Sample' })).toHaveValue('sample');
+    expect(screen.getByRole('option', { name: 'Region' })).toHaveValue('region');
+
+    await user.selectOptions(select, 'region');
+
+    expect(screen.getByTestId('selectedColorBy')).toHaveTextContent('region');
+  });
+});
 
 describe('InfoFilter presetFeature', () => {
   it('applies preset from URL (select key, values, colors, coords)', async () => {
