@@ -1,6 +1,7 @@
 import React, { useState } from "react";
+import { Link } from "react-router-dom";
 import { BsCloudUpload, BsGithub, BsChevronDown } from "react-icons/bs";
-import { LuFileText, LuFolder } from "react-icons/lu";
+import { LuBookOpen, LuFileText, LuFolder } from "react-icons/lu";
 import { PiPackage } from "react-icons/pi";
 import ErrorAlert from "./ErrorAlert.jsx";
 import DatasetFiles from "./landing/DatasetFiles.jsx";
@@ -14,7 +15,6 @@ function Badge({ children, pill }) {
 
 export default function LandingPage({
     upload,
-    version = "pre‑release",
 }) {
 
     const { projects } = upload;
@@ -43,6 +43,12 @@ export default function LandingPage({
                     </div>
                     <div className="flex items-center gap-3">
                         {/* <Badge pill>{version}</Badge> */}
+                        <Link
+                            to="/documentation"
+                            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 min-h-[48px] text-sm font-medium hover:bg-slate-50 hover:text-slate-900 text-slate-600 transition-colors"
+                        >
+                            <LuBookOpen className="opacity-70" /> Docs
+                        </Link>
                         <a
                             href="https://pypi.org/project/lorax-arg/" target="_blank" rel="noreferrer"
                             className="hidden sm:inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 min-h-[48px] text-sm font-medium hover:bg-slate-50 hover:text-slate-900 text-slate-600 transition-colors"
@@ -212,6 +218,12 @@ export default function LandingPage({
             <footer className="border-t border-slate-100 bg-white py-8">
                 <div className="mx-auto max-w-7xl px-6 flex flex-col md:flex-row items-center justify-between gap-4">
                     <p className="text-xs text-slate-400">© {new Date().getFullYear()} Lorax</p>
+                    <div className="flex items-center gap-4 text-sm font-medium text-slate-500">
+                        <Link to="/documentation" className="hover:text-slate-900">Documentation</Link>
+                        <a href="https://github.com/pratikkatte/lorax/" target="_blank" rel="noreferrer" className="hover:text-slate-900">
+                            GitHub
+                        </a>
+                    </div>
                 </div>
             </footer>
 

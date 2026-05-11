@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom';
 import LandingPage from './components/LandingPage';
+import DocumentationPage from './components/DocumentationPage';
 import FileView from './components/FileView';
 import useFileUpload from './hooks/useFileUpload';
 import UcgbRedirect from './components/UcgbRedirect';
@@ -29,6 +30,7 @@ function App() {
   return (
     <Routes>
       <Route path="/" element={<LandingPage upload={upload} />} />
+      <Route path="/documentation" element={<DocumentationPage />} />
       <Route path="/view/:file" element={<FileView />} />
       <Route path="/ucgb" element={<UcgbRedirect />} />
       <Route path="/:file" element={<LegacyFileRedirect />} />
