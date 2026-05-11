@@ -1,6 +1,13 @@
 import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
-import { useLorax, LoraxDeckGL } from '@lorax/core';
+import {
+  HoverTooltip,
+  formatTooltipTime,
+  formatTooltipValue,
+  getTooltipClientCoords,
+  useLorax,
+  LoraxDeckGL
+} from '@lorax/core';
 import PositionSlider from './PositionSlider';
 import ViewportOverlay from './ViewportOverlay';
 import Info from './Info';
@@ -12,61 +19,7 @@ import TourOverlay from './TourOverlay';
 import useTourState from '../hooks/useTourState';
 import { metadataFeatureActions } from '../config/metadataFeatureActions';
 
-function formatTooltipTime(value) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return '-';
-  if (n === 0) return '0';
-  const abs = Math.abs(n);
-  if (abs < 0.001 || abs >= 1000000) return n.toExponential(3);
-  return Number(n.toPrecision(6)).toString();
-}
-
 const HOVER_DETAILS_DEBOUNCE_MS = 180;
-const TOOLTIP_OFFSET_X = 16;
-const TOOLTIP_OFFSET_Y = -8;
-const TOOLTIP_VIEWPORT_PADDING = 12;
-const TOOLTIP_MAX_WIDTH = 320;
-const TOOLTIP_MAX_HEIGHT = 360;
-
-function getHoverTooltipViewportStyle(tooltip) {
-  const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 0;
-  const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 0;
-  const maxHeight = viewportHeight > 0
-    ? Math.min(TOOLTIP_MAX_HEIGHT, Math.max(120, viewportHeight - TOOLTIP_VIEWPORT_PADDING * 2))
-    : TOOLTIP_MAX_HEIGHT;
-  const rowCount = Array.isArray(tooltip.rows) ? tooltip.rows.length : 0;
-  const estimatedHeight = Math.min(
-    maxHeight,
-    28 + (tooltip.title ? 28 : 0) + rowCount * 30
-  );
-
-  let left = tooltip.x + TOOLTIP_OFFSET_X;
-  if (viewportWidth > 0 && left + TOOLTIP_MAX_WIDTH > viewportWidth - TOOLTIP_VIEWPORT_PADDING) {
-    left = tooltip.x - TOOLTIP_MAX_WIDTH - TOOLTIP_OFFSET_X;
-  }
-  if (viewportWidth > 0) {
-    left = Math.min(
-      Math.max(TOOLTIP_VIEWPORT_PADDING, left),
-      Math.max(TOOLTIP_VIEWPORT_PADDING, viewportWidth - TOOLTIP_MAX_WIDTH - TOOLTIP_VIEWPORT_PADDING)
-    );
-  }
-
-  let top = tooltip.y + TOOLTIP_OFFSET_Y;
-  if (viewportHeight > 0) {
-    top = Math.min(
-      Math.max(TOOLTIP_VIEWPORT_PADDING, top),
-      Math.max(TOOLTIP_VIEWPORT_PADDING, viewportHeight - estimatedHeight - TOOLTIP_VIEWPORT_PADDING)
-    );
-  }
-
-  return { left, top, maxHeight };
-}
-
-function formatTooltipValue(value) {
-  if (value === null || value === undefined || value === '') return '-';
-  if (typeof value === 'object') return JSON.stringify(value);
-  return String(value);
-}
 
 function appendMetadataRows(rows, metadata, prefix, limit = 4) {
   if (!metadata || typeof metadata !== 'object') return;
@@ -487,13 +440,9 @@ function FileView() {
   }, [selectedColorBy, metadataArrays]);
 
   const setTooltipFromEvent = useCallback((base, info, event) => {
-    // Prefer DOM coordinates when available, fall back to deck.gl's canvas-relative coords.
-    const src = event?.srcEvent;
-    const clientX = src?.clientX;
-    const clientY = src?.clientY;
-    const x = Number.isFinite(clientX) ? clientX : info?.x;
-    const y = Number.isFinite(clientY) ? clientY : info?.y;
-    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    const xy = getTooltipClientCoords(info, event);
+    if (!xy) return;
+    const { x, y } = xy;
     setHoverTooltip({ ...base, x, y });
   }, []);
 
@@ -1223,41 +1172,7 @@ function FileView() {
               onEdgeClick={handleEdgeClick}
             />
 
-            {/* Hover tooltip (website-owned UI) */}
-            {hoverTooltip && Number.isFinite(hoverTooltip.x) && Number.isFinite(hoverTooltip.y) && (
-              <div
-                style={{
-                  position: 'fixed',
-                  ...getHoverTooltipViewportStyle(hoverTooltip),
-                  zIndex: 99999,
-                  pointerEvents: 'none',
-                  backgroundColor: '#fff',
-                  boxShadow: '0 4px 20px rgba(0,0,0,0.12), 0 1px 4px rgba(0,0,0,0.08)',
-                  borderRadius: 10,
-                  minWidth: 180,
-                  maxWidth: 320,
-                  border: '1px solid rgba(0,0,0,0.08)',
-                  overflowY: 'auto',
-                  fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-                }}
-              >
-                <div style={{ padding: '10px 12px', fontSize: '13px', color: '#374151' }}>
-                  {hoverTooltip.title && (
-                    <div style={{ fontWeight: 700, color: '#111827', marginBottom: 6 }}>
-                      {hoverTooltip.title}
-                    </div>
-                  )}
-                  {Array.isArray(hoverTooltip.rows) && hoverTooltip.rows.map((row, idx) => (
-                    <div key={`${row.k}-${idx}`} style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', borderBottom: '1px solid #f3f4f6' }}>
-                      <span style={{ color: '#6b7280', fontWeight: 500 }}>{row.k}</span>
-                      <span style={{ fontWeight: 600, color: '#111827', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {String(row.v)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+            <HoverTooltip tooltip={hoverTooltip} />
           </div>
         )}
 

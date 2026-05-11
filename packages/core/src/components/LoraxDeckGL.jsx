@@ -348,19 +348,20 @@ const LoraxDeckGL = forwardRef(({
     ? externalGenomicCoords
     : (externalGenomicCoords || genomicCoords);
 
-    const externalSyncKeyRef = useRef(null);
+  const externalSyncKeyRef = useRef(null);
 
-    useEffect(() => {
-      if (!externalGenomicCoordsSync || !externalGenomicCoords) return;
-      if (!coordsReady) return;
-      const [start, end] = externalGenomicCoords;
-      if (!Number.isFinite(start) || !Number.isFinite(end) || start >= end) return;
-      const key = `${start}:${end}:${globalBpPerUnit}`;
-      if (externalSyncKeyRef.current === key) return;
-      // Keep Lorax viewState aligned to external coords (e.g., JBrowse blocks).
-      setGenomicCoords(externalGenomicCoords);
-      externalSyncKeyRef.current = key;
-    }, [externalGenomicCoordsSync, externalGenomicCoords, globalBpPerUnit, coordsReady, setGenomicCoords]);
+  useEffect(() => {
+    if (!externalGenomicCoordsSync || !externalGenomicCoords) return;
+    if (!coordsReady) return;
+    const [start, end] = externalGenomicCoords;
+    if (!Number.isFinite(start) || !Number.isFinite(end) || start >= end) return;
+    const deckWidth = decksize?.width ?? 0;
+    const key = `${start}:${end}:${globalBpPerUnit}:${deckWidth}`;
+    if (externalSyncKeyRef.current === key) return;
+    // Keep Lorax viewState aligned to external coords and pixel-width changes.
+    setGenomicCoords(externalGenomicCoords);
+    externalSyncKeyRef.current = key;
+  }, [externalGenomicCoordsSync, externalGenomicCoords, globalBpPerUnit, decksize?.width, coordsReady, setGenomicCoords]);
 
   // 5. Notify parent when genomicCoords changes
   useEffect(() => {

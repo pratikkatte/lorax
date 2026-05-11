@@ -43,6 +43,13 @@ export {
 // DeckGL Component
 export { default as LoraxDeckGL } from './components/LoraxDeckGL.jsx';
 export { default as TreePolygonOverlay } from './components/TreePolygonOverlay.jsx';
+export {
+  default as HoverTooltip,
+  formatTooltipTime,
+  formatTooltipValue,
+  getHoverTooltipPositionStyle,
+  getTooltipClientCoords
+} from './components/tooltip/HoverTooltip.jsx';
 
 // DeckGL Hooks
 export { useDeckViews } from './hooks/useDeckViews.jsx';
