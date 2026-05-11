@@ -7,13 +7,14 @@ from typing import Optional
 import socketio
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from starlette.middleware.gzip import GZipMiddleware
 
 from lorax.constants import (
     MAX_HTTP_BUFFER_SIZE,
     SOCKET_PING_INTERVAL,
     SOCKET_PING_TIMEOUT,
+    UPLOADS_DIR,
 )
 from lorax.context import REDIS_CLUSTER_URL, REDIS_CLUSTER
 from lorax.routes import router as backend_router
@@ -42,17 +43,12 @@ def _serve_file(path: Path) -> FileResponse:
     return FileResponse(path)
 
 
-def create_fastapi_app(static_dir: Optional[Path] = None) -> FastAPI:
+def create_fastapi_app(
+    static_dir: Optional[Path] = None,
+    jbrowse: bool = False,
+    filename: Optional[str] = None,
+) -> FastAPI:
     static_dir = static_dir or _get_static_dir()
-    index_html = static_dir / "index.html"
-    if not index_html.exists():
-        raise RuntimeError(
-            "Lorax UI assets not found.\n\n"
-            "If you are running from source, build the website and point the app to it:\n"
-            "  npm ci && VITE_API_BASE=/api npm --workspace packages/website run build\n"
-            "  export LORAX_APP_STATIC_DIR=packages/website/dist\n\n"
-            "If you are installing from PyPI, use an official wheel that includes UI assets."
-        )
 
     app = FastAPI(title="Lorax App", version="0.1.0")
     app.add_middleware(GZipMiddleware, minimum_size=1000)
@@ -77,44 +73,112 @@ def create_fastapi_app(static_dir: Optional[Path] = None) -> FastAPI:
     # Backend API under /api
     app.include_router(backend_router, prefix="/api")
 
-    # Static files + SPA fallback
-    @app.get("/")
-    async def spa_root():
-        return _serve_file(index_html)
+    if jbrowse:
+        jbrowse_dir = static_dir / "jbrowse"
+        jbrowse_index = jbrowse_dir / "index.html"
+        if not jbrowse_index.exists():
+            raise RuntimeError(
+                "JBrowse assets not found.\n\n"
+                "Run the build script first:\n"
+                "  python packages/app/scripts/sync_jbrowse_assets.py\n"
+            )
 
-    @app.get("/{path:path}")
-    async def spa_fallback(path: str, request: Request):
-        # Let /api/* be handled by the mounted backend router; if we got here,
-        # it wasn't a backend match, so treat it as 404.
-        if path.startswith("api/") or path == "api":
-            raise HTTPException(status_code=404, detail="Not found")
+        @app.get("/config.json")
+        async def jbrowse_config(request: Request):
+            base = str(request.base_url).rstrip("/")
+            tracks = []
+            if filename:
+                uploads_path = str(Path(UPLOADS_DIR) / "Uploads" / filename)
+                tracks = [{
+                    "type": "LoraxTrack",
+                    "trackId": "lorax_track",
+                    "name": "Lorax",
+                    "assemblyNames": ["hg38"],
+                    "adapter": {
+                        "type": "LoraxAdapter",
+                        "apiBase": f"{base}/api",
+                        "filePath": uploads_path,
+                    },
+                }]
+            return JSONResponse({
+                "plugins": [{"name": "Lorax", "url": f"{base}/lorax-plugin.js"}],
+                "configuration": {"rpc": {"defaultDriver": "MainThreadRpcDriver"}},
+                "assemblies": [],
+                "tracks": tracks,
+            })
 
-        # Serve built asset directly if it exists (e.g. /assets/*.js, /logo.png).
-        candidate = (static_dir / path).resolve()
-        try:
-            candidate.relative_to(static_dir.resolve())
-        except ValueError:
-            # Prevent path traversal.
-            raise HTTPException(status_code=400, detail="Invalid path")
+        @app.get("/")
+        async def jbrowse_root():
+            return _serve_file(jbrowse_index)
 
-        if candidate.exists() and candidate.is_file():
-            return _serve_file(candidate)
+        @app.get("/{path:path}")
+        async def jbrowse_spa(path: str, request: Request):
+            if path.startswith("api/") or path == "api":
+                raise HTTPException(status_code=404, detail="Not found")
 
-        # SPA route (e.g. /<file>?project=Uploads)
-        return _serve_file(index_html)
+            # Check JBrowse static dir first
+            candidate = (jbrowse_dir / path).resolve()
+            try:
+                candidate.relative_to(jbrowse_dir.resolve())
+                if candidate.exists() and candidate.is_file():
+                    return _serve_file(candidate)
+            except ValueError:
+                pass
+
+            # Then check root static dir (e.g. lorax-plugin.js)
+            root_candidate = (static_dir / path).resolve()
+            try:
+                root_candidate.relative_to(static_dir.resolve())
+                if root_candidate.exists() and root_candidate.is_file():
+                    return _serve_file(root_candidate)
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid path")
+
+            return _serve_file(jbrowse_index)
+
+    else:
+        index_html = static_dir / "index.html"
+        if not index_html.exists():
+            raise RuntimeError(
+                "Lorax UI assets not found.\n\n"
+                "If you are running from source, build the website and point the app to it:\n"
+                "  npm ci && VITE_API_BASE=/api npm --workspace packages/website run build\n"
+                "  export LORAX_APP_STATIC_DIR=packages/website/dist\n\n"
+                "If you are installing from PyPI, use an official wheel that includes UI assets."
+            )
+
+        @app.get("/")
+        async def spa_root():
+            return _serve_file(index_html)
+
+        @app.get("/{path:path}")
+        async def spa_fallback(path: str, request: Request):
+            if path.startswith("api/") or path == "api":
+                raise HTTPException(status_code=404, detail="Not found")
+
+            candidate = (static_dir / path).resolve()
+            try:
+                candidate.relative_to(static_dir.resolve())
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid path")
+
+            if candidate.exists() and candidate.is_file():
+                return _serve_file(candidate)
+
+            return _serve_file(index_html)
 
     return app
 
 
-def create_asgi_app() -> socketio.ASGIApp:
+def create_asgi_app(jbrowse: bool = False, filename: Optional[str] = None) -> socketio.ASGIApp:
     """
     Create the combined ASGI app.
 
-    - UI served by FastAPI routes.
+    - UI served by FastAPI routes (Lorax SPA or JBrowse Web depending on jbrowse flag).
     - Backend router mounted at /api.
     - Socket.IO served at /api/socket.io/.
     """
-    fastapi_app = create_fastapi_app()
+    fastapi_app = create_fastapi_app(jbrowse=jbrowse, filename=filename)
 
     client_manager = None
     if REDIS_CLUSTER_URL and not REDIS_CLUSTER:
@@ -155,5 +219,7 @@ def create_asgi_app() -> socketio.ASGIApp:
 
 
 # Default importable app for uvicorn: `uvicorn lorax_app.app:asgi_app`
+# When launched via CLI with --jbrowse, the CLI constructs the app directly
+# and passes it to uvicorn.run() instead of using this string reference.
 asgi_app = create_asgi_app()
 

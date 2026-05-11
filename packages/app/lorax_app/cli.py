@@ -55,6 +55,8 @@ def _wait_for_health(base_url: str, timeout_s: float = 20.0, interval_s: float =
 @click.option("--file", "file_path", type=click.Path(dir_okay=False, path_type=Path))
 @click.option("--host", default="127.0.0.1", show_default=True)
 @click.option("--port", default=3000, type=int, show_default=True)
+@click.option("--jbrowse", "use_jbrowse", is_flag=True, default=False,
+              help="Launch with JBrowse interface instead of the default Lorax UI.")
 @click.version_option(package_name="lorax-arg", prog_name="lorax")
 @click.pass_context
 def main(
@@ -62,6 +64,7 @@ def main(
     file_path: Path | None,
     host: str,
     port: int,
+    use_jbrowse: bool,
 ):
     """
     Lorax — interactive ARG viewer. Provide FILE to view trees directly.
@@ -74,22 +77,27 @@ def main(
                 file = candidate
             else:
                 raise click.ClickException(f"File not found: {candidate}")
-        _serve(file=file, host=host, port=port)
+        _serve(file=file, host=host, port=port, use_jbrowse=use_jbrowse)
 
 
-def _serve(file: Path | None, host: str, port: int) -> None:
+def _serve(file: Path | None, host: str, port: int, use_jbrowse: bool = False) -> None:
     import uvicorn
+    from lorax_app.app import create_asgi_app
 
     filename = None
     if file is not None:
         filename = _copy_into_uploads(file)
+
+    app = create_asgi_app(jbrowse=use_jbrowse, filename=filename)
 
     def open_browser_delayed():
         base = f"http://{host}:{port}" if host != "0.0.0.0" else f"http://127.0.0.1:{port}"
         ready = _wait_for_health(base)
         if not ready:
             click.echo("Warning: /api/health did not respond yet; opening browser anyway.")
-        if filename:
+        if use_jbrowse:
+            url = f"{base}/"
+        elif filename:
             url = f"{base}/{quote(filename)}?project=Uploads"
         else:
             url = f"{base}/"
@@ -100,7 +108,7 @@ def _serve(file: Path | None, host: str, port: int) -> None:
 
     click.echo(f"Starting Lorax app on {host}:{port}")
     uvicorn.run(
-        "lorax_app.app:asgi_app",
+        app,
         host=host,
         port=port,
         reload=False,
