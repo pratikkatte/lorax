@@ -3,10 +3,10 @@ import { Link } from "react-router-dom";
 import {
   LuBadgeCheck,
   LuBookOpen,
-  LuBox,
   LuBrush,
   LuChevronRight,
   LuCircleHelp,
+  LuDna,
   LuExternalLink,
   LuLayers,
   LuPackage,
@@ -41,6 +41,11 @@ const featureCards = [
     icon: LuBrush,
     title: "Metadata integration",
     description: "Color, filter, and subset samples by population labels, phenotypes, or custom metadata columns."
+  },
+  {
+    icon: LuDna,
+    title: "JBrowse integration",
+    description: "Launch Lorax inside JBrowse Web with --jbrowse to overlay ARG tracks on a full genome browser with reference sequence and annotations."
   }
 ];
 
@@ -55,10 +60,6 @@ const faqItems = [
     question: "Which browsers work best?",
     answer: "Use a modern Chromium, Firefox, or Safari release with WebGL enabled. Hardware acceleration helps with large visualizations."
   },
-  {
-    question: "What if port 80 is already in use?",
-    answer: "Map the container to another host port, for example `docker run -it -p 5173:80 lorax`, then open `http://localhost:5173`."
-  }
 ];
 
 function Toc({ activeSection }) {
@@ -316,40 +317,57 @@ export default function DocumentationHome() {
 lorax
 
 # Preferred for large files
-lorax --file path/to/your.trees`}
+lorax --file path/to/your.trees
+
+# Open inside JBrowse Web with the Lorax track pre-loaded
+lorax --file path/to/your.trees --jbrowse`}
             </CodeBlock>
             <p>
-              You can also open the landing page and click <strong>Load File</strong> to upload `.trees`, `.trees.tsz`, or CSV files from your machine.
+              You can also open the landing page and click <strong>Load File</strong> to upload <code className="rounded bg-slate-100 px-1 font-mono text-xs text-slate-800">.trees</code>, <code className="rounded bg-slate-100 px-1 font-mono text-xs text-slate-800">.trees.tsz</code>, or CSV files from your machine.
             </p>
           </Section>
 
           <Section id="installation" eyebrow="Setup" title="Installation Options">
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                <div className="mb-3 flex items-center gap-2 font-semibold text-slate-900">
-                  <LuPackage className="text-emerald-600" /> Python package
-                </div>
-                <CodeBlock>{`pip install lorax-arg
-lorax --port 3000`}</CodeBlock>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <div className="mb-3 flex items-center gap-2 font-semibold text-slate-900">
+                <LuPackage className="text-emerald-600" /> Python package
               </div>
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                <div className="mb-3 flex items-center gap-2 font-semibold text-slate-900">
-                  <LuBox className="text-emerald-600" /> Docker
+              <CodeBlock>{`pip install lorax-arg
+lorax --port 3000`}</CodeBlock>
+            </div>
+
+            <div className="rounded-2xl border border-emerald-100 bg-emerald-50/60 p-5">
+              <div className="mb-3 flex items-center gap-2 font-semibold text-slate-900">
+                <LuDna className="text-emerald-600" /> JBrowse interface
+              </div>
+              <p className="mb-3 text-sm leading-6 text-slate-600">
+                Add <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs text-slate-800">--jbrowse</code> to launch Lorax inside{" "}
+                <strong>JBrowse Web</strong> instead of the default viewer. JBrowse opens directly to a Linear Genome View with the Lorax track pre-configured and ready to use.
+              </p>
+              <CodeBlock label="Launch with JBrowse">
+                {`# hg38 by default
+lorax --file path/to/your.trees --jbrowse
+
+# Specify a different assembly
+lorax --file path/to/your.trees --jbrowse --assembly mm10`}
+              </CodeBlock>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 text-sm">
+                <div className="rounded-xl border border-emerald-100 bg-white/70 p-3">
+                  <p className="font-medium text-slate-800 mb-1">Built-in assemblies</p>
+                  <p className="text-slate-500 leading-6">
+                    <code className="font-mono text-xs">hg38</code> (GRCh38, default) and{" "}
+                    <code className="font-mono text-xs">mm10</code> (GRCm38) are pre-configured with hosted reference files. Other assemblies can be added from within JBrowse.
+                  </p>
                 </div>
-                <CodeBlock>{`docker pull pratikkatte7/lorax
-docker run -it -p 80:80 lorax`}</CodeBlock>
+                <div className="rounded-xl border border-emerald-100 bg-white/70 p-3">
+                  <p className="font-medium text-slate-800 mb-1">How it works</p>
+                  <p className="text-slate-500 leading-6">
+                    The same Lorax backend serves both the Lorax plugin bundle and the JBrowse static app on port 3000. No separate server or install is needed.
+                  </p>
+                </div>
               </div>
             </div>
-            <p>
-              For local development from source, build the website and install the backend/app Python packages from the repository.
-            </p>
-            <CodeBlock label="Build from source">
-              {`npm ci
-VITE_API_BASE=/api npm --workspace packages/website run build
-python -m pip install -e packages/backend
-python -m pip install -e packages/app
-lorax --port 3000`}
-            </CodeBlock>
+
           </Section>
 
           <Section id="supported-inputs" eyebrow="Formats" title="Supported Input Files">
@@ -357,11 +375,10 @@ lorax --port 3000`}
           </Section>
 
           <Section id="loading-data" eyebrow="Data flow" title="Loading Your ARG Data">
-            <div className="grid gap-4 md:grid-cols-3">
+            <div className="grid gap-4 md:grid-cols-2">
               {[
                 ["Web upload", "Best for small files and quick tests. Use the landing page Load File button or drag a file onto the logo card."],
                 ["Direct CLI", "Best for large local files. Start Lorax with `lorax --file path/to/file.trees`."],
-                ["Docker volume", "Best for container workflows. Mount your data folder into `/app/UPLOADS` and open it from the interface."]
               ].map(([title, description]) => (
                 <div key={title} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                   <h3 className="font-semibold text-slate-900">{title}</h3>
@@ -369,11 +386,6 @@ lorax --port 3000`}
                 </div>
               ))}
             </div>
-            <CodeBlock label="Mount data with Docker">
-              {`docker run -it -p 80:80 \\
-  -v $(pwd)/ts_files:/app/UPLOADS/ts_files \\
-  lorax`}
-            </CodeBlock>
           </Section>
 
           <Section id="navigating-viewer" eyebrow="Viewer basics" title="Navigating the Viewer">
