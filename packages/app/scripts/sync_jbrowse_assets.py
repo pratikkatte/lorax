@@ -51,9 +51,13 @@ def _get_jbrowse_tag() -> str:
 JBROWSE_TAG = "v2.12.3"  # fallback; overridden at runtime by _get_jbrowse_tag()
 
 
-def run(cmd: list[str], cwd: Path) -> None:
+def run(cmd: list[str], cwd: Path, env: dict | None = None) -> None:
+    import os
+    merged_env = {**os.environ, **(env or {})}
     print(f"\n$ {' '.join(cmd)}  (cwd={cwd})")
-    result = subprocess.run(cmd, cwd=cwd)
+    if env:
+        print(f"  env overrides: {env}")
+    result = subprocess.run(cmd, cwd=cwd, env=merged_env)
     if result.returncode != 0:
         sys.exit(result.returncode)
 
@@ -64,7 +68,10 @@ def build_plugin() -> Path:
             f"lorax-plugin directory not found at: {PLUGIN_DIR}\n"
             "Expected it to be a sibling of lorax_main."
         )
-    run(["npm", "run", "build"], cwd=PLUGIN_DIR)
+    # NODE_ENV=production ensures replaceProcessEnv() bakes in isProd=true,
+    # so useSocket() chooses /api/socket.io/ (the pip single-server path)
+    # rather than the Vite dev-proxy path /socket.io/.
+    run(["npm", "run", "build"], cwd=PLUGIN_DIR, env={"NODE_ENV": "production"})
     bundle = PLUGIN_DIR / "dist" / "jbrowse-plugin-lorax.umd.development.js"
     if not bundle.exists():
         sys.exit(f"Plugin bundle not found after build: {bundle}")

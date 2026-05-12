@@ -330,9 +330,9 @@ export function useTreeData({
   // Time bounds (file-level constants, cached from first fetch)
   const timeBoundsRef = useRef(null);
 
-  // Cache key for invalidation (file identity + effective detail mode).
-  // Backend now infers sparsification from tree count.
-  const cacheKeyRef = useRef({ tsconfigId: null, inferredSparsification: null, timeScale: 'linear' });
+  // Cache key for invalidation. Keep cached trees across displayArray size
+  // changes; backend layout detail is stable for the same file/time scale.
+  const cacheKeyRef = useRef({ tsconfigId: null, timeScale: 'linear' });
 
   // Previous display array, used to classify lock-view heartbeat refreshes.
   const previousDisplayArrayRef = useRef([]);
@@ -344,7 +344,6 @@ export function useTreeData({
   // Derive stable file identity from tsconfig
   const tsconfigId = tsconfig?.file_path || tsconfig?.genome_length || null;
 
-  const inferredSparsification = (displayArray?.length ?? 0) > 1;
   const resolvedTimeScale = normalizeTimeScale(timeScale);
 
   const normalizedLockView = useMemo(() => {
@@ -370,19 +369,18 @@ export function useTreeData({
     return displayArray.includes(candidate) ? candidate : null;
   }, [normalizedLockView, displayArray]);
 
-  // Invalidate cache when file or inferred detail mode changes
+  // Invalidate cache when file identity or time scale changes.
   useEffect(() => {
     if (cacheKeyRef.current.tsconfigId !== tsconfigId ||
-        cacheKeyRef.current.inferredSparsification !== inferredSparsification ||
         cacheKeyRef.current.timeScale !== resolvedTimeScale) {
       requestGenerationRef.current += 1;
       treeDataCacheRef.current.clear();
       timeBoundsRef.current = null;
-      cacheKeyRef.current = { tsconfigId, inferredSparsification, timeScale: resolvedTimeScale };
+      cacheKeyRef.current = { tsconfigId, timeScale: resolvedTimeScale };
       previousDisplayArrayRef.current = [];
       lastLockRefreshRef.current = { targetTreeIndex: null, targetLocalBBox: null };
     }
-  }, [tsconfigId, inferredSparsification, resolvedTimeScale]);
+  }, [tsconfigId, resolvedTimeScale]);
 
   // Manual cache clear callback
   const clearCache = useCallback(() => {

@@ -110,7 +110,7 @@ export {
 } from './utils/computations.js';
 
 // Render worker helpers (exported for JBrowse RPC integration)
-export { computeRenderArrays } from './workers/renderDataWorker.js';
+export { computeRenderArrays, createRenderDataCache } from './workers/renderDataWorker.js';
 
 // Render Utilities
 export {

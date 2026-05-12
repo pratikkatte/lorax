@@ -57,8 +57,8 @@ def _wait_for_health(base_url: str, timeout_s: float = 20.0, interval_s: float =
 @click.option("--port", default=3000, type=int, show_default=True)
 @click.option("--jbrowse", "use_jbrowse", is_flag=True, default=False,
               help="Launch with JBrowse interface instead of the default Lorax UI.")
-@click.option("--assembly", default="hg38", show_default=True,
-              help="Genome assembly for JBrowse mode (e.g. hg38, mm10).")
+@click.option("--assembly", default="hg19", show_default=True,
+              help="Genome assembly for JBrowse mode (e.g. hg19, hg38, mm10).")
 @click.version_option(package_name="lorax-arg", prog_name="lorax")
 @click.pass_context
 def main(
@@ -83,7 +83,7 @@ def main(
         _serve(file=file, host=host, port=port, use_jbrowse=use_jbrowse, assembly=assembly)
 
 
-def _serve(file: Path | None, host: str, port: int, use_jbrowse: bool = False, assembly: str = "hg38") -> None:
+def _serve(file: Path | None, host: str, port: int, use_jbrowse: bool = False, assembly: str = "hg19") -> None:
     import uvicorn
     from lorax_app.app import create_asgi_app
 

@@ -46,6 +46,26 @@ def _serve_file(path: Path) -> FileResponse:
 # Built-in assembly configs that mirror the lorax-plugin dev config.
 # Each entry follows the JBrowse assembly schema with remote hosted FASTA files.
 _BUILTIN_ASSEMBLIES: dict[str, dict] = {
+    "hg19": {
+        "name": "hg19",
+        "aliases": ["GRCh37"],
+        "sequence": {
+            "type": "ReferenceSequenceTrack",
+            "trackId": "hg19-ref",
+            "adapter": {
+                "type": "BgzipFastaAdapter",
+                "fastaLocation": {"uri": "https://jbrowse.org/genomes/hg19/fasta/hg19.fa.gz"},
+                "faiLocation": {"uri": "https://jbrowse.org/genomes/hg19/fasta/hg19.fa.gz.fai"},
+                "gziLocation": {"uri": "https://jbrowse.org/genomes/hg19/fasta/hg19.fa.gz.gzi"},
+            },
+        },
+        "refNameAliases": {
+            "adapter": {
+                "type": "RefNameAliasAdapter",
+                "location": {"uri": "https://s3.amazonaws.com/jbrowse.org/genomes/hg19/hg19_aliases.txt"},
+            }
+        },
+    },
     "hg38": {
         "name": "hg38",
         "aliases": ["GRCh38"],
@@ -124,7 +144,7 @@ def create_fastapi_app(
                 "  python packages/app/scripts/sync_jbrowse_assets.py\n"
             )
 
-        assembly_name = assembly or "hg38"
+        assembly_name = assembly or "hg19"
         assembly_cfg = _BUILTIN_ASSEMBLIES.get(assembly_name)
 
         @app.get("/config.json")
@@ -143,6 +163,7 @@ def create_fastapi_app(
                         "type": "LoraxAdapter",
                         "apiBase": f"{base}/api",
                         "filePath": uploads_path,
+                        "isProd": True,
                     },
                 }]
 

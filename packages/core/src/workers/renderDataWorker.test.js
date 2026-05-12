@@ -4,7 +4,8 @@ import { serializeMetadataArraysForRpc } from '../rpc/createRpcWorker.js';
 import {
   computeRenderArrays,
   applyTransform,
-  clearWorkerState
+  clearWorkerState,
+  createRenderDataCache
 } from './renderDataWorker.js';
 
 function modelMatrix(scaleX = 1, translateX = 0) {
@@ -322,5 +323,112 @@ describe('renderDataWorker structure cache and apply-transform', () => {
 
     expect(Array.from(initialRender.tipPositions)).toEqual([0.1, 0.9, 0.9, 0.9]);
     expect(Array.from(refreshedRender.tipPositions)).toEqual([0.4, 0.9, 0.95, 0.9]);
+  });
+
+  it('creates independent caches that support compute then apply-transform', () => {
+    const cache = createRenderDataCache();
+    const treeData = makeTreeData({ treeIdx: 8, tipXs: [0.25, 0.75] });
+    const displayArray = [8];
+    const treeStructures = getTreeStructures(treeData, displayArray);
+
+    cache.computeRenderArrays({
+      node_id: treeData.node_id,
+      parent_id: treeData.parent_id,
+      is_tip: treeData.is_tip,
+      tree_idx: treeData.tree_idx,
+      x: treeData.x,
+      y: treeData.y,
+      name: treeData.name,
+      mut_x: treeData.mut_x,
+      mut_y: treeData.mut_y,
+      mut_tree_idx: treeData.mut_tree_idx,
+      modelMatrices: [{ key: 8, modelMatrix: modelMatrix(1, 0) }],
+      displayArray,
+      treeStructures
+    });
+
+    const transformed = cache.applyTransform({
+      modelMatrices: [{ key: 8, modelMatrix: modelMatrix(2, 1) }],
+      treeStructures
+    });
+
+    expect(transformed.cacheMiss).toBeUndefined();
+    expect(Array.from(transformed.tipPositions)).toEqual([1.5, 0.9, 2.5, 0.9]);
+  });
+
+  it('keeps factory cache instances isolated', () => {
+    const cacheA = createRenderDataCache();
+    const cacheB = createRenderDataCache();
+    const treeA = makeTreeData({ treeIdx: 10 });
+    const treeB = makeTreeData({ treeIdx: 11 });
+
+    cacheA.computeRenderArrays({
+      node_id: treeA.node_id,
+      parent_id: treeA.parent_id,
+      is_tip: treeA.is_tip,
+      tree_idx: treeA.tree_idx,
+      x: treeA.x,
+      y: treeA.y,
+      name: treeA.name,
+      mut_x: treeA.mut_x,
+      mut_y: treeA.mut_y,
+      mut_tree_idx: treeA.mut_tree_idx,
+      modelMatrices: [{ key: 10, modelMatrix: modelMatrix(1, 0) }],
+      displayArray: [10],
+      treeStructures: getTreeStructures(treeA, [10])
+    });
+    cacheB.computeRenderArrays({
+      node_id: treeB.node_id,
+      parent_id: treeB.parent_id,
+      is_tip: treeB.is_tip,
+      tree_idx: treeB.tree_idx,
+      x: treeB.x,
+      y: treeB.y,
+      name: treeB.name,
+      mut_x: treeB.mut_x,
+      mut_y: treeB.mut_y,
+      mut_tree_idx: treeB.mut_tree_idx,
+      modelMatrices: [{ key: 11, modelMatrix: modelMatrix(1, 0) }],
+      displayArray: [11],
+      treeStructures: getTreeStructures(treeB, [11])
+    });
+
+    expect(cacheA.applyTransform({
+      modelMatrices: [{ key: 10, modelMatrix: modelMatrix(1, 0) }],
+      treeStructures: getTreeStructures(treeA, [10])
+    }).cacheMiss).toBeUndefined();
+    expect(cacheB.applyTransform({
+      modelMatrices: [{ key: 10, modelMatrix: modelMatrix(1, 0) }],
+      treeStructures: getTreeStructures(treeA, [10])
+    }).cacheMiss).toBe(true);
+  });
+
+  it('clears factory cache buffers', () => {
+    const cache = createRenderDataCache();
+    const treeData = makeTreeData({ treeIdx: 12 });
+    const displayArray = [12];
+    const treeStructures = getTreeStructures(treeData, displayArray);
+
+    cache.computeRenderArrays({
+      node_id: treeData.node_id,
+      parent_id: treeData.parent_id,
+      is_tip: treeData.is_tip,
+      tree_idx: treeData.tree_idx,
+      x: treeData.x,
+      y: treeData.y,
+      name: treeData.name,
+      mut_x: treeData.mut_x,
+      mut_y: treeData.mut_y,
+      mut_tree_idx: treeData.mut_tree_idx,
+      modelMatrices: [{ key: 12, modelMatrix: modelMatrix(1, 0) }],
+      displayArray,
+      treeStructures
+    });
+    cache.clearBuffers();
+
+    expect(cache.applyTransform({
+      modelMatrices: [{ key: 12, modelMatrix: modelMatrix(1, 0) }],
+      treeStructures
+    }).cacheMiss).toBe(true);
   });
 });

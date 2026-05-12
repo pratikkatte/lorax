@@ -548,6 +548,103 @@ function clearBuffers() {
   cachedTreeStructures = null;
 }
 
+function createEmptyRenderState() {
+  return {
+    pathBuffer: null,
+    tipBuffer: null,
+    colorBuffer: null,
+    pathStartIndicesBuffer: null,
+    mutBuffer: null,
+    pathPositionsLocal: null,
+    tipPositionsLocal: null,
+    mutPositionsLocal: null,
+    pathTreeIndices: null,
+    tipTreeIndices: null,
+    mutTreeIndices: null,
+    cachedPathStartIndices: null,
+    cachedTipColors: null,
+    cachedEdgeData: null,
+    cachedTipMeta: null,
+    cachedMutationMeta: null,
+    cachedTreeStructures: null,
+    cachedEdgeCount: 0,
+    cachedTipCount: 0,
+    cachedMutCount: 0,
+    cachedPathStartIndexCount: 0
+  };
+}
+
+function captureRenderState() {
+  return {
+    pathBuffer,
+    tipBuffer,
+    colorBuffer,
+    pathStartIndicesBuffer,
+    mutBuffer,
+    pathPositionsLocal,
+    tipPositionsLocal,
+    mutPositionsLocal,
+    pathTreeIndices,
+    tipTreeIndices,
+    mutTreeIndices,
+    cachedPathStartIndices,
+    cachedTipColors,
+    cachedEdgeData,
+    cachedTipMeta,
+    cachedMutationMeta,
+    cachedTreeStructures,
+    cachedEdgeCount,
+    cachedTipCount,
+    cachedMutCount,
+    cachedPathStartIndexCount
+  };
+}
+
+function restoreRenderState(state) {
+  pathBuffer = state.pathBuffer;
+  tipBuffer = state.tipBuffer;
+  colorBuffer = state.colorBuffer;
+  pathStartIndicesBuffer = state.pathStartIndicesBuffer;
+  mutBuffer = state.mutBuffer;
+  pathPositionsLocal = state.pathPositionsLocal;
+  tipPositionsLocal = state.tipPositionsLocal;
+  mutPositionsLocal = state.mutPositionsLocal;
+  pathTreeIndices = state.pathTreeIndices;
+  tipTreeIndices = state.tipTreeIndices;
+  mutTreeIndices = state.mutTreeIndices;
+  cachedPathStartIndices = state.cachedPathStartIndices;
+  cachedTipColors = state.cachedTipColors;
+  cachedEdgeData = state.cachedEdgeData;
+  cachedTipMeta = state.cachedTipMeta;
+  cachedMutationMeta = state.cachedMutationMeta;
+  cachedTreeStructures = state.cachedTreeStructures;
+  cachedEdgeCount = state.cachedEdgeCount;
+  cachedTipCount = state.cachedTipCount;
+  cachedMutCount = state.cachedMutCount;
+  cachedPathStartIndexCount = state.cachedPathStartIndexCount;
+}
+
+function runWithRenderState(state, callback) {
+  const previousState = captureRenderState();
+  restoreRenderState(state);
+  try {
+    const result = callback();
+    Object.assign(state, captureRenderState());
+    return result;
+  } finally {
+    restoreRenderState(previousState);
+  }
+}
+
+function createRenderDataCache() {
+  const state = createEmptyRenderState();
+  return {
+    computeRenderArrays: (data) => runWithRenderState(state, () => computeRenderArrays(data)),
+    applyTransform: (data) => runWithRenderState(state, () => applyTransform(data)),
+    clearBuffers: () => runWithRenderState(state, () => clearBuffers())
+  };
+}
+
 const workerScope = typeof self !== 'undefined' ? self : globalThis;
 
 // Only install the message handler when this module is loaded as a dedicated
@@ -625,4 +722,4 @@ function clearWorkerState() {
   clearBuffers();
 }
 
-export { computeRenderArrays, applyTransform, clearWorkerState };
+export { computeRenderArrays, applyTransform, clearWorkerState, createRenderDataCache };

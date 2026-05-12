@@ -305,7 +305,7 @@ lorax
 lorax --file path/to/your.trees
 
 # Open inside JBrowse Web with the Lorax track pre-loaded
-lorax --file path/to/your.trees --jbrowse`}
+lorax --file path/to/your.trees --jbrowse         # hg19 by default`}
             </CodeBlock>
             <p>
               You can also open the landing page and click <strong>Load File</strong> to upload <code className="rounded bg-slate-100 px-1 font-mono text-xs text-slate-800">.trees</code>, <code className="rounded bg-slate-100 px-1 font-mono text-xs text-slate-800">.trees.tsz</code>, or CSV files from your machine.
@@ -330,17 +330,18 @@ lorax --port 3000`}</CodeBlock>
                 <strong>JBrowse Web</strong> instead of the default viewer. JBrowse opens directly to a Linear Genome View with the Lorax track pre-configured and ready to use.
               </p>
               <CodeBlock label="Launch with JBrowse">
-                {`# hg38 by default
+                {`# hg19 (GRCh37) by default
 lorax --file path/to/your.trees --jbrowse
 
 # Specify a different assembly
-lorax --file path/to/your.trees --jbrowse --assembly mm10`}
+lorax --file path/to/your.trees --jbrowse --assembly hg38`}
               </CodeBlock>
               <div className="mt-4 grid gap-3 sm:grid-cols-2 text-sm">
                 <div className="rounded-xl border border-emerald-100 bg-white/70 p-3">
                   <p className="font-medium text-slate-800 mb-1">Built-in assemblies</p>
                   <p className="text-slate-500 leading-6">
-                    <code className="font-mono text-xs">hg38</code> (GRCh38, default) and{" "}
+                    <code className="font-mono text-xs">hg19</code> (GRCh37, default),{" "}
+                    <code className="font-mono text-xs">hg38</code> (GRCh38), and{" "}
                     <code className="font-mono text-xs">mm10</code> (GRCm38) are pre-configured with hosted reference files. Other assemblies can be added from within JBrowse.
                   </p>
                 </div>
