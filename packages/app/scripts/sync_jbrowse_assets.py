@@ -20,8 +20,9 @@ import tempfile
 from pathlib import Path
 
 
-# Pin to the same major JBrowse version used by the plugin's @jbrowse/core dep.
-JBROWSE_TAG = "v2.12.3"
+# Fallback tag when lorax-plugin/node_modules is missing; normally read from
+# @jbrowse/core installed next to the plugin (must match plugin compile target).
+JBROWSE_TAG = "v4.2.1"
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 PLUGIN_DIR = REPO_ROOT.parent / "lorax-plugin"
@@ -46,9 +47,6 @@ def _get_jbrowse_tag() -> str:
     fallback = JBROWSE_TAG
     print(f"Warning: could not detect @jbrowse/core version, using fallback {fallback}")
     return fallback
-
-
-JBROWSE_TAG = "v2.12.3"  # fallback; overridden at runtime by _get_jbrowse_tag()
 
 
 def run(cmd: list[str], cwd: Path, env: dict | None = None) -> None:
