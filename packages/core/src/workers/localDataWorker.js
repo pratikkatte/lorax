@@ -40,6 +40,8 @@ export function getLocalData(data) {
     local_bins.set(i, {
       s,
       e,
+      visible_s: Math.max(s, start),
+      visible_e: Math.min(e, end),
       span: e - s,
       midpoint: (s + e) / 2,
       path: null,

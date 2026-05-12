@@ -37,6 +37,49 @@ describe('localDataWorker', () => {
     expect(Array.isArray(first?.modelMatrix)).toBe(true);
   });
 
+  it('keeps edge-overlapping trees but clips visible interval bounds to the query', () => {
+    configureLocalDataWorker({
+      genome_length: 30,
+      intervals: [0, 10, 20, 30]
+    });
+
+    const result = getLocalData({
+      lo: 0,
+      hi: 4,
+      start: 5,
+      end: 25,
+      globalBpPerUnit: 10,
+      new_globalBp: 5,
+      displayOptions: { selectionStrategy: 'largestSpan' }
+    });
+
+    expect(result.displayArray).toEqual([0, 1, 2]);
+    expect(result.local_bins).toHaveLength(3);
+
+    const first = result.local_bins.find((bin) => bin.key === 0);
+    const middle = result.local_bins.find((bin) => bin.key === 1);
+    const last = result.local_bins.find((bin) => bin.key === 2);
+
+    expect(first).toEqual(expect.objectContaining({
+      s: 0,
+      e: 10,
+      visible_s: 5,
+      visible_e: 10
+    }));
+    expect(middle).toEqual(expect.objectContaining({
+      s: 10,
+      e: 20,
+      visible_s: 10,
+      visible_e: 20
+    }));
+    expect(last).toEqual(expect.objectContaining({
+      s: 20,
+      e: 30,
+      visible_s: 20,
+      visible_e: 25
+    }));
+  });
+
   it('returns empty output for invalid bounds', () => {
     configureLocalDataWorker({
       genome_length: 20,

@@ -33,8 +33,10 @@ export function computePolygonVertices(bin, genomeVP, orthoVP, globalBpPerUnit) 
   }
 
   const modelMatrix = bin.modelMatrix;
-  const startWorld = bin.s / globalBpPerUnit;
-  const endWorld = bin.e / globalBpPerUnit;
+  const visibleStart = Number.isFinite(bin.visible_s) ? bin.visible_s : bin.s;
+  const visibleEnd = Number.isFinite(bin.visible_e) ? bin.visible_e : bin.e;
+  const startWorld = visibleStart / globalBpPerUnit;
+  const endWorld = visibleEnd / globalBpPerUnit;
   if (
     !Number.isFinite(globalBpPerUnit)
     || globalBpPerUnit <= 0
