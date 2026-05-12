@@ -242,10 +242,10 @@ export default function DocumentationHome() {
           </p>
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
             <a
-              href="#quick-start"
+              href="#install-and-quick-start"
               className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white shadow-xl shadow-slate-900/10 transition-all hover:-translate-y-0.5 hover:bg-slate-800"
             >
-              Start with Quick Start <LuChevronRight />
+              Install and Quick Start <LuChevronRight />
             </a>
             <Link
               to="/"
@@ -293,26 +293,11 @@ export default function DocumentationHome() {
             </div>
           </Section>
 
-          <Section id="quick-start" eyebrow="First run" title="Quick Start">
+          <Section id="install-and-quick-start" eyebrow="Setup" title="Install and Quick Start">
             <p>
-              Install the Python package, start Lorax, and open the web interface. For large files, pass the file path directly so the backend can load it without browser upload overhead.
+              Install the Python package, start Lorax, and open the web interface in your browser. For large files, pass the file path on the command line so the backend can load data without browser upload overhead—use <strong>JBrowse interface</strong> below for genome-browser mode.
             </p>
-            <CodeBlock label="Install and run">
-              {`pip install lorax-arg
-lorax
 
-# Preferred for large files
-lorax --file path/to/your.trees
-
-# Open inside JBrowse Web with the Lorax track pre-loaded
-lorax --file path/to/your.trees --jbrowse         # hg19 by default`}
-            </CodeBlock>
-            <p>
-              You can also open the landing page and click <strong>Load File</strong> to upload <code className="rounded bg-slate-100 px-1 font-mono text-xs text-slate-800">.trees</code>, <code className="rounded bg-slate-100 px-1 font-mono text-xs text-slate-800">.trees.tsz</code>, or CSV files from your machine.
-            </p>
-          </Section>
-
-          <Section id="installation" eyebrow="Setup" title="Installation Options">
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
               <div className="mb-3 flex items-center gap-2 font-semibold text-slate-900">
                 <LuPackage className="text-emerald-600" /> Python package
@@ -321,9 +306,41 @@ lorax --file path/to/your.trees --jbrowse         # hg19 by default`}
 lorax --port 3000`}</CodeBlock>
             </div>
 
-            <div className="rounded-2xl border border-emerald-100 bg-emerald-50/60 p-5">
+            <div className="mt-6">
+              <p className="mb-3 text-sm leading-6 text-slate-600">
+                Run <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs text-slate-800">lorax</code> to open the default viewer, or pass <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs text-slate-800">--file</code> (or a single existing file path) to load an ARG file directly.
+              </p>
+              <CodeBlock label="Install and run">
+                {`pip install lorax-arg
+lorax
+
+# Preferred for large files
+lorax --file path/to/your.trees`}
+              </CodeBlock>
+              <p className="mt-3 text-sm leading-6 text-slate-600">
+                You can also open the landing page and click <strong>Load File</strong> to upload <code className="rounded bg-slate-100 px-1 font-mono text-xs text-slate-800">.trees</code>, <code className="rounded bg-slate-100 px-1 font-mono text-xs text-slate-800">.trees.tsz</code>, or CSV files from your machine.
+              </p>
+            </div>
+
+            <details
+              id="supported-inputs"
+              className="group mt-6 scroll-mt-28 rounded-2xl border border-slate-200 bg-slate-50/80 open:bg-white"
+            >
+              <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 [&::-webkit-details-marker]:hidden">
+                <LuChevronRight className="size-4 shrink-0 text-slate-500 transition-transform group-open:rotate-90" />
+                <span className="flex min-w-0 flex-col gap-0.5 sm:flex-row sm:items-baseline sm:gap-3">
+                  <span className="text-xs font-bold uppercase tracking-[0.2em] text-emerald-600">Formats</span>
+                  <span className="font-semibold text-slate-900">Supported input formats</span>
+                </span>
+              </summary>
+              <div className="border-t border-slate-200 px-4 pb-4 pt-4">
+                <SupportedInputFormatsTabs />
+              </div>
+            </details>
+
+            <div className="mt-6 rounded-2xl border border-emerald-100 bg-emerald-50/60 p-5">
               <div className="mb-3 flex items-center gap-2 font-semibold text-slate-900">
-                <LuDna className="text-emerald-600" /> JBrowse interface
+                <LuSparkles className="text-emerald-600" /> JBrowse interface
               </div>
               <p className="mb-3 text-sm leading-6 text-slate-600">
                 Add <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs text-slate-800">--jbrowse</code> to launch Lorax inside{" "}
@@ -352,30 +369,105 @@ lorax --file path/to/your.trees --jbrowse --assembly hg38`}
                   </p>
                 </div>
               </div>
-            </div>
 
-          </Section>
-
-          <Section id="supported-inputs" eyebrow="Formats" title="Supported Input Files">
-            <SupportedInputFormatsTabs />
-          </Section>
-
-          <Section id="loading-data" eyebrow="Data flow" title="Loading &amp; Navigating">
-            <div className="grid gap-4 md:grid-cols-2">
-              {[
-                ["Web upload", "Best for small files and quick tests. Use the landing page Load File button or drag a file onto the logo card."],
-                ["Direct CLI", "Best for large local files. Start Lorax with `lorax --file path/to/file.trees`."],
-              ].map(([title, description]) => (
-                <div key={title} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                  <h3 className="font-semibold text-slate-900">{title}</h3>
-                  <p className="mt-2 text-sm leading-6 text-slate-500">{description}</p>
+              <details className="group mt-5 rounded-xl border border-emerald-200/90 bg-white/60 open:bg-white/80">
+                <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 font-semibold text-slate-900 [&::-webkit-details-marker]:hidden">
+                  <LuChevronRight className="size-4 shrink-0 text-emerald-700 transition-transform group-open:rotate-90" />
+                  JBrowse launch — <code className="font-mono text-sm font-semibold text-slate-800">--jbrowse</code>, assemblies, and{" "}
+                  <code className="font-mono text-sm font-semibold text-slate-800">config.json</code>
+                </summary>
+                <div className="space-y-3 border-t border-emerald-200/80 px-4 pb-4 pt-3 text-sm leading-6 text-slate-600">
+                  <p>
+                    With <code className="rounded bg-white px-1.5 py-0.5 font-mono text-xs text-slate-800">--jbrowse</code>, one Lorax process serves the static JBrowse app and the backend API on the same port. JBrowse loads configuration from{" "}
+                    <code className="rounded bg-white px-1 font-mono text-xs text-slate-800">/config.json</code> on that server — this endpoint is <strong>generated at request time</strong> (it is not a static file baked into the wheel). It registers the Lorax plugin, optional built-in reference assemblies, and — when you started with{" "}
+                    <code className="rounded bg-white px-1 font-mono text-xs text-slate-800">--file</code> — a Lorax track wired to your uploaded file.
+                  </p>
+                  <p className="font-medium text-slate-800">Assembly names and <code className="font-mono text-xs font-normal text-slate-800">assemblyNames</code></p>
+                  <p>
+                    The CLI flag <code className="rounded bg-white px-1 font-mono text-xs text-slate-800">--assembly</code> chooses which <em>built-in</em> genome is included in that JSON (hosted reference for{" "}
+                    <code className="rounded bg-white px-1 font-mono text-xs text-slate-800">hg19</code>,{" "}
+                    <code className="rounded bg-white px-1 font-mono text-xs text-slate-800">hg38</code>, or{" "}
+                    <code className="rounded bg-white px-1 font-mono text-xs text-slate-800">mm10</code>). The Lorax track definition uses{" "}
+                    <code className="rounded bg-white px-1 font-mono text-xs text-slate-800">&quot;assemblyNames&quot;: [&quot;&lt;that name&gt;&quot;]</code> so the track lines up with that assembly. For genomes not in that list, supply your own JBrowse assembly entries in a custom config (below) so <code className="rounded bg-white px-1 font-mono text-xs text-slate-800">assemblyNames</code> on the Lorax track match your assembly <code className="rounded bg-white px-1 font-mono text-xs text-slate-800">name</code>.
+                  </p>
+                  <p className="font-medium text-slate-800">Providing a custom <code className="font-mono text-xs font-normal text-slate-800">config.json</code></p>
+                  <p>
+                    JBrowse Web can load a config from another URL via the <code className="rounded bg-white px-1 font-mono text-xs text-slate-800">config</code> query parameter. After starting Lorax (with or without <code className="rounded bg-white px-1 font-mono text-xs text-slate-800">--jbrowse</code>), open something like:
+                  </p>
+                  <CodeBlock label="Custom config URL">
+                    {`http://127.0.0.1:3000/?config=https://example.com/my/lorax-jbrowse-config.json`}
+                  </CodeBlock>
+                  <p>
+                    Your JSON must still list the <strong>Lorax</strong> plugin with a <code className="rounded bg-white px-1 font-mono text-xs text-slate-800">url</code> that resolves to this server&apos;s plugin bundle (typically{" "}
+                    <code className="rounded bg-white px-1 font-mono text-xs text-slate-800">http://&lt;host&gt;:&lt;port&gt;/lorax-plugin.js</code>
+                    ). Lorax tracks should use a <code className="rounded bg-white px-1 font-mono text-xs text-slate-800">LoraxAdapter</code> whose <code className="rounded bg-white px-1 font-mono text-xs text-slate-800">apiBase</code> points at{" "}
+                    <code className="rounded bg-white px-1 font-mono text-xs text-slate-800">http://&lt;host&gt;:&lt;port&gt;/api</code> and whose <code className="rounded bg-white px-1 font-mono text-xs text-slate-800">filePath</code> matches the absolute path the backend expects for your ARG file (the same layout the server uses after <code className="rounded bg-white px-1 font-mono text-xs text-slate-800">--file</code>). If the config is hosted on a <em>different origin</em> than JBrowse, ensure CORS allows your Lorax origin to fetch it.
+                  </p>
+                  <p>
+                    For structure and examples of assemblies, reference tracks, and plugin registration, start from the sample{" "}
+                    <code className="rounded bg-white px-1 font-mono text-xs text-slate-800">jbrowse_config.json</code> in the <strong>lorax-plugin</strong> source tree and rewrite URLs to match your running Lorax server.
+                  </p>
                 </div>
-              ))}
+              </details>
             </div>
-            <p>
-              Lorax follows the interaction patterns users expect from genome and phylogeny browsers: a main canvas for exploration, a genomic position control, and contextual panels for details.
-            </p>
-            <ViewerNavigationSlideshow slides={viewerNavigationSlides} />
+
+            <div className="mt-6">
+              <details className="group rounded-2xl border border-slate-200 bg-slate-50/80 open:bg-white">
+                <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 font-semibold text-slate-900 [&::-webkit-details-marker]:hidden">
+                  <LuChevronRight className="size-4 shrink-0 text-slate-500 transition-transform group-open:rotate-90" />
+                  Launching from pip (CLI reference)
+                </summary>
+                <div className="space-y-3 border-t border-slate-200 px-4 pb-4 pt-3 text-sm leading-6 text-slate-600">
+                  <p>
+                    After <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs text-slate-800">pip install lorax-arg</code>, run{" "}
+                    <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs text-slate-800">lorax</code>. The server starts on{" "}
+                    <code className="rounded bg-slate-100 px-1 font-mono text-xs text-slate-800">--host</code> /{" "}
+                    <code className="rounded bg-slate-100 px-1 font-mono text-xs text-slate-800">--port</code>; once{" "}
+                    <code className="rounded bg-slate-100 px-1 font-mono text-xs text-slate-800">/api/health</code> responds, your browser opens to the app (default viewer or JBrowse when using{" "}
+                    <code className="rounded bg-slate-100 px-1 font-mono text-xs text-slate-800">--jbrowse</code>).
+                  </p>
+                  <ul className="list-disc space-y-2 pl-5">
+                    <li>
+                      <code className="rounded bg-slate-100 px-1 font-mono text-xs text-slate-800">--file PATH</code> — Copy the given file into the server upload area and open it (good for large ARG files). Same effect as passing a single existing file path as the first argument without{" "}
+                      <code className="rounded bg-slate-100 px-1 font-mono text-xs text-slate-800">--file</code> (for example{" "}
+                      <code className="rounded bg-slate-100 px-1 font-mono text-xs text-slate-800">lorax path/to/data.trees</code>
+                      ).
+                    </li>
+                    <li>
+                      <code className="rounded bg-slate-100 px-1 font-mono text-xs text-slate-800">--host</code> — Bind address (default{" "}
+                      <code className="rounded bg-slate-100 px-1 font-mono text-xs text-slate-800">127.0.0.1</code>). If you use{" "}
+                      <code className="rounded bg-slate-100 px-1 font-mono text-xs text-slate-800">0.0.0.0</code>, the auto-opened browser URL still uses{" "}
+                      <code className="rounded bg-slate-100 px-1 font-mono text-xs text-slate-800">127.0.0.1</code> so it works from the same machine.
+                    </li>
+                    <li>
+                      <code className="rounded bg-slate-100 px-1 font-mono text-xs text-slate-800">--port</code> — Port (default{" "}
+                      <code className="rounded bg-slate-100 px-1 font-mono text-xs text-slate-800">3000</code>).
+                    </li>
+                    <li>
+                      <code className="rounded bg-slate-100 px-1 font-mono text-xs text-slate-800">--jbrowse</code> — Serve the bundled <strong>JBrowse Web</strong> app instead of the default Lorax UI. See <strong>JBrowse interface</strong> above for examples; expand <strong>JBrowse launch</strong> in that block for <code className="rounded bg-slate-100 px-1 font-mono text-xs text-slate-800">config.json</code> and assembly details.
+                    </li>
+                    <li>
+                      <code className="rounded bg-slate-100 px-1 font-mono text-xs text-slate-800">--assembly</code> — In JBrowse mode, selects the built-in assembly name (default{" "}
+                      <code className="rounded bg-slate-100 px-1 font-mono text-xs text-slate-800">hg19</code>
+                      ; also <code className="rounded bg-slate-100 px-1 font-mono text-xs text-slate-800">hg38</code>,{" "}
+                      <code className="rounded bg-slate-100 px-1 font-mono text-xs text-slate-800">mm10</code>). Ignored for the default viewer.
+                    </li>
+                    <li>
+                      <code className="rounded bg-slate-100 px-1 font-mono text-xs text-slate-800">-h</code> /{" "}
+                      <code className="rounded bg-slate-100 px-1 font-mono text-xs text-slate-800">--help</code> — Full usage.
+                    </li>
+                    <li>
+                      <code className="rounded bg-slate-100 px-1 font-mono text-xs text-slate-800">--version</code> — Package version.
+                    </li>
+                  </ul>
+                  <p className="text-slate-500">
+                    Your install always matches the compiled CLI; when in doubt, run:
+                  </p>
+                  <CodeBlock label="CLI help">{`lorax --help`}</CodeBlock>
+                </div>
+              </details>
+            </div>
+
           </Section>
 
           <Section id="key-features" eyebrow="Analysis tools" title="Key Features and Workflows">
@@ -396,21 +488,44 @@ lorax --file path/to/your.trees --jbrowse --assembly hg38`}
                 </p>
               </div>
             </div>
-          </Section>
 
-          <Section id="sharing" eyebrow="URLs" title="File URLs and Sharing">
-            <p>
-              Loaded files open under the viewer route, using `/view/:file`. Legacy file-style links are redirected to this route so older URLs continue to work.
-            </p>
-            <CodeBlock label="Viewer URL">
-              {`/view/example.trees
+            <div id="sharing" className="scroll-mt-28 space-y-5 border-t border-slate-200 pt-8">
+              <div>
+                <p className="mb-2 text-xs font-bold uppercase tracking-[0.2em] text-emerald-600">URLs</p>
+                <h3 className="font-display text-xl font-bold tracking-tight text-slate-900 sm:text-2xl">
+                  File URLs and sharing
+                </h3>
+              </div>
+              <p>
+                Loaded files open under the viewer route, using `/view/:file`. Legacy file-style links are redirected to this route so older URLs continue to work.
+              </p>
+              <CodeBlock label="Viewer URL">
+                {`/view/example.trees
 /view/example.trees?presetfeature=population`}
-            </CodeBlock>
-            <p>
-              Query parameters can be used by Lorax features to open the viewer in a guided state, such as jumping into metadata preset workflows.
-            </p>
+              </CodeBlock>
+              <p>
+                Query parameters can be used by Lorax features to open the viewer in a guided state, such as jumping into metadata preset workflows.
+              </p>
+            </div>
           </Section>
 
+          <Section id="loading-data" eyebrow="Data flow" title="Loading &amp; Navigating">
+            <div className="grid gap-4 md:grid-cols-2">
+              {[
+                ["Web upload", "Best for small files and quick tests. Use the landing page Load File button or drag a file onto the logo card."],
+                ["Direct CLI", "Best for large local files. Start Lorax with `lorax --file path/to/file.trees`."],
+              ].map(([title, description]) => (
+                <div key={title} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <h3 className="font-semibold text-slate-900">{title}</h3>
+                  <p className="mt-2 text-sm leading-6 text-slate-500">{description}</p>
+                </div>
+              ))}
+            </div>
+            <p>
+              Lorax follows the interaction patterns users expect from genome and phylogeny browsers: a main canvas for exploration, a genomic position control, and contextual panels for details.
+            </p>
+            <ViewerNavigationSlideshow slides={viewerNavigationSlides} />
+          </Section>
 
           <Section id="usecases" eyebrow="Examples" title="Use cases">
             <p className="mb-4 text-sm leading-6 text-slate-600">
