@@ -272,6 +272,8 @@ export function useTreePolygons({
    * Handle hover with callback
    */
   const setHoveredPolygon = useCallback((key) => {
+    if (hoveredPolygonRef.current === key) return;
+    hoveredPolygonRef.current = key;
     setHoveredPolygonInternal(key);
     onPolygonHover?.(key);
   }, [onPolygonHover]);
@@ -284,10 +286,19 @@ export function useTreePolygons({
 
   // Update hover state in polygons
   useEffect(() => {
-    setPolygons(prev => prev.map(p => ({
-      ...p,
-      isHovered: p.key === hoveredPolygon
-    })));
+    setPolygons(prev => {
+      let changed = false;
+      const next = prev.map(p => {
+        const isHovered = p.key === hoveredPolygon;
+        if (p.isHovered === isHovered) return p;
+        changed = true;
+        return {
+          ...p,
+          isHovered
+        };
+      });
+      return changed ? next : prev;
+    });
   }, [hoveredPolygon]);
 
   // Cleanup animation on unmount
