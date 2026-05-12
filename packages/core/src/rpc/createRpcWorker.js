@@ -5,6 +5,42 @@
  * `apply-transform`, `clear-buffers`) through the plugin's RPC methods instead
  * of spawning inline web workers.
  */
+
+/**
+ * JBrowse BaseRpcDriver.filterArgs walks objects via Object.entries. Maps have
+ * no enumerable entries there, so nodeIdToIdx would become {} and tip metadata
+ * colors break. Typed index arrays are normalized to plain Arrays for the same
+ * path consistency as useRenderData's RPC payload notes.
+ *
+ * @param {Record<string, unknown>|null|undefined} metadataArrays
+ * @returns {Record<string, unknown>|null|undefined}
+ */
+export function serializeMetadataArraysForRpc(metadataArrays) {
+  if (!metadataArrays || typeof metadataArrays !== 'object') {
+    return metadataArrays;
+  }
+  const out = {};
+  for (const [key, val] of Object.entries(metadataArrays)) {
+    if (!val || typeof val !== 'object') {
+      out[key] = val;
+      continue;
+    }
+    const { uniqueValues, indices, nodeIdToIdx, ...rest } = val;
+    let plainIdx = nodeIdToIdx;
+    if (nodeIdToIdx instanceof Map) {
+      plainIdx = Object.fromEntries(nodeIdToIdx);
+    }
+    const indicesOut = ArrayBuffer.isView(indices) ? Array.from(indices) : indices;
+    out[key] = {
+      ...rest,
+      uniqueValues,
+      indices: indicesOut,
+      nodeIdToIdx: plainIdx,
+    };
+  }
+  return out;
+}
+
 const DEFAULT_RPC_METHODS = {
   config: 'LoraxConfig',
   intervals: 'LoraxIntervals',
@@ -33,9 +69,21 @@ export function createRpcWorker({
       if (!methodName) {
         return Promise.reject(new Error(`Unknown RPC worker type: ${type}`));
       }
+      let payload = data;
+      if (
+        type === 'compute-render-data'
+        && data
+        && typeof data === 'object'
+        && data.metadataArrays
+      ) {
+        payload = {
+          ...data,
+          metadataArrays: serializeMetadataArraysForRpc(data.metadataArrays),
+        };
+      }
       return rpcManager.call(sessionId, methodName, {
         sessionId,
-        data,
+        data: payload,
         rpcDriverName,
       });
     },

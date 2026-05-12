@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
+import { serializeMetadataArraysForRpc } from '../rpc/createRpcWorker.js';
 import {
   computeRenderArrays,
   applyTransform,
@@ -57,6 +58,113 @@ function getTreeStructures(treeData, displayArray) {
   }
   return structures;
 }
+
+/** Simplified mirror of JBrowse BaseRpcDriver.filterArgs (cloning behavior). */
+function simulateJbrowseFilterArgs(thing) {
+  function isClonable(x) {
+    return typeof x !== 'function' && !(x instanceof Error);
+  }
+  function filterArgs(x) {
+    if (Array.isArray(x)) {
+      return x.filter(isClonable).map((t) => filterArgs(t));
+    }
+    if (typeof x === 'object' && x !== null) {
+      return Object.fromEntries(
+        Object.entries(x)
+          .filter((e) => isClonable(e[1]))
+          .map(([k, v]) => [k, filterArgs(v)])
+      );
+    }
+    return x;
+  }
+  return filterArgs(thing);
+}
+
+describe('renderDataWorker metadata / JBrowse RPC shape', () => {
+  beforeEach(() => {
+    clearWorkerState();
+  });
+
+  it('serializeMetadataArraysForRpc preserves nodeIdToIdx through filterArgs', () => {
+    const key = 'population';
+    const nodeIdToIdx = new Map([
+      [101, 0],
+      [102, 1]
+    ]);
+    const metadataArrays = {
+      [key]: {
+        uniqueValues: ['A', 'B'],
+        indices: new Uint16Array([0, 1]),
+        nodeIdToIdx,
+      },
+    };
+
+    const rawFiltered = simulateJbrowseFilterArgs(metadataArrays);
+    expect(Object.keys(rawFiltered[key].nodeIdToIdx).length).toBe(0);
+
+    const serialized = serializeMetadataArraysForRpc(metadataArrays);
+    const filtered = simulateJbrowseFilterArgs(serialized);
+    expect(filtered[key].nodeIdToIdx[101]).toBe(0);
+    expect(filtered[key].nodeIdToIdx[102]).toBe(1);
+    expect(Array.isArray(filtered[key].indices)).toBe(true);
+    expect(filtered[key].indices[0]).toBe(0);
+    expect(filtered[key].indices[1]).toBe(1);
+  });
+
+  it('computeRenderArrays tints tips from RPC-shaped metadataArrays', () => {
+    const treeData = makeTreeData({ treeIdx: 1, tipNodeIds: [101, 102] });
+    const displayArray = [1];
+    const treeStructures = getTreeStructures(treeData, displayArray);
+    const metadataKey = 'population';
+    const metadataArrays = {
+      [metadataKey]: {
+        uniqueValues: ['A', 'B'],
+        indices: [0, 1],
+        nodeIdToIdx: { 101: 0, 102: 1 },
+      },
+    };
+    const metadataColors = {
+      [metadataKey]: {
+        A: [255, 0, 0, 255],
+        B: [0, 0, 255, 255],
+      },
+    };
+    const populationFilter = {
+      colorBy: metadataKey,
+      enabledValues: ['A', 'B'],
+    };
+
+    const result = computeRenderArrays({
+      node_id: treeData.node_id,
+      parent_id: treeData.parent_id,
+      is_tip: treeData.is_tip,
+      tree_idx: treeData.tree_idx,
+      x: treeData.x,
+      y: treeData.y,
+      name: treeData.name,
+      mut_x: treeData.mut_x,
+      mut_y: treeData.mut_y,
+      mut_tree_idx: treeData.mut_tree_idx,
+      modelMatrices: [{ key: 1, modelMatrix: modelMatrix(1, 0) }],
+      displayArray,
+      treeStructures,
+      metadataArrays,
+      metadataColors,
+      populationFilter,
+    });
+
+    expect(result.tipCount).toBe(2);
+    const c0 = Array.from(result.tipColors.slice(0, 4));
+    const c1 = Array.from(result.tipColors.slice(4, 8));
+    expect(c0).not.toEqual(c1);
+    expect(c0[0]).toBe(255);
+    expect(c0[1]).toBe(0);
+    expect(c0[2]).toBe(0);
+    expect(c1[0]).toBe(0);
+    expect(c1[1]).toBe(0);
+    expect(c1[2]).toBe(255);
+  });
+});
 
 describe('renderDataWorker structure cache and apply-transform', () => {
   beforeEach(() => {

@@ -94,7 +94,7 @@ export {
 export { MyOrthographicController, setGlobalControllers } from './controllers/MyOrthographicController.js';
 
 // RPC Utilities (JBrowse integration)
-export { createRpcWorker } from './rpc/createRpcWorker.js';
+export { createRpcWorker, serializeMetadataArraysForRpc } from './rpc/createRpcWorker.js';
 
 // Pure Computation Utilities
 export {
