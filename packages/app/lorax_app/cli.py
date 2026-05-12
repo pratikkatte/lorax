@@ -57,6 +57,8 @@ def _wait_for_health(base_url: str, timeout_s: float = 20.0, interval_s: float =
 @click.option("--port", default=3000, type=int, show_default=True)
 @click.option("--jbrowse", "use_jbrowse", is_flag=True, default=False,
               help="Launch with JBrowse interface instead of the default Lorax UI.")
+@click.option("--assembly", default="hg38", show_default=True,
+              help="Genome assembly for JBrowse mode (e.g. hg38, mm10).")
 @click.version_option(package_name="lorax-arg", prog_name="lorax")
 @click.pass_context
 def main(
@@ -65,6 +67,7 @@ def main(
     host: str,
     port: int,
     use_jbrowse: bool,
+    assembly: str,
 ):
     """
     Lorax — interactive ARG viewer. Provide FILE to view trees directly.
@@ -77,10 +80,10 @@ def main(
                 file = candidate
             else:
                 raise click.ClickException(f"File not found: {candidate}")
-        _serve(file=file, host=host, port=port, use_jbrowse=use_jbrowse)
+        _serve(file=file, host=host, port=port, use_jbrowse=use_jbrowse, assembly=assembly)
 
 
-def _serve(file: Path | None, host: str, port: int, use_jbrowse: bool = False) -> None:
+def _serve(file: Path | None, host: str, port: int, use_jbrowse: bool = False, assembly: str = "hg38") -> None:
     import uvicorn
     from lorax_app.app import create_asgi_app
 
@@ -88,7 +91,7 @@ def _serve(file: Path | None, host: str, port: int, use_jbrowse: bool = False) -
     if file is not None:
         filename = _copy_into_uploads(file)
 
-    app = create_asgi_app(jbrowse=use_jbrowse, filename=filename)
+    app = create_asgi_app(jbrowse=use_jbrowse, filename=filename, assembly=assembly)
 
     def open_browser_delayed():
         base = f"http://{host}:{port}" if host != "0.0.0.0" else f"http://127.0.0.1:{port}"

@@ -43,10 +43,51 @@ def _serve_file(path: Path) -> FileResponse:
     return FileResponse(path)
 
 
+# Built-in assembly configs that mirror the lorax-plugin dev config.
+# Each entry follows the JBrowse assembly schema with remote hosted FASTA files.
+_BUILTIN_ASSEMBLIES: dict[str, dict] = {
+    "hg38": {
+        "name": "hg38",
+        "aliases": ["GRCh38"],
+        "sequence": {
+            "type": "ReferenceSequenceTrack",
+            "trackId": "hg38-ref",
+            "adapter": {
+                "type": "BgzipFastaAdapter",
+                "fastaLocation": {"uri": "https://jbrowse.org/genomes/GRCh38/fasta/hg38.prefix.fa.gz"},
+                "faiLocation": {"uri": "https://jbrowse.org/genomes/GRCh38/fasta/hg38.prefix.fa.gz.fai"},
+                "gziLocation": {"uri": "https://jbrowse.org/genomes/GRCh38/fasta/hg38.prefix.fa.gz.gzi"},
+            },
+        },
+        "refNameAliases": {
+            "adapter": {
+                "type": "RefNameAliasAdapter",
+                "location": {"uri": "https://s3.amazonaws.com/jbrowse.org/genomes/GRCh38/hg38_aliases.txt"},
+            }
+        },
+    },
+    "mm10": {
+        "name": "mm10",
+        "aliases": ["GRCm38"],
+        "sequence": {
+            "type": "ReferenceSequenceTrack",
+            "trackId": "mm10-ref",
+            "adapter": {
+                "type": "BgzipFastaAdapter",
+                "fastaLocation": {"uri": "https://jbrowse.org/genomes/GRCm38/fasta/mm10.fa.gz"},
+                "faiLocation": {"uri": "https://jbrowse.org/genomes/GRCm38/fasta/mm10.fa.gz.fai"},
+                "gziLocation": {"uri": "https://jbrowse.org/genomes/GRCm38/fasta/mm10.fa.gz.gzi"},
+            },
+        },
+    },
+}
+
+
 def create_fastapi_app(
     static_dir: Optional[Path] = None,
     jbrowse: bool = False,
     filename: Optional[str] = None,
+    assembly: Optional[str] = None,
 ) -> FastAPI:
     static_dir = static_dir or _get_static_dir()
 
@@ -83,9 +124,13 @@ def create_fastapi_app(
                 "  python packages/app/scripts/sync_jbrowse_assets.py\n"
             )
 
+        assembly_name = assembly or "hg38"
+        assembly_cfg = _BUILTIN_ASSEMBLIES.get(assembly_name)
+
         @app.get("/config.json")
         async def jbrowse_config(request: Request):
             base = str(request.base_url).rstrip("/")
+
             tracks = []
             if filename:
                 uploads_path = str(Path(UPLOADS_DIR) / "Uploads" / filename)
@@ -93,18 +138,32 @@ def create_fastapi_app(
                     "type": "LoraxTrack",
                     "trackId": "lorax_track",
                     "name": "Lorax",
-                    "assemblyNames": ["hg38"],
+                    "assemblyNames": [assembly_name],
                     "adapter": {
                         "type": "LoraxAdapter",
                         "apiBase": f"{base}/api",
                         "filePath": uploads_path,
                     },
                 }]
+
+            # defaultSession skips the JBrowse landing page and opens a
+            # LinearGenomeView directly. The Lorax track is visible in the
+            # track selector; it is NOT pre-opened to avoid triggering a
+            # data load before the user picks a region.
+            default_session = {
+                "name": "Lorax Session",
+                "views": [{
+                    "id": "lorax-lgv",
+                    "type": "LinearGenomeView",
+                }],
+            } if assembly_cfg else None
+
             return JSONResponse({
                 "plugins": [{"name": "Lorax", "url": f"{base}/lorax-plugin.js"}],
                 "configuration": {"rpc": {"defaultDriver": "MainThreadRpcDriver"}},
-                "assemblies": [],
+                "assemblies": [assembly_cfg] if assembly_cfg else [],
                 "tracks": tracks,
+                **({"defaultSession": default_session} if default_session else {}),
             })
 
         @app.get("/")
@@ -170,7 +229,11 @@ def create_fastapi_app(
     return app
 
 
-def create_asgi_app(jbrowse: bool = False, filename: Optional[str] = None) -> socketio.ASGIApp:
+def create_asgi_app(
+    jbrowse: bool = False,
+    filename: Optional[str] = None,
+    assembly: Optional[str] = None,
+) -> socketio.ASGIApp:
     """
     Create the combined ASGI app.
 
@@ -178,7 +241,7 @@ def create_asgi_app(jbrowse: bool = False, filename: Optional[str] = None) -> so
     - Backend router mounted at /api.
     - Socket.IO served at /api/socket.io/.
     """
-    fastapi_app = create_fastapi_app(jbrowse=jbrowse, filename=filename)
+    fastapi_app = create_fastapi_app(jbrowse=jbrowse, filename=filename, assembly=assembly)
 
     client_manager = None
     if REDIS_CLUSTER_URL and not REDIS_CLUSTER:
