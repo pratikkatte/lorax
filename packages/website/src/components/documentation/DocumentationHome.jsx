@@ -5,7 +5,6 @@ import {
   LuBookOpen,
   LuBrush,
   LuChevronRight,
-  LuCircleHelp,
   LuDna,
   LuExternalLink,
   LuLayers,
@@ -51,16 +50,6 @@ const featureCards = [
 
 const viewerNavigationSlides = getViewerTourDocumentationSlides();
 
-const faqItems = [
-  {
-    question: "What is the fastest way to load a large file?",
-    answer: "Use the CLI with `lorax --file path/to/file.trees`, or mount data into the Docker container. This avoids slow browser uploads for large datasets."
-  },
-  {
-    question: "Which browsers work best?",
-    answer: "Use a modern Chromium, Firefox, or Safari release with WebGL enabled. Hardware acceleration helps with large visualizations."
-  },
-];
 
 function Toc({ activeSection }) {
   return (
@@ -266,16 +255,12 @@ export default function DocumentationHome() {
             </Link>
           </div>
         </div>
-        <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="grid gap-3 sm:grid-cols-2">
-            {featureCards.map(({ icon, title, description }) => (
-              <div key={title} className="rounded-2xl border border-slate-100 bg-slate-50/70 p-4">
-                {React.createElement(icon, { className: "mb-3 text-2xl text-emerald-600" })}
-                <h2 className="font-semibold text-slate-900">{title}</h2>
-                <p className="mt-2 text-sm leading-6 text-slate-500">{description}</p>
-              </div>
-            ))}
-          </div>
+        <div className="flex items-center justify-center rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
+          <img
+            src="/lorax-logo.png"
+            alt="Lorax"
+            className="w-[22rem] h-auto object-contain"
+          />
         </div>
       </section>
 
@@ -374,7 +359,7 @@ lorax --file path/to/your.trees --jbrowse --assembly mm10`}
             <SupportedInputFormatsTabs />
           </Section>
 
-          <Section id="loading-data" eyebrow="Data flow" title="Loading Your ARG Data">
+          <Section id="loading-data" eyebrow="Data flow" title="Loading &amp; Navigating">
             <div className="grid gap-4 md:grid-cols-2">
               {[
                 ["Web upload", "Best for small files and quick tests. Use the landing page Load File button or drag a file onto the logo card."],
@@ -386,9 +371,6 @@ lorax --file path/to/your.trees --jbrowse --assembly mm10`}
                 </div>
               ))}
             </div>
-          </Section>
-
-          <Section id="navigating-viewer" eyebrow="Viewer basics" title="Navigating the Viewer">
             <p>
               Lorax follows the interaction patterns users expect from genome and phylogeny browsers: a main canvas for exploration, a genomic position control, and contextual panels for details.
             </p>
@@ -428,39 +410,6 @@ lorax --file path/to/your.trees --jbrowse --assembly mm10`}
             </p>
           </Section>
 
-          <Section id="environment" eyebrow="Runtime" title="Environment Variables">
-            <div className="grid gap-3">
-              {[
-                ["LORAX_LOAD_FILE_MAX_CONCURRENCY", "Maximum concurrent CPU-heavy file loads."],
-                ["LORAX_LOAD_FILE_MAX_QUEUE", "Maximum queued file-load requests."],
-                ["LORAX_LOAD_FILE_QUEUE_TIMEOUT_SEC", "Queue timeout for file-load requests."],
-                ["LORAX_INMEM_TTL_SEC", "Idle lifetime for in-memory session and graph caches."],
-                ["LORAX_MODE", "Set to `local` for local-only mode."]
-              ].map(([name, description]) => (
-                <div key={name} className="grid gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-[260px_1fr]">
-                  <code className="text-sm font-semibold text-slate-900">{name}</code>
-                  <p className="text-sm leading-6 text-slate-500">{description}</p>
-                </div>
-              ))}
-            </div>
-          </Section>
-
-          <Section id="troubleshooting" eyebrow="FAQ" title="Troubleshooting">
-            <div className="space-y-3">
-              {faqItems.map(({ question, answer }) => (
-                <details key={question} className="group rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                  <summary className="flex cursor-pointer list-none items-center justify-between gap-4 font-semibold text-slate-900">
-                    <span className="flex items-center gap-2">
-                      <LuCircleHelp className="text-emerald-600" />
-                      {question}
-                    </span>
-                    <LuChevronRight className="shrink-0 transition-transform group-open:rotate-90" />
-                  </summary>
-                  <p className="mt-3 text-sm leading-6 text-slate-500">{answer}</p>
-                </details>
-              ))}
-            </div>
-          </Section>
 
           <Section id="usecases" eyebrow="Examples" title="Use cases">
             <p className="mb-4 text-sm leading-6 text-slate-600">
