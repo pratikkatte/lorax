@@ -152,13 +152,15 @@ def create_fastapi_app(
             base = str(request.base_url).rstrip("/")
 
             tracks = []
+            print(f"filename: {filename}")
             if filename:
                 uploads_path = str(Path(UPLOADS_DIR) / "Uploads" / filename)
                 tracks = [{
                     "type": "LoraxTrack",
                     "trackId": "lorax_track",
-                    "name": "Lorax",
+                    "name": filename,
                     "assemblyNames": [assembly_name],
+                    "category": ["uploads"],
                     "adapter": {
                         "type": "LoraxAdapter",
                         "apiBase": f"{base}/api",
