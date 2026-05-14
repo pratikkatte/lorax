@@ -1,28 +1,43 @@
 import React, { useState, useMemo } from "react";
+import { Link } from "react-router-dom";
+import { LuDna } from "react-icons/lu";
+import { buildJBrowseRoute } from "../../config/jbrowseConfig.js";
 
 // Inline FilePill for simplicity if not needing separate file
-function FilePill({ name, onClick, loading }) {
+function FilePill({ project, name, onOpen, loading }) {
+    const jbrowseTo = buildJBrowseRoute({ project, file: name });
+
     return (
-        <button
-            onClick={onClick}
-            disabled={loading}
-            className={`group flex items-center justify-between w-full p-3 rounded-lg border text-sm transition-all duration-200 
-        ${loading
-                    ? "bg-emerald-50 border-emerald-200 text-emerald-700 cursor-wait"
-                    : "bg-white border-slate-200 text-slate-600 hover:border-emerald-300 hover:shadow-sm"
-                }`}
-        >
-            <span className="truncate font-medium flex-1 text-left" title={name}>
-                {name}
-            </span>
-            {loading ? (
-                <span className="w-4 h-4 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin ml-2"></span>
-            ) : (
-                <span className="opacity-0 group-hover:opacity-100 text-emerald-500 font-medium ml-2 transition-opacity">
-                    Open
+        <div className={`flex min-h-[52px] items-center gap-2 rounded-lg border p-2 text-sm transition-all duration-200 ${
+            loading
+                ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+                : "bg-white border-slate-200 text-slate-600 hover:border-emerald-300 hover:shadow-sm"
+        }`}>
+            <button
+                onClick={onOpen}
+                disabled={loading}
+                className="group flex min-w-0 flex-1 items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-slate-50 disabled:cursor-wait disabled:hover:bg-transparent"
+            >
+                <span className="truncate font-medium" title={name}>
+                    {name}
                 </span>
-            )}
-        </button>
+                {loading ? (
+                    <span className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" />
+                ) : (
+                    <span className="shrink-0 text-xs font-semibold text-emerald-600 opacity-0 transition-opacity group-hover:opacity-100">
+                        Open
+                    </span>
+                )}
+            </button>
+            <Link
+                to={jbrowseTo}
+                className="inline-flex h-9 shrink-0 items-center gap-1 rounded-md border border-slate-200 px-2 text-xs font-semibold text-slate-600 hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700"
+                title={`Open ${name} in JBrowse`}
+            >
+                <LuDna className="h-4 w-4" aria-hidden="true" />
+                JBrowse
+            </Link>
+        </div>
     );
 }
 
@@ -52,9 +67,10 @@ export default function DatasetFiles({ project, files = [], loadFile, loadingFil
                     {visible.map((name) => (
                         <li key={name}>
                             <FilePill
+                                project={project}
                                 name={name}
                                 loading={loadingFile === name}
-                                onClick={e => {
+                                onOpen={() => {
                                     setLoadingFile(name);
                                     loadFile?.({ project, file: name });
                                 }}

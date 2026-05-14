@@ -3,6 +3,7 @@ import { Routes, Route, Navigate, useLocation, useParams } from 'react-router-do
 import LandingPage from './components/LandingPage';
 import DocumentationPage from './components/DocumentationPage';
 import FileView from './components/FileView';
+import JBrowseFileView from './components/JBrowseFileView';
 import useFileUpload from './hooks/useFileUpload';
 import UcgbRedirect from './components/UcgbRedirect';
 import './index.css';
@@ -32,6 +33,7 @@ function App() {
       <Route path="/" element={<LandingPage upload={upload} />} />
       <Route path="/documentation/*" element={<DocumentationPage />} />
       <Route path="/view/:file" element={<FileView />} />
+      <Route path="/jbrowse/:file" element={<JBrowseFileView />} />
       <Route path="/ucgb" element={<UcgbRedirect />} />
       <Route path="/:file" element={<LegacyFileRedirect />} />
     </Routes>

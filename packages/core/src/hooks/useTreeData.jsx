@@ -488,7 +488,10 @@ export function useTreeData({
     setFetchReason(requestKind);
     setError(null);
     // Lock mode + single tree: same tree with different sparsification, no overlay
-    const lockModeSingleTree = requestKind === 'full-fetch' && hasValidLockTarget && snapshotDisplayArray.length === 1;
+    const lockModeSingleTree = requestKind === 'full-fetch'
+      && hasValidLockTarget
+      && snapshotDisplayArray.length === 1
+      && !displayArrayChanged;
     if (requestKind === 'lock-refresh' || lockModeSingleTree) {
       setIsLoading(false);
       setIsBackgroundRefresh(true);

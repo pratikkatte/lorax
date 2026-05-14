@@ -1,6 +1,9 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import { fileURLToPath } from 'node:url'
+
+const loraxPluginSrc = fileURLToPath(new URL('../../../lorax-plugin/src/index.ts', import.meta.url))
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -8,10 +11,30 @@ export default defineConfig({
     react(),
     tailwindcss(),
   ],
+  resolve: {
+    alias: {
+      'jbrowse-plugin-lorax': loraxPluginSrc,
+    },
+    dedupe: [
+      'react',
+      'react-dom',
+      '@jbrowse/core',
+      '@jbrowse/mobx-state-tree',
+      '@jbrowse/plugin-linear-genome-view',
+      '@emotion/react',
+      '@emotion/styled',
+      '@mui/icons-material',
+      '@mui/material',
+      '@mui/system',
+      'mobx',
+      'mobx-react',
+    ],
+  },
   test: {
     environment: 'jsdom',
     globals: true,
     setupFiles: './src/test/setupTests.js',
+    exclude: ['node_modules/**', 'dist/**', 'tests/e2e/**'],
   },
   server: {
     port: 3001,

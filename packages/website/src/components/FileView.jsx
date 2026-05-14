@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
+import { LuDna } from 'react-icons/lu';
 import {
   HoverTooltip,
   formatTooltipTime,
@@ -19,6 +20,7 @@ import TourOverlay from './TourOverlay';
 import useTourState from '../hooks/useTourState';
 import { metadataFeatureActions } from '../config/metadataFeatureActions';
 import { viewerTourNarrationById } from '../data/viewerTourNarration';
+import { buildJBrowseRoute } from '../config/jbrowseConfig.js';
 
 const HOVER_DETAILS_DEBOUNCE_MS = 180;
 
@@ -930,6 +932,14 @@ function FileView() {
     return isCsvFile ? 'branch length' : tsconfig?.times?.type;
   }, [file, filename, tsconfig?.filename, tsconfig?.times?.type, tsconfig?.tree_info]);
 
+  const jbrowseRoute = useMemo(() => buildJBrowseRoute({
+    project,
+    file: filename || file,
+    sid,
+    genomiccoordstart: genomicPosition?.[0],
+    genomiccoordend: genomicPosition?.[1]
+  }), [file, filename, genomicPosition, project, sid]);
+
   const effectiveHighlightedMutationNode = hoveredMutationHighlight?.node_id != null
     ? String(hoveredMutationHighlight.node_id)
     : highlightedMutationNode;
@@ -1309,6 +1319,19 @@ function FileView() {
               Screenshot
             </span>
           </button>
+
+          {/* JBrowse button */}
+          <a
+            href={jbrowseRoute}
+            className="group relative p-2 rounded-lg transition-colors hover:bg-slate-800 hover:text-white"
+            title="Open in JBrowse"
+            aria-label="Open in JBrowse"
+          >
+            <LuDna className="h-5 w-5" aria-hidden="true" />
+            <span className="absolute left-full ml-2 px-2 py-1 text-xs text-white bg-slate-800 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
+              Open in JBrowse
+            </span>
+          </a>
         </div>
 
         {/* Tutorial button (bottom) */}

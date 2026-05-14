@@ -99,6 +99,20 @@ vi.mock('@lorax/core', async () => {
       genomePositions: {},
       treeTime: {}
     },
+    HoverTooltip: ({ tooltip }) => tooltip ? (
+      <div data-testid="hover-tooltip">
+        <div>{tooltip.title}</div>
+        {(tooltip.rows || []).map((row) => (
+          <div key={`${row.k}-${row.v}`}>
+            <span>{row.k}</span>
+            <span>{row.v}</span>
+          </div>
+        ))}
+      </div>
+    ) : null,
+    formatTooltipTime: (value) => String(value ?? '-'),
+    formatTooltipValue: (value) => String(value ?? '-'),
+    getTooltipClientCoords: () => ({ x: 0, y: 0 }),
     LoraxDeckGL: ReactMod.forwardRef((props, ref) => {
       ReactMod.useImperativeHandle(ref, () => ({
         setGenomicCoords: vi.fn(),

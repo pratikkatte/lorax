@@ -87,6 +87,20 @@ vi.mock('@lorax/core', async () => {
       genomePositions: {},
       treeTime: {}
     },
+    HoverTooltip: ({ tooltip }) => tooltip ? (
+      <div data-testid="hover-tooltip">
+        <div>{tooltip.title}</div>
+        {(tooltip.rows || []).map((row) => (
+          <div key={`${row.k}-${row.v}`}>
+            <span>{row.k}</span>
+            <span>{row.v}</span>
+          </div>
+        ))}
+      </div>
+    ) : null,
+    formatTooltipTime: (value) => String(value ?? '-'),
+    formatTooltipValue: (value) => String(value ?? '-'),
+    getTooltipClientCoords: () => ({ x: 0, y: 0 }),
     LoraxDeckGL: ReactMod.forwardRef((props, ref) => {
       ReactMod.useImperativeHandle(ref, () => ({
         setGenomicCoords: vi.fn(),
@@ -166,6 +180,18 @@ describe('FileView tutorial behavior', () => {
     expect(window.localStorage.getItem('lorax_tour:viewer')).toBe('done');
     await waitFor(() => {
       expect(screen.queryByTestId('tour-overlay')).not.toBeInTheDocument();
+    });
+  });
+
+  it('links to JBrowse while preserving current genomic coordinates', async () => {
+    window.localStorage.setItem('lorax_tour:viewer', 'done');
+    render(<FileView />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Open in JBrowse')).toHaveAttribute(
+        'href',
+        '/jbrowse/test.trees?project=demo&assembly=hg19&genomiccoordstart=0&genomiccoordend=100'
+      );
     });
   });
 });
