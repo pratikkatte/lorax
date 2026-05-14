@@ -1367,9 +1367,12 @@ const LoraxDeckGL = forwardRef(({
       console.warn('[getSVGString] No deck instance available');
       return null;
     }
-    const polygonVertices = polygons?.map(p => p.vertices) || [];
-    return getSVG(deck, polygonVertices, polygonColor);
-  }, [polygons]);
+    return getSVG(deck, polygons || [], {
+      fillColor: polygonColor,
+      hoverFillColor: polygonOptions?.hoverFillColor,
+      treeColors: polygonOptions?.treeColors || {}
+    });
+  }, [polygons, polygonOptions?.hoverFillColor, polygonOptions?.treeColors]);
 
   const getSVGSize = useCallback((svgString, fallbackWidth, fallbackHeight) => {
     try {
