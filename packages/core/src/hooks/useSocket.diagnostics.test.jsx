@@ -53,5 +53,21 @@ describe("useSocket diagnostics pong listener", () => {
     const socket = mocked.io.mock.results[0].value;
     expect(socket.on).toHaveBeenCalledWith("pong", expect.any(Function));
   });
-});
 
+  it("passes lorax sid through Socket.IO auth", () => {
+    const { result } = renderHook(() =>
+      useSocket({ apiBase: "/api", loraxSid: "session-1" })
+    );
+
+    act(() => {
+      result.current.connect();
+    });
+
+    expect(mocked.io).toHaveBeenCalledWith(
+      window.location.origin,
+      expect.objectContaining({
+        auth: { lorax_sid: "session-1" },
+      })
+    );
+  });
+});

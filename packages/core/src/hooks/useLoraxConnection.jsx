@@ -22,12 +22,14 @@ export function useLoraxConnection({
 
   // Ref to hold reconnect function (avoids circular dependency)
   const reconnectRef = useRef(null);
+  const disconnectRef = useRef(null);
 
   // Request ID counter for correlating requests with responses
   const requestIdRef = useRef(0);
 
   // Session error handler uses ref to access connect function
   const handleSessionError = useCallback(() => {
+    disconnectRef.current?.();
     clearSession();
     initializeSession().then(() => {
       reconnectRef.current?.();
@@ -44,6 +46,8 @@ export function useLoraxConnection({
     [diagnosticPingEnabled, diagnosticPingIntervalMs]
   );
 
+  const getCurrentLoraxSid = useCallback(() => sidRef.current, [sidRef]);
+
   // Use extracted socket hook with session error handling
   const {
     socketRef,
@@ -59,6 +63,8 @@ export function useLoraxConnection({
   } = useSocket({
     apiBase,
     isProd,
+    loraxSid,
+    getLoraxSid: getCurrentLoraxSid,
     diagnosticPingEnabled: diagnosticPingConfig.enabled,
     onSessionError: handleSessionError
   });
@@ -66,7 +72,8 @@ export function useLoraxConnection({
   // Update reconnect ref when connect changes
   useEffect(() => {
     reconnectRef.current = connect;
-  }, [connect]);
+    disconnectRef.current = disconnect;
+  }, [connect, disconnect]);
 
   // Initialize session on mount, then connect socket
   useEffect(() => {
@@ -107,6 +114,11 @@ export function useLoraxConnection({
       const execute = () => {
         if (!socketRef.current) {
           reject(new Error("Socket not available"));
+          return;
+        }
+
+        if (!sidRef.current) {
+          reject(new Error("Failed to initialize session: no session id received."));
           return;
         }
 
@@ -236,7 +248,7 @@ export function useLoraxConnection({
         }
       };
 
-      if (!socketRef.current) {
+      if (!socketRef.current || !sidRef.current) {
         initializeSession().then(() => {
           execute();
         }).catch((err) => {

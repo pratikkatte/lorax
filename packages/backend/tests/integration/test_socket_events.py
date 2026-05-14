@@ -43,15 +43,40 @@ class TestConnectEvent:
         from lorax.sockets import register_socket_events
 
         # Register events
-        with patch("lorax.sockets.decorators.session_manager", session_manager_memory):
+        with patch("lorax.sockets.connection.session_manager", session_manager_memory):
             register_socket_events(mock_sio)
 
-        # Simulate connect without cookie
-        await socket_harness.simulate_connect("socket-1", lorax_sid=None)
+            # Simulate connect without cookie
+            await socket_harness.simulate_connect("socket-1", lorax_sid=None)
 
         # Should emit error
         errors = socket_harness.get_emitted("error")
-        assert len(errors) >= 0  # May or may not emit depending on implementation
+        assert len(errors) == 1
+        assert errors[0]["data"]["code"] == "SESSION_NOT_FOUND"
+
+    @pytest.mark.asyncio
+    async def test_connect_accepts_valid_session_from_auth_without_cookie(
+        self, socket_harness, mock_sio, session_manager_memory
+    ):
+        """Safari cross-site sockets may provide lorax_sid via Socket.IO auth."""
+        from lorax.sockets import register_socket_events
+
+        session = await session_manager_memory.create_session()
+
+        with patch("lorax.sockets.connection.session_manager", session_manager_memory):
+            register_socket_events(mock_sio)
+
+            await socket_harness._event_handlers["connect"](
+                "socket-auth",
+                {"HTTP_COOKIE": ""},
+                {"lorax_sid": session.sid},
+            )
+
+        errors = socket_harness.get_emitted("error")
+        statuses = socket_harness.get_emitted("status")
+        assert errors == []
+        assert len(statuses) == 1
+        assert statuses[0]["data"]["lorax_sid"] == session.sid
 
     @pytest.mark.asyncio
     async def test_connect_with_valid_session(self, socket_harness, mock_sio, session_manager_memory):
@@ -61,11 +86,11 @@ class TestConnectEvent:
         # Create a session first
         session = await session_manager_memory.create_session()
 
-        with patch("lorax.sockets.decorators.session_manager", session_manager_memory):
+        with patch("lorax.sockets.connection.session_manager", session_manager_memory):
             register_socket_events(mock_sio)
 
-        # Simulate connect with valid session
-        await socket_harness.simulate_connect("socket-1", lorax_sid=session.sid)
+            # Simulate connect with valid session
+            await socket_harness.simulate_connect("socket-1", lorax_sid=session.sid)
 
         # Should not emit error
         errors = socket_harness.get_emitted("error")

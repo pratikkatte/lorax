@@ -117,6 +117,46 @@ describe("useLoraxConnection.queryFile", () => {
     expect(harness.listenerCount("disconnect")).toBe(0);
   });
 
+  it("initializes a missing sid before emitting load_file", async () => {
+    const sidRef = { current: null };
+    const initializeSession = vi.fn(async () => {
+      sidRef.current = "session-restored";
+      return "session-restored";
+    });
+    sessionState = {
+      loraxSid: null,
+      sidRef,
+      initializeSession,
+      clearSession: vi.fn(),
+    };
+    const harness = createSocketHarness((event, payload, callback) => {
+      callback(null, {
+        ok: true,
+        request_id: payload.request_id,
+        filename: payload.file,
+        project: payload.project,
+        owner_sid: payload.lorax_sid,
+        config: { initial_position: [0, 1] },
+        code: "FILE_LOADED",
+      });
+    });
+    socketState = harness.socketApi;
+
+    const { result } = renderHook(() =>
+      useLoraxConnection({ apiBase: "http://localhost:8080", isProd: false })
+    );
+
+    const response = await result.current.queryFile({ project: "Uploads", file: "a.trees" });
+
+    expect(initializeSession).toHaveBeenCalled();
+    expect(harness.ackEmit).toHaveBeenCalledWith(
+      "load_file",
+      expect.objectContaining({ lorax_sid: "session-restored" }),
+      expect.any(Function)
+    );
+    expect(response.owner_sid).toBe("session-restored");
+  });
+
   it("rejects when acknowledgement returns an error payload", async () => {
     const harness = createSocketHarness((event, payload, callback) => {
       callback(null, {

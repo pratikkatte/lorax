@@ -71,6 +71,7 @@ vi.mock('../hooks/useViewportDimensions.jsx', () => ({
 const mockQueryFile = vi.fn();
 const mockHandleConfigUpdate = vi.fn();
 const mockQueryDetails = vi.fn();
+let mockLoraxState;
 
 vi.mock('@lorax/core', async () => {
   const ReactMod = await import('react');
@@ -78,20 +79,10 @@ vi.mock('@lorax/core', async () => {
     useLorax: () => ({
       queryFile: mockQueryFile,
       handleConfigUpdate: mockHandleConfigUpdate,
-      tsconfig: {
-        filename: 'test.trees',
-        file_path: '/tmp/test.trees',
-        genome_length: 1000,
-        value: [0, 100],
-        intervals: [0, 100, 200, 300],
-        times: { type: 'gen' }
-      },
-      filename: 'test.trees',
-      genomeLength: 1000,
-      isConnected: true,
       queryDetails: mockQueryDetails,
       selectedColorBy: null,
-      metadataArrays: null
+      metadataArrays: null,
+      ...mockLoraxState
     }),
     DEFAULT_VIEW_CONFIG: {
       ortho: {},
@@ -157,6 +148,20 @@ describe('FileView details loading wiring', () => {
     mockHandleConfigUpdate.mockReset();
     mockQueryDetails.mockReset();
     infoFetchStates.length = 0;
+    mockLoraxState = {
+      tsconfig: {
+        filename: 'test.trees',
+        file_path: '/tmp/test.trees',
+        genome_length: 1000,
+        value: [0, 100],
+        intervals: [0, 100, 200, 300],
+        times: { type: 'gen' }
+      },
+      filename: 'test.trees',
+      genomeLength: 1000,
+      isConnected: true,
+      loraxSid: 'session-1'
+    };
   });
 
   const openInfoPanel = async (user) => {
@@ -239,5 +244,40 @@ describe('FileView details loading wiring', () => {
     expect(screen.getByText('100')).toBeInTheDocument();
     expect(screen.getByText('Child time')).toBeInTheDocument();
     expect(screen.getByText('25.25')).toBeInTheDocument();
+  });
+
+  it('waits for a Lorax sid before loading a direct viewer URL', async () => {
+    mockLoraxState = {
+      tsconfig: null,
+      filename: null,
+      genomeLength: null,
+      isConnected: true,
+      loraxSid: null
+    };
+    mockQueryFile.mockResolvedValue({
+      config: {
+        filename: 'test.trees',
+        genome_length: 1000,
+        value: [0, 100],
+        intervals: [0, 100, 200, 300],
+        times: { type: 'gen' }
+      }
+    });
+
+    const { rerender } = render(<FileView />);
+
+    await waitFor(() => {
+      expect(mockQueryFile).not.toHaveBeenCalled();
+    });
+
+    mockLoraxState = {
+      ...mockLoraxState,
+      loraxSid: 'session-1'
+    };
+    rerender(<FileView />);
+
+    await waitFor(() => {
+      expect(mockQueryFile).toHaveBeenCalledWith({ file: 'test.trees', project: 'demo', share_sid: null });
+    });
   });
 });

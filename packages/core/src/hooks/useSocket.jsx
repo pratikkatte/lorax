@@ -5,12 +5,19 @@ import websocketEvents from "../utils/websocketEvents.js";
 export function useSocket({
   apiBase,
   isProd = false,
+  loraxSid = null,
+  getLoraxSid = null,
   diagnosticPingEnabled = false,
   onSessionError
 }) {
   const socketRef = useRef(null);
+  const latestLoraxSidRef = useRef(loraxSid);
   const [isConnected, setIsConnected] = useState(false);
   const [statusMessage, setStatusMessage] = useState({ message: null });
+
+  useEffect(() => {
+    latestLoraxSidRef.current = loraxSid;
+  }, [loraxSid]);
 
   const connect = useCallback(() => {
     if (socketRef.current) {
@@ -46,10 +53,12 @@ export function useSocket({
     if (isCrossOrigin) {
       console.log('[useSocket] Cross-origin: connecting to', host, 'path', path);
     }
+    const authSid = getLoraxSid?.() || latestLoraxSidRef.current;
     const socket = io(host, {
       // Prefer websocket, allow fallback to polling for tougher proxy setups.
       transports: ["websocket", "polling"],
       withCredentials: true,
+      ...(authSid ? { auth: { lorax_sid: authSid } } : {}),
       path,
       reconnection: true,
       reconnectionAttempts: 10,
@@ -99,7 +108,7 @@ export function useSocket({
     }
 
     return socket;
-  }, [apiBase, diagnosticPingEnabled, isProd, onSessionError, setStatusMessage]);
+  }, [apiBase, diagnosticPingEnabled, getLoraxSid, isProd, onSessionError, setStatusMessage]);
 
   const disconnect = useCallback(() => {
     if (socketRef.current) {

@@ -72,6 +72,7 @@ function FileView() {
     filename,
     genomeLength,
     isConnected,
+    loraxSid,
     queryDetails,
     // For tip hover tooltip value computation
     selectedColorBy,
@@ -532,7 +533,7 @@ function FileView() {
   // Load file config from URL params if not already loaded
   useEffect(() => {
     // Only load if we have required params and config isn't loaded for this file
-    if (file && project && isConnected && !tsconfig?.filename) {
+    if (file && project && isConnected && loraxSid && !tsconfig?.filename) {
       setLoading(true);
       setError(null);
       setStatusMessage({ status: 'loading', message: 'Loading file...' });
@@ -565,7 +566,7 @@ function FileView() {
           setStatusMessage(null);
         });
     }
-  }, [file, project, sid, genomiccoordstart, genomiccoordend, isConnected, tsconfig?.filename, queryFile, handleConfigUpdate]);
+  }, [file, project, sid, genomiccoordstart, genomiccoordend, isConnected, loraxSid, tsconfig?.filename, queryFile, handleConfigUpdate]);
 
   useEffect(() => {
     if (tourState.hasSeen) return;

@@ -31,7 +31,8 @@ def register_connection_events(sio):
         cookies.load(cookie)
 
         lorax_sid_cookie = cookies.get("lorax_sid")
-        session_id = lorax_sid_cookie.value if lorax_sid_cookie else None
+        auth_session_id = auth.get("lorax_sid") if isinstance(auth, dict) else None
+        session_id = lorax_sid_cookie.value if lorax_sid_cookie else auth_session_id
 
         if not session_id:
             print(f"⚠️ No lorax_sid cookie found for socket {sid}")
