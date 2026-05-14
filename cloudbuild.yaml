@@ -103,10 +103,29 @@ steps:
     args:
       - '-c'
       - |
+        set -euo pipefail
         if [ "$(cat /workspace/website_changed)" = "true" ]; then
           echo "Building website..."
+          apt-get update
+          apt-get install -y --no-install-recommends git ca-certificates
+
+          # packages/website imports jbrowse-plugin-lorax via ../../../lorax-plugin.
+          # In Cloud Build, packages/website lives at /workspace/packages/website,
+          # so that relative path resolves to /lorax-plugin.
+          rm -rf /lorax-plugin
+          git clone --depth=1 "$_LORAX_PLUGIN_REPO" /lorax-plugin
+          cd /lorax-plugin
+          if git fetch --depth=1 origin "$_LORAX_PLUGIN_REF"; then
+            git checkout FETCH_HEAD
+          else
+            git checkout "$_LORAX_PLUGIN_REF"
+          fi
+
+          cd /workspace
+          npm ci
+          rm -rf /lorax-plugin/node_modules
+          ln -s /workspace/node_modules /lorax-plugin/node_modules
           cd packages/website
-          npm install
           VITE_API_BASE=$_BACKEND_API_URL npm run build
           echo "Website built successfully"
         else
@@ -114,44 +133,14 @@ steps:
         fi
     waitFor: ['detect-changes']
 
-  # Step 4: Deploy backend to Compute Engine (if changed and on main)
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    id: 'deploy-backend'
-    entrypoint: 'bash'
-    args:
-      - '-c'
-      - |
-        if [ "$(cat /workspace/backend_changed)" = "true" ] && [ "$BRANCH_NAME" = "main" ]; then
-          echo "Deploying backend to Compute Engine..."
-          IMAGE_URI="$_AR_REGION-docker.pkg.dev/$PROJECT_ID/$_AR_REPO/lorax-backend"
-          gcloud compute ssh $_BACKEND_INSTANCE --zone $_BACKEND_ZONE --command "
-            gcloud auth configure-docker $_AR_REGION-docker.pkg.dev --quiet && \
-            docker pull $$IMAGE_URI:latest && \
-            docker stop lorax-backend 2>/dev/null || true && \
-            docker rm lorax-backend 2>/dev/null || true && \
-            docker run -d --name lorax-backend --restart always \
-              -p 8080:8080 \
-              -e REDIS_CLUSTER=redis://$_REDIS_HOST:6379 \
-              -e GCS_BUCKET_NAME=$_GCS_BUCKET \
-              -e LORAX_MODE=production \
-              -e DISK_CACHE_DIR=/cache \
-              -e DISK_CACHE_MAX_GB=50 \
-              -v /var/lorax/cache:/cache \
-              $$IMAGE_URI:latest
-          "
-          echo "Backend deployed successfully"
-        else
-          echo "Skipping backend deployment (unchanged or not on main)"
-        fi
-    waitFor: ['build-backend']
-
-  # Step 5: Deploy website to GCS (if changed and on main)
+  # Step 4: Deploy website to GCS (if changed and on main)
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     id: 'deploy-website'
     entrypoint: 'bash'
     args:
       - '-c'
       - |
+        set -eo pipefail
         if [ "$(cat /workspace/website_changed)" = "true" ] && { [ "$BRANCH_NAME" = "main" ] || [ "$_FORCE_DEPLOY_WEBSITE" = "true" ]; }; then
           echo "Deploying website to Cloud Storage..."
           gsutil -m rsync -r -d packages/website/dist/ gs://$_WEBSITE_BUCKET/
@@ -173,6 +162,8 @@ substitutions:
   _BACKEND_API_URL: https://api.lorax.in
   _GCS_BUCKET: lorax_projects
   _REDIS_HOST: 10.0.0.3  # Memorystore Redis IP - update after creating instance
+  _LORAX_PLUGIN_REPO: https://github.com/pratikkatte/lorax-plugin.git
+  _LORAX_PLUGIN_REF: main
   # Manual/temporary overrides:
   # - _FORCE_WEBSITE=true: build website even if change detection can't run/trigger
   # - _FORCE_DEPLOY_WEBSITE=true: deploy website even if BRANCH_NAME != main

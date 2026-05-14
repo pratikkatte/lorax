@@ -4,6 +4,8 @@ import tailwindcss from '@tailwindcss/vite'
 import { fileURLToPath } from 'node:url'
 
 const loraxPluginSrc = fileURLToPath(new URL('../../../lorax-plugin/src/index.ts', import.meta.url))
+const loraxCoreRoot = fileURLToPath(new URL('../core', import.meta.url))
+const loraxCoreSrc = fileURLToPath(new URL('../core/src/index.js', import.meta.url))
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -12,12 +14,24 @@ export default defineConfig({
     tailwindcss(),
   ],
   resolve: {
-    alias: {
-      'jbrowse-plugin-lorax': loraxPluginSrc,
-    },
+    alias: [
+      {
+        find: /^@lorax\/core\/src\/(.*)$/,
+        replacement: `${loraxCoreRoot}/src/$1`,
+      },
+      {
+        find: '@lorax/core',
+        replacement: loraxCoreSrc,
+      },
+      {
+        find: 'jbrowse-plugin-lorax',
+        replacement: loraxPluginSrc,
+      },
+    ],
     dedupe: [
       'react',
       'react-dom',
+      '@lorax/core',
       '@jbrowse/core',
       '@jbrowse/mobx-state-tree',
       '@jbrowse/plugin-linear-genome-view',
