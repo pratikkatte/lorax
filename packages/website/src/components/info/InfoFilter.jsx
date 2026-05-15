@@ -759,7 +759,7 @@ export default function InfoFilter({
                       : 'bg-white border-gray-400'
                     }`}
                     onClick={() => setColorByTree?.(prev => !prev)}
-                    title="Color edges by tree index (CSV)"
+                    title="Color polygons by tree index (CSV)"
                   />
                 </div>
               )}
@@ -774,6 +774,7 @@ export default function InfoFilter({
             <div className="max-h-64 overflow-auto border border-gray-100 rounded-md divide-y divide-gray-100">
               {visibleTrees && visibleTrees.length > 0 ? (
                 visibleTrees.map(treeIndex => {
+                  const treeKey = String(treeIndex);
                   const isHovered = (hoveredTreeIndex === treeIndex || hoveredTreeIndex?.tree_index === treeIndex);
                   return (
                     <div
@@ -787,15 +788,15 @@ export default function InfoFilter({
                         <input
                           type="color"
                           className="w-8 h-8 p-0 border-0 rounded cursor-pointer"
-                          value={treeColors[treeIndex] || "#91C2F4"}
+                          value={treeColors[treeKey] || "#91C2F4"}
                           onClick={(e) => e.stopPropagation()}
                           onChange={(e) => {
                             if (setTreeColors) {
-                              setTreeColors(prev => ({ ...prev, [String(treeIndex)]: e.target.value }));
+                              setTreeColors(prev => ({ ...prev, [treeKey]: e.target.value }));
                             }
                           }}
                         />
-                        {treeColors[treeIndex] && (
+                        {treeColors[treeKey] && (
                           <button
                             className="ml-2 text-xs text-gray-500 hover:text-red-500"
                             onClick={(e) => {
@@ -803,7 +804,7 @@ export default function InfoFilter({
                               if (setTreeColors) {
                                 setTreeColors(prev => {
                                   const next = { ...prev };
-                                  delete next[treeIndex];
+                                  delete next[treeKey];
                                   return next;
                                 });
                               }

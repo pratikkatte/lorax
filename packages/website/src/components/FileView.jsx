@@ -55,6 +55,20 @@ function getMutationSelection(mutation) {
   };
 }
 
+function normalizeTreeInfoColors(treeInfo) {
+  if (!treeInfo || typeof treeInfo !== 'object') return {};
+
+  const colors = {};
+  for (const [key, value] of Object.entries(treeInfo)) {
+    if (typeof value !== 'string') continue;
+    const trimmed = value.trim();
+    if (!/^#?[0-9a-fA-F]{6}$/.test(trimmed)) continue;
+    const hex = trimmed.startsWith('#') ? trimmed.slice(1) : trimmed;
+    colors[String(key)] = `#${hex.toUpperCase()}`;
+  }
+  return colors;
+}
+
 /**
  * FileView component - displays loaded file with viewport and position controls.
  * Handles both navigation from LandingPage and direct URL access.
@@ -63,7 +77,7 @@ function FileView() {
   const { file } = useParams();
   const [searchParams] = useSearchParams();
   const deckRef = useRef(null);
-  const appliedInitialTreeEdgeColorsRef = useRef(false);
+  const appliedTreeColorsConfigKeyRef = useRef(null);
 
   const {
     queryFile,
@@ -132,9 +146,9 @@ function FileView() {
   const [treesInWindowCount, setTreesInWindowCount] = useState(0);
   // Per-tree color customization { [treeIndex]: '#hexcolor' }
   const [treeColors, setTreeColors] = useState({});
-  // Per-tree edge/path colors { [treeIndex]: '#hexcolor' } (CSV tree_info defaults)
-  const [treeEdgeColors, setTreeEdgeColors] = useState({});
-  // CSV-only: color edges by tree index (tree_idx)
+  // Backend-provided CSV tree-info colors { [treeIndex]: '#hexcolor' }
+  const [treeInfoColors, setTreeInfoColors] = useState({});
+  // CSV-only: color polygons by tree index (tree_idx)
   const [colorByTree, setColorByTree] = useState(false);
   // Hovered tree index (for list-to-polygon hover sync)
   const [hoveredTreeIndex, setHoveredTreeIndex] = useState(null);
@@ -615,17 +629,22 @@ function FileView() {
     }
   }, [tourOpen, tourActiveStepId, tourCenterTreeIndex, getCenterPolygon, tourTargetTick]);
 
-  // Apply backend-provided per-tree defaults for edge/path colors (CSV only, optional).
+  // Apply backend-provided per-tree colors (CSV only, optional).
   // Backend provides: tsconfig.tree_info = { [treeIndex]: "#RRGGBB" }
-  // Do not override if user already customized edge colors.
+  // Reinitialize only when the loaded file identity changes; user colors are separate.
   useEffect(() => {
-    if (appliedInitialTreeEdgeColorsRef.current) return;
-    const initial = tsconfig?.tree_info;
-    if (!initial || typeof initial !== 'object') return;
-    if (Object.keys(initial).length === 0) return;
-    setTreeEdgeColors(initial);
-    appliedInitialTreeEdgeColorsRef.current = true;
-  }, [tsconfig?.tree_info]);
+    if (!tsconfig) return;
+    const configKey = [
+      tsconfig?.project ?? project ?? '',
+      tsconfig?.sid ?? sid ?? '',
+      tsconfig?.filename ?? filename ?? file ?? ''
+    ].join(':');
+    if (appliedTreeColorsConfigKeyRef.current === configKey) return;
+
+    setTreeInfoColors(normalizeTreeInfoColors(tsconfig?.tree_info));
+    setTreeColors({});
+    appliedTreeColorsConfigKeyRef.current = configKey;
+  }, [file, filename, project, sid, tsconfig]);
 
   // Initialize position when config loads (only if deck hasn't set it yet)
   useEffect(() => {
@@ -947,6 +966,8 @@ function FileView() {
   const effectiveHighlightedMutationTreeIndex = hoveredMutationHighlight?.tree_idx != null
     ? hoveredMutationHighlight.tree_idx
     : highlightedMutationTreeIndex;
+  const activeTreeColors = colorByTree ? treeInfoColors : treeColors;
+  const setActiveTreeColors = colorByTree ? setTreeInfoColors : setTreeColors;
 
   return (
     <div className="h-screen flex min-h-0 overflow-hidden bg-slate-50 relative">
@@ -1026,8 +1047,7 @@ function FileView() {
                 genomePositions: { enabled: true, ...views?.genomePositions },
                 treeTime: { enabled: true, ...views?.treeTime }
               }}
-              colorEdgesByTree={colorByTree}
-              treeEdgeColors={treeEdgeColors}
+              colorEdgesByTree={false}
               highlightedMutationNode={effectiveHighlightedMutationNode}
               highlightedMutationTreeIndex={effectiveHighlightedMutationTreeIndex}
               onGenomicCoordsChange={handleGenomicCoordsChange}
@@ -1037,7 +1057,7 @@ function FileView() {
               onShowingAllTreesChange={handleShowingAllTreesChange}
               onTreesInWindowCountChange={handleTreesInWindowCountChange}
               hoveredTreeIndex={hoveredTreeIndex}
-              polygonOptions={{ treeColors, fillColor: polygonFillColor }}
+              polygonOptions={{ treeColors: activeTreeColors, fillColor: polygonFillColor }}
               compareInsertionColor={compareInsertionColor}
               compareDeletionColor={compareDeletionColor}
               showCompareInsertion={showCompareInsertion}
@@ -1203,10 +1223,8 @@ function FileView() {
             selectedMutationIdentity={selectedMutationIdentity}
             setSelectedMutationIdentity={setSelectedMutationIdentity}
             visibleTrees={visibleTrees}
-            treeColors={treeColors}
-            setTreeColors={setTreeColors}
-            treeEdgeColors={treeEdgeColors}
-            setTreeEdgeColors={setTreeEdgeColors}
+            treeColors={activeTreeColors}
+            setTreeColors={setActiveTreeColors}
             colorByTree={colorByTree}
             setColorByTree={setColorByTree}
             hoveredTreeIndex={hoveredTreeIndex}

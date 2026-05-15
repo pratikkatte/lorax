@@ -157,6 +157,27 @@ class TestCSVLoader:
         assert "right" in df.columns
         assert "time" in df.columns
 
+    def test_csv_tree_info_column_populates_tree_info_config(self, temp_dir):
+        """CSV tree color metadata supports both accepted tree-info headers."""
+        from lorax.loaders.loader import compute_config
+
+        for column_name in ("tree info", "tree_info"):
+            csv_file = temp_dir / f"{column_name.replace(' ', '_')}.csv"
+            csv_file.write_text(
+                f"""genomic_positions,newick,{column_name}
+0,"((A:1,B:1):0);",#F25555
+1000,"((A:1,B:1):0);",#5583F2
+"""
+            )
+
+            df = pd.read_csv(csv_file)
+            config = compute_config(df, str(csv_file), str(temp_dir))
+
+            assert config["tree_info"] == {
+                "0": "#F25555",
+                "1": "#5583F2",
+            }
+
 
 class TestFileContextCaching:
     """Tests for FileContext-based caching."""
