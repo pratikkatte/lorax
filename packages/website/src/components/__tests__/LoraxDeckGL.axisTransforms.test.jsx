@@ -9,6 +9,7 @@ let localDataState;
 let treeDataState;
 let renderDataState;
 let capturedRenderData;
+let mockPanYByWheelDelta;
 
 function createModelMatrix({
   scaleX,
@@ -51,7 +52,7 @@ function expectPathClose(actualPath, expectedPath) {
 vi.mock('@deck.gl/react', async () => {
   const ReactMod = await import('react');
   return {
-    default: ReactMod.forwardRef(({ children }, ref) => {
+    default: ReactMod.forwardRef(({ children, onWheelCapture }, ref) => {
       const deck = {
         getViewports: () => ([
           {
@@ -66,7 +67,11 @@ vi.mock('@deck.gl/react', async () => {
         canvas: { width: 100, height: 50, clientWidth: 100, clientHeight: 50 }
       };
       ReactMod.useImperativeHandle(ref, () => ({ deck }));
-      return <div>{children}</div>;
+      return (
+        <div data-testid="mock-deckgl" onWheelCapture={onWheelCapture}>
+          {children}
+        </div>
+      );
     })
   };
 });
@@ -104,6 +109,7 @@ vi.mock('@lorax/core/src/hooks/useDeckViews.jsx', () => ({
     yzoom: 8,
     viewReset: vi.fn(),
     fitYToBounds: vi.fn(),
+    panYByWheelDelta: mockPanYByWheelDelta,
     genomicCoords: [0, 100],
     setGenomicCoords: vi.fn(),
     coordsReady: true
@@ -165,9 +171,14 @@ vi.mock('@lorax/core/src/components/TreePolygonOverlay.jsx', () => ({
 }));
 
 vi.mock('@lorax/core/src/utils/deckViewConfig.js', () => ({
-  mergeWithDefaults: (config) => config || { ortho: { enabled: true } },
+  mergeWithDefaults: (config) => ({
+    ortho: { enabled: true, x: '5%', y: '5%', width: '95%', height: '95%', ...(config?.ortho || {}) },
+    genomeInfo: { enabled: true, x: '5%', y: '3%', width: '95%', height: '2%', ...(config?.genomeInfo || {}) },
+    genomePositions: { enabled: true, x: '5%', y: '0%', width: '95%', height: '3%', ...(config?.genomePositions || {}) },
+    treeTime: { enabled: true, x: '0%', y: '3%', width: '5%', height: '97%', ...(config?.treeTime || {}) }
+  }),
   validateViewConfig: () => {},
-  getEnabledViews: () => ['ortho']
+  getEnabledViews: () => ['ortho', 'tree-time']
 }));
 
 vi.mock('@lorax/core/src/utils/deckglToSvg.js', () => ({
@@ -179,6 +190,7 @@ import LoraxDeckGL from '@lorax/core/src/components/LoraxDeckGL.jsx';
 describe('LoraxDeckGL canonical local-coordinate mapping', () => {
   beforeEach(() => {
     capturedRenderData = null;
+    mockPanYByWheelDelta = vi.fn();
 
     loraxState = {
       globalBpPerUnit: 1,
@@ -263,6 +275,84 @@ describe('LoraxDeckGL canonical local-coordinate mapping', () => {
     expect(capturedRenderData.highlightData).toHaveLength(1);
     expect(capturedRenderData.highlightData[0].position[0]).toBeCloseTo(103);
     expect(capturedRenderData.highlightData[0].position[1]).toBeCloseTo(0.7);
+  });
+
+  it('pans vertically and prevents deck wheel handling only inside the time axis strip', () => {
+    render(
+      <LoraxDeckGL
+        viewConfig={{
+          ortho: { enabled: true },
+          treeTime: { enabled: true, x: '0%', y: '0%', width: '10%', height: '100%' }
+        }}
+        enableTimeAxisWheelPan
+      />
+    );
+
+    const deck = document.querySelector('[data-testid="mock-deckgl"]');
+    vi.spyOn(deck, 'getBoundingClientRect').mockReturnValue({
+      left: 0,
+      top: 0,
+      width: 100,
+      height: 50,
+      right: 100,
+      bottom: 50,
+      x: 0,
+      y: 0,
+      toJSON: () => {}
+    });
+
+    const wheelEvent = new WheelEvent('wheel', {
+      bubbles: true,
+      cancelable: true,
+      clientX: 5,
+      clientY: 25,
+      deltaX: 0,
+      deltaY: 64
+    });
+
+    deck.dispatchEvent(wheelEvent);
+
+    expect(mockPanYByWheelDelta).toHaveBeenCalledWith(64);
+    expect(wheelEvent.defaultPrevented).toBe(true);
+  });
+
+  it('leaves vertical wheel events outside the time axis strip for normal deck handling', () => {
+    render(
+      <LoraxDeckGL
+        viewConfig={{
+          ortho: { enabled: true },
+          treeTime: { enabled: true, x: '0%', y: '0%', width: '10%', height: '100%' }
+        }}
+        enableTimeAxisWheelPan
+      />
+    );
+
+    const deck = document.querySelector('[data-testid="mock-deckgl"]');
+    vi.spyOn(deck, 'getBoundingClientRect').mockReturnValue({
+      left: 0,
+      top: 0,
+      width: 100,
+      height: 50,
+      right: 100,
+      bottom: 50,
+      x: 0,
+      y: 0,
+      toJSON: () => {}
+    });
+
+    const wheelEvent = new WheelEvent('wheel', {
+      bubbles: true,
+      cancelable: true,
+      clientX: 50,
+      clientY: 25,
+      deltaX: 0,
+      deltaY: 64
+    });
+
+    deck.dispatchEvent(wheelEvent);
+
+    expect(mockPanYByWheelDelta).not.toHaveBeenCalled();
+    expect(wheelEvent.defaultPrevented).toBe(false);
   });
 
   it('maps compare edges using local parent_x/child_x and parent_y/child_y', () => {

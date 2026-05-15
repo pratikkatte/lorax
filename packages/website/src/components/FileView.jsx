@@ -1069,6 +1069,7 @@ function FileView() {
               timeScale={timeScale}
               lockModelMatrix={lockModelMatrix}
               enableLockMaxZoomGuard={ENABLE_MAX_ZOOM_GUARD}
+              enableTimeAxisWheelPan
               onMaxZoomReached={ENABLE_MAX_ZOOM_GUARD ? () => setMaxZoomAlert(true) : undefined}
               onPolygonClick={handlePolygonClick}
               onTipHover={(tip, info, event) => {

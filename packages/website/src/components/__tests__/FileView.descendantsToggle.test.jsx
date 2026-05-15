@@ -159,6 +159,7 @@ describe('FileView descendants-hover setting', () => {
     });
     expect(latestDeckProps?.highlightDescendantsOnHover).toBe(false);
     expect(latestDeckProps?.descendantsHighlightColor).toEqual([56, 189, 248, 255]);
+    expect(latestDeckProps?.enableTimeAxisWheelPan).toBe(true);
 
     await user.click(screen.getByTitle('Settings'));
     await waitFor(() => {

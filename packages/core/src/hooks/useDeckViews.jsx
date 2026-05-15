@@ -428,6 +428,56 @@ export function useDeckViews({
     return true;
   }, []);
 
+  /**
+   * Pan the shared Y axis by a wheel delta measured in screen pixels.
+   * Positive delta moves toward larger normalized Y values.
+   */
+  const panYByWheelDelta = useCallback((deltaY) => {
+    if (!Number.isFinite(deltaY) || deltaY === 0) return false;
+
+    let applied = false;
+    setViewState(prev => {
+      const orthoState = prev?.ortho;
+      if (!orthoState?.target || !orthoState?.zoom) return prev;
+
+      const zoomY = orthoState.zoom?.[1] ?? 0;
+      const currentTargetY = orthoState.target?.[1] ?? 0;
+      const worldDeltaY = deltaY / Math.pow(2, zoomY || 0);
+      const nextTargetY = Math.max(0, Math.min(1, currentTargetY + worldDeltaY));
+
+      if (nextTargetY === currentTargetY) return prev;
+
+      applied = true;
+      const nextState = {
+        ...prev,
+        ortho: {
+          ...orthoState,
+          target: [orthoState.target[0], nextTargetY],
+          zoom: orthoState.zoom
+        }
+      };
+
+      if (prev['tree-time']) {
+        nextState['tree-time'] = {
+          ...prev['tree-time'],
+          target: [prev['tree-time'].target?.[0], nextTargetY],
+          zoom: prev['tree-time'].zoom
+        };
+      }
+
+      return nextState;
+    });
+
+    if (applied) {
+      setYzoom(prev => {
+        const zoomY = viewState?.ortho?.zoom?.[1];
+        return Number.isFinite(zoomY) ? zoomY : prev;
+      });
+    }
+
+    return applied;
+  }, [viewState?.ortho?.zoom]);
+
   return {
     // Existing view management
     views,
@@ -441,6 +491,7 @@ export function useDeckViews({
     setYzoom,
     viewReset,
     fitYToBounds,
+    panYByWheelDelta,
 
     // Genomic coordinates (new)
     genomicCoords,          // [startBp, endBp] | null

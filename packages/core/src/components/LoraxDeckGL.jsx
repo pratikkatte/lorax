@@ -49,6 +49,37 @@ function findPolygonAtPoint(polygons, x, y) {
   return null;
 }
 
+function parsePercent(spec) {
+  if (typeof spec !== 'string') return null;
+  const match = spec.match(/^(\d+(?:\.\d+)?)%$/);
+  if (!match) return null;
+  const ratio = Number.parseFloat(match[1]) / 100;
+  return Number.isFinite(ratio) ? ratio : null;
+}
+
+function getViewRectPx(view, width, height) {
+  if (!view || !Number.isFinite(width) || !Number.isFinite(height)) return null;
+  const xRatio = parsePercent(view.x);
+  const yRatio = parsePercent(view.y);
+  const widthRatio = parsePercent(view.width);
+  const heightRatio = parsePercent(view.height);
+  if (
+    xRatio == null
+    || yRatio == null
+    || widthRatio == null
+    || heightRatio == null
+  ) {
+    return null;
+  }
+
+  return {
+    x: width * xRatio,
+    y: height * yRatio,
+    width: width * widthRatio,
+    height: height * heightRatio
+  };
+}
+
 function getCanvasXYFromDeckEvent(deckRef, info, event) {
   // Prefer deck.gl-provided canvas coords when available.
   const ix = info?.x;
@@ -206,8 +237,11 @@ const LoraxDeckGL = forwardRef(({
   enableLockMaxZoomGuard = false,
   // Called when zoom-in is blocked due to lock-mode max zoom limit
   onMaxZoomReached,
+  // Website-only opt-in: vertical wheel over the time axis pans the shared Y view.
+  enableTimeAxisWheelPan = false,
   ...otherProps
 }, ref) => {
+  const rootRef = useRef(null);
   const deckRef = useRef(null);
 
   const treeEnabled = !intervalsOnly;
@@ -327,6 +361,7 @@ const LoraxDeckGL = forwardRef(({
     yzoom,
     viewReset,
     fitYToBounds,
+    panYByWheelDelta,
     // Genomic coordinates
     genomicCoords,
     setGenomicCoords,
@@ -1149,13 +1184,6 @@ const LoraxDeckGL = forwardRef(({
 
   const orthoViewportPx = useMemo(() => {
     if (!decksize?.width || !decksize?.height) return null;
-    const parsePercent = (spec) => {
-      if (typeof spec !== 'string') return null;
-      const match = spec.match(/^(\d+(?:\.\d+)?)%$/);
-      if (!match) return null;
-      const ratio = Number.parseFloat(match[1]) / 100;
-      return Number.isFinite(ratio) && ratio > 0 ? ratio : null;
-    };
     const widthRatio = parsePercent(viewConfig?.ortho?.width) ?? 1;
     const heightRatio = parsePercent(viewConfig?.ortho?.height) ?? 1;
     const width = decksize.width * widthRatio;
@@ -1316,6 +1344,66 @@ const LoraxDeckGL = forwardRef(({
     debouncedScheduleLockSnapshotCapture();
     externalOnViewStateChange?.(params);
   }, [enableLockMaxZoomGuard, lockModelMatrix, orthoViewportPx, localBins, internalHandleViewStateChange, externalOnViewStateChange, debouncedScheduleLockSnapshotCapture, updateInteractionState, onMaxZoomReached]);
+
+  const handleTimeAxisWheelCapture = useCallback((event) => {
+    if (!enableTimeAxisWheelPan) return;
+    if (!viewConfig?.treeTime?.enabled) return;
+    if (!decksize?.width || !decksize?.height) return;
+
+    const deltaX = event.deltaX || 0;
+    const deltaY = event.deltaY || 0;
+    if (!Number.isFinite(deltaY) || deltaY === 0) return;
+    if (Math.abs(deltaY) < Math.abs(deltaX)) return;
+
+    const bounds = event.currentTarget?.getBoundingClientRect?.();
+    if (!bounds) return;
+
+    const treeTimeRect = getViewRectPx(
+      viewConfig.treeTime,
+      decksize.width,
+      decksize.height
+    );
+    if (!treeTimeRect) return;
+
+    const x = event.clientX - bounds.left;
+    const y = event.clientY - bounds.top;
+    const insideTreeTime =
+      x >= treeTimeRect.x
+      && x <= treeTimeRect.x + treeTimeRect.width
+      && y >= treeTimeRect.y
+      && y <= treeTimeRect.y + treeTimeRect.height;
+
+    if (!insideTreeTime) return;
+
+    event.preventDefault();
+    event.stopImmediatePropagation?.();
+    event.stopPropagation();
+    const applied = panYByWheelDelta?.(deltaY);
+    if (applied !== false) {
+      debouncedScheduleLockSnapshotCapture();
+    }
+  }, [
+    decksize?.height,
+    decksize?.width,
+    debouncedScheduleLockSnapshotCapture,
+    enableTimeAxisWheelPan,
+    panYByWheelDelta,
+    viewConfig?.treeTime
+  ]);
+
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root || !enableTimeAxisWheelPan) return undefined;
+    root.addEventListener('wheel', handleTimeAxisWheelCapture, {
+      capture: true,
+      passive: false
+    });
+    return () => {
+      root.removeEventListener('wheel', handleTimeAxisWheelCapture, {
+        capture: true
+      });
+    };
+  }, [enableTimeAxisWheelPan, handleTimeAxisWheelCapture]);
 
   const handleAfterRender = useCallback(() => {
     if (showPolygons && treeEnabled && onPolygonsAfterRender && deckRef.current?.deck) {
@@ -1492,6 +1580,7 @@ const LoraxDeckGL = forwardRef(({
 
   return (
     <div
+      ref={rootRef}
       style={{ width: '100%', height: '100%', position: 'relative' }}
       onMouseLeave={handlePointerLeave}
       onPointerLeave={handlePointerLeave}
