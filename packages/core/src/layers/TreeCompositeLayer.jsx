@@ -38,7 +38,7 @@ export class TreeCompositeLayer extends CompositeLayer {
     onMutationClick: null,
     hoveredEdgeIndex: null,
     matchingEdgeWidth: 3,
-    descendantEdgeColor: [56, 189, 248, 220],
+    descendantEdgeColor: [94, 177, 155, 220],
     descendantEdgeWidth: 2,
   };
 
@@ -337,13 +337,13 @@ export class TreeCompositeLayer extends CompositeLayer {
         id: `${this.props.id}-highlights`,
         data: highlightData,
         getPosition: d => d.position,
-        getFillColor: [0, 0, 0, 0],  // Transparent fill (hollow)
+        getFillColor: d => d.fillColor || [0, 0, 0, 0],
         getLineColor: d => d.color || [255, 200, 0, 255],
         // Allow per-highlight radius override (e.g. mutation/node highlight)
         getRadius: d => (d?.radius ?? (tipRadius + 1)),
         radiusUnits: 'pixels',
         stroked: true,
-        filled: false,
+        filled: true,
         lineWidthUnits: 'pixels',
         getLineWidth: 2,
         coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,

@@ -34,7 +34,17 @@ vi.mock('../hooks/useTourState', () => ({
 }));
 
 vi.mock('../PositionSlider', () => ({
-  default: () => <div data-testid="position-slider" />
+  default: (props) => (
+    <div data-testid="position-slider">
+      <label htmlFor="position-descendants-toggle">position-descendants-toggle</label>
+      <input
+        id="position-descendants-toggle"
+        type="checkbox"
+        checked={Boolean(props.highlightDescendantsOnHover)}
+        onChange={(e) => props.setHighlightDescendantsOnHover?.(e.target.checked)}
+      />
+    </div>
+  )
 }));
 
 const mockViewportDimensions = {
@@ -64,18 +74,11 @@ vi.mock('../hooks/useViewportDimensions.jsx', () => ({
 vi.mock('../Settings', () => ({
   default: (props) => (
     <div data-testid="settings-panel">
-      <label htmlFor="descendants-toggle">descendants-toggle</label>
-      <input
-        id="descendants-toggle"
-        type="checkbox"
-        checked={Boolean(props.highlightDescendantsOnHover)}
-        onChange={(e) => props.setHighlightDescendantsOnHover?.(e.target.checked)}
-      />
       <label htmlFor="descendants-color">descendants-color</label>
       <input
         id="descendants-color"
         type="color"
-        value="#38bdf8"
+        value="#5eb19b"
         onChange={() => props.setDescendantsHighlightColor?.([255, 0, 0, 255])}
       />
     </div>
@@ -150,7 +153,7 @@ describe('FileView descendants-hover setting', () => {
     mockQueryDetails.mockReset();
   });
 
-  it('passes descendants hover toggle and color to LoraxDeckGL from Settings', async () => {
+  it('passes descendants hover toggle from PositionSlider and color from Settings to LoraxDeckGL', async () => {
     const user = userEvent.setup();
     render(<FileView />);
 
@@ -158,15 +161,10 @@ describe('FileView descendants-hover setting', () => {
       expect(screen.getByTestId('deck')).toBeInTheDocument();
     });
     expect(latestDeckProps?.highlightDescendantsOnHover).toBe(false);
-    expect(latestDeckProps?.descendantsHighlightColor).toEqual([56, 189, 248, 255]);
+    expect(latestDeckProps?.descendantsHighlightColor).toEqual([94, 177, 155, 255]);
     expect(latestDeckProps?.enableTimeAxisWheelPan).toBe(true);
 
-    await user.click(screen.getByTitle('Settings'));
-    await waitFor(() => {
-      expect(screen.getByTestId('settings-panel')).toBeInTheDocument();
-    });
-
-    const toggle = screen.getByLabelText('descendants-toggle');
+    const toggle = screen.getByLabelText('position-descendants-toggle');
     expect(toggle).not.toBeChecked();
 
     await user.click(toggle);
@@ -174,6 +172,13 @@ describe('FileView descendants-hover setting', () => {
     await waitFor(() => {
       expect(latestDeckProps?.highlightDescendantsOnHover).toBe(true);
     });
+
+    await user.click(screen.getByTitle('Settings'));
+    await waitFor(() => {
+      expect(screen.getByTestId('settings-panel')).toBeInTheDocument();
+    });
+
+    expect(screen.queryByLabelText('descendants-toggle')).not.toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText('descendants-color'), { target: { value: '#ff0000' } });
     await waitFor(() => {

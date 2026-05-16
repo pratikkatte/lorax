@@ -119,9 +119,11 @@ function getOrthoLocalXY(deckRef, info, event) {
 const LOCK_VIEW_SNAPSHOT_DEBOUNCE_MS = 150;
 /** Keep interaction mode active briefly after deck reports interaction end. */
 const INTERACTION_SETTLE_MS = 120;
-const DESCENDANT_HIGHLIGHT_COLOR = [56, 189, 248, 255];
+const DESCENDANT_HIGHLIGHT_COLOR = [94, 177, 155, 255];
 const DESCENDANT_EDGE_ALPHA = 220;
 const DESCENDANT_HIGHLIGHT_RADIUS = 4;
+const ANCESTRAL_NODE_HIGHLIGHT_RADIUS = 3;
+const SELECTED_ANCESTRAL_NODE_HIGHLIGHT_RADIUS = 4;
 const DEFAULT_LINEAGE_COLOR = [255, 200, 0, 255];
 
 function normalizeRgbaColor(color, fallback = DEFAULT_LINEAGE_COLOR) {
@@ -153,6 +155,73 @@ function mergeLineageColors(colorsByValue) {
     Math.round(totals[2] / colors.length),
     totals[3]
   ];
+}
+
+function getEdgeParentPosition(renderData, edgeIndex) {
+  if (!renderData || !Number.isInteger(edgeIndex) || edgeIndex < 0) return null;
+  const pathStartIndices = renderData.pathStartIndices;
+  const pathPositions = renderData.pathPositions;
+  if (!pathStartIndices || !pathPositions || edgeIndex >= pathStartIndices.length - 1) return null;
+
+  const coordIndex = pathStartIndices[edgeIndex] * 2;
+  const x = pathPositions[coordIndex];
+  const y = pathPositions[coordIndex + 1];
+  return Number.isFinite(x) && Number.isFinite(y) ? [x, y] : null;
+}
+
+function buildDescendantOverlay({ rootNodeId, descendantLookup, tipData, color }) {
+  const descendantNodesByTree = new Map();
+  const descendantEdgeIndices = new Set();
+
+  for (const [treeIdx, childrenForTree] of descendantLookup.childrenByTree.entries()) {
+    const visited = new Set([rootNodeId]);
+    const stack = [rootNodeId];
+
+    while (stack.length > 0) {
+      const parentId = stack.pop();
+      const childIds = childrenForTree.get(parentId);
+      if (!Array.isArray(childIds) || childIds.length === 0) continue;
+
+      for (const childId of childIds) {
+        const edgeIndex = descendantLookup.edgeIndexByTreeAndPair
+          .get(treeIdx)
+          ?.get(`${parentId}|${childId}`);
+        if (Number.isInteger(edgeIndex)) {
+          descendantEdgeIndices.add(edgeIndex);
+        }
+        if (!visited.has(childId)) {
+          visited.add(childId);
+          stack.push(childId);
+        }
+      }
+    }
+
+    descendantNodesByTree.set(treeIdx, visited);
+  }
+
+  const tipHighlights = [];
+  if (Array.isArray(tipData)) {
+    for (const tip of tipData) {
+      const treeIdx = Number(tip?.tree_idx);
+      const nodeId = Number(tip?.node_id);
+      const position = tip?.position;
+      if (!Number.isFinite(treeIdx) || !Number.isFinite(nodeId) || !Array.isArray(position)) continue;
+      if (!descendantNodesByTree.get(treeIdx)?.has(nodeId)) continue;
+      tipHighlights.push({
+        kind: 'descendant-tip',
+        position,
+        color,
+        radius: DESCENDANT_HIGHLIGHT_RADIUS,
+        tree_idx: treeIdx,
+        node_id: nodeId
+      });
+    }
+  }
+
+  return {
+    tipHighlights,
+    edgeIndices: Array.from(descendantEdgeIndices).sort((a, b) => a - b)
+  };
 }
 
 /**
@@ -249,9 +318,12 @@ const LoraxDeckGL = forwardRef(({
 
   const [lockViewPayload, setLockViewPayload] = useState(null);
   const [isInteracting, setIsInteracting] = useState(false);
+  const [hoveredAncestralEdge, setHoveredAncestralEdge] = useState(null);
   const [hoveredEdgeForDescendants, setHoveredEdgeForDescendants] = useState(null);
   const [hoveredMatchingEdge, setHoveredMatchingEdge] = useState(null);
+  const [selectedAncestralEdge, setSelectedAncestralEdge] = useState(null);
   const interactionSettleTimerRef = useRef(null);
+  const suppressNextPolygonClickRef = useRef(false);
 
   // 1. Merge and validate config
   const viewConfig = mergeWithDefaults(userViewConfig);
@@ -348,6 +420,8 @@ const LoraxDeckGL = forwardRef(({
   useEffect(() => {
     if (!highlightDescendantsOnHover) {
       setHoveredEdgeForDescendants(null);
+      setHoveredAncestralEdge(null);
+      setSelectedAncestralEdge(null);
     }
   }, [highlightDescendantsOnHover]);
 
@@ -516,20 +590,44 @@ const LoraxDeckGL = forwardRef(({
     onTipHover?.(enrichTipHoverPayload(tip), info, event);
   }, [enrichTipHoverPayload, onTipHover]);
 
+  const suppressNextPolygonClick = useCallback(() => {
+    suppressNextPolygonClickRef.current = true;
+    setTimeout(() => {
+      suppressNextPolygonClickRef.current = false;
+    }, 0);
+  }, []);
+
+  const handleTipClick = useCallback((tip, info, event) => {
+    const enrichedTip = enrichTipHoverPayload(tip);
+    if (enrichedTip) {
+      suppressNextPolygonClick();
+    }
+    onTipClick?.(enrichedTip, info, event);
+  }, [enrichTipHoverPayload, onTipClick, suppressNextPolygonClick]);
+
   const handleEdgeHover = useCallback((edge, info, event) => {
     const enrichedEdge = enrichEdgeHoverPayload(edge);
+    const edgeIndex = Number(info?.index);
     if (
       enrichedEdge
       && Number.isFinite(enrichedEdge.tree_idx)
       && Number.isFinite(enrichedEdge.parent_id)
       && Number.isFinite(enrichedEdge.child_id)
     ) {
+      const hoverEdge = {
+        tree_idx: enrichedEdge.tree_idx,
+        parent_id: enrichedEdge.parent_id,
+        child_id: enrichedEdge.child_id,
+        edge_index: Number.isInteger(edgeIndex) ? edgeIndex : null
+      };
+      setHoveredAncestralEdge(highlightDescendantsOnHover ? hoverEdge : null);
       setHoveredMatchingEdge({
         tree_idx: enrichedEdge.tree_idx,
         parent_id: enrichedEdge.parent_id,
         child_id: enrichedEdge.child_id
       });
     } else {
+      setHoveredAncestralEdge(null);
       setHoveredMatchingEdge(null);
     }
 
@@ -542,7 +640,8 @@ const LoraxDeckGL = forwardRef(({
       setHoveredEdgeForDescendants({
         tree_idx: enrichedEdge.tree_idx,
         parent_id: enrichedEdge.parent_id,
-        child_id: enrichedEdge.child_id
+        child_id: enrichedEdge.child_id,
+        edge_index: Number.isInteger(edgeIndex) ? edgeIndex : null
       });
     } else {
       setHoveredEdgeForDescendants(null);
@@ -550,13 +649,41 @@ const LoraxDeckGL = forwardRef(({
     onEdgeHover?.(enrichedEdge, info, event);
   }, [enrichEdgeHoverPayload, highlightDescendantsOnHover, onEdgeHover]);
 
+  const handleEdgeClick = useCallback((edge, info, event) => {
+    const enrichedEdge = enrichEdgeHoverPayload(edge);
+    if (enrichedEdge) {
+      suppressNextPolygonClick();
+    }
+    if (
+      highlightDescendantsOnHover
+      && enrichedEdge
+      && Number.isFinite(enrichedEdge.tree_idx)
+      && Number.isFinite(enrichedEdge.parent_id)
+      && Number.isFinite(enrichedEdge.child_id)
+    ) {
+      setSelectedAncestralEdge({
+        tree_idx: Number(enrichedEdge.tree_idx),
+        parent_id: Number(enrichedEdge.parent_id),
+        child_id: Number(enrichedEdge.child_id)
+      });
+    } else if (!highlightDescendantsOnHover) {
+      setSelectedAncestralEdge(null);
+    }
+
+    onEdgeClick?.(enrichedEdge, info, event);
+  }, [enrichEdgeHoverPayload, highlightDescendantsOnHover, onEdgeClick, suppressNextPolygonClick]);
+
   const handleMutationHover = useCallback((mutation, info, event) => {
     onMutationHover?.(enrichMutationHoverPayload(mutation), info, event);
   }, [enrichMutationHoverPayload, onMutationHover]);
 
   const handleMutationClick = useCallback((mutation, info, event) => {
-    onMutationClick?.(enrichMutationHoverPayload(mutation), info, event);
-  }, [enrichMutationHoverPayload, onMutationClick]);
+    const enrichedMutation = enrichMutationHoverPayload(mutation);
+    if (enrichedMutation) {
+      suppressNextPolygonClick();
+    }
+    onMutationClick?.(enrichedMutation, info, event);
+  }, [enrichMutationHoverPayload, onMutationClick, suppressNextPolygonClick]);
 
   const {
     lockViewPayload: latestLockViewPayload,
@@ -1094,62 +1221,84 @@ const LoraxDeckGL = forwardRef(({
   const computedDescendantHoverOverlay = useMemo(() => {
     const emptyResult = { tipHighlights: [], edgeIndices: [] };
     if (!highlightDescendantsOnHover) return emptyResult;
-    if (!hoveredEdgeForDescendants || !Number.isFinite(hoveredEdgeForDescendants.child_id)) return emptyResult;
-    const tipData = baseRenderData?.tipData;
-    if (!Array.isArray(tipData) || tipData.length === 0) return emptyResult;
+    if (selectedAncestralEdge) return emptyResult;
+    if (!hoveredEdgeForDescendants || !Number.isFinite(hoveredEdgeForDescendants.parent_id)) return emptyResult;
+    const rootNodeId = Number(hoveredEdgeForDescendants.parent_id);
+    return buildDescendantOverlay({
+      rootNodeId,
+      descendantLookup,
+      tipData: baseRenderData?.tipData,
+      color: resolvedDescendantHighlightColor
+    });
+  }, [highlightDescendantsOnHover, selectedAncestralEdge, hoveredEdgeForDescendants, baseRenderData?.tipData, descendantLookup, resolvedDescendantHighlightColor]);
 
-    // Best-effort descendant closure over currently loaded edges only.
-    const descendantNodesByTree = new Map();
-    const descendantEdgeIndices = new Set();
-    const rootNodeId = Number(hoveredEdgeForDescendants.child_id);
+  const computedAncestralSelectionOverlay = useMemo(() => {
+    const emptyResult = { nodeHighlights: [], tipHighlights: [], edgeIndices: [] };
+    if (!highlightDescendantsOnHover) return emptyResult;
+    const edges = baseRenderData?.edgeData;
+    if (!Array.isArray(edges) || edges.length === 0) return emptyResult;
 
-    for (const [treeIdx, childrenForTree] of descendantLookup.childrenByTree.entries()) {
-      const visited = new Set([rootNodeId]);
-      const stack = [rootNodeId];
+    const markerByKey = new Map();
+    const selectedEdgeIndices = new Set();
+    const selectedTipHighlights = [];
 
-      while (stack.length > 0) {
-        const parentId = stack.pop();
-        const childIds = childrenForTree.get(parentId);
-        if (!Array.isArray(childIds) || childIds.length === 0) continue;
+    const addParentMarker = (edgeIndex, edge, selected = false) => {
+      const parentId = Number(edge?.parent_id);
+      const treeIdx = Number(edge?.tree_idx);
+      if (!Number.isFinite(parentId) || !Number.isFinite(treeIdx)) return;
 
-        for (const childId of childIds) {
-          const edgeIndex = descendantLookup.edgeIndexByTreeAndPair
-            .get(treeIdx)
-            ?.get(`${parentId}|${childId}`);
-          if (Number.isInteger(edgeIndex)) {
-            descendantEdgeIndices.add(edgeIndex);
-          }
-          if (!visited.has(childId)) {
-            visited.add(childId);
-            stack.push(childId);
-          }
-        }
-      }
+      const position = getEdgeParentPosition(baseRenderData, edgeIndex);
+      if (!position) return;
 
-      descendantNodesByTree.set(treeIdx, visited);
-    }
-
-    const tipHighlights = [];
-    for (const tip of tipData) {
-      const treeIdx = Number(tip?.tree_idx);
-      const nodeId = Number(tip?.node_id);
-      const position = tip?.position;
-      if (!Number.isFinite(treeIdx) || !Number.isFinite(nodeId) || !Array.isArray(position)) continue;
-      if (!descendantNodesByTree.get(treeIdx)?.has(nodeId)) continue;
-      tipHighlights.push({
+      const markerKey = `${treeIdx}|${parentId}|${position[0]}|${position[1]}`;
+      markerByKey.set(markerKey, {
+        kind: 'ancestral-parent-node',
         position,
         color: resolvedDescendantHighlightColor,
-        radius: DESCENDANT_HIGHLIGHT_RADIUS,
+        fillColor: resolvedDescendantHighlightColor,
+        radius: selected ? SELECTED_ANCESTRAL_NODE_HIGHLIGHT_RADIUS : ANCESTRAL_NODE_HIGHLIGHT_RADIUS,
         tree_idx: treeIdx,
-        node_id: nodeId
+        node_id: parentId,
+        selected
       });
+    };
+
+    if (!selectedAncestralEdge && hoveredAncestralEdge && Number.isInteger(hoveredAncestralEdge.edge_index)) {
+      addParentMarker(hoveredAncestralEdge.edge_index, hoveredAncestralEdge, false);
+    }
+
+    if (
+      selectedAncestralEdge
+      && Number.isFinite(selectedAncestralEdge.parent_id)
+      && Number.isFinite(selectedAncestralEdge.child_id)
+    ) {
+      const selectedParentId = Number(selectedAncestralEdge.parent_id);
+      const selectedDescendants = buildDescendantOverlay({
+        rootNodeId: selectedParentId,
+        descendantLookup,
+        tipData: baseRenderData?.tipData,
+        color: resolvedDescendantHighlightColor
+      });
+      selectedTipHighlights.push(...selectedDescendants.tipHighlights);
+      for (const edgeIndex of selectedDescendants.edgeIndices) {
+        selectedEdgeIndices.add(edgeIndex);
+      }
+
+      for (let edgeIndex = 0; edgeIndex < edges.length; edgeIndex++) {
+        const edge = edges[edgeIndex];
+        const parentId = Number(edge?.parent_id);
+        if (!Number.isFinite(parentId) || parentId !== selectedParentId) continue;
+
+        addParentMarker(edgeIndex, edge, true);
+      }
     }
 
     return {
-      tipHighlights,
-      edgeIndices: Array.from(descendantEdgeIndices).sort((a, b) => a - b)
+      nodeHighlights: Array.from(markerByKey.values()),
+      tipHighlights: selectedTipHighlights,
+      edgeIndices: Array.from(selectedEdgeIndices).sort((a, b) => a - b)
     };
-  }, [highlightDescendantsOnHover, hoveredEdgeForDescendants, baseRenderData?.tipData, descendantLookup, resolvedDescendantHighlightColor]);
+  }, [highlightDescendantsOnHover, baseRenderData, hoveredAncestralEdge, selectedAncestralEdge, descendantLookup, resolvedDescendantHighlightColor]);
 
   // Merge highlight data into render data
   // Multi-value search takes priority over single-value highlight
@@ -1176,12 +1325,24 @@ const LoraxDeckGL = forwardRef(({
       mergedHighlights.push(...computedDescendantHoverOverlay.tipHighlights);
     }
 
+    if (computedAncestralSelectionOverlay.nodeHighlights.length > 0) {
+      mergedHighlights.push(...computedAncestralSelectionOverlay.nodeHighlights);
+    }
+
+    if (computedAncestralSelectionOverlay.tipHighlights.length > 0) {
+      mergedHighlights.push(...computedAncestralSelectionOverlay.tipHighlights);
+    }
+
     if (mergedHighlights.length > 0) {
       result.highlightData = mergedHighlights;
     }
 
-    if (computedDescendantHoverOverlay.edgeIndices.length > 0) {
-      result.descendantEdgeIndices = computedDescendantHoverOverlay.edgeIndices;
+    const descendantEdgeIndices = new Set([
+      ...computedDescendantHoverOverlay.edgeIndices,
+      ...computedAncestralSelectionOverlay.edgeIndices
+    ]);
+    if (descendantEdgeIndices.size > 0) {
+      result.descendantEdgeIndices = Array.from(descendantEdgeIndices).sort((a, b) => a - b);
     }
 
     if (matchingEdgeIndices.length > 0) {
@@ -1199,7 +1360,7 @@ const LoraxDeckGL = forwardRef(({
     }
 
     return result;
-  }, [baseRenderData, computedHighlightData, computedMultiHighlightData, computedMutationHighlightData, computedDescendantHoverOverlay, matchingEdgeIndices, computedLineageData, computedCompareEdgesData]);
+  }, [baseRenderData, computedHighlightData, computedMultiHighlightData, computedMutationHighlightData, computedDescendantHoverOverlay, computedAncestralSelectionOverlay, matchingEdgeIndices, computedLineageData, computedCompareEdgesData]);
 
   // 7. Compute genome position tick marks
   const genomePositions = useGenomePositions(genomicCoords);
@@ -1307,9 +1468,9 @@ const LoraxDeckGL = forwardRef(({
     ],
     // Tree interactions
     onTipHover: handleTipHover,
-    onTipClick,
+    onTipClick: handleTipClick,
     onEdgeHover: handleEdgeHover,
-    onEdgeClick,
+    onEdgeClick: handleEdgeClick,
     onMutationHover: handleMutationHover,
     onMutationClick: handleMutationClick,
     enableTreeLayers: treeEnabled && treeLayersEnabled
@@ -1477,6 +1638,10 @@ const LoraxDeckGL = forwardRef(({
   const handleDeckClick = useCallback((info, event) => {
     if (!showPolygons || !treeEnabled) return;
     if (lockModelMatrix) return; // no polygon click when locked-in
+    if (suppressNextPolygonClickRef.current) {
+      suppressNextPolygonClickRef.current = false;
+      return;
+    }
     // If a deck object was picked, its layer handler should handle it.
     if (info?.object) return;
     const xy = getOrthoLocalXY(deckRef, info, event);

@@ -10,6 +10,8 @@ let treeDataState;
 let renderDataState;
 let capturedRenderData;
 let capturedDeckLayersArgs;
+let capturedDeckProps;
+let polygonState;
 
 function createModelMatrix({ scaleX, translateX, scaleY = 1, translateY = 0 }) {
   const m = new Array(16).fill(0);
@@ -23,7 +25,9 @@ function createModelMatrix({ scaleX, translateX, scaleY = 1, translateY = 0 }) {
 vi.mock('@deck.gl/react', async () => {
   const ReactMod = await import('react');
   return {
-    default: ReactMod.forwardRef(({ children }, ref) => {
+    default: ReactMod.forwardRef((props, ref) => {
+      const { children } = props;
+      capturedDeckProps = props;
       const deck = {
         getViewports: () => ([{ id: 'ortho', width: 100, height: 50, x: 0, y: 0, unproject: ([x, y]) => [x, y, 0] }]),
         canvas: { width: 100, height: 50, clientWidth: 100, clientHeight: 50 }
@@ -95,7 +99,7 @@ vi.mock('@lorax/core/src/hooks/useTimePositions.jsx', () => ({
 
 vi.mock('@lorax/core/src/hooks/useTreePolygons.jsx', () => ({
   useTreePolygons: () => ({
-    polygons: [],
+    polygons: polygonState.polygons,
     hoveredPolygon: null,
     setHoveredPolygon: vi.fn(),
     isReady: true,
@@ -142,6 +146,8 @@ describe('LoraxDeckGL descendant hover overlays', () => {
   beforeEach(() => {
     capturedRenderData = null;
     capturedDeckLayersArgs = null;
+    capturedDeckProps = null;
+    polygonState = { polygons: [] };
     loraxState = {
       globalBpPerUnit: 1,
       genomeLength: 1000,
@@ -204,17 +210,171 @@ describe('LoraxDeckGL descendant hover overlays', () => {
     };
   });
 
-  it('computes descendant overlays across visible trees when enabled', async () => {
+  it('computes descendant overlays from the hovered edge parent when enabled', async () => {
     render(<LoraxDeckGL viewConfig={{ ortho: { enabled: true } }} highlightDescendantsOnHover />);
     await act(async () => {
       capturedDeckLayersArgs.onEdgeHover?.({ tree_idx: 0, parent_id: 7, child_id: 9 }, { index: 0 }, null);
     });
 
-    expect(capturedRenderData.descendantEdgeIndices).toEqual([1, 3]);
+    expect(capturedRenderData.descendantEdgeIndices).toEqual([0, 1]);
     const descendantTips = (capturedRenderData.highlightData || []).filter(
-      (item) => item?.color?.[0] === 56 && item?.color?.[1] === 189 && item?.color?.[2] === 248
+      (item) => item?.kind === 'descendant-tip'
     );
-    expect(descendantTips.map((item) => item.node_id).sort((a, b) => a - b)).toEqual([12, 15]);
+    expect(descendantTips.map((item) => item.node_id).sort((a, b) => a - b)).toEqual([12]);
+  });
+
+  it('highlights the hovered edge parent node with a dot', async () => {
+    render(<LoraxDeckGL viewConfig={{ ortho: { enabled: true } }} highlightDescendantsOnHover />);
+    await act(async () => {
+      capturedDeckLayersArgs.onEdgeHover?.({ tree_idx: 0, parent_id: 7, child_id: 9 }, { index: 0 }, null);
+    });
+
+    const parentMarkers = (capturedRenderData.highlightData || []).filter(
+      (item) => item?.kind === 'ancestral-parent-node'
+    );
+    expect(parentMarkers).toEqual([
+      expect.objectContaining({
+        node_id: 7,
+        tree_idx: 0,
+        position: [0, 0],
+        fillColor: [94, 177, 155, 255]
+      })
+    ]);
+  });
+
+  it('does not highlight the hovered edge parent node when descendant highlighting is disabled', async () => {
+    render(<LoraxDeckGL viewConfig={{ ortho: { enabled: true } }} />);
+
+    await act(async () => {
+      capturedDeckLayersArgs.onEdgeHover?.({ tree_idx: 0, parent_id: 7, child_id: 9 }, { index: 0 }, null);
+    });
+
+    const parentMarkers = (capturedRenderData.highlightData || []).filter(
+      (item) => item?.kind === 'ancestral-parent-node'
+    );
+    expect(parentMarkers).toHaveLength(0);
+  });
+
+  it('keeps the clicked parent node, edge, and descendants selected after hover clears', async () => {
+    render(<LoraxDeckGL viewConfig={{ ortho: { enabled: true } }} highlightDescendantsOnHover />);
+
+    await act(async () => {
+      capturedDeckLayersArgs.onEdgeClick?.({ tree_idx: 0, parent_id: 7, child_id: 9 }, { index: 0 }, null);
+    });
+    await act(async () => {
+      capturedDeckLayersArgs.onEdgeHover?.(null, null, null);
+    });
+
+    expect(capturedRenderData.descendantEdgeIndices).toEqual([0, 1]);
+    const parentMarkers = (capturedRenderData.highlightData || []).filter(
+      (item) => item?.kind === 'ancestral-parent-node'
+    );
+    expect(parentMarkers.map((item) => item.node_id)).toEqual([7]);
+    const descendantTips = (capturedRenderData.highlightData || []).filter(
+      (item) => item?.kind === 'descendant-tip'
+    );
+    expect(descendantTips.map((item) => item.node_id)).toEqual([12]);
+  });
+
+  it('keeps selected descendants while hovering over other ancestral edges', async () => {
+    render(<LoraxDeckGL viewConfig={{ ortho: { enabled: true } }} highlightDescendantsOnHover />);
+
+    await act(async () => {
+      capturedDeckLayersArgs.onEdgeClick?.({ tree_idx: 0, parent_id: 7, child_id: 9 }, { index: 0 }, null);
+    });
+    await act(async () => {
+      capturedDeckLayersArgs.onEdgeHover?.({ tree_idx: 1, parent_id: 4, child_id: 9 }, { index: 2 }, null);
+    });
+
+    expect(capturedRenderData.descendantEdgeIndices).toEqual([0, 1]);
+    const parentMarkers = (capturedRenderData.highlightData || []).filter(
+      (item) => item?.kind === 'ancestral-parent-node'
+    );
+    expect(parentMarkers.map((item) => item.node_id)).toEqual([7]);
+    const descendantTips = (capturedRenderData.highlightData || []).filter(
+      (item) => item?.kind === 'descendant-tip'
+    );
+    expect(descendantTips.map((item) => item.node_id)).toEqual([12]);
+  });
+
+  it('does not keep clicked ancestry selected when descendant highlighting is disabled', async () => {
+    render(<LoraxDeckGL viewConfig={{ ortho: { enabled: true } }} />);
+
+    await act(async () => {
+      capturedDeckLayersArgs.onEdgeClick?.({ tree_idx: 0, parent_id: 7, child_id: 9 }, { index: 0 }, null);
+    });
+
+    expect(capturedRenderData.descendantEdgeIndices).toBeUndefined();
+    const ancestryHighlights = (capturedRenderData.highlightData || []).filter(
+      (item) => item?.kind === 'ancestral-parent-node' || item?.kind === 'descendant-tip'
+    );
+    expect(ancestryHighlights).toHaveLength(0);
+  });
+
+  it('does not trigger polygon click handling after an edge click', async () => {
+    const onPolygonClick = vi.fn();
+    polygonState.polygons = [
+      {
+        key: 'tree-0',
+        treeIndex: 0,
+        vertices: [[0, 0], [20, 0], [20, 20], [0, 20]]
+      }
+    ];
+
+    render(
+      <LoraxDeckGL
+        viewConfig={{ ortho: { enabled: true } }}
+        showPolygons
+        onPolygonClick={onPolygonClick}
+      />
+    );
+
+    await act(async () => {
+      capturedDeckLayersArgs.onEdgeClick?.({ tree_idx: 0, parent_id: 7, child_id: 9 }, { index: 0 }, null);
+      capturedDeckProps.onClick?.(
+        { object: null, x: 10, y: 10, viewport: { id: 'ortho', x: 0, y: 0 } },
+        null
+      );
+    });
+
+    expect(onPolygonClick).not.toHaveBeenCalled();
+  });
+
+  it('recomputes the selected parent node and edge from new render data', async () => {
+    const { rerender } = render(<LoraxDeckGL viewConfig={{ ortho: { enabled: true } }} highlightDescendantsOnHover />);
+
+    await act(async () => {
+      capturedDeckLayersArgs.onEdgeClick?.({ tree_idx: 0, parent_id: 7, child_id: 9 }, { index: 0 }, null);
+    });
+
+    renderDataState.renderData = {
+      ...renderDataState.renderData,
+      pathPositions: new Float64Array([
+        20, 5, 21, 5, 21, 6,
+        30, 5, 31, 5, 31, 6
+      ]),
+      pathStartIndices: new Uint32Array([0, 3, 6]),
+      edgeData: [
+        { tree_idx: 5, parent_id: 7, child_id: 9 },
+        { tree_idx: 5, parent_id: 8, child_id: 9 }
+      ],
+      edgeCount: 2,
+      tipData: []
+    };
+
+    rerender(<LoraxDeckGL viewConfig={{ ortho: { enabled: true } }} highlightDescendantsOnHover />);
+
+    expect(capturedRenderData.descendantEdgeIndices).toEqual([0]);
+    const parentMarkers = (capturedRenderData.highlightData || []).filter(
+      (item) => item?.kind === 'ancestral-parent-node'
+    );
+    expect(parentMarkers).toEqual([
+      expect.objectContaining({
+        node_id: 7,
+        tree_idx: 5,
+        position: [20, 5]
+      })
+    ]);
   });
 
   it('highlights the same hovered edge in other visible trees', async () => {
@@ -336,14 +496,14 @@ describe('LoraxDeckGL descendant hover overlays', () => {
     await act(async () => {
       capturedDeckLayersArgs.onEdgeHover?.({ tree_idx: 0, parent_id: 7, child_id: 9 }, { index: 0 }, null);
     });
-    expect(capturedRenderData.descendantEdgeIndices).toEqual([1, 3]);
+    expect(capturedRenderData.descendantEdgeIndices).toEqual([0, 1]);
 
     await act(async () => {
       capturedDeckLayersArgs.onEdgeHover?.(null, null, null);
     });
     expect(capturedRenderData.descendantEdgeIndices).toBeUndefined();
     const descendantTips = (capturedRenderData.highlightData || []).filter(
-      (item) => item?.color?.[0] === 56 && item?.color?.[1] === 189 && item?.color?.[2] === 248
+      (item) => item?.kind === 'descendant-tip'
     );
     expect(descendantTips).toHaveLength(0);
   });
@@ -356,7 +516,7 @@ describe('LoraxDeckGL descendant hover overlays', () => {
 
     expect(capturedRenderData.descendantEdgeIndices).toBeUndefined();
     const descendantTips = (capturedRenderData.highlightData || []).filter(
-      (item) => item?.color?.[0] === 56 && item?.color?.[1] === 189 && item?.color?.[2] === 248
+      (item) => item?.kind === 'descendant-tip'
     );
     expect(descendantTips).toHaveLength(0);
   });
@@ -374,7 +534,7 @@ describe('LoraxDeckGL descendant hover overlays', () => {
     });
 
     const descendantTips = (capturedRenderData.highlightData || []).filter((item) => item?.node_id === 12 || item?.node_id === 15);
-    expect(descendantTips).toHaveLength(2);
+    expect(descendantTips).toHaveLength(1);
     expect(descendantTips.every((item) => item.color[0] === 255 && item.color[1] === 0 && item.color[2] === 0)).toBe(true);
     expect(capturedDeckLayersArgs.descendantEdgeColor).toEqual([255, 0, 0, 255]);
   });

@@ -84,6 +84,40 @@ describe('PositionSlider lock view toggle', () => {
     );
   });
 
+  it('renders descendants switch with tooltip and toggles on click', async () => {
+    const user = userEvent.setup();
+    const setHighlightDescendantsOnHover = vi.fn();
+
+    render(
+      <MemoryRouter>
+        <PositionSlider
+          filename="test.trees"
+          genomeLength={1000}
+          value={[0, 100]}
+          onChange={vi.fn()}
+          onResetY={vi.fn()}
+          project={null}
+          tsconfig={{}}
+          highlightDescendantsOnHover={false}
+          setHighlightDescendantsOnHover={setHighlightDescendantsOnHover}
+        />
+      </MemoryRouter>
+    );
+
+    const descendantsSwitch = screen.getByRole('switch', {
+      name: /highlight descendants/i,
+    });
+    expect(descendantsSwitch).toHaveAttribute('aria-checked', 'false');
+
+    await user.click(descendantsSwitch);
+    expect(setHighlightDescendantsOnHover).toHaveBeenCalledWith(true);
+
+    await user.hover(screen.getByLabelText('Explain Highlight descendants'));
+    expect(screen.getByRole('tooltip')).toHaveTextContent(
+      /highlights descendant edges and tips/i
+    );
+  });
+
   it('disables lock before applying position change when lock is on', async () => {
     const user = userEvent.setup();
     const callOrder = [];

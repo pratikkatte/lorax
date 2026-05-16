@@ -21,8 +21,6 @@ interface SettingsProps {
   setShowCompareDeletion: (show: boolean) => void;
   edgeColor: RgbaColor;
   setEdgeColor: (color: RgbaColor) => void;
-  highlightDescendantsOnHover: boolean;
-  setHighlightDescendantsOnHover: (show: boolean) => void;
   descendantsHighlightColor: RgbaColor;
   setDescendantsHighlightColor: (color: RgbaColor) => void;
 }
@@ -66,8 +64,6 @@ const Settings: React.FC<SettingsProps> = ({
   setShowCompareDeletion,
   edgeColor,
   setEdgeColor,
-  highlightDescendantsOnHover,
-  setHighlightDescendantsOnHover,
   descendantsHighlightColor,
   setDescendantsHighlightColor
 }) => {
@@ -242,18 +238,12 @@ const Settings: React.FC<SettingsProps> = ({
           <div className="border-l-4 border-slate-400 pl-3 pr-4 pt-4 pb-3">
             <h3 className="text-sm font-semibold text-slate-700 tracking-tight">Edge Hover Descendants</h3>
             <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-              Highlight descendant edges and tips on hover using currently loaded tree data.
+              Color used for descendant edge, tip, and ancestral parent highlights.
             </p>
           </div>
           <div className="px-4 pb-4 pt-1">
-            <label className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2.5 transition-colors hover:bg-slate-100/80 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={highlightDescendantsOnHover}
-                onChange={(e) => setHighlightDescendantsOnHover(e.target.checked)}
-                className="rounded border-slate-300 text-slate-700 focus:ring-slate-400"
-              />
-              <span className="text-sm font-medium text-slate-600">Highlight descendants on edge hover</span>
+            <label className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2.5 transition-colors hover:bg-slate-100/80">
+              <span className="text-sm font-medium text-slate-600">Highlight color</span>
               <input
                 type="color"
                 value={rgbToHex(descendantsHighlightColor[0], descendantsHighlightColor[1], descendantsHighlightColor[2])}

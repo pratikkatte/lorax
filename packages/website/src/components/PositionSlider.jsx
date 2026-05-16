@@ -101,7 +101,9 @@ export default function PositionSlider({
   project,
   tsconfig,
   lockModelMatrix = false,
-  setLockModelMatrix = () => {}
+  setLockModelMatrix = () => {},
+  highlightDescendantsOnHover = false,
+  setHighlightDescendantsOnHover = () => {}
 }) {
   const { compareMode = false, setCompareMode } = useLorax();
   const [, setSearchParams] = useSearchParams();
@@ -324,6 +326,37 @@ export default function PositionSlider({
           </button>
           <InfoTooltipButton label="Compare topology" tooltipId="compare-topology-tooltip">
             Highlights added and removed edges between adjacent genealogies so topology changes are easier to spot.
+          </InfoTooltipButton>
+        </div>
+
+        <div
+          data-tour="viewer-highlight-descendants"
+          className="flex items-center gap-1.5"
+        >
+          <button
+            type="button"
+            role="switch"
+            aria-checked={highlightDescendantsOnHover}
+            onClick={() => setHighlightDescendantsOnHover?.(!highlightDescendantsOnHover)}
+            title="Highlight descendant edges and tips when hovering or selecting an ancestral edge"
+            className="flex items-center gap-2 cursor-pointer group"
+          >
+            <span className="text-xs text-slate-500 group-hover:text-slate-600 tracking-wide select-none transition-colors">
+              Highlight descendants
+            </span>
+            <span
+              className={`relative block w-8 h-4 rounded-full transition-colors flex-shrink-0 ${highlightDescendantsOnHover
+                ? 'bg-teal-600'
+                : 'bg-slate-200'
+              }`}
+            >
+              <span
+                className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow-sm transition-transform ${highlightDescendantsOnHover ? 'left-[18px]' : 'left-0.5'}`}
+              />
+            </span>
+          </button>
+          <InfoTooltipButton label="Highlight descendants" tooltipId="highlight-descendants-tooltip">
+            Highlights descendant edges and tips from the hovered or selected ancestral edge while you inspect nearby genomic windows.
           </InfoTooltipButton>
         </div>
 
