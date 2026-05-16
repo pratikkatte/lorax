@@ -12,7 +12,7 @@ import {
   buildLoraxJBrowseTrack,
   getDefaultJBrowseLocation,
   getJBrowseAssembly,
-  normalizeJBrowseAssemblyName
+  resolveJBrowseAssemblyName
 } from '../config/jbrowseConfig.js';
 
 function JBrowseFileView() {
@@ -22,7 +22,7 @@ function JBrowseFileView() {
 
   const project = searchParams.get('project') || '1000Genomes';
   const requestedAssembly = searchParams.get('assembly');
-  const assemblyName = normalizeJBrowseAssemblyName(requestedAssembly, project);
+  const assemblyName = resolveJBrowseAssemblyName(requestedAssembly, project);
   const sid = searchParams.get('sid') || undefined;
   const genomiccoordstart = searchParams.get('genomiccoordstart');
   const genomiccoordend = searchParams.get('genomiccoordend');
@@ -48,7 +48,7 @@ function JBrowseFileView() {
   }, [currentFile, genomiccoordend, genomiccoordstart, project, sid]);
 
   const viewState = useMemo(() => {
-    if (!currentFile || !loraxSid) return null;
+    if (!currentFile || !loraxSid || !assemblyName) return null;
 
     const track = buildLoraxJBrowseTrack({
       project,
@@ -78,6 +78,51 @@ function JBrowseFileView() {
     return (
       <div className="grid h-screen place-items-center bg-slate-50 text-slate-600">
         Missing file.
+      </div>
+    );
+  }
+
+  if (!assemblyName) {
+    return (
+      <div className="flex h-screen min-h-0 flex-col bg-white text-slate-900">
+        <header className="flex min-h-[56px] items-center justify-between gap-4 border-b border-slate-200 bg-white px-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <Link
+              to="/"
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+              title="Back to projects"
+              aria-label="Back to projects"
+            >
+              <LuArrowLeft aria-hidden="true" />
+            </Link>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                <LuDna className="shrink-0 text-emerald-600" aria-hidden="true" />
+                <span className="truncate">{currentFile}</span>
+              </div>
+              <p className="truncate text-xs text-slate-500">
+                {project} · {location}
+              </p>
+            </div>
+          </div>
+          <Link
+            to={loraxRoute}
+            className="inline-flex shrink-0 items-center justify-center rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-900"
+          >
+            Lorax viewer
+          </Link>
+        </header>
+
+        <main className="grid min-h-0 flex-1 place-items-center bg-slate-50 px-6 text-center">
+          <div>
+            <h1 className="text-base font-semibold text-slate-900">
+              No JBrowse assembly is configured for this project.
+            </h1>
+            <p className="mt-2 max-w-md text-sm text-slate-600">
+              Open this file in Lorax, or provide an assembly explicitly in the JBrowse URL.
+            </p>
+          </div>
+        </main>
       </div>
     );
   }

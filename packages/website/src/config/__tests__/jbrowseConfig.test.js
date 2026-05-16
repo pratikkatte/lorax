@@ -15,6 +15,13 @@ describe('jbrowseConfig helpers', () => {
     })).toBe('/jbrowse/1kg_chr2.trees.tsz?project=1000Genomes&assembly=hg19');
   });
 
+  it('does not add the default assembly to other projects', () => {
+    expect(buildJBrowseRoute({
+      project: 'demo',
+      file: 'example_chr2.trees.tsz'
+    })).toBe('/jbrowse/example_chr2.trees.tsz?project=demo');
+  });
+
   it('infers chromosome names from supported filenames', () => {
     expect(inferChromosomeFromFilename('1kg_chr2.trees.tsz')).toBe('chr2');
     expect(inferChromosomeFromFilename('cohort_chrX.trees')).toBe('chrX');

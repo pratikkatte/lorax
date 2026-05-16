@@ -1,7 +1,7 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   createViewState: vi.fn((options) => ({ options })),
@@ -31,6 +31,10 @@ vi.mock('@lorax/core', () => ({
 import JBrowseFileView from '../JBrowseFileView.jsx';
 
 describe('JBrowseFileView', () => {
+  beforeEach(() => {
+    mocks.createViewState.mockClear();
+  });
+
   it('creates an embedded JBrowse view with hg19, chr2, LoraxPlugin, and LoraxTrack', () => {
     render(
       <MemoryRouter initialEntries={['/jbrowse/1kg_chr2.trees.tsz?project=1000Genomes']}>
@@ -65,5 +69,19 @@ describe('JBrowseFileView', () => {
       type: 'LoraxTrack',
       configuration: options.tracks[0].trackId
     });
+  });
+
+  it('does not create a JBrowse view for projects without a configured assembly', () => {
+    render(
+      <MemoryRouter initialEntries={['/jbrowse/erato-sara_chr2.csv?project=Heliconius&genomiccoordstart=10790402&genomiccoordend=10814152']}>
+        <Routes>
+          <Route path="/jbrowse/:file" element={<JBrowseFileView />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    expect(screen.queryByTestId('jbrowse-view')).not.toBeInTheDocument();
+    expect(screen.getByText(/no jbrowse assembly is configured/i)).toBeInTheDocument();
+    expect(mocks.createViewState).not.toHaveBeenCalled();
   });
 });

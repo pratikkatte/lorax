@@ -108,6 +108,12 @@ export function normalizeJBrowseAssemblyName(assembly, project) {
   return JBROWSE_ASSEMBLIES[candidate] ? candidate : DEFAULT_JBROWSE_ASSEMBLY;
 }
 
+export function resolveJBrowseAssemblyName(assembly, project) {
+  const candidate = assembly || PROJECT_ASSEMBLY_DEFAULTS[project];
+  if (!candidate) return null;
+  return JBROWSE_ASSEMBLIES[candidate] ? candidate : DEFAULT_JBROWSE_ASSEMBLY;
+}
+
 export function getJBrowseAssembly(assembly, project) {
   return JBROWSE_ASSEMBLIES[normalizeJBrowseAssemblyName(assembly, project)];
 }
@@ -164,7 +170,8 @@ export function buildJBrowseRoute({
 
   const params = new URLSearchParams();
   if (project) params.set('project', project);
-  params.set('assembly', normalizeJBrowseAssemblyName(assembly, project));
+  const routeAssembly = resolveJBrowseAssemblyName(assembly, project);
+  if (routeAssembly) params.set('assembly', routeAssembly);
   if (genomiccoordstart !== undefined && genomiccoordstart !== null) {
     params.set('genomiccoordstart', String(genomiccoordstart));
   }
