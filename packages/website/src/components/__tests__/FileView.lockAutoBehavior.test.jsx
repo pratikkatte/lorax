@@ -73,6 +73,8 @@ vi.mock('../PositionSlider', () => ({
 const mockQueryFile = vi.fn();
 const mockHandleConfigUpdate = vi.fn();
 const mockQueryDetails = vi.fn();
+const mockViewAdjustY = vi.fn();
+let emitInitialTreeCount = false;
 
 vi.mock('@lorax/core', async () => {
   const ReactMod = await import('react');
@@ -118,9 +120,14 @@ vi.mock('@lorax/core', async () => {
     LoraxDeckGL: ReactMod.forwardRef((props, ref) => {
       ReactMod.useImperativeHandle(ref, () => ({
         setGenomicCoords: vi.fn(),
-        viewAdjustY: vi.fn(),
+        viewAdjustY: mockViewAdjustY,
         getDeck: vi.fn()
       }));
+      ReactMod.useEffect(() => {
+        if (emitInitialTreeCount) {
+          props.onTreesInWindowCountChange?.(5);
+        }
+      }, [props]);
       return (
         <div>
           <button onClick={() => props.onShowingAllTreesChange?.(true)}>showing-true</button>
@@ -141,6 +148,25 @@ describe('FileView lock auto behavior', () => {
     mockQueryFile.mockReset();
     mockHandleConfigUpdate.mockReset();
     mockQueryDetails.mockReset();
+    mockViewAdjustY.mockReset();
+    emitInitialTreeCount = false;
+  });
+
+  it('automatically resets the vertical view once when the file loads', async () => {
+    render(<FileView />);
+
+    await waitFor(() => expect(mockViewAdjustY).toHaveBeenCalledTimes(1));
+  });
+
+  it('retries the initial vertical reset until tree bounds are available', async () => {
+    emitInitialTreeCount = true;
+    mockViewAdjustY
+      .mockReturnValueOnce(false)
+      .mockReturnValueOnce(true);
+
+    render(<FileView />);
+
+    await waitFor(() => expect(mockViewAdjustY).toHaveBeenCalledTimes(2));
   });
 
   it('auto-enables on showingAllTrees with <=10 trees and auto-disables when trees exceed 10', async () => {

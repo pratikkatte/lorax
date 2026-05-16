@@ -23,6 +23,14 @@ import { viewerTourNarrationById } from '../data/viewerTourNarration';
 import { buildJBrowseRoute } from '../config/jbrowseConfig.js';
 
 const HOVER_DETAILS_DEBOUNCE_MS = 180;
+const INITIAL_VIEW_RESET_RETRY_MS = 50;
+const INITIAL_VIEW_RESET_MAX_ATTEMPTS = 30;
+
+const isJBrowseFileViewEnabled = (project, presetFeature) => {
+  const normalizedProject = String(project || '').toLowerCase();
+  const normalizedPreset = String(presetFeature || '').toLowerCase();
+  return normalizedProject !== 'heliconius' && !normalizedPreset.startsWith('heliconius_');
+};
 
 function appendMetadataRows(rows, metadata, prefix, limit = 4) {
   if (!metadata || typeof metadata !== 'object') return;
@@ -78,6 +86,8 @@ function FileView() {
   const [searchParams] = useSearchParams();
   const deckRef = useRef(null);
   const appliedTreeColorsConfigKeyRef = useRef(null);
+  const initialViewResetKeyRef = useRef(null);
+  const initialViewResetAttemptRef = useRef({ key: null, count: 0 });
 
   const {
     queryFile,
@@ -94,6 +104,7 @@ function FileView() {
   } = useLorax();
 
   const [loading, setLoading] = useState(false);
+  const [initialViewResetRetryTick, setInitialViewResetRetryTick] = useState(0);
   const [error, setError] = useState(null);
   const [genomicPosition, setGenomicPosition] = useState(null); // [start, end] - synced with deck
   const [statusMessage, setStatusMessage] = useState(null);
@@ -319,15 +330,24 @@ function FileView() {
   const sid = searchParams.get('sid');
   const genomiccoordstart = searchParams.get('genomiccoordstart');
   const genomiccoordend = searchParams.get('genomiccoordend');
+  const presetFeature = searchParams.get('presetfeature');
 
-  const jbrowseRoute = useMemo(() => buildJBrowseRoute({
-    project,
-    file: filename || file,
-    sid,
-    genomiccoordstart: genomicPosition?.[0],
-    genomiccoordend: genomicPosition?.[1]
-  }), [file, filename, genomicPosition, project, sid]);
-  const isJBrowseEnabled = Boolean(jbrowseRoute && jbrowseRoute !== '/');
+  const canShowJBrowseButton = isJBrowseFileViewEnabled(project, presetFeature);
+  const jbrowseRoute = useMemo(() => canShowJBrowseButton
+    ? buildJBrowseRoute({
+        project,
+        file: filename || file,
+        sid,
+        genomiccoordstart: genomicPosition?.[0],
+        genomiccoordend: genomicPosition?.[1]
+      })
+    : '/', [canShowJBrowseButton, file, filename, genomicPosition, project, sid]);
+  const isJBrowseEnabled = canShowJBrowseButton && Boolean(jbrowseRoute && jbrowseRoute !== '/');
+  const initialViewResetKey = useMemo(() => {
+    const fileId = tsconfig?.file_path || tsconfig?.filename || filename || file;
+    if (!fileId) return null;
+    return `${fileId}:${tsconfig?.genome_length ?? genomeLength ?? ''}`;
+  }, [file, filename, genomeLength, tsconfig?.file_path, tsconfig?.filename, tsconfig?.genome_length]);
 
   const tourSteps = useMemo(() => {
     const advancedStepsEnabled = false;
@@ -781,6 +801,51 @@ function FileView() {
   useEffect(() => {
     treeIsLoadingRef.current = treeIsLoading;
   }, [treeIsLoading]);
+
+  useEffect(() => {
+    if (!initialViewResetKey || loading || error || !tsconfig || treeIsLoading) return;
+    if (initialViewResetKeyRef.current === initialViewResetKey) return;
+
+    if (initialViewResetAttemptRef.current.key !== initialViewResetKey) {
+      initialViewResetAttemptRef.current = { key: initialViewResetKey, count: 0 };
+    }
+
+    const scheduleFrame = window.requestAnimationFrame || ((callback) => window.setTimeout(callback, 0));
+    const cancelFrame = window.cancelAnimationFrame || window.clearTimeout;
+    let retryTimerId = null;
+
+    const scheduleRetry = () => {
+      const attempts = initialViewResetAttemptRef.current.count + 1;
+      initialViewResetAttemptRef.current = { key: initialViewResetKey, count: attempts };
+      if (attempts >= INITIAL_VIEW_RESET_MAX_ATTEMPTS) return;
+
+      retryTimerId = window.setTimeout(() => {
+        setInitialViewResetRetryTick((tick) => tick + 1);
+      }, INITIAL_VIEW_RESET_RETRY_MS);
+    };
+
+    const frameId = scheduleFrame(() => {
+      const resetInitialView = deckRef.current?.viewAdjustY;
+      if (typeof resetInitialView !== 'function') {
+        scheduleRetry();
+        return;
+      }
+
+      const resetResult = resetInitialView();
+      if (resetResult === false) {
+        scheduleRetry();
+        return;
+      }
+      initialViewResetKeyRef.current = initialViewResetKey;
+    });
+
+    return () => {
+      cancelFrame(frameId);
+      if (retryTimerId != null) {
+        window.clearTimeout(retryTimerId);
+      }
+    };
+  }, [error, initialViewResetKey, initialViewResetRetryTick, loading, treeIsLoading, tsconfig]);
 
   const handlePresetAction = useCallback((actions, feature) => {
     if (!Array.isArray(actions)) return;
@@ -1366,35 +1431,36 @@ function FileView() {
             </span>
           </button>
 
-          {/* JBrowse button */}
-          <a
-            href={isJBrowseEnabled ? jbrowseRoute : undefined}
-            data-tour="viewer-jbrowse-button"
-            className={`group relative p-2 rounded-lg transition-colors ${
-              isJBrowseEnabled
-                ? 'hover:bg-slate-800 hover:text-white'
-                : 'opacity-40 cursor-not-allowed'
-            }`}
-            title="Open in JBrowse"
-            aria-label="Open in JBrowse"
-            aria-disabled={isJBrowseEnabled ? undefined : 'true'}
-            onClick={(event) => {
-              if (!isJBrowseEnabled) {
-                event.preventDefault();
-              }
-            }}
-          >
-            <span
-              data-testid="sidebar-jbrowse-icon"
-              aria-hidden="true"
-              className="flex h-5 w-5 items-center rounded-sm bg-white p-0.5 [&_svg]:h-full [&_svg]:w-full"
+          {canShowJBrowseButton && (
+            <a
+              href={isJBrowseEnabled ? jbrowseRoute : undefined}
+              data-tour="viewer-jbrowse-button"
+              className={`group relative p-2 rounded-lg transition-colors ${
+                isJBrowseEnabled
+                  ? 'hover:bg-slate-800 hover:text-white'
+                  : 'opacity-40 cursor-not-allowed'
+              }`}
+              title="Open in JBrowse"
+              aria-label="Open in JBrowse"
+              aria-disabled={isJBrowseEnabled ? undefined : 'true'}
+              onClick={(event) => {
+                if (!isJBrowseEnabled) {
+                  event.preventDefault();
+                }
+              }}
             >
-              <Logomark />
-            </span>
-            <span className="absolute left-full ml-2 px-2 py-1 text-xs text-white bg-slate-800 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
-              Open in JBrowse
-            </span>
-          </a>
+              <span
+                data-testid="sidebar-jbrowse-icon"
+                aria-hidden="true"
+                className="flex h-5 w-5 items-center rounded-sm bg-white p-0.5 [&_svg]:h-full [&_svg]:w-full"
+              >
+                <Logomark />
+              </span>
+              <span className="absolute left-full ml-2 px-2 py-1 text-xs text-white bg-slate-800 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
+                Open in JBrowse
+              </span>
+            </a>
+          )}
         </div>
 
         {/* Tutorial button (bottom) */}

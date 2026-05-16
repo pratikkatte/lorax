@@ -7,10 +7,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mockSetSearchParams = vi.fn();
 let mockJBrowseRoute = '/jbrowse/test.trees?project=demo&assembly=hg19&genomiccoordstart=0&genomiccoordend=100';
+let mockSearchParams = 'project=demo';
 
 vi.mock('react-router-dom', () => ({
   useParams: () => ({ file: 'test.trees' }),
-  useSearchParams: () => [new URLSearchParams('project=demo'), mockSetSearchParams]
+  useSearchParams: () => [new URLSearchParams(mockSearchParams), mockSetSearchParams]
 }));
 
 vi.mock('../ViewportOverlay', () => ({
@@ -146,6 +147,7 @@ describe('FileView tutorial behavior', () => {
     mockQueryFile.mockReset();
     mockHandleConfigUpdate.mockReset();
     mockQueryDetails.mockReset();
+    mockSearchParams = 'project=demo';
     mockJBrowseRoute = '/jbrowse/test.trees?project=demo&assembly=hg19&genomiccoordstart=0&genomiccoordend=100';
   });
 
@@ -249,6 +251,21 @@ describe('FileView tutorial behavior', () => {
     const stepIds = tourOverlayMockState.lastProps.steps.map((step) => step.id);
     expect(stepIds).not.toContain('viewer-jbrowse-button');
     expect(screen.getByLabelText('Open in JBrowse')).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('does not render the JBrowse sidebar button for Heliconius files', async () => {
+    mockSearchParams = 'project=Heliconius';
+
+    render(<FileView />);
+
+    await waitFor(() => {
+      expect(tourOverlayMockState.lastProps?.steps?.length).toBeGreaterThan(0);
+    });
+
+    const stepIds = tourOverlayMockState.lastProps.steps.map((step) => step.id);
+    expect(stepIds).not.toContain('viewer-jbrowse-button');
+    expect(screen.queryByLabelText('Open in JBrowse')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('sidebar-jbrowse-icon')).not.toBeInTheDocument();
   });
 
   it('links to JBrowse while preserving current genomic coordinates', async () => {

@@ -27,6 +27,10 @@ const formatMetadataLabel = (key, tsconfig) => {
   return label;
 };
 
+const getDefaultMetadataKey = (metadataKeys = []) => (
+  metadataKeys.includes('sample') ? 'sample' : metadataKeys[0]
+);
+
 // Module-level constant for disabled state - frozen to prevent accidental mutations
 const DISABLED_FILTER_STATE = Object.freeze({
   selectedColorBy: null,
@@ -146,7 +150,7 @@ function useMetadataFilter({ enabled = false, config = {} }) {
       if (pendingSelectedKeyRef.current) {
         return;
       }
-      setSelectedColorBy(metadataKeys[0]);
+      setSelectedColorBy(getDefaultMetadataKey(metadataKeys));
     }
   }, [enabled, metadataKeys, selectedColorBy]);
 
