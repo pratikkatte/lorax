@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from 'vitest';
 import DatasetFiles from '../DatasetFiles.jsx';
 
 describe('DatasetFiles JBrowse actions', () => {
-  it('keeps the Lorax open action and adds a JBrowse route', async () => {
+  it('shows separate Lorax and JBrowse launch actions with inline icons', async () => {
     const loadFile = vi.fn();
     const setLoadingFile = vi.fn();
 
@@ -22,14 +22,36 @@ describe('DatasetFiles JBrowse actions', () => {
       </MemoryRouter>
     );
 
-    await userEvent.click(screen.getByRole('button', { name: /1kg_chr2\.trees\.tsz/i }));
+    const loraxButton = screen.getByRole('button', { name: /open 1kg_chr2\.trees\.tsz in lorax/i });
+    const jbrowseLink = screen.getByRole('link', { name: /open 1kg_chr2\.trees\.tsz in jbrowse/i });
+    const launchActions = screen.getByTestId('file-launch-actions');
+
+    expect(loraxButton).not.toHaveTextContent(/lorax/i);
+    expect(jbrowseLink).not.toHaveTextContent(/jbrowse/i);
+    expect(launchActions).toContainElement(loraxButton);
+    expect(launchActions).toContainElement(jbrowseLink);
+    expect(launchActions).toHaveClass('opacity-0');
+    expect(launchActions).toHaveClass('absolute');
+    expect(launchActions).toHaveClass('group-hover/file:opacity-100');
+    expect(launchActions).toHaveClass('group-focus-within/file:opacity-100');
+
+    const loraxIcon = screen.getByTestId('lorax-launch-icon');
+    const jbrowseIcon = screen.getByTestId('jbrowse-launch-icon');
+
+    expect(loraxIcon).toHaveAttribute('src', '/logo.png');
+    expect(loraxIcon).not.toHaveClass('opacity-0');
+    expect(jbrowseIcon).not.toHaveClass('opacity-0');
+    expect(loraxButton).toContainElement(loraxIcon);
+    expect(jbrowseLink).toContainElement(jbrowseIcon);
+
+    await userEvent.click(loraxButton);
 
     expect(setLoadingFile).toHaveBeenCalledWith('1kg_chr2.trees.tsz');
     expect(loadFile).toHaveBeenCalledWith({
       project: '1000Genomes',
       file: '1kg_chr2.trees.tsz'
     });
-    expect(screen.getByRole('link', { name: /jbrowse/i })).toHaveAttribute(
+    expect(jbrowseLink).toHaveAttribute(
       'href',
       '/jbrowse/1kg_chr2.trees.tsz?project=1000Genomes&assembly=hg19'
     );

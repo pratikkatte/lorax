@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from "react";
 import { Link } from "react-router-dom";
-import { LuDna } from "react-icons/lu";
+import { Logomark } from "@jbrowse/core/ui";
 import { buildJBrowseRoute } from "../../config/jbrowseConfig.js";
 
 // Inline FilePill for simplicity if not needing separate file
@@ -8,35 +8,51 @@ function FilePill({ project, name, onOpen, loading }) {
     const jbrowseTo = buildJBrowseRoute({ project, file: name });
 
     return (
-        <div className={`flex min-h-[52px] items-center gap-2 rounded-lg border p-2 text-sm transition-all duration-200 ${
+        <div className={`group/file relative flex min-h-[52px] items-center rounded-lg border p-2 text-sm transition-all duration-200 ${
             loading
                 ? "bg-emerald-50 border-emerald-200 text-emerald-700"
                 : "bg-white border-slate-200 text-slate-600 hover:border-emerald-300 hover:shadow-sm"
         }`}>
-            <button
-                onClick={onOpen}
-                disabled={loading}
-                className="group flex min-w-0 flex-1 items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-slate-50 disabled:cursor-wait disabled:hover:bg-transparent"
+            <span className="min-w-0 flex-1 truncate px-2 pr-4 font-medium transition-[padding] group-hover/file:pr-24 group-focus-within/file:pr-24" title={name}>
+                {name}
+            </span>
+            <div
+                data-testid="file-launch-actions"
+                className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-2 opacity-0 transition-opacity group-hover/file:opacity-100 group-focus-within/file:opacity-100"
             >
-                <span className="truncate font-medium" title={name}>
-                    {name}
-                </span>
-                {loading ? (
-                    <span className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" />
-                ) : (
-                    <span className="shrink-0 text-xs font-semibold text-emerald-600 opacity-0 transition-opacity group-hover:opacity-100">
-                        Open
+                <button
+                    onClick={onOpen}
+                    disabled={loading}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 text-slate-600 transition-colors hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200 disabled:cursor-wait disabled:opacity-70 disabled:hover:border-slate-200 disabled:hover:bg-transparent disabled:hover:text-slate-600"
+                    aria-label={`Open ${name} in Lorax`}
+                >
+                    {loading ? (
+                        <span className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" />
+                    ) : (
+                        <img
+                            src="/logo.png"
+                            alt=""
+                            aria-hidden="true"
+                            data-testid="lorax-launch-icon"
+                            className="h-5 w-5 rounded-sm object-contain"
+                        />
+                    )}
+                </button>
+                <Link
+                    to={jbrowseTo}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 text-slate-600 transition-colors hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200"
+                    title={`Open ${name} in JBrowse`}
+                    aria-label={`Open ${name} in JBrowse`}
+                >
+                    <span
+                        aria-hidden="true"
+                        data-testid="jbrowse-launch-icon"
+                        className="flex h-5 w-5 items-center [&_svg]:h-full [&_svg]:w-full"
+                    >
+                        <Logomark />
                     </span>
-                )}
-            </button>
-            <Link
-                to={jbrowseTo}
-                className="inline-flex h-9 shrink-0 items-center gap-1 rounded-md border border-slate-200 px-2 text-xs font-semibold text-slate-600 hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700"
-                title={`Open ${name} in JBrowse`}
-            >
-                <LuDna className="h-4 w-4" aria-hidden="true" />
-                JBrowse
-            </Link>
+                </Link>
+            </div>
         </div>
     );
 }
