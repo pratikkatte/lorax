@@ -518,6 +518,7 @@ def _process_single_tree(
     parent_ids = graph.parent[indices]
     x = graph.x[indices]
     y = times_to_y(graph.time[indices], min_time, max_time, time_scale)
+    original_unary_mask = (child_counts[indices] == 1) & (parent_ids != -1)
 
     adaptive_bbox_bounds = None
     if isinstance(adaptive_sparsify_bbox, dict):
@@ -565,17 +566,23 @@ def _process_single_tree(
                 sparsify_resolution,
                 use_midpoint_only,
             )
+        keep_mask, preserve_collapse_mask = _force_keep_unary_nodes_and_anchors(
+            keep_mask,
+            parent_indices,
+            original_unary_mask,
+        )
         node_ids = node_ids[keep_mask]
         parent_ids = parent_ids[keep_mask]
         x = x[keep_mask]
         y = y[keep_mask]
         is_tip = is_tip[keep_mask]
+        preserve_collapse_mask = preserve_collapse_mask[keep_mask]
         n = len(node_ids)
 
         if n > 0:
             parent_local = _build_parent_local(node_ids, parent_ids, n)
             node_ids, parent_ids, is_tip, x, y, n = _collapse_degree1_nodes(
-                node_ids, parent_ids, is_tip, x, y, parent_local, n
+                node_ids, parent_ids, is_tip, x, y, parent_local, preserve_collapse_mask, n
             )
 
     if n == 0:
@@ -1257,7 +1264,40 @@ def _sparsify_mutations_adaptive(
 
 
 @njit(cache=True)
-def _collapse_degree1_nodes(node_ids, parent_ids, is_tip, x, y, parent_local, n):
+def _force_keep_unary_nodes_and_anchors(keep_mask, parent_local, original_unary_mask):
+    """
+    Preserve original unary nodes through sparsification.
+
+    The frontend renders every edge as an L path. Keeping an original unary node
+    plus its immediate child lets the existing path logic render the unary-to-child
+    edge as a vertical segment because they share the same x coordinate.
+    """
+    n = len(keep_mask)
+    forced_mask = np.zeros(n, dtype=np.bool_)
+
+    for i in range(n):
+        if original_unary_mask[i]:
+            forced_mask[i] = True
+
+    for i in range(n):
+        parent_idx = parent_local[i]
+        if parent_idx >= 0 and original_unary_mask[parent_idx]:
+            forced_mask[i] = True
+
+    result = keep_mask.copy()
+    for i in range(n):
+        if not forced_mask[i]:
+            continue
+        node_idx = i
+        while node_idx >= 0:
+            result[node_idx] = True
+            node_idx = parent_local[node_idx]
+
+    return result, forced_mask
+
+
+@njit(cache=True)
+def _collapse_degree1_nodes(node_ids, parent_ids, is_tip, x, y, parent_local, preserve_mask, n):
     """
     Collapse degree-1 (single-child) internal nodes after sparsification.
 
@@ -1271,6 +1311,7 @@ def _collapse_degree1_nodes(node_ids, parent_ids, is_tip, x, y, parent_local, n)
         x: float32 array of x coordinates
         y: float32 array of y coordinates
         parent_local: int32 array mapping local index -> parent's local index (-1 for roots)
+        preserve_mask: bool array for degree-1 nodes that must not be collapsed
         n: number of nodes
 
     Returns:
@@ -1286,7 +1327,7 @@ def _collapse_degree1_nodes(node_ids, parent_ids, is_tip, x, y, parent_local, n)
     # collapse_mask[i] = True means KEEP this node (not degree-1, or is root/tip)
     collapse_mask = np.empty(n, dtype=np.bool_)
     for i in range(n):
-        collapse_mask[i] = child_counts[i] != 1 or parent_local[i] == -1
+        collapse_mask[i] = child_counts[i] != 1 or parent_local[i] == -1 or preserve_mask[i]
 
     # Path compression: find effective parent for each node
     # effective_parent[i] = the local index of the first non-collapsed ancestor

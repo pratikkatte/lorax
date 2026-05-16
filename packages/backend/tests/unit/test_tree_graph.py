@@ -259,6 +259,41 @@ class TestArrowBuffer:
 class TestSparsification:
     """Tests for tree sparsification algorithm."""
 
+    def test_sparsification_preserves_original_unary_nodes(self):
+        """Original unary nodes should survive sparse layout as vertical edge segments."""
+        import struct
+        import pyarrow as pa
+        import tskit
+        from lorax.tree_graph import construct_trees_batch
+
+        tables = tskit.TableCollection(sequence_length=100)
+        tables.nodes.add_row(flags=tskit.NODE_IS_SAMPLE, time=0.0)  # 0
+        tables.nodes.add_row(flags=tskit.NODE_IS_SAMPLE, time=0.0)  # 1
+        tables.nodes.add_row(flags=0, time=0.5)  # 2, original unary node
+        tables.nodes.add_row(flags=0, time=1.0)  # 3, root
+        tables.edges.add_row(0, 100, parent=2, child=0)
+        tables.edges.add_row(0, 100, parent=3, child=2)
+        tables.edges.add_row(0, 100, parent=3, child=1)
+        tables.sort()
+        ts = tables.tree_sequence()
+
+        buffer, _, _, _, _ = construct_trees_batch(
+            ts,
+            tree_indices=[0],
+            sparsification=True,
+            sparsify_cell_size=1.0,
+        )
+        node_len = struct.unpack("<I", buffer[:4])[0]
+        table = pa.ipc.open_stream(buffer[4 : 4 + node_len]).read_all()
+        df = table.to_pandas()
+
+        by_id = df.set_index("node_id")
+        assert 2 in by_id.index
+        assert by_id.loc[2, "parent_id"] == 3
+        assert by_id.loc[0, "parent_id"] == 2
+        assert not bool(by_id.loc[2, "is_tip"])
+        assert by_id.loc[2, "x"] == pytest.approx(by_id.loc[0, "x"])
+
     def test_sparsification_reduces_nodes(self, minimal_ts):
         """Test that sparsification reduces node count."""
         from lorax.tree_graph import construct_trees_batch
