@@ -250,6 +250,7 @@ const LoraxDeckGL = forwardRef(({
   const [lockViewPayload, setLockViewPayload] = useState(null);
   const [isInteracting, setIsInteracting] = useState(false);
   const [hoveredEdgeForDescendants, setHoveredEdgeForDescendants] = useState(null);
+  const [hoveredMatchingEdge, setHoveredMatchingEdge] = useState(null);
   const interactionSettleTimerRef = useRef(null);
 
   // 1. Merge and validate config
@@ -517,6 +518,21 @@ const LoraxDeckGL = forwardRef(({
 
   const handleEdgeHover = useCallback((edge, info, event) => {
     const enrichedEdge = enrichEdgeHoverPayload(edge);
+    if (
+      enrichedEdge
+      && Number.isFinite(enrichedEdge.tree_idx)
+      && Number.isFinite(enrichedEdge.parent_id)
+      && Number.isFinite(enrichedEdge.child_id)
+    ) {
+      setHoveredMatchingEdge({
+        tree_idx: enrichedEdge.tree_idx,
+        parent_id: enrichedEdge.parent_id,
+        child_id: enrichedEdge.child_id
+      });
+    } else {
+      setHoveredMatchingEdge(null);
+    }
+
     if (
       highlightDescendantsOnHover
       && enrichedEdge
@@ -1015,9 +1031,10 @@ const LoraxDeckGL = forwardRef(({
   const descendantLookup = useMemo(() => {
     const childrenByTree = new Map();
     const edgeIndexByTreeAndPair = new Map();
+    const edgeIndicesByPair = new Map();
     const edges = baseRenderData?.edgeData;
     if (!Array.isArray(edges) || edges.length === 0) {
-      return { childrenByTree, edgeIndexByTreeAndPair };
+      return { childrenByTree, edgeIndexByTreeAndPair, edgeIndicesByPair };
     }
 
     for (let edgeIndex = 0; edgeIndex < edges.length; edgeIndex++) {
@@ -1041,11 +1058,38 @@ const LoraxDeckGL = forwardRef(({
       if (!edgeIndexByTreeAndPair.has(treeIdx)) {
         edgeIndexByTreeAndPair.set(treeIdx, new Map());
       }
-      edgeIndexByTreeAndPair.get(treeIdx).set(`${parentId}|${childId}`, edgeIndex);
+      const pairKey = `${parentId}|${childId}`;
+      edgeIndexByTreeAndPair.get(treeIdx).set(pairKey, edgeIndex);
+
+      if (!edgeIndicesByPair.has(pairKey)) {
+        edgeIndicesByPair.set(pairKey, []);
+      }
+      edgeIndicesByPair.get(pairKey).push({ treeIdx, edgeIndex });
     }
 
-    return { childrenByTree, edgeIndexByTreeAndPair };
+    return { childrenByTree, edgeIndexByTreeAndPair, edgeIndicesByPair };
   }, [baseRenderData?.edgeData]);
+
+  const matchingEdgeIndices = useMemo(() => {
+    if (
+      !hoveredMatchingEdge
+      || !Number.isFinite(hoveredMatchingEdge.tree_idx)
+      || !Number.isFinite(hoveredMatchingEdge.parent_id)
+      || !Number.isFinite(hoveredMatchingEdge.child_id)
+    ) {
+      return [];
+    }
+
+    const pairKey = `${Number(hoveredMatchingEdge.parent_id)}|${Number(hoveredMatchingEdge.child_id)}`;
+    const matches = descendantLookup.edgeIndicesByPair.get(pairKey);
+    if (!Array.isArray(matches) || matches.length === 0) return [];
+
+    const hoveredTreeIdx = Number(hoveredMatchingEdge.tree_idx);
+    return matches
+      .filter(({ treeIdx }) => treeIdx !== hoveredTreeIdx)
+      .map(({ edgeIndex }) => edgeIndex)
+      .sort((a, b) => a - b);
+  }, [hoveredMatchingEdge, descendantLookup]);
 
   const computedDescendantHoverOverlay = useMemo(() => {
     const emptyResult = { tipHighlights: [], edgeIndices: [] };
@@ -1140,6 +1184,10 @@ const LoraxDeckGL = forwardRef(({
       result.descendantEdgeIndices = computedDescendantHoverOverlay.edgeIndices;
     }
 
+    if (matchingEdgeIndices.length > 0) {
+      result.matchingEdgeIndices = matchingEdgeIndices;
+    }
+
     // Add lineage data when enabled
     if (computedLineageData && computedLineageData.length > 0) {
       result.lineageData = computedLineageData;
@@ -1151,7 +1199,7 @@ const LoraxDeckGL = forwardRef(({
     }
 
     return result;
-  }, [baseRenderData, computedHighlightData, computedMultiHighlightData, computedMutationHighlightData, computedDescendantHoverOverlay, computedLineageData, computedCompareEdgesData]);
+  }, [baseRenderData, computedHighlightData, computedMultiHighlightData, computedMutationHighlightData, computedDescendantHoverOverlay, matchingEdgeIndices, computedLineageData, computedCompareEdgesData]);
 
   // 7. Compute genome position tick marks
   const genomePositions = useGenomePositions(genomicCoords);
@@ -1446,6 +1494,7 @@ const LoraxDeckGL = forwardRef(({
   const handlePointerLeave = useCallback(() => {
     clearPickingHover?.();
     setHoveredEdgeForDescendants(null);
+    setHoveredMatchingEdge(null);
     setHoveredPolygon(null);
   }, [clearPickingHover, setHoveredPolygon]);
 

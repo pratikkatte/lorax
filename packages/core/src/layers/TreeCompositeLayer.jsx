@@ -37,6 +37,7 @@ export class TreeCompositeLayer extends CompositeLayer {
     onMutationHover: null,
     onMutationClick: null,
     hoveredEdgeIndex: null,
+    matchingEdgeWidth: 3,
     descendantEdgeColor: [56, 189, 248, 220],
     descendantEdgeWidth: 2,
   };
@@ -75,6 +76,8 @@ export class TreeCompositeLayer extends CompositeLayer {
       lineageData,
       // Compare edges (inserted/removed between trees)
       compareEdgesData,
+      // Same parent-child edge indices in other visible trees
+      matchingEdgeIndices,
       // Descendant edge indices (subset of edgeData/path buffers)
       descendantEdgeIndices
     } = processedData;
@@ -94,6 +97,7 @@ export class TreeCompositeLayer extends CompositeLayer {
       onMutationHover,
       onMutationClick,
       hoveredEdgeIndex,
+      matchingEdgeWidth,
       descendantEdgeColor,
       descendantEdgeWidth
     } = this.props;
@@ -102,6 +106,47 @@ export class TreeCompositeLayer extends CompositeLayer {
 
     // Edge paths using binary data format
     if (edgeCount > 0) {
+      const buildIndexedPathBinary = (indices) => {
+        const validIndices = indices
+          .filter((idx) => Number.isInteger(idx) && idx >= 0 && idx < pathStartIndices.length - 1);
+
+        if (validIndices.length === 0) return null;
+
+        let coordLength = 0;
+        for (const idx of validIndices) {
+          const start = pathStartIndices[idx] * 2;
+          const end = pathStartIndices[idx + 1] * 2;
+          coordLength += Math.max(0, end - start);
+        }
+
+        if (coordLength < 4) return null;
+
+        const overlayPathPositions = new Float64Array(coordLength);
+        const overlayStartIndices = new Uint32Array(validIndices.length + 1);
+        let coordOffset = 0;
+        let vertexOffset = 0;
+        overlayStartIndices[0] = 0;
+
+        for (let i = 0; i < validIndices.length; i++) {
+          const idx = validIndices[i];
+          const start = pathStartIndices[idx] * 2;
+          const end = pathStartIndices[idx + 1] * 2;
+          const segment = pathPositions.subarray(start, end);
+          overlayPathPositions.set(segment, coordOffset);
+          coordOffset += segment.length;
+          vertexOffset += segment.length / 2;
+          overlayStartIndices[i + 1] = vertexOffset;
+        }
+
+        return {
+          length: validIndices.length,
+          startIndices: overlayStartIndices,
+          attributes: {
+            getPath: { value: overlayPathPositions, size: 2 }
+          }
+        };
+      };
+
       const edgeBinaryData = {
         length: pathStartIndices.length - 1,
         startIndices: pathStartIndices,
@@ -165,57 +210,45 @@ export class TreeCompositeLayer extends CompositeLayer {
         }
       }
 
+      if (Array.isArray(matchingEdgeIndices) && matchingEdgeIndices.length > 0) {
+        const matchingBinary = buildIndexedPathBinary(matchingEdgeIndices);
+
+        if (matchingBinary) {
+          layers.push(new PathLayer({
+            id: `${this.props.id}-matching-edges`,
+            data: matchingBinary,
+            _pathType: 'open',
+            getColor: edgeColor,
+            getWidth: Math.max(matchingEdgeWidth, edgeWidth + 2, 3),
+            fp64: true,
+            widthUnits: 'pixels',
+            coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+            parameters: { depthTest: false },
+            pickable: false,
+            capRounded: false,
+            jointRounded: false
+          }));
+        }
+      }
+
       if (Array.isArray(descendantEdgeIndices) && descendantEdgeIndices.length > 0) {
-        const validIndices = descendantEdgeIndices
-          .filter((idx) => Number.isInteger(idx) && idx >= 0 && idx < pathStartIndices.length - 1);
+        const descendantBinary = buildIndexedPathBinary(descendantEdgeIndices);
 
-        if (validIndices.length > 0) {
-          let coordLength = 0;
-          for (const idx of validIndices) {
-            const start = pathStartIndices[idx] * 2;
-            const end = pathStartIndices[idx + 1] * 2;
-            coordLength += Math.max(0, end - start);
-          }
-
-          if (coordLength >= 4) {
-            const descendantPathPositions = new Float64Array(coordLength);
-            const descendantStartIndices = new Uint32Array(validIndices.length + 1);
-            let coordOffset = 0;
-            let vertexOffset = 0;
-            descendantStartIndices[0] = 0;
-
-            for (let i = 0; i < validIndices.length; i++) {
-              const idx = validIndices[i];
-              const start = pathStartIndices[idx] * 2;
-              const end = pathStartIndices[idx + 1] * 2;
-              const segment = pathPositions.subarray(start, end);
-              descendantPathPositions.set(segment, coordOffset);
-              coordOffset += segment.length;
-              vertexOffset += segment.length / 2;
-              descendantStartIndices[i + 1] = vertexOffset;
-            }
-
-            layers.push(new PathLayer({
-              id: `${this.props.id}-descendant-edges`,
-              data: {
-                length: validIndices.length,
-                startIndices: descendantStartIndices,
-                attributes: {
-                  getPath: { value: descendantPathPositions, size: 2 }
-                }
-              },
-              _pathType: 'open',
-              getColor: descendantEdgeColor,
-              getWidth: descendantEdgeWidth,
-              fp64: true,
-              widthUnits: 'pixels',
-              coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
-              parameters: { depthTest: false },
-              pickable: false,
-              capRounded: false,
-              jointRounded: false
-            }));
-          }
+        if (descendantBinary) {
+          layers.push(new PathLayer({
+            id: `${this.props.id}-descendant-edges`,
+            data: descendantBinary,
+            _pathType: 'open',
+            getColor: descendantEdgeColor,
+            getWidth: descendantEdgeWidth,
+            fp64: true,
+            widthUnits: 'pixels',
+            coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+            parameters: { depthTest: false },
+            pickable: false,
+            capRounded: false,
+            jointRounded: false
+          }));
         }
       }
     }

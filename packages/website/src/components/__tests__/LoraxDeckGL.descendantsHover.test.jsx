@@ -217,6 +217,55 @@ describe('LoraxDeckGL descendant hover overlays', () => {
     expect(descendantTips.map((item) => item.node_id).sort((a, b) => a - b)).toEqual([12, 15]);
   });
 
+  it('highlights the same hovered edge in other visible trees', async () => {
+    renderDataState.renderData.edgeData = [
+      { tree_idx: 0, parent_id: 7, child_id: 9 },
+      { tree_idx: 1, parent_id: 7, child_id: 9 },
+      { tree_idx: 2, parent_id: 7, child_id: 9 },
+      { tree_idx: 1, parent_id: 9, child_id: 15 }
+    ];
+
+    render(<LoraxDeckGL viewConfig={{ ortho: { enabled: true } }} />);
+    await act(async () => {
+      capturedDeckLayersArgs.onEdgeHover?.({ tree_idx: 0, parent_id: 7, child_id: 9 }, { index: 0 }, null);
+    });
+
+    expect(capturedRenderData.matchingEdgeIndices).toEqual([1, 2]);
+  });
+
+  it('clears matching edge highlights when hover clears', async () => {
+    renderDataState.renderData.edgeData = [
+      { tree_idx: 0, parent_id: 7, child_id: 9 },
+      { tree_idx: 1, parent_id: 7, child_id: 9 }
+    ];
+
+    render(<LoraxDeckGL viewConfig={{ ortho: { enabled: true } }} />);
+    await act(async () => {
+      capturedDeckLayersArgs.onEdgeHover?.({ tree_idx: 0, parent_id: 7, child_id: 9 }, { index: 0 }, null);
+    });
+    expect(capturedRenderData.matchingEdgeIndices).toEqual([1]);
+
+    await act(async () => {
+      capturedDeckLayersArgs.onEdgeHover?.(null, null, null);
+    });
+    expect(capturedRenderData.matchingEdgeIndices).toBeUndefined();
+  });
+
+  it('does not highlight edges with different parent-child ids', async () => {
+    renderDataState.renderData.edgeData = [
+      { tree_idx: 0, parent_id: 7, child_id: 9 },
+      { tree_idx: 1, parent_id: 7, child_id: 10 },
+      { tree_idx: 2, parent_id: 8, child_id: 9 }
+    ];
+
+    render(<LoraxDeckGL viewConfig={{ ortho: { enabled: true } }} />);
+    await act(async () => {
+      capturedDeckLayersArgs.onEdgeHover?.({ tree_idx: 0, parent_id: 7, child_id: 9 }, { index: 0 }, null);
+    });
+
+    expect(capturedRenderData.matchingEdgeIndices).toBeUndefined();
+  });
+
   it('adds raw node time to tip hover payloads', async () => {
     const onTipHover = vi.fn();
     treeDataState = {
