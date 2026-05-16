@@ -7,7 +7,6 @@
 #   - Push to feature branches: Build only (no deploy)
 #
 # Required substitutions (set in Cloud Build trigger):
-#   - _BACKEND_ZONE: Zone where VM is deployed (e.g., us-central1-a)
 #   - _WEBSITE_BUCKET: GCS bucket for website static files
 #   - _BACKEND_API_URL: Backend API URL for website build
 #
@@ -151,17 +150,12 @@ steps:
     waitFor: ['build-website']
 
 substitutions:
-  _BACKEND_ZONE: us-west1-a
   # Artifact Registry (Docker) settings:
   # - Create repo: gcloud artifacts repositories create lorax --repository-format=docker --location=us-west1
   _AR_REGION: us-west1
   _AR_REPO: lorax
-  # Compute Engine instance name to deploy to:
-  _BACKEND_INSTANCE: lorax-backend
   _WEBSITE_BUCKET: lorax-website
   _BACKEND_API_URL: https://api.lorax.in
-  _GCS_BUCKET: lorax_projects
-  _REDIS_HOST: 10.0.0.3  # Memorystore Redis IP - update after creating instance
   _LORAX_PLUGIN_REPO: https://github.com/pratikkatte/lorax-plugin.git
   _LORAX_PLUGIN_REF: main
   # Manual/temporary overrides:
@@ -171,5 +165,6 @@ substitutions:
   _FORCE_DEPLOY_WEBSITE: "true"
 
 options:
+  substitutionOption: ALLOW_LOOSE
   logging: CLOUD_LOGGING_ONLY
   machineType: 'E2_HIGHCPU_8'
