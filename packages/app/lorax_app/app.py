@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 from typing import Optional
+from urllib.parse import quote
 
 import socketio
 from fastapi import FastAPI, HTTPException, Request
@@ -103,11 +104,48 @@ _BUILTIN_ASSEMBLIES: dict[str, dict] = {
 }
 
 
+_BUILTIN_ASSEMBLY_ALIASES = {
+    "hg19": "hg19",
+    "h19": "hg19",
+    "hg38": "hg38",
+    "h38": "hg38",
+    "mm10": "mm10",
+}
+
+
+def _normalize_builtin_assembly_name(assembly: str) -> str:
+    return _BUILTIN_ASSEMBLY_ALIASES.get(assembly.lower(), assembly)
+
+
+def _build_local_assembly_config(assembly: dict[str, str | None], base_url: str) -> dict:
+    name = assembly["name"]
+    fasta_path = Path(str(assembly["fasta_path"]))
+    fai_path = Path(str(assembly["fai_path"]))
+    gzi_path = Path(str(assembly["gzi_path"])) if assembly.get("gzi_path") else None
+
+    adapter = {
+        "type": "BgzipFastaAdapter" if gzi_path else "IndexedFastaAdapter",
+        "fastaLocation": {"uri": f"{base_url}/assembly/{quote(fasta_path.name)}"},
+        "faiLocation": {"uri": f"{base_url}/assembly/{quote(fai_path.name)}"},
+    }
+    if gzi_path:
+        adapter["gziLocation"] = {"uri": f"{base_url}/assembly/{quote(gzi_path.name)}"}
+
+    return {
+        "name": name,
+        "sequence": {
+            "type": "ReferenceSequenceTrack",
+            "trackId": f"{name}-ref",
+            "adapter": adapter,
+        },
+    }
+
+
 def create_fastapi_app(
     static_dir: Optional[Path] = None,
     jbrowse: bool = False,
     filename: Optional[str] = None,
-    assembly: Optional[str] = None,
+    assembly: Optional[str | dict[str, str | None]] = None,
 ) -> FastAPI:
     static_dir = static_dir or _get_static_dir()
 
@@ -144,12 +182,35 @@ def create_fastapi_app(
                 "  python packages/app/scripts/sync_jbrowse_assets.py\n"
             )
 
-        assembly_name = assembly or "hg19"
-        assembly_cfg = _BUILTIN_ASSEMBLIES.get(assembly_name)
+        local_assembly = assembly if isinstance(assembly, dict) else None
+        local_assembly_files = {}
+        if local_assembly:
+            for key in ("fasta_path", "fai_path", "gzi_path"):
+                value = local_assembly.get(key)
+                if value:
+                    path = Path(value).expanduser().resolve()
+                    local_assembly_files[path.name] = path
+
+        builtin_assembly_name = None
+        if isinstance(assembly, str) or assembly is None:
+            builtin_assembly_name = _normalize_builtin_assembly_name(assembly or "hg19")
+
+        @app.get("/assembly/{asset_name}")
+        async def local_assembly_asset(asset_name: str):
+            asset_path = local_assembly_files.get(asset_name)
+            if not asset_path:
+                raise HTTPException(status_code=404, detail="Not found")
+            return _serve_file(asset_path)
 
         @app.get("/config.json")
         async def jbrowse_config(request: Request):
             base = str(request.base_url).rstrip("/")
+            if local_assembly:
+                assembly_name = local_assembly["name"]
+                assembly_cfg = _build_local_assembly_config(local_assembly, base)
+            else:
+                assembly_name = builtin_assembly_name or "hg19"
+                assembly_cfg = _BUILTIN_ASSEMBLIES.get(assembly_name)
 
             tracks = []
             print(f"filename: {filename}")
@@ -255,7 +316,7 @@ def create_fastapi_app(
 def create_asgi_app(
     jbrowse: bool = False,
     filename: Optional[str] = None,
-    assembly: Optional[str] = None,
+    assembly: Optional[str | dict[str, str | None]] = None,
 ) -> socketio.ASGIApp:
     """
     Create the combined ASGI app.
@@ -308,4 +369,3 @@ def create_asgi_app(
 # When launched via CLI with --jbrowse, the CLI constructs the app directly
 # and passes it to uvicorn.run() instead of using this string reference.
 asgi_app = create_asgi_app()
-
