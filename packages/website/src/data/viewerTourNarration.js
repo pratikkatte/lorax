@@ -1,6 +1,10 @@
 /** Shared title/body copy for the in-app viewer tour and documentation slideshow. */
 
 export const viewerTourNarrationById = {
+  "viewer-landing-page": {
+    title: "Landing page",
+    content: "Upload your own file or open an existing example, then choose either the standard Lorax viewer for ARG visualization or the JBrowse view for exploring ARGs alongside genome annotations."
+  },
   "viewer-position": {
     title: "Genome window",
     content: "Pan and set the genomic range you want to explore. Click the 🔍 to apply edits."
@@ -50,20 +54,20 @@ export const viewerTourNarrationById = {
     content: "Click any edge on the highlighted tree to open the Info panel."
   },
   "viewer-info-button": {
-    title: "Metadata, mutations, and filters",
-    content: "Open metadata, mutations, and filtering controls for deeper inspection."
+    title: "Info panel",
+    content: "Open the side panel to access Details, Mutations, and Samples controls."
   },
   "viewer-info-details": {
     title: "Details",
-    content: "Explore tree, node, and sample details for the selected tree."
+    content: "Use the Details tab to review the selected tree interval, root and node counts, and any mutation summaries attached to that tree."
   },
   "viewer-info-mutations": {
     title: "Mutations",
-    content: "Browse mutations for the current window or search by position."
+    content: "Use the Mutations tab to browse variants in the current genomic window and inspect each mutation's position, allele change, and tree context."
   },
   "viewer-info-filter": {
-    title: "Filters",
-    content: "Color and filter trees to focus on specific structures."
+    title: "Sample Filter",
+    content: "Use the Samples tab as a sample metadata filter: color, search, and filter tips by population, lineage, or other metadata fields."
   },
   "viewer-settings-button": {
     title: "Settings",
@@ -81,6 +85,7 @@ export const viewerTourNarrationById = {
 
 /** Default tour order when advanced steps are off (matches docs slideshow). */
 export const viewerTourDefaultStepOrder = [
+  "viewer-landing-page",
   "viewer-position",
   "viewer-reset-view",
   "viewer-compare-topology",
@@ -91,7 +96,9 @@ export const viewerTourDefaultStepOrder = [
   "viewer-zoom",
   "viewer-time-view",
   "viewer-time-scale-scroll",
-  "viewer-info-button",
+  "viewer-info-details",
+  "viewer-info-mutations",
+  "viewer-info-filter",
   "viewer-settings-button",
   "viewer-screenshot-button"
 ];
@@ -102,6 +109,10 @@ export const viewerTourDefaultStepOrder = [
  */
 export function getViewerTourDocumentationSlides(opts = {}) {
   const { imageSrc, imageSrcsById = {} } = opts;
+  const defaultImageSrcsById = {
+    "viewer-landing-page": "/docs/viewer-tour/viewer-landing-page.png",
+    "viewer-reset-view": "/docs/viewer-tour/viewer-reset.png"
+  };
   const animationsById = {
     "viewer-pan": { type: "pan-x", label: "Horizontal pan gesture" },
     "viewer-zoom": { type: "zoom-both", label: "Zoom gesture" },
@@ -111,7 +122,7 @@ export function getViewerTourDocumentationSlides(opts = {}) {
   return viewerTourDefaultStepOrder.map((id) => ({
     id,
     ...viewerTourNarrationById[id],
-    imageSrc: imageSrcsById[id] ?? imageSrc ?? `/docs/viewer-tour/${id}.png`,
+    imageSrc: imageSrcsById[id] ?? imageSrc ?? defaultImageSrcsById[id] ?? `/docs/viewer-tour/${id}.png`,
     ...(animationsById[id] ? { animation: animationsById[id] } : {})
   }));
 }

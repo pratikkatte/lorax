@@ -3,6 +3,7 @@ import {
   buildCustomJBrowseAssembly,
   buildJBrowseRoute,
   buildLoraxJBrowseTrack,
+  getProjectJBrowseTracks,
   getDefaultJBrowseLocation,
   inferChromosomeFromFilename,
   normalizeJBrowseAssemblyName
@@ -128,5 +129,52 @@ describe('jbrowseConfig helpers', () => {
         isProd: true
       }
     });
+  });
+
+  it('adds hg19 RefSeq and dbSNP tracks for the 1000Genomes project', () => {
+    const tracks = getProjectJBrowseTracks({
+      project: '1000Genomes',
+      assembly: 'hg19'
+    });
+
+    expect(tracks.map(track => track.trackId)).toEqual([
+      'hg19-ncbiRefSeq',
+      'hg19-dbSnp153'
+    ]);
+    expect(tracks[0]).toMatchObject({
+      type: 'FeatureTrack',
+      name: 'NCBI RefSeq - RefSeq All',
+      assemblyNames: ['hg19'],
+      adapter: {
+        type: 'Gff3TabixAdapter',
+        gffGzLocation: {
+          uri: 'https://jbrowse.org/ucsc/hg19/ncbiRefSeq.gff.gz'
+        },
+        index: {
+          indexType: 'CSI',
+          location: {
+            uri: 'https://jbrowse.org/ucsc/hg19/ncbiRefSeq.gff.gz.csi'
+          }
+        }
+      }
+    });
+    expect(tracks[1]).toMatchObject({
+      type: 'FeatureTrack',
+      name: 'Variants - All dbSNP(153)',
+      assemblyNames: ['hg19'],
+      adapter: {
+        type: 'BigBedAdapter',
+        bigBedLocation: {
+          uri: 'https://hgdownload.soe.ucsc.edu/gbdb/hg19/snp/dbSnp153.bb'
+        }
+      }
+    });
+  });
+
+  it('does not add hg19 reference tracks to non-1000Genomes projects', () => {
+    expect(getProjectJBrowseTracks({
+      project: 'Heliconius',
+      assembly: 'hg19'
+    })).toEqual([]);
   });
 });

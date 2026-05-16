@@ -14,6 +14,7 @@ import {
   buildLoraxJBrowseTrack,
   getDefaultJBrowseLocation,
   getJBrowseAssembly,
+  getProjectJBrowseTracks,
   inferChromosomeFromFilename,
   resolveJBrowseAssemblyName
 } from '../config/jbrowseConfig.js';
@@ -336,10 +337,14 @@ function JBrowseFileView() {
       shareSid: sid,
       isProd
     });
+    const projectTracks = getProjectJBrowseTracks({
+      project,
+      assembly: assemblyName
+    });
 
     return createViewState({
       assembly: customAssembly || getJBrowseAssembly(assemblyName, project),
-      tracks: [track],
+      tracks: [track, ...projectTracks],
       plugins: [LoraxPlugin],
       location: jbrowseLocation,
       configuration: {
@@ -347,7 +352,7 @@ function JBrowseFileView() {
           defaultDriver: 'MainThreadRpcDriver'
         }
       },
-      defaultSession: buildJBrowseDefaultSession(track.trackId)
+      defaultSession: buildJBrowseDefaultSession(track.trackId, projectTracks)
     });
   }, [assemblyName, currentFile, customAssembly, jbrowseLocation, loraxSid, project, sid]);
 

@@ -99,6 +99,115 @@ const PROJECT_ASSEMBLY_DEFAULTS = {
 
 const DEFAULT_WINDOW_END = 100000;
 
+const HG19_NCBI_REFSEQ_TRACK = {
+  type: 'FeatureTrack',
+  trackId: 'hg19-ncbiRefSeq',
+  name: 'NCBI RefSeq - RefSeq All',
+  assemblyNames: [
+    'hg19'
+  ],
+  description: 'NCBI RefSeq genes, curated and predicted (NM_*, XM_*, NR_*, XR_*, NP_*, YP_*)',
+  category: [
+    'Genes and Gene Predictions'
+  ],
+  metadata: {
+    ucsc: {
+      baseColorDefault: 'genomicCodons',
+      baseColorUseCds: 'given',
+      color: '12,12,120',
+      idXref: 'ncbiRefSeqLink mrnaAcc name',
+      longLabel: 'NCBI RefSeq genes, curated and predicted (NM_*, XM_*, NR_*, XR_*, NP_*, YP_*)',
+      parent: 'refSeqComposite off',
+      priority: '1',
+      shortLabel: 'RefSeq All',
+      track: 'ncbiRefSeq',
+      html: ''
+    }
+  },
+  adapter: {
+    type: 'Gff3TabixAdapter',
+    gffGzLocation: {
+      locationType: 'UriLocation',
+      uri: 'https://jbrowse.org/ucsc/hg19/ncbiRefSeq.gff.gz'
+    },
+    index: {
+      indexType: 'CSI',
+      location: {
+        locationType: 'UriLocation',
+        uri: 'https://jbrowse.org/ucsc/hg19/ncbiRefSeq.gff.gz.csi'
+      }
+    }
+  },
+  displays: [
+    {
+      type: 'LinearBasicDisplay',
+      displayId: 'hg19-ncbiRefSeq-LinearBasicDisplay'
+    },
+    {
+      type: 'LinearArcDisplay',
+      displayId: 'hg19-ncbiRefSeq-LinearArcDisplay'
+    }
+  ]
+};
+
+const HG19_DBSNP153_TRACK = {
+  type: 'FeatureTrack',
+  trackId: 'hg19-dbSnp153',
+  name: 'Variants - All dbSNP(153)',
+  assemblyNames: [
+    'hg19'
+  ],
+  description: 'All Short Genetic Variants from dbSNP Release 153',
+  category: [
+    'Variation and Repeats'
+  ],
+  metadata: {
+    ucsc: {
+      bigDataUrl: '/gbdb/hg19/snp/dbSnp153.bb',
+      defaultGeneTracks: 'knownGene',
+      longLabel: 'All Short Genetic Variants from dbSNP Release 153',
+      maxWindowToDraw: '1000000',
+      parent: 'dbSnp153ViewVariants off',
+      priority: '4',
+      shortLabel: 'All dbSNP(153)',
+      subGroups: 'view=variants',
+      tableBrowser: 'noGenome',
+      track: 'dbSnp153',
+      html: ''
+    }
+  },
+  adapter: {
+    type: 'BigBedAdapter',
+    bigBedLocation: {
+      locationType: 'UriLocation',
+      uri: 'https://hgdownload.soe.ucsc.edu/gbdb/hg19/snp/dbSnp153.bb'
+    }
+  },
+  displays: [
+    {
+      type: 'LinearBasicDisplay',
+      displayId: 'hg19-dbSnp153-LinearBasicDisplay'
+    },
+    {
+      type: 'LinearArcDisplay',
+      displayId: 'hg19-dbSnp153-LinearArcDisplay'
+    }
+  ]
+};
+
+const PROJECT_JBROWSE_TRACKS = {
+  '1000Genomes': {
+    hg19: [
+      HG19_NCBI_REFSEQ_TRACK,
+      HG19_DBSNP153_TRACK
+    ]
+  }
+};
+
+function cloneTrackConfig(track) {
+  return JSON.parse(JSON.stringify(track));
+}
+
 function finiteInteger(value) {
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) ? parsed : null;
@@ -118,6 +227,12 @@ export function resolveJBrowseAssemblyName(assembly, project, { allowCustom = fa
 
 export function getJBrowseAssembly(assembly, project) {
   return JBROWSE_ASSEMBLIES[normalizeJBrowseAssemblyName(assembly, project)];
+}
+
+export function getProjectJBrowseTracks({ project, assembly } = {}) {
+  const assemblyName = resolveJBrowseAssemblyName(assembly, project, { allowCustom: true }) ||
+    normalizeJBrowseAssemblyName(assembly, project);
+  return (PROJECT_JBROWSE_TRACKS[project]?.[assemblyName] || []).map(cloneTrackConfig);
 }
 
 function uriLocation(uri) {
@@ -306,13 +421,29 @@ export function buildLoraxJBrowseTrack({
   };
 }
 
-export function buildJBrowseDefaultSession(trackId) {
+function buildJBrowseSessionTrack(track) {
+  const displays = Array.isArray(track?.displays) && track.displays.length > 0
+    ? [{
+        type: track.displays[0].type,
+        configuration: track.displays[0].displayId
+      }]
+    : [];
+
+  return {
+    type: track.type,
+    configuration: track.trackId,
+    ...(displays.length > 0 ? { displays } : {})
+  };
+}
+
+export function buildJBrowseDefaultSession(trackId, enabledTracks = []) {
   return {
     name: 'Lorax JBrowse',
     view: {
       id: 'lorax-linear-genome-view',
       type: 'LinearGenomeView',
       tracks: [
+        ...enabledTracks.map(buildJBrowseSessionTrack),
         {
           type: 'LoraxTrack',
           configuration: trackId,

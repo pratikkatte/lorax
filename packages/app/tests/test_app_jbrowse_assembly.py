@@ -44,3 +44,45 @@ def test_jbrowse_config_serves_custom_local_assembly(tmp_path):
     assert config["tracks"][0]["assemblyNames"] == ["erato"]
 
     assert client.get("/assembly/erato.fa.gz").text == "fasta"
+
+
+def test_jbrowse_config_adds_hg19_reference_tracks_for_1000_genomes_file(tmp_path):
+    static_dir = tmp_path / "static"
+    jbrowse_dir = static_dir / "jbrowse"
+    jbrowse_dir.mkdir(parents=True)
+    (jbrowse_dir / "index.html").write_text("<html></html>", encoding="utf-8")
+    (static_dir / "lorax-plugin.js").write_text("", encoding="utf-8")
+
+    app = create_fastapi_app(
+        static_dir=static_dir,
+        jbrowse=True,
+        filename="1kg_chr2.trees.tsz",
+        assembly="hg19",
+    )
+    client = TestClient(app)
+
+    config = client.get("/config.json").json()
+
+    assert [track["trackId"] for track in config["tracks"]] == [
+        "lorax_track",
+        "hg19-ncbiRefSeq",
+        "hg19-dbSnp153",
+    ]
+    assert config["tracks"][1]["adapter"]["type"] == "Gff3TabixAdapter"
+    assert config["tracks"][1]["adapter"]["gffGzLocation"]["uri"] == (
+        "https://jbrowse.org/ucsc/hg19/ncbiRefSeq.gff.gz"
+    )
+    assert config["tracks"][2]["adapter"]["type"] == "BigBedAdapter"
+    assert config["tracks"][2]["adapter"]["bigBedLocation"]["uri"] == (
+        "https://hgdownload.soe.ucsc.edu/gbdb/hg19/snp/dbSnp153.bb"
+    )
+
+    session_tracks = config["defaultSession"]["views"][0]["tracks"]
+    assert [track["configuration"] for track in session_tracks] == [
+        "hg19-ncbiRefSeq",
+        "hg19-dbSnp153",
+        "lorax_track",
+    ]
+    assert session_tracks[0]["type"] == "FeatureTrack"
+    assert session_tracks[1]["type"] == "FeatureTrack"
+    assert session_tracks[2]["type"] == "LoraxTrack"

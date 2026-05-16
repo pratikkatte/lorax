@@ -40,7 +40,7 @@ describe('JBrowseFileView', () => {
     mocks.createViewState.mockClear();
   });
 
-  it('creates an embedded JBrowse view with hg19, chr2, LoraxPlugin, and LoraxTrack', () => {
+  it('creates an embedded JBrowse view with hg19, chr2, LoraxPlugin, LoraxTrack, and hg19 reference tracks', () => {
     render(
       <MemoryRouter initialEntries={['/jbrowse/1kg_chr2.trees.tsz?project=1000Genomes']}>
         <Routes>
@@ -62,6 +62,11 @@ describe('JBrowseFileView', () => {
     expect(options.assembly.name).toBe('hg19');
     expect(options.plugins).toEqual([mocks.LoraxPlugin]);
     expect(options.location).toBe('chr2:136608644..136608651');
+    expect(options.tracks.map(track => track.trackId)).toEqual([
+      'lorax_1kg_chr2.trees.tsz',
+      'hg19-ncbiRefSeq',
+      'hg19-dbSnp153'
+    ]);
     expect(options.tracks[0]).toMatchObject({
       type: 'LoraxTrack',
       name: '1kg_chr2.trees.tsz',
@@ -73,7 +78,42 @@ describe('JBrowseFileView', () => {
         loraxSid: 'sid-1'
       }
     });
+    expect(options.tracks[1]).toMatchObject({
+      type: 'FeatureTrack',
+      trackId: 'hg19-ncbiRefSeq',
+      assemblyNames: ['hg19']
+    });
+    expect(options.tracks[2]).toMatchObject({
+      type: 'FeatureTrack',
+      trackId: 'hg19-dbSnp153',
+      assemblyNames: ['hg19']
+    });
+    expect(options.defaultSession.view.tracks.map(track => track.configuration)).toEqual([
+      'hg19-ncbiRefSeq',
+      'hg19-dbSnp153',
+      options.tracks[0].trackId
+    ]);
     expect(options.defaultSession.view.tracks[0]).toMatchObject({
+      type: 'FeatureTrack',
+      configuration: 'hg19-ncbiRefSeq',
+      displays: [
+        {
+          type: 'LinearBasicDisplay',
+          configuration: 'hg19-ncbiRefSeq-LinearBasicDisplay'
+        }
+      ]
+    });
+    expect(options.defaultSession.view.tracks[1]).toMatchObject({
+      type: 'FeatureTrack',
+      configuration: 'hg19-dbSnp153',
+      displays: [
+        {
+          type: 'LinearBasicDisplay',
+          configuration: 'hg19-dbSnp153-LinearBasicDisplay'
+        }
+      ]
+    });
+    expect(options.defaultSession.view.tracks[2]).toMatchObject({
       type: 'LoraxTrack',
       configuration: options.tracks[0].trackId
     });

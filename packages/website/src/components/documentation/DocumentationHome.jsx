@@ -270,15 +270,21 @@ function LoadingNavigationTabs() {
         hidden={tab !== "jbrowse"}
         className="p-4"
       >
-        <p className="text-sm leading-6 text-slate-600">
-          Use JBrowse view when you want the same Lorax track in a genome-browser layout with reference sequence,
-          genomic coordinates, and annotations. Open it from the JBrowse action on supported files, or launch it
-          directly from the command line.
-        </p>
-        <div className="mt-4">
-          <CodeBlock label="Open in JBrowse">
-            {`lorax --file path/to/your.trees --jbrowse
-lorax --file path/to/your.trees --jbrowse --assembly hg38`}
+        <div className="rounded-2xl border border-emerald-100 bg-emerald-50/60 p-5">
+          <div className="mb-3 flex items-center gap-2 font-semibold text-slate-900">
+            <LuSparkles className="text-emerald-600" /> Launch with JBrowse
+          </div>
+          <p className="mb-3 text-sm leading-6 text-slate-600">
+            Lorax can be launched inside JBrowse Web to overlay ARG tracks on a full genome browser with reference sequence and annotations. JBrowse launches require an assembly.
+          </p>
+          <CodeBlock label="Launch with JBrowse">
+            {`# Built-in assemblies
+lorax --file path/to/your.trees --jbrowse --assembly hg19
+lorax --file path/to/your.trees --jbrowse --assembly hg38
+
+# Local FASTA assembly
+lorax --file path/to/your.trees --jbrowse --assembly /path/reference.fa.gz
+lorax --file path/to/your.trees --jbrowse --assembly /path/reference-folder`}
           </CodeBlock>
         </div>
       </div>
@@ -374,7 +380,14 @@ export default function DocumentationHome() {
 
           <Section id="install-and-quick-start" eyebrow="Setup" title="Install and Quick Start">
             <p>
-              Lorax Python package opens a local web-interface to explore the ARG data.
+              Lorax can be used{" "}
+              <Link
+                to="/"
+                className="font-medium text-emerald-700 underline decoration-emerald-200 underline-offset-2 hover:text-emerald-800"
+              >
+                directly in the browser
+              </Link>{" "}
+              or run locally through the Python package.
             </p>
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
               <div className="mb-3 flex items-center gap-2 font-semibold text-slate-900">
@@ -401,9 +414,7 @@ lorax --port 3000`}</CodeBlock>
 # Preferred for large files
 lorax --file path/to/your.trees`}
               </CodeBlock>
-              <p className="mt-3 text-sm leading-6 text-slate-600">
-                You can also open the landing page and click <strong>Load File</strong> to upload <code className="rounded bg-slate-100 px-1 font-mono text-xs text-slate-800">.trees</code>, <code className="rounded bg-slate-100 px-1 font-mono text-xs text-slate-800">.trees.tsz</code>, or CSV files from your machine.
-              </p>
+              
             </div>
 
             <details
@@ -421,22 +432,6 @@ lorax --file path/to/your.trees`}
                 <SupportedInputFormatsTabs />
               </div>
             </details>
-
-            <div className="mt-6 rounded-2xl border border-emerald-100 bg-emerald-50/60 p-5">
-              <div className="mb-3 flex items-center gap-2 font-semibold text-slate-900">
-                <LuSparkles className="text-emerald-600" /> Launce With JBrowse
-              </div>
-              <p className="mb-3 text-sm leading-6 text-slate-600">
-                Lorax can be launched inside JBrowse Web to overlay ARG tracks on a full genome browser with reference sequence and annotations.
-              </p>  
-              <CodeBlock label="Launch with JBrowse">
-                {`# hg19 (GRCh37) by default
-lorax --file path/to/your.trees --jbrowse
-
-# Specify a different assembly
-lorax --file path/to/your.trees --jbrowse --assembly hg38`}
-              </CodeBlock>
-            </div>
 
             <div className="mt-6">
               <details className="group rounded-2xl border border-slate-200 bg-slate-50/80 open:bg-white">
@@ -458,11 +453,10 @@ lorax --file path/to/your.trees --jbrowse --assembly hg38`}
                       <code className="rounded bg-slate-100 px-1 font-mono text-xs text-slate-800">3000</code>).
                     </li>
                     <li>
-                      <code className="rounded bg-slate-100 px-1 font-mono text-xs text-slate-800">--jbrowse</code> — Launch with JBrowse.
+                      <code className="rounded bg-slate-100 px-1 font-mono text-xs text-slate-800">--jbrowse</code> — Launch with JBrowse; requires <code className="rounded bg-slate-100 px-1 font-mono text-xs text-slate-800">--assembly</code>.
                     </li>
                     <li>
-                      <code className="rounded bg-slate-100 px-1 font-mono text-xs text-slate-800">--assembly</code> — In JBrowse mode, selects the built-in assembly name (default{" "}
-                      <code className="rounded bg-slate-100 px-1 font-mono text-xs text-slate-800">hg19</code>
+                      <code className="rounded bg-slate-100 px-1 font-mono text-xs text-slate-800">--assembly</code> — Required in JBrowse mode. Accepts <code className="rounded bg-slate-100 px-1 font-mono text-xs text-slate-800">hg19</code>, <code className="rounded bg-slate-100 px-1 font-mono text-xs text-slate-800">hg38</code>, aliases <code className="rounded bg-slate-100 px-1 font-mono text-xs text-slate-800">h19</code> / <code className="rounded bg-slate-100 px-1 font-mono text-xs text-slate-800">h38</code>, <code className="rounded bg-slate-100 px-1 font-mono text-xs text-slate-800">FASTA[,FAI[,GZI]]</code>, or an assembly folder.
                     </li>
                     <li>
                       <code className="rounded bg-slate-100 px-1 font-mono text-xs text-slate-800">-h</code> /{" "}

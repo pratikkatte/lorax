@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from copy import deepcopy
 from pathlib import Path
 from typing import Optional
 from urllib.parse import quote
@@ -113,8 +114,133 @@ _BUILTIN_ASSEMBLY_ALIASES = {
 }
 
 
+_HG19_1000_GENOMES_TRACKS = [
+    {
+        "type": "FeatureTrack",
+        "trackId": "hg19-ncbiRefSeq",
+        "name": "NCBI RefSeq - RefSeq All",
+        "assemblyNames": ["hg19"],
+        "description": "NCBI RefSeq genes, curated and predicted (NM_*, XM_*, NR_*, XR_*, NP_*, YP_*)",
+        "category": ["Genes and Gene Predictions"],
+        "metadata": {
+            "ucsc": {
+                "baseColorDefault": "genomicCodons",
+                "baseColorUseCds": "given",
+                "color": "12,12,120",
+                "idXref": "ncbiRefSeqLink mrnaAcc name",
+                "longLabel": "NCBI RefSeq genes, curated and predicted (NM_*, XM_*, NR_*, XR_*, NP_*, YP_*)",
+                "parent": "refSeqComposite off",
+                "priority": "1",
+                "shortLabel": "RefSeq All",
+                "track": "ncbiRefSeq",
+                "html": "",
+            }
+        },
+        "adapter": {
+            "type": "Gff3TabixAdapter",
+            "gffGzLocation": {
+                "locationType": "UriLocation",
+                "uri": "https://jbrowse.org/ucsc/hg19/ncbiRefSeq.gff.gz",
+            },
+            "index": {
+                "indexType": "CSI",
+                "location": {
+                    "locationType": "UriLocation",
+                    "uri": "https://jbrowse.org/ucsc/hg19/ncbiRefSeq.gff.gz.csi",
+                },
+            },
+        },
+        "displays": [
+            {
+                "type": "LinearBasicDisplay",
+                "displayId": "hg19-ncbiRefSeq-LinearBasicDisplay",
+            },
+            {
+                "type": "LinearArcDisplay",
+                "displayId": "hg19-ncbiRefSeq-LinearArcDisplay",
+            },
+        ],
+    },
+    {
+        "type": "FeatureTrack",
+        "trackId": "hg19-dbSnp153",
+        "name": "Variants - All dbSNP(153)",
+        "assemblyNames": ["hg19"],
+        "description": "All Short Genetic Variants from dbSNP Release 153",
+        "category": ["Variation and Repeats"],
+        "metadata": {
+            "ucsc": {
+                "bigDataUrl": "/gbdb/hg19/snp/dbSnp153.bb",
+                "defaultGeneTracks": "knownGene",
+                "longLabel": "All Short Genetic Variants from dbSNP Release 153",
+                "maxWindowToDraw": "1000000",
+                "parent": "dbSnp153ViewVariants off",
+                "priority": "4",
+                "shortLabel": "All dbSNP(153)",
+                "subGroups": "view=variants",
+                "tableBrowser": "noGenome",
+                "track": "dbSnp153",
+                "html": "",
+            }
+        },
+        "adapter": {
+            "type": "BigBedAdapter",
+            "bigBedLocation": {
+                "locationType": "UriLocation",
+                "uri": "https://hgdownload.soe.ucsc.edu/gbdb/hg19/snp/dbSnp153.bb",
+            },
+        },
+        "displays": [
+            {
+                "type": "LinearBasicDisplay",
+                "displayId": "hg19-dbSnp153-LinearBasicDisplay",
+            },
+            {
+                "type": "LinearArcDisplay",
+                "displayId": "hg19-dbSnp153-LinearArcDisplay",
+            },
+        ],
+    },
+]
+
+
 def _normalize_builtin_assembly_name(assembly: str) -> str:
     return _BUILTIN_ASSEMBLY_ALIASES.get(assembly.lower(), assembly)
+
+
+def _is_1000_genomes_filename(filename: str | None) -> bool:
+    return bool(filename and filename.lower().startswith("1kg_chr"))
+
+
+def _project_jbrowse_tracks(filename: str | None, assembly_name: str) -> list[dict]:
+    if assembly_name != "hg19" or not _is_1000_genomes_filename(filename):
+        return []
+    return deepcopy(_HG19_1000_GENOMES_TRACKS)
+
+
+def _session_track(track: dict) -> dict:
+    displays = track.get("displays") or []
+    session_track = {
+        "type": track["type"],
+        "configuration": track["trackId"],
+    }
+    if displays:
+        session_track["displays"] = [{
+            "type": displays[0]["type"],
+            "configuration": displays[0]["displayId"],
+        }]
+    elif track["type"] == "LoraxTrack":
+        session_track["displays"] = [{
+            "type": "LoraxDisplay",
+            "configuration": f"{track['trackId']}-LoraxDisplay",
+        }]
+    return session_track
+
+
+def _default_session_tracks(tracks: list[dict]) -> list[dict]:
+    reference_tracks = [track for track in tracks if track["type"] != "LoraxTrack"]
+    lorax_tracks = [track for track in tracks if track["type"] == "LoraxTrack"]
+    return [_session_track(track) for track in [*reference_tracks, *lorax_tracks]]
 
 
 def _build_local_assembly_config(assembly: dict[str, str | None], base_url: str) -> dict:
@@ -229,6 +355,7 @@ def create_fastapi_app(
                         "isProd": True,
                     },
                 }]
+                tracks.extend(_project_jbrowse_tracks(filename, assembly_name))
 
             # defaultSession skips the JBrowse landing page and opens a
             # LinearGenomeView directly. The Lorax track is visible in the
@@ -239,6 +366,7 @@ def create_fastapi_app(
                 "views": [{
                     "id": "lorax-lgv",
                     "type": "LinearGenomeView",
+                    "tracks": _default_session_tracks(tracks),
                 }],
             } if assembly_cfg else None
 
