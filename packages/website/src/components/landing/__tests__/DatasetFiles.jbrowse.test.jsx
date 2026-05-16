@@ -56,4 +56,36 @@ describe('DatasetFiles JBrowse actions', () => {
       '/jbrowse/1kg_chr2.trees.tsz?project=1000Genomes&assembly=hg19'
     );
   });
+
+  it('hides the JBrowse launch action for Heliconius files', async () => {
+    const loadFile = vi.fn();
+    const setLoadingFile = vi.fn();
+
+    render(
+      <MemoryRouter>
+        <DatasetFiles
+          project="Heliconius"
+          files={['erato-sara_chr2.csv']}
+          loadFile={loadFile}
+          loadingFile={null}
+          setLoadingFile={setLoadingFile}
+        />
+      </MemoryRouter>
+    );
+
+    const loraxButton = screen.getByRole('button', { name: /open erato-sara_chr2\.csv in lorax/i });
+    const launchActions = screen.getByTestId('file-launch-actions');
+
+    expect(screen.queryByRole('link', { name: /open erato-sara_chr2\.csv in jbrowse/i })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('jbrowse-launch-icon')).not.toBeInTheDocument();
+    expect(launchActions).toContainElement(loraxButton);
+
+    await userEvent.click(loraxButton);
+
+    expect(setLoadingFile).toHaveBeenCalledWith('erato-sara_chr2.csv');
+    expect(loadFile).toHaveBeenCalledWith({
+      project: 'Heliconius',
+      file: 'erato-sara_chr2.csv'
+    });
+  });
 });

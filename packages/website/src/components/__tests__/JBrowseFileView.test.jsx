@@ -19,6 +19,10 @@ vi.mock('../EmbeddedJBrowseWithDrawer.jsx', () => ({
   )
 }));
 
+vi.mock('@jbrowse/core/ui', () => ({
+  Logomark: () => <svg data-testid="mock-jbrowse-logo" aria-hidden="true" />
+}));
+
 vi.mock('jbrowse-plugin-lorax', () => ({
   default: mocks.LoraxPlugin
 }));
@@ -49,6 +53,9 @@ describe('JBrowseFileView', () => {
       'data-location',
       'chr2:136608644..136608651'
     );
+    expect(screen.getByTestId('jbrowse-header-logo')).toBeInTheDocument();
+    expect(screen.getByText('1000Genomes')).toBeInTheDocument();
+    expect(screen.queryByText(/1000Genomes · hg19/i)).not.toBeInTheDocument();
     expect(mocks.createViewState).toHaveBeenCalledTimes(1);
 
     const options = mocks.createViewState.mock.calls[0][0];
@@ -85,16 +92,19 @@ describe('JBrowseFileView', () => {
 
     expect(screen.queryByTestId('jbrowse-view')).not.toBeInTheDocument();
     expect(mocks.createViewState).not.toHaveBeenCalled();
+    expect(screen.getByTestId('jbrowse-header-logo')).toBeInTheDocument();
+    expect(screen.getByText('Heliconius')).toBeInTheDocument();
+    expect(screen.queryByText(/Heliconius · chr2/i)).not.toBeInTheDocument();
 
     expect(screen.getByLabelText(/assembly/i)).toHaveValue('hg19');
-    expect(screen.getByLabelText(/location/i)).toHaveValue('chr2:10790402..10814152');
+    expect(screen.getByLabelText(/chromosome/i)).toHaveValue('chr2');
 
     await user.click(screen.getByRole('button', { name: /open/i }));
 
     await waitFor(() => expect(mocks.createViewState).toHaveBeenCalledTimes(1));
     const options = mocks.createViewState.mock.calls[0][0];
     expect(options.assembly.name).toBe('hg19');
-    expect(options.location).toBe('chr2:10790402..10814152');
+    expect(options.location).toBe('chr2');
     expect(options.tracks[0].assemblyNames).toEqual(['hg19']);
   });
 
@@ -109,9 +119,9 @@ describe('JBrowseFileView', () => {
       </MemoryRouter>
     );
 
+    expect(screen.queryByLabelText(/assembly name/i)).not.toBeInTheDocument();
+
     await user.selectOptions(screen.getByLabelText(/assembly/i), 'custom');
-    await user.clear(screen.getByLabelText(/assembly name/i));
-    await user.type(screen.getByLabelText(/assembly name/i), 'hel1');
     await user.clear(screen.getByLabelText(/fasta url/i));
     await user.type(screen.getByLabelText(/fasta url/i), 'https://example.org/hel.fa.gz');
     await user.clear(screen.getByLabelText(/fai url/i));
@@ -123,7 +133,7 @@ describe('JBrowseFileView', () => {
     await waitFor(() => expect(mocks.createViewState).toHaveBeenCalledTimes(1));
     const options = mocks.createViewState.mock.calls[0][0];
     expect(options.assembly).toMatchObject({
-      name: 'hel1',
+      name: 'hel',
       sequence: {
         type: 'ReferenceSequenceTrack',
         adapter: {
@@ -143,6 +153,27 @@ describe('JBrowseFileView', () => {
         }
       }
     });
-    expect(options.tracks[0].assemblyNames).toEqual(['hel1']);
+    expect(options.tracks[0].assemblyNames).toEqual(['hel']);
+  });
+
+  it('offers uploaded custom assembly files', async () => {
+    const user = userEvent.setup();
+
+    render(
+      <MemoryRouter initialEntries={['/jbrowse/erato-sara_chr2.csv?project=Heliconius']}>
+        <Routes>
+          <Route path="/jbrowse/:file" element={<JBrowseFileView />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    await user.selectOptions(screen.getByLabelText(/assembly/i), 'custom');
+    await user.click(screen.getByRole('radio', { name: /upload/i }));
+
+    expect(screen.getByLabelText(/fasta file/i)).toHaveAttribute('type', 'file');
+    expect(screen.getByLabelText(/fai file/i)).toHaveAttribute('type', 'file');
+    expect(screen.getByLabelText(/gzi file/i)).toHaveAttribute('type', 'file');
+    expect(screen.queryByLabelText(/fasta url/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/assembly name/i)).not.toBeInTheDocument();
   });
 });

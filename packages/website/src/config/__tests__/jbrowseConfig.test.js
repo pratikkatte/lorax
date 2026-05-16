@@ -51,15 +51,14 @@ describe('jbrowseConfig helpers', () => {
 
   it('builds a custom bgzip FASTA assembly from URLs', () => {
     expect(buildCustomJBrowseAssembly({
-      name: 'hel1',
       fastaUri: 'https://example.org/hel.fa.gz',
       faiUri: 'https://example.org/hel.fa.gz.fai',
       gziUri: 'https://example.org/hel.fa.gz.gzi'
     })).toMatchObject({
-      name: 'hel1',
+      name: 'hel',
       sequence: {
         type: 'ReferenceSequenceTrack',
-        trackId: 'hel1-ref',
+        trackId: 'hel-ref',
         adapter: {
           type: 'BgzipFastaAdapter',
           fastaLocation: {
@@ -75,6 +74,31 @@ describe('jbrowseConfig helpers', () => {
             locationType: 'UriLocation'
           }
         }
+      }
+    });
+  });
+
+  it('builds a custom bgzip FASTA assembly from uploaded files', () => {
+    const assembly = buildCustomJBrowseAssembly({
+      fastaLocation: new File(['>chr2\nACGT'], 'hel.fa.gz', { type: 'application/gzip' }),
+      faiLocation: new File(['chr2\t4\t6\t4\t5'], 'hel.fa.gz.fai', { type: 'text/plain' }),
+      gziLocation: new File(['index'], 'hel.fa.gz.gzi', { type: 'application/octet-stream' })
+    });
+
+    expect(assembly.name).toBe('hel');
+    expect(assembly.sequence.adapter).toMatchObject({
+      type: 'BgzipFastaAdapter',
+      fastaLocation: {
+        locationType: 'BlobLocation',
+        name: 'hel.fa.gz'
+      },
+      faiLocation: {
+        locationType: 'BlobLocation',
+        name: 'hel.fa.gz.fai'
+      },
+      gziLocation: {
+        locationType: 'BlobLocation',
+        name: 'hel.fa.gz.gzi'
       }
     });
   });

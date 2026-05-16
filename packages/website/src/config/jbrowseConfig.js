@@ -1,4 +1,5 @@
 import { metadataFeatureConfig } from './metadataFeatureConfig.js';
+import { storeBlobLocation } from '@jbrowse/core/util/tracks';
 
 export const DEFAULT_JBROWSE_ASSEMBLY = 'hg19';
 
@@ -126,34 +127,69 @@ function uriLocation(uri) {
   };
 }
 
+function basenameFromLocation(location) {
+  if (!location) return '';
+  if (typeof location === 'string') {
+    const path = location.split(/[?#]/)[0];
+    return decodeURIComponent(path.split('/').filter(Boolean).pop() || path);
+  }
+  return location.name || location.uri || '';
+}
+
+function inferAssemblyName(name, fastaLocation) {
+  const source = String(name || basenameFromLocation(fastaLocation) || 'custom-assembly');
+  const withoutExtensions = source
+    .replace(/\.fa(sta)?\.gz$/i, '')
+    .replace(/\.fa(sta)?$/i, '')
+    .replace(/\.fna(\.gz)?$/i, '')
+    .replace(/\.gz$/i, '');
+  const safe = withoutExtensions.replace(/[^a-zA-Z0-9_.-]+/g, '_').replace(/^_+|_+$/g, '');
+  return safe || 'custom-assembly';
+}
+
+function normalizeFileLocation(location) {
+  if (!location) return null;
+  if (typeof location === 'string') {
+    const trimmed = location.trim();
+    return trimmed ? uriLocation(trimmed) : null;
+  }
+  if (typeof File !== 'undefined' && location instanceof File) {
+    return storeBlobLocation({ blob: location });
+  }
+  return location;
+}
+
 export function buildCustomJBrowseAssembly({
   name,
   fastaUri,
   faiUri,
-  gziUri
+  gziUri,
+  fastaLocation: rawFastaLocation,
+  faiLocation: rawFaiLocation,
+  gziLocation: rawGziLocation
 } = {}) {
-  const assemblyName = String(name || '').trim();
-  const fastaLocation = String(fastaUri || '').trim();
-  const faiLocation = String(faiUri || '').trim();
-  const gziLocation = String(gziUri || '').trim();
-  if (!assemblyName || !fastaLocation) return null;
+  const fastaLocation = normalizeFileLocation(rawFastaLocation || fastaUri);
+  const faiLocation = normalizeFileLocation(rawFaiLocation || faiUri);
+  const gziLocation = normalizeFileLocation(rawGziLocation || gziUri);
+  const assemblyName = inferAssemblyName(name, rawFastaLocation || fastaUri || fastaLocation);
+  if (!fastaLocation) return null;
 
   const adapter = faiLocation && gziLocation
     ? {
         type: 'BgzipFastaAdapter',
-        fastaLocation: uriLocation(fastaLocation),
-        faiLocation: uriLocation(faiLocation),
-        gziLocation: uriLocation(gziLocation)
+        fastaLocation,
+        faiLocation,
+        gziLocation
       }
     : faiLocation
       ? {
           type: 'IndexedFastaAdapter',
-          fastaLocation: uriLocation(fastaLocation),
-          faiLocation: uriLocation(faiLocation)
+          fastaLocation,
+          faiLocation
         }
       : {
           type: 'UnindexedFastaAdapter',
-          fastaLocation: uriLocation(fastaLocation)
+          fastaLocation
         };
 
   return {

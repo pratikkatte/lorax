@@ -3,9 +3,16 @@ import { Link } from "react-router-dom";
 import { Logomark } from "@jbrowse/core/ui";
 import { buildJBrowseRoute } from "../../config/jbrowseConfig.js";
 
+const isJBrowseLandingEnabled = (project) =>
+    String(project || "").toLowerCase() !== "heliconius";
+
 // Inline FilePill for simplicity if not needing separate file
 function FilePill({ project, name, onOpen, loading }) {
-    const jbrowseTo = buildJBrowseRoute({ project, file: name });
+    const canOpenJBrowse = isJBrowseLandingEnabled(project);
+    const jbrowseTo = canOpenJBrowse ? buildJBrowseRoute({ project, file: name }) : null;
+    const fileHoverPadding = canOpenJBrowse
+        ? "group-hover/file:pr-24 group-focus-within/file:pr-24"
+        : "group-hover/file:pr-14 group-focus-within/file:pr-14";
 
     return (
         <div className={`group/file relative flex min-h-[52px] items-center rounded-lg border p-2 text-sm transition-all duration-200 ${
@@ -13,7 +20,7 @@ function FilePill({ project, name, onOpen, loading }) {
                 ? "bg-emerald-50 border-emerald-200 text-emerald-700"
                 : "bg-white border-slate-200 text-slate-600 hover:border-emerald-300 hover:shadow-sm"
         }`}>
-            <span className="min-w-0 flex-1 truncate px-2 pr-4 font-medium transition-[padding] group-hover/file:pr-24 group-focus-within/file:pr-24" title={name}>
+            <span className={`min-w-0 flex-1 truncate px-2 pr-4 font-medium transition-[padding] ${fileHoverPadding}`} title={name}>
                 {name}
             </span>
             <div
@@ -38,20 +45,22 @@ function FilePill({ project, name, onOpen, loading }) {
                         />
                     )}
                 </button>
-                <Link
-                    to={jbrowseTo}
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 text-slate-600 transition-colors hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200"
-                    title={`Open ${name} in JBrowse`}
-                    aria-label={`Open ${name} in JBrowse`}
-                >
-                    <span
-                        aria-hidden="true"
-                        data-testid="jbrowse-launch-icon"
-                        className="flex h-5 w-5 items-center [&_svg]:h-full [&_svg]:w-full"
+                {canOpenJBrowse ? (
+                    <Link
+                        to={jbrowseTo}
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 text-slate-600 transition-colors hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200"
+                        title={`Open ${name} in JBrowse`}
+                        aria-label={`Open ${name} in JBrowse`}
                     >
-                        <Logomark />
-                    </span>
-                </Link>
+                        <span
+                            aria-hidden="true"
+                            data-testid="jbrowse-launch-icon"
+                            className="flex h-5 w-5 items-center [&_svg]:h-full [&_svg]:w-full"
+                        >
+                            <Logomark />
+                        </span>
+                    </Link>
+                ) : null}
             </div>
         </div>
     );
