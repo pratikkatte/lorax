@@ -188,10 +188,14 @@ describe('FileView tutorial behavior', () => {
     render(<FileView />);
 
     await waitFor(() => {
-      expect(screen.getByLabelText('Open in JBrowse')).toHaveAttribute(
+      const jbrowseLink = screen.getByLabelText('Open in JBrowse');
+
+      expect(jbrowseLink).toHaveAttribute(
         'href',
         '/jbrowse/test.trees?project=demo&assembly=hg19&genomiccoordstart=0&genomiccoordend=100'
       );
+      expect(screen.getByTestId('sidebar-jbrowse-icon')).toBeInTheDocument();
+      expect(jbrowseLink).toContainElement(screen.getByTestId('sidebar-jbrowse-icon'));
     });
   });
 });

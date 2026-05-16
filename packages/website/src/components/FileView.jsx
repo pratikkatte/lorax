@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
-import { LuDna } from 'react-icons/lu';
+import { Logomark } from '@jbrowse/core/ui';
 import {
   HoverTooltip,
   formatTooltipTime,
@@ -1347,7 +1347,13 @@ function FileView() {
             title="Open in JBrowse"
             aria-label="Open in JBrowse"
           >
-            <LuDna className="h-5 w-5" aria-hidden="true" />
+            <span
+              data-testid="sidebar-jbrowse-icon"
+              aria-hidden="true"
+              className="flex h-5 w-5 items-center rounded-sm bg-white p-0.5 [&_svg]:h-full [&_svg]:w-full"
+            >
+              <Logomark />
+            </span>
             <span className="absolute left-full ml-2 px-2 py-1 text-xs text-white bg-slate-800 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
               Open in JBrowse
             </span>
