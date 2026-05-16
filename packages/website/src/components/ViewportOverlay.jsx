@@ -121,6 +121,19 @@ const ViewportOverlay = React.memo(({
         </>
       )}
 
+      {/* Time axis tour target */}
+      <div
+        data-tour="viewer-time-view"
+        style={{
+          position: 'absolute',
+          top: views?.treeTime?.y || '6%',
+          left: views?.treeTime?.x || '0%',
+          width: views?.treeTime?.width || '5%',
+          height: views?.treeTime?.height || '80%',
+          pointerEvents: 'none',
+        }}
+      />
+
       {/* Border styling */}
       <div
         style={{

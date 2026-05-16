@@ -43,6 +43,40 @@ const normalizeColor = (color) => {
   return null;
 };
 
+function InfoTooltipButton({ label, tooltipId, children }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div
+      className="relative inline-flex shrink-0"
+      onClick={(event) => event.stopPropagation()}
+      onMouseDown={(event) => event.stopPropagation()}
+    >
+      <button
+        type="button"
+        aria-label={`Explain ${label}`}
+        aria-describedby={open ? tooltipId : undefined}
+        onMouseEnter={() => setOpen(true)}
+        onMouseLeave={() => setOpen(false)}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setOpen(false)}
+        className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-gray-300 text-[10px] font-bold leading-none text-gray-400 hover:border-emerald-500 hover:text-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-1"
+      >
+        i
+      </button>
+      {open && (
+        <div
+          id={tooltipId}
+          role="tooltip"
+          className="absolute right-0 top-full z-50 mt-2 w-64 rounded-lg border border-gray-200 bg-white px-3 py-2 text-left text-xs font-medium leading-5 text-gray-600 shadow-lg"
+        >
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function InfoFilter({
   // FileView-specific props (not available via useLorax)
   visibleTrees = [],
@@ -381,6 +415,9 @@ export default function InfoFilter({
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
             <span className="text-xs text-gray-500">Display Lineages</span>
+            <InfoTooltipButton label="Display Lineages" tooltipId="display-lineages-tooltip">
+              Draws lineage paths for selected metadata values so shared ancestry is easier to compare across visible trees.
+            </InfoTooltipButton>
             <button
               type="button"
               className={`w-4 h-4 rounded-full border-2 transition-colors ${displayLineagePaths
@@ -740,10 +777,15 @@ export default function InfoFilter({
             className="flex items-center justify-between mb-2 cursor-pointer select-none"
             onClick={() => setIsTreesExpanded(!isTreesExpanded)}
           >
-            <h3 className="text-sm font-medium text-gray-700">
-              Trees {visibleTrees.length > 0 && (
-                <span className="text-gray-400 font-normal">({visibleTrees.length})</span>
-              )}
+            <h3 className="flex items-center gap-1.5 text-sm font-medium text-gray-700">
+              <span>
+                Trees {visibleTrees.length > 0 && (
+                  <span className="text-gray-400 font-normal">({visibleTrees.length})</span>
+                )}
+              </span>
+              <InfoTooltipButton label="Trees" tooltipId="trees-list-tooltip">
+                Lists the trees currently visible in the viewport. Hover a row to highlight that tree, or use the color control to customize its fill.
+              </InfoTooltipButton>
             </h3>
             <div className="flex items-center gap-3">
               {isCsvFile && (

@@ -2,7 +2,7 @@ import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useLocation } from 'react-router-dom';
-import { vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import InfoFilter from '../InfoFilter.jsx';
 import { LoraxTestProvider } from '@lorax/core';
 import { metadataFeatureConfig } from '../../../config/metadataFeatureConfig';
@@ -123,6 +123,25 @@ const renderWithLorax = ({
 };
 
 describe('InfoFilter metadata dropdown', () => {
+  it('shows explanatory tooltips for display lineages and trees', async () => {
+    const { user } = renderWithLorax({
+      propsOverrides: {
+        visibleTrees: [1082942, 1083025]
+      }
+    });
+
+    await user.hover(screen.getByLabelText('Explain Display Lineages'));
+    expect(screen.getByRole('tooltip')).toHaveTextContent(
+      /draws lineage paths for selected metadata values/i
+    );
+
+    await user.unhover(screen.getByLabelText('Explain Display Lineages'));
+    await user.hover(screen.getByLabelText('Explain Trees'));
+    expect(screen.getByRole('tooltip')).toHaveTextContent(
+      /lists the trees currently visible in the viewport/i
+    );
+  });
+
   it('renders source groups while keeping bare metadata keys as option values', async () => {
     const { user } = renderWithLorax({
       loraxOverrides: {

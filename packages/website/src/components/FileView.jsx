@@ -314,6 +314,21 @@ function FileView() {
     return getPolygonBounds(polygon);
   }, [getCenterPolygon, getPolygonBounds]);
 
+  // Get project and genomic coordinates from URL params
+  const project = searchParams.get('project');
+  const sid = searchParams.get('sid');
+  const genomiccoordstart = searchParams.get('genomiccoordstart');
+  const genomiccoordend = searchParams.get('genomiccoordend');
+
+  const jbrowseRoute = useMemo(() => buildJBrowseRoute({
+    project,
+    file: filename || file,
+    sid,
+    genomiccoordstart: genomicPosition?.[0],
+    genomiccoordend: genomicPosition?.[1]
+  }), [file, filename, genomicPosition, project, sid]);
+  const isJBrowseEnabled = Boolean(jbrowseRoute && jbrowseRoute !== '/');
+
   const tourSteps = useMemo(() => {
     const advancedStepsEnabled = false;
     const step = (id, extra) => ({ id, ...viewerTourNarrationById[id], ...extra });
@@ -349,6 +364,22 @@ function FileView() {
           mediaType: "gesture",
           gesture: "zoom-both",
           mediaAlt: "Scroll up and down, and Ctrl + scroll up and down"
+        }
+      }),
+      step("viewer-time-view", {
+        target: '[data-tour="viewer-time-view"]',
+        offset: { x: 40, y: 0 },
+        arrowDir: "left"
+      }),
+      step("viewer-time-scale-scroll", {
+        target: '[data-tour="viewer-time-view"]',
+        offset: { x: 40, y: 0 },
+        arrowDir: "left",
+        animation: {
+          label: "Scroll the time scale",
+          mediaType: "gesture",
+          gesture: "two-finger-scroll",
+          mediaAlt: "Scroll up and down over the time view"
         }
       }),
       ...(advancedStepsEnabled
@@ -398,9 +429,18 @@ function FileView() {
         target: '[data-tour="viewer-screenshot-button"]',
         offset: { x: -60, y: -60 },
         arrowDir: "right"
-      })
+      }),
+      ...(isJBrowseEnabled
+        ? [
+            step("viewer-jbrowse-button", {
+              target: '[data-tour="viewer-jbrowse-button"]',
+              offset: { x: -60, y: -60 },
+              arrowDir: "right"
+            })
+          ]
+        : [])
     ];
-  }, [getTourPolygonRect, tourCenterTreeIndex, tourSelectedTreeIndex, tourTargetTick, tourPolygonClicked, tourEdgeClicked]);
+  }, [getTourPolygonRect, isJBrowseEnabled, tourCenterTreeIndex, tourSelectedTreeIndex, tourTargetTick, tourPolygonClicked, tourEdgeClicked]);
 
   const getSelectedMetadataValueForNode = useCallback((nodeId) => {
     const key = selectedColorBy;
@@ -537,12 +577,6 @@ function FileView() {
     updateViewport,
     updateView
   } = useViewportDimensions();
-
-  // Get project and genomic coordinates from URL params
-  const project = searchParams.get('project');
-  const sid = searchParams.get('sid');
-  const genomiccoordstart = searchParams.get('genomiccoordstart');
-  const genomiccoordend = searchParams.get('genomiccoordend');
 
   // Load file config from URL params if not already loaded
   useEffect(() => {
@@ -952,14 +986,6 @@ function FileView() {
     return isCsvFile ? 'branch length' : tsconfig?.times?.type;
   }, [file, filename, tsconfig?.filename, tsconfig?.times?.type, tsconfig?.tree_info]);
 
-  const jbrowseRoute = useMemo(() => buildJBrowseRoute({
-    project,
-    file: filename || file,
-    sid,
-    genomiccoordstart: genomicPosition?.[0],
-    genomiccoordend: genomicPosition?.[1]
-  }), [file, filename, genomicPosition, project, sid]);
-
   const effectiveHighlightedMutationNode = hoveredMutationHighlight?.node_id != null
     ? String(hoveredMutationHighlight.node_id)
     : highlightedMutationNode;
@@ -1342,10 +1368,21 @@ function FileView() {
 
           {/* JBrowse button */}
           <a
-            href={jbrowseRoute}
-            className="group relative p-2 rounded-lg transition-colors hover:bg-slate-800 hover:text-white"
+            href={isJBrowseEnabled ? jbrowseRoute : undefined}
+            data-tour="viewer-jbrowse-button"
+            className={`group relative p-2 rounded-lg transition-colors ${
+              isJBrowseEnabled
+                ? 'hover:bg-slate-800 hover:text-white'
+                : 'opacity-40 cursor-not-allowed'
+            }`}
             title="Open in JBrowse"
             aria-label="Open in JBrowse"
+            aria-disabled={isJBrowseEnabled ? undefined : 'true'}
+            onClick={(event) => {
+              if (!isJBrowseEnabled) {
+                event.preventDefault();
+              }
+            }}
           >
             <span
               data-testid="sidebar-jbrowse-icon"

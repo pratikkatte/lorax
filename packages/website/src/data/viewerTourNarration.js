@@ -3,7 +3,7 @@
 export const viewerTourNarrationById = {
   "viewer-position": {
     title: "Genome window",
-    content: "Pan and set the genomic range you want to explore. Click Go to apply edits."
+    content: "Pan and set the genomic range you want to explore. Click the 🔍 to apply edits."
   },
   "viewer-reset-view": {
     title: "Reset view",
@@ -29,6 +29,14 @@ export const viewerTourNarrationById = {
     title: "Zoom",
     content: "Scroll up/down to zoom vertically. Hold Ctrl and scroll up/down to zoom horizontally."
   },
+  "viewer-time-view": {
+    title: "Time view",
+    content: "The time view on the left shows the vertical time scale for the trees in the main viewport."
+  },
+  "viewer-time-scale-scroll": {
+    title: "Move the time scale",
+    content: "Scroll up and down over the time view to move the time scale without changing the genomic window."
+  },
   "viewer-tree-polygon": {
     title: "Pick a tree",
     content: "The center tree is highlighted. Hover it to see details, then click any tree to zoom in."
@@ -38,7 +46,7 @@ export const viewerTourNarrationById = {
     content: "Click any edge on the highlighted tree to open the Info panel."
   },
   "viewer-info-button": {
-    title: "Info & Filters",
+    title: "Metadata, mutations, and filters",
     content: "Open metadata, mutations, and filtering controls for deeper inspection."
   },
   "viewer-info-details": {
@@ -60,6 +68,10 @@ export const viewerTourNarrationById = {
   "viewer-screenshot-button": {
     title: "Screenshot",
     content: "Capture a PNG or SVG of the current view."
+  },
+  "viewer-jbrowse-button": {
+    title: "Open in JBrowse",
+    content: "Open this same file and genomic window in JBrowse for a genome-browser view."
   }
 };
 
@@ -72,6 +84,8 @@ export const viewerTourDefaultStepOrder = [
   "viewer-viewport",
   "viewer-pan",
   "viewer-zoom",
+  "viewer-time-view",
+  "viewer-time-scale-scroll",
   "viewer-info-button",
   "viewer-settings-button",
   "viewer-screenshot-button"
@@ -79,13 +93,20 @@ export const viewerTourDefaultStepOrder = [
 
 /**
  * @param {{ imageSrc?: string; imageSrcsById?: Record<string, string> }} opts
- * @returns {Array<{ id: string; title: string; content: string; imageSrc: string }>}
+ * @returns {Array<{ id: string; title: string; content: string; imageSrc: string; animation?: { type: string; label: string } }>}
  */
 export function getViewerTourDocumentationSlides(opts = {}) {
-  const { imageSrc = "/docs/viewer-nav-placeholder.png", imageSrcsById = {} } = opts;
+  const { imageSrc, imageSrcsById = {} } = opts;
+  const animationsById = {
+    "viewer-pan": { type: "pan-x", label: "Horizontal pan gesture" },
+    "viewer-zoom": { type: "zoom-both", label: "Zoom gesture" },
+    "viewer-time-scale-scroll": { type: "scroll-y", label: "Time scale scroll gesture" }
+  };
+
   return viewerTourDefaultStepOrder.map((id) => ({
     id,
     ...viewerTourNarrationById[id],
-    imageSrc: imageSrcsById[id] ?? imageSrc
+    imageSrc: imageSrcsById[id] ?? imageSrc ?? `/docs/viewer-tour/${id}.png`,
+    ...(animationsById[id] ? { animation: animationsById[id] } : {})
   }));
 }

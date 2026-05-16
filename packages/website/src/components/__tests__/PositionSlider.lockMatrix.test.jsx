@@ -53,6 +53,37 @@ describe('PositionSlider lock view toggle', () => {
     ).toBeInTheDocument();
   });
 
+  it('shows explanatory info tooltips for compare topology and lock view', async () => {
+    const user = userEvent.setup();
+
+    render(
+      <MemoryRouter>
+        <PositionSlider
+          filename="test.trees"
+          genomeLength={1000}
+          value={[0, 100]}
+          onChange={vi.fn()}
+          onResetY={vi.fn()}
+          project={null}
+          tsconfig={{}}
+          lockModelMatrix={false}
+          setLockModelMatrix={vi.fn()}
+        />
+      </MemoryRouter>
+    );
+
+    await user.hover(screen.getByLabelText('Explain Compare topology'));
+    expect(screen.getByRole('tooltip')).toHaveTextContent(
+      /highlights added and removed edges between adjacent genealogies/i
+    );
+
+    await user.unhover(screen.getByLabelText('Explain Compare topology'));
+    await user.hover(screen.getByLabelText('Explain Lock view'));
+    expect(screen.getByRole('tooltip')).toHaveTextContent(
+      /freezes the current tree layout while you zoom and inspect/i
+    );
+  });
+
   it('disables lock before applying position change when lock is on', async () => {
     const user = userEvent.setup();
     const callOrder = [];

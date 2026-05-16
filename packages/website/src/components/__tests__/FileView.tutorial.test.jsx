@@ -6,6 +6,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mockSetSearchParams = vi.fn();
+let mockJBrowseRoute = '/jbrowse/test.trees?project=demo&assembly=hg19&genomiccoordstart=0&genomiccoordend=100';
 
 vi.mock('react-router-dom', () => ({
   useParams: () => ({ file: 'test.trees' }),
@@ -26,6 +27,10 @@ vi.mock('../Settings', () => ({
 
 vi.mock('../ScreenshotModal', () => ({
   default: () => null
+}));
+
+vi.mock('../../config/jbrowseConfig.js', () => ({
+  buildJBrowseRoute: () => mockJBrowseRoute
 }));
 
 vi.mock('../PositionSlider', () => ({
@@ -141,6 +146,7 @@ describe('FileView tutorial behavior', () => {
     mockQueryFile.mockReset();
     mockHandleConfigUpdate.mockReset();
     mockQueryDetails.mockReset();
+    mockJBrowseRoute = '/jbrowse/test.trees?project=demo&assembly=hg19&genomiccoordstart=0&genomiccoordend=100';
   });
 
   it('auto-opens for first-time users', async () => {
@@ -181,6 +187,68 @@ describe('FileView tutorial behavior', () => {
     await waitFor(() => {
       expect(screen.queryByTestId('tour-overlay')).not.toBeInTheDocument();
     });
+  });
+
+  it('adds time view steps after zoom and before the remaining tutorial steps', async () => {
+    render(<FileView />);
+
+    await waitFor(() => {
+      expect(tourOverlayMockState.lastProps?.steps?.length).toBeGreaterThan(0);
+    });
+
+    const stepIds = tourOverlayMockState.lastProps.steps.map((step) => step.id);
+    expect(stepIds.slice(0, 10)).toEqual([
+      'viewer-position',
+      'viewer-reset-view',
+      'viewer-compare-topology',
+      'viewer-lock-view',
+      'viewer-viewport',
+      'viewer-pan',
+      'viewer-zoom',
+      'viewer-time-view',
+      'viewer-time-scale-scroll',
+      'viewer-info-button'
+    ]);
+
+    const timeViewStep = tourOverlayMockState.lastProps.steps.find(
+      (step) => step.id === 'viewer-time-view'
+    );
+    const timeScrollStep = tourOverlayMockState.lastProps.steps.find(
+      (step) => step.id === 'viewer-time-scale-scroll'
+    );
+
+    expect(timeViewStep.target).toBe('[data-tour="viewer-time-view"]');
+    expect(timeScrollStep.target).toBe('[data-tour="viewer-time-view"]');
+    expect(timeScrollStep.animation?.gesture).toBe('two-finger-scroll');
+  });
+
+  it('adds a final JBrowse step when the JBrowse button is enabled', async () => {
+    render(<FileView />);
+
+    await waitFor(() => {
+      expect(tourOverlayMockState.lastProps?.steps?.length).toBeGreaterThan(0);
+    });
+
+    const steps = tourOverlayMockState.lastProps.steps;
+    expect(steps.at(-1)).toMatchObject({
+      id: 'viewer-jbrowse-button',
+      target: '[data-tour="viewer-jbrowse-button"]'
+    });
+    expect(screen.getByLabelText('Open in JBrowse')).toHaveAttribute('href', mockJBrowseRoute);
+  });
+
+  it('omits the JBrowse tour step when the JBrowse button is disabled', async () => {
+    mockJBrowseRoute = '/';
+
+    render(<FileView />);
+
+    await waitFor(() => {
+      expect(tourOverlayMockState.lastProps?.steps?.length).toBeGreaterThan(0);
+    });
+
+    const stepIds = tourOverlayMockState.lastProps.steps.map((step) => step.id);
+    expect(stepIds).not.toContain('viewer-jbrowse-button');
+    expect(screen.getByLabelText('Open in JBrowse')).toHaveAttribute('aria-disabled', 'true');
   });
 
   it('links to JBrowse while preserving current genomic coordinates', async () => {
