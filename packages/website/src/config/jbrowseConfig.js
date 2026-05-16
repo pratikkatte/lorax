@@ -108,14 +108,62 @@ export function normalizeJBrowseAssemblyName(assembly, project) {
   return JBROWSE_ASSEMBLIES[candidate] ? candidate : DEFAULT_JBROWSE_ASSEMBLY;
 }
 
-export function resolveJBrowseAssemblyName(assembly, project) {
+export function resolveJBrowseAssemblyName(assembly, project, { allowCustom = false } = {}) {
   const candidate = assembly || PROJECT_ASSEMBLY_DEFAULTS[project];
   if (!candidate) return null;
+  if (allowCustom) return candidate;
   return JBROWSE_ASSEMBLIES[candidate] ? candidate : DEFAULT_JBROWSE_ASSEMBLY;
 }
 
 export function getJBrowseAssembly(assembly, project) {
   return JBROWSE_ASSEMBLIES[normalizeJBrowseAssemblyName(assembly, project)];
+}
+
+function uriLocation(uri) {
+  return {
+    uri,
+    locationType: 'UriLocation'
+  };
+}
+
+export function buildCustomJBrowseAssembly({
+  name,
+  fastaUri,
+  faiUri,
+  gziUri
+} = {}) {
+  const assemblyName = String(name || '').trim();
+  const fastaLocation = String(fastaUri || '').trim();
+  const faiLocation = String(faiUri || '').trim();
+  const gziLocation = String(gziUri || '').trim();
+  if (!assemblyName || !fastaLocation) return null;
+
+  const adapter = faiLocation && gziLocation
+    ? {
+        type: 'BgzipFastaAdapter',
+        fastaLocation: uriLocation(fastaLocation),
+        faiLocation: uriLocation(faiLocation),
+        gziLocation: uriLocation(gziLocation)
+      }
+    : faiLocation
+      ? {
+          type: 'IndexedFastaAdapter',
+          fastaLocation: uriLocation(fastaLocation),
+          faiLocation: uriLocation(faiLocation)
+        }
+      : {
+          type: 'UnindexedFastaAdapter',
+          fastaLocation: uriLocation(fastaLocation)
+        };
+
+  return {
+    name: assemblyName,
+    sequence: {
+      type: 'ReferenceSequenceTrack',
+      trackId: `${assemblyName}-ref`,
+      adapter
+    }
+  };
 }
 
 export function inferChromosomeFromFilename(file) {
@@ -192,7 +240,8 @@ export function buildLoraxJBrowseTrack({
   shareSid,
   isProd = false
 } = {}) {
-  const assemblyName = normalizeJBrowseAssemblyName(assembly, project);
+  const assemblyName = resolveJBrowseAssemblyName(assembly, project, { allowCustom: true }) ||
+    normalizeJBrowseAssemblyName(assembly, project);
   const safeName = String(file || 'lorax').replace(/[^a-zA-Z0-9_.-]/g, '_');
   const trackId = `lorax_${safeName}`;
   const adapter = {

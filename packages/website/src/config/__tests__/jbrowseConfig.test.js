@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildCustomJBrowseAssembly,
   buildJBrowseRoute,
   buildLoraxJBrowseTrack,
   getDefaultJBrowseLocation,
@@ -46,6 +47,36 @@ describe('jbrowseConfig helpers', () => {
 
   it('falls back to hg19 for unknown assembly names', () => {
     expect(normalizeJBrowseAssemblyName('not-real', '1000Genomes')).toBe('hg19');
+  });
+
+  it('builds a custom bgzip FASTA assembly from URLs', () => {
+    expect(buildCustomJBrowseAssembly({
+      name: 'hel1',
+      fastaUri: 'https://example.org/hel.fa.gz',
+      faiUri: 'https://example.org/hel.fa.gz.fai',
+      gziUri: 'https://example.org/hel.fa.gz.gzi'
+    })).toMatchObject({
+      name: 'hel1',
+      sequence: {
+        type: 'ReferenceSequenceTrack',
+        trackId: 'hel1-ref',
+        adapter: {
+          type: 'BgzipFastaAdapter',
+          fastaLocation: {
+            uri: 'https://example.org/hel.fa.gz',
+            locationType: 'UriLocation'
+          },
+          faiLocation: {
+            uri: 'https://example.org/hel.fa.gz.fai',
+            locationType: 'UriLocation'
+          },
+          gziLocation: {
+            uri: 'https://example.org/hel.fa.gz.gzi',
+            locationType: 'UriLocation'
+          }
+        }
+      }
+    });
   });
 
   it('builds a Lorax track with session sharing fields', () => {

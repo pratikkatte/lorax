@@ -1,5 +1,6 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -71,7 +72,9 @@ describe('JBrowseFileView', () => {
     });
   });
 
-  it('does not create a JBrowse view for projects without a configured assembly', () => {
+  it('asks for an assembly when the project has no configured assembly', async () => {
+    const user = userEvent.setup();
+
     render(
       <MemoryRouter initialEntries={['/jbrowse/erato-sara_chr2.csv?project=Heliconius&genomiccoordstart=10790402&genomiccoordend=10814152']}>
         <Routes>
@@ -81,7 +84,65 @@ describe('JBrowseFileView', () => {
     );
 
     expect(screen.queryByTestId('jbrowse-view')).not.toBeInTheDocument();
-    expect(screen.getByText(/no jbrowse assembly is configured/i)).toBeInTheDocument();
     expect(mocks.createViewState).not.toHaveBeenCalled();
+
+    expect(screen.getByLabelText(/assembly/i)).toHaveValue('hg19');
+    expect(screen.getByLabelText(/location/i)).toHaveValue('chr2:10790402..10814152');
+
+    await user.click(screen.getByRole('button', { name: /open/i }));
+
+    await waitFor(() => expect(mocks.createViewState).toHaveBeenCalledTimes(1));
+    const options = mocks.createViewState.mock.calls[0][0];
+    expect(options.assembly.name).toBe('hg19');
+    expect(options.location).toBe('chr2:10790402..10814152');
+    expect(options.tracks[0].assemblyNames).toEqual(['hg19']);
+  });
+
+  it('creates a JBrowse view from a custom assembly URL', async () => {
+    const user = userEvent.setup();
+
+    render(
+      <MemoryRouter initialEntries={['/jbrowse/erato-sara_chr2.csv?project=Heliconius']}>
+        <Routes>
+          <Route path="/jbrowse/:file" element={<JBrowseFileView />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    await user.selectOptions(screen.getByLabelText(/assembly/i), 'custom');
+    await user.clear(screen.getByLabelText(/assembly name/i));
+    await user.type(screen.getByLabelText(/assembly name/i), 'hel1');
+    await user.clear(screen.getByLabelText(/fasta url/i));
+    await user.type(screen.getByLabelText(/fasta url/i), 'https://example.org/hel.fa.gz');
+    await user.clear(screen.getByLabelText(/fai url/i));
+    await user.type(screen.getByLabelText(/fai url/i), 'https://example.org/hel.fa.gz.fai');
+    await user.clear(screen.getByLabelText(/gzi url/i));
+    await user.type(screen.getByLabelText(/gzi url/i), 'https://example.org/hel.fa.gz.gzi');
+    await user.click(screen.getByRole('button', { name: /open/i }));
+
+    await waitFor(() => expect(mocks.createViewState).toHaveBeenCalledTimes(1));
+    const options = mocks.createViewState.mock.calls[0][0];
+    expect(options.assembly).toMatchObject({
+      name: 'hel1',
+      sequence: {
+        type: 'ReferenceSequenceTrack',
+        adapter: {
+          type: 'BgzipFastaAdapter',
+          fastaLocation: {
+            uri: 'https://example.org/hel.fa.gz',
+            locationType: 'UriLocation'
+          },
+          faiLocation: {
+            uri: 'https://example.org/hel.fa.gz.fai',
+            locationType: 'UriLocation'
+          },
+          gziLocation: {
+            uri: 'https://example.org/hel.fa.gz.gzi',
+            locationType: 'UriLocation'
+          }
+        }
+      }
+    });
+    expect(options.tracks[0].assemblyNames).toEqual(['hel1']);
   });
 });
