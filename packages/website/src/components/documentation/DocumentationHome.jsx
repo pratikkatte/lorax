@@ -201,6 +201,91 @@ function SupportedInputFormatsTabs() {
   );
 }
 
+function LoadingNavigationTabs() {
+  const [tab, setTab] = useState("lorax");
+  const loraxTabId = "loading-navigation-tab-lorax";
+  const jbrowseTabId = "loading-navigation-tab-jbrowse";
+  const loraxPanelId = "loading-navigation-panel-lorax";
+  const jbrowsePanelId = "loading-navigation-panel-jbrowse";
+
+  const tabBtn =
+    "min-h-[44px] flex-1 px-4 py-3 text-left text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2";
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+      <div
+        role="tablist"
+        aria-label="Loading and navigation views"
+        className="flex w-full overflow-x-auto border-b border-slate-200 bg-slate-50"
+      >
+        <button
+          type="button"
+          role="tab"
+          id={loraxTabId}
+          aria-selected={tab === "lorax"}
+          aria-controls={loraxPanelId}
+          onClick={() => setTab("lorax")}
+          className={`${tabBtn} border-b-2 md:text-center ${
+            tab === "lorax"
+              ? "border-emerald-600 bg-white text-emerald-800"
+              : "border-transparent text-slate-600 hover:bg-slate-100/80 hover:text-slate-900"
+          }`}
+        >
+          Lorax view
+        </button>
+        <button
+          type="button"
+          role="tab"
+          id={jbrowseTabId}
+          aria-selected={tab === "jbrowse"}
+          aria-controls={jbrowsePanelId}
+          onClick={() => setTab("jbrowse")}
+          className={`${tabBtn} border-b-2 md:text-center ${
+            tab === "jbrowse"
+              ? "border-emerald-600 bg-white text-emerald-800"
+              : "border-transparent text-slate-600 hover:bg-slate-100/80 hover:text-slate-900"
+          }`}
+        >
+          JBrowse view
+        </button>
+      </div>
+
+      <div
+        role="tabpanel"
+        id={loraxPanelId}
+        aria-labelledby={loraxTabId}
+        hidden={tab !== "lorax"}
+        className="p-4"
+      >
+        <p className="mb-4 text-sm leading-6 text-slate-600">
+          Use the Lorax viewer to move across local genealogies, inspect tree details, and adjust display settings.
+        </p>
+        <ViewerNavigationSlideshow slides={viewerNavigationSlides} />
+      </div>
+
+      <div
+        role="tabpanel"
+        id={jbrowsePanelId}
+        aria-labelledby={jbrowseTabId}
+        hidden={tab !== "jbrowse"}
+        className="p-4"
+      >
+        <p className="text-sm leading-6 text-slate-600">
+          Use JBrowse view when you want the same Lorax track in a genome-browser layout with reference sequence,
+          genomic coordinates, and annotations. Open it from the JBrowse action on supported files, or launch it
+          directly from the command line.
+        </p>
+        <div className="mt-4">
+          <CodeBlock label="Open in JBrowse">
+            {`lorax --file path/to/your.trees --jbrowse
+lorax --file path/to/your.trees --jbrowse --assembly hg38`}
+          </CodeBlock>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function DocumentationHome() {
   const [activeSection, setActiveSection] = useState(documentationSections[0].id);
 
@@ -406,8 +491,7 @@ lorax --file path/to/your.trees --jbrowse --assembly hg38`}
           </Section>
 
           <Section id="loading-data" eyebrow="Data flow" title="Loading &amp; Navigating">
-
-            <ViewerNavigationSlideshow slides={viewerNavigationSlides} />
+            <LoadingNavigationTabs />
           </Section>
 
           <Section id="usecases" eyebrow="Examples" title="Use cases">

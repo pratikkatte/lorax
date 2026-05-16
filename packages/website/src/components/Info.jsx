@@ -113,12 +113,12 @@ const Info = ({
               onClick={() => setActiveTab('metadata')}
               data-tour="viewer-info-filter-tab"
             >
-              Metadata
+              Samples
             </button>
             <button
               type="button"
               className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full text-slate-400 hover:text-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-1"
-              aria-label="Explain Metadata tab"
+              aria-label="Explain Samples tab"
               aria-describedby={showMetadataTooltip ? "metadata-tab-tooltip" : undefined}
               onMouseEnter={() => setShowMetadataTooltip(true)}
               onMouseLeave={() => setShowMetadataTooltip(false)}
@@ -135,7 +135,7 @@ const Info = ({
                 role="tooltip"
                 className="absolute right-0 top-full z-20 mt-2 w-64 rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-xs font-medium leading-5 text-slate-600 shadow-lg"
               >
-                Use Metadata to color trees and apply filters or presets based on sample metadata.
+                Search, filter, highlight, and color samples or trees using sample annotations
               </div>
             )}
           </div>
