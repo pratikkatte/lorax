@@ -363,6 +363,10 @@ function FileView() {
         target: '[data-tour="viewer-compare-topology"]',
         offset: { x: 0, y: 20 }
       }),
+      step("viewer-highlight-descendants", {
+        target: '[data-tour="viewer-highlight-descendants"]',
+        offset: { x: 0, y: 20 }
+      }),
       step("viewer-lock-view", {
         target: '[data-tour="viewer-lock-view"]',
         offset: { x: 0, y: 20 }

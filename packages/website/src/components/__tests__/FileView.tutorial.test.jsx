@@ -199,10 +199,11 @@ describe('FileView tutorial behavior', () => {
     });
 
     const stepIds = tourOverlayMockState.lastProps.steps.map((step) => step.id);
-    expect(stepIds.slice(0, 10)).toEqual([
+    expect(stepIds.slice(0, 11)).toEqual([
       'viewer-position',
       'viewer-reset-view',
       'viewer-compare-topology',
+      'viewer-highlight-descendants',
       'viewer-lock-view',
       'viewer-viewport',
       'viewer-pan',
@@ -211,6 +212,13 @@ describe('FileView tutorial behavior', () => {
       'viewer-time-scale-scroll',
       'viewer-info-button'
     ]);
+
+    const descendantsStep = tourOverlayMockState.lastProps.steps.find(
+      (step) => step.id === 'viewer-highlight-descendants'
+    );
+    expect(descendantsStep).toMatchObject({
+      target: '[data-tour="viewer-highlight-descendants"]'
+    });
 
     const timeViewStep = tourOverlayMockState.lastProps.steps.find(
       (step) => step.id === 'viewer-time-view'

@@ -13,6 +13,10 @@ export const viewerTourNarrationById = {
     title: "Compare topology",
     content: "Highlight edge differences between adjacent genealogies to compare their topologies."
   },
+  "viewer-highlight-descendants": {
+    title: "Highlight descendants",
+    content: "Highlight descendant edges and tips when you hover or select an ancestral edge."
+  },
   "viewer-lock-view": {
     title: "Lock view",
     content: "Zoom/pan into the trees and inspect the specific region without the trees shifting around."
@@ -80,6 +84,7 @@ export const viewerTourDefaultStepOrder = [
   "viewer-position",
   "viewer-reset-view",
   "viewer-compare-topology",
+  "viewer-highlight-descendants",
   "viewer-lock-view",
   "viewer-viewport",
   "viewer-pan",
