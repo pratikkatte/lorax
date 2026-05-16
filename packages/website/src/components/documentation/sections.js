@@ -3,7 +3,7 @@ import {
   LuFileInput,
   LuPackage,
   LuRoute,
-  LuTarget
+  // LuTarget
 } from "react-icons/lu";
 
 export const documentationSections = [
@@ -11,5 +11,5 @@ export const documentationSections = [
   { id: "install-and-quick-start", label: "Install and Quick Start", icon: LuPackage },
   { id: "key-features", label: "Key Features", icon: LuRoute },
   { id: "loading-data", label: "Loading & Navigation", icon: LuFileInput },
-  { id: "usecases", label: "Use cases", icon: LuTarget }
+  // { id: "usecases", label: "Use cases", icon: LuTarget }
 ];

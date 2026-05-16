@@ -488,7 +488,7 @@ lorax --file path/to/your.trees`}
             <LoadingNavigationTabs />
           </Section>
 
-          <Section id="usecases" eyebrow="Examples" title="Use cases">
+          {/* <Section id="usecases" eyebrow="Examples" title="Use cases">
             <p className="mb-4 text-sm leading-6 text-slate-600">
               These short write-ups live inside the documentation. Each page explains the biology and dataset, then links into the viewer with the matching feature preset (metadata coloring and genomic focus).
             </p>
@@ -509,7 +509,7 @@ lorax --file path/to/your.trees`}
             <p className="mt-6">
               If you use Lorax in research, cite: <span className="font-medium text-slate-900">Lorax: Interactive visualization of Ancestral Recombination Graphs.</span>
             </p>
-          </Section>
+          </Section> */}
         </div>
       </div>
     </main>
