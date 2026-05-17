@@ -2,6 +2,8 @@ lorax/data/
 packages/app/lorax_app/static/
 packages/backend/notebooks/
 packages/plugin/
+packages/backend/UPLOADS/
+packages/backend/benchmark.csv
 packages/plugin/jbrowse-components/
 # --- Python ---
 __pycache__/
@@ -32,6 +34,7 @@ MANIFEST
 pip-log.txt
 pip-delete-this-directory.txt
 htmlcov/
+.codex
 .tox/
 .nox/
 .coverage

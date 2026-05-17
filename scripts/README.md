@@ -66,3 +66,32 @@ python3 scripts/benchmark_load_render.py \
 Useful options:
 - `--viewport-size` to control the number of trees in the first layout batch.
 - `--replicates` for repeated measurements (mean +/- SD is reported when `> 1`).
+
+## Zenodo source archive
+
+`create_zenodo_archive.sh` creates one source ZIP containing both the main Lorax
+repository and the Lorax metadata widget plugin repository. Use this for a
+manual Zenodo software upload when one DOI should cite both repositories
+together.
+
+Both repositories must have the same release tag, and both working trees must be
+clean before the archive is created. The ZIP includes `MANIFEST.md` and commit
+SHA files so reviewers can verify exactly which source snapshots were included.
+
+Run from the Lorax repo root:
+
+```bash
+scripts/create_zenodo_archive.sh v1.2.0 ../lorax-plugin
+```
+
+The archive is written to:
+
+```bash
+dist/zenodo/lorax-zenodo-v1.2.0.zip
+```
+
+You can test the archive script with temporary throwaway Git repositories:
+
+```bash
+bash scripts/test_create_zenodo_archive.sh
+```
