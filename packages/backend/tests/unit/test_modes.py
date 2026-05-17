@@ -129,6 +129,38 @@ class TestModeConfig:
         assert config.disk_cache_max_gb == 100
 
 
+class TestBucketResolution:
+    """Tests for GCS bucket name resolution."""
+
+    def test_local_mode_defaults_to_public_projects_bucket(self, monkeypatch):
+        """Local mode should show the bundled public project library by default."""
+        monkeypatch.delenv("BUCKET_NAME", raising=False)
+        monkeypatch.delenv("GCS_BUCKET_NAME", raising=False)
+
+        from lorax.modes import resolve_bucket_name
+
+        assert resolve_bucket_name("local") == "lorax_projects"
+
+    def test_explicit_bucket_name_overrides_local_default(self, monkeypatch):
+        """Explicit bucket config should take precedence over the local default."""
+        monkeypatch.setenv("BUCKET_NAME", "custom-bucket")
+        monkeypatch.setenv("GCS_BUCKET_NAME", "fallback-bucket")
+
+        from lorax.modes import resolve_bucket_name
+
+        assert resolve_bucket_name("local") == "custom-bucket"
+
+    def test_non_local_mode_has_no_default_bucket(self, monkeypatch):
+        """Development and production should not silently use the public bucket."""
+        monkeypatch.delenv("BUCKET_NAME", raising=False)
+        monkeypatch.delenv("GCS_BUCKET_NAME", raising=False)
+
+        from lorax.modes import resolve_bucket_name
+
+        assert resolve_bucket_name("development") is None
+        assert resolve_bucket_name("production") is None
+
+
 class TestDirectoryPaths:
     """Tests for directory path resolution."""
 

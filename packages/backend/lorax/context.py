@@ -9,6 +9,7 @@ from lorax.modes import (
     CURRENT_MODE,
     CURRENT_CONFIG,
     get_cache_dir,
+    resolve_bucket_name,
     validate_mode_requirements,
 )
 from lorax.session_manager import SessionManager
@@ -41,10 +42,7 @@ session_manager = SessionManager(
 )
 
 # Common Environment Variables
-_bucket_name = (os.getenv("BUCKET_NAME") or "").strip()
-if not _bucket_name:
-    _bucket_name = (os.getenv("GCS_BUCKET_NAME") or "").strip()
-BUCKET_NAME = _bucket_name or None
+BUCKET_NAME = resolve_bucket_name(CURRENT_MODE)
 
 # Initialize Disk Cache Manager
 # Uses Redis for distributed locking if available, falls back to file locks

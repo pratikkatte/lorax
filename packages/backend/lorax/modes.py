@@ -13,6 +13,9 @@ from dataclasses import dataclass
 from typing import Optional
 
 
+DEFAULT_PUBLIC_GCS_BUCKET = "lorax_projects"
+
+
 @dataclass
 class ModeConfig:
     """Configuration for a deployment mode."""
@@ -160,6 +163,20 @@ def get_cache_dir(mode_config: Optional[ModeConfig] = None) -> Path:
 
     cache_dir.mkdir(parents=True, exist_ok=True)
     return cache_dir
+
+
+def resolve_bucket_name(mode: Optional[str] = None) -> Optional[str]:
+    """Resolve the configured GCS bucket, including the local public default."""
+    bucket_name = (os.getenv("BUCKET_NAME") or "").strip()
+    if not bucket_name:
+        bucket_name = (os.getenv("GCS_BUCKET_NAME") or "").strip()
+    if bucket_name:
+        return bucket_name
+
+    resolved_mode = mode or detect_mode()
+    if resolved_mode == "local":
+        return DEFAULT_PUBLIC_GCS_BUCKET
+    return None
 
 
 def validate_mode_requirements(mode_config: ModeConfig) -> list:
