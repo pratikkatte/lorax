@@ -140,6 +140,7 @@ lorax --port 3000
 npm ci
 VITE_API_BASE=/api npm --workspace packages/website run build
 python packages/app/scripts/sync_ui_assets.py
+python packages/app/scripts/sync_jbrowse_assets.py
 
 # Build the wheel
 python -m pip install build

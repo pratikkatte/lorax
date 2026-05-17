@@ -45,6 +45,31 @@ def _serve_file(path: Path) -> FileResponse:
     return FileResponse(path)
 
 
+def _looks_like_static_asset(path: str) -> bool:
+    """
+    Asset requests should not fall back to index.html.
+
+    Returning HTML for a missing hashed JS chunk makes browsers report
+    `Unexpected token '<'`, hiding the real missing-file problem.
+    """
+    asset_prefixes = (
+        "assets/",
+        "static/",
+        "docs/",
+    )
+    asset_names = {
+        "favicon.ico",
+        "logo.png",
+        "lorax-logo.png",
+        "manifest.json",
+        "robots.txt",
+        "version.txt",
+        "lorax-plugin.js",
+        "umd_plugin.js",
+    }
+    return path.startswith(asset_prefixes) or path in asset_names
+
+
 # Built-in assembly configs that mirror the lorax-plugin dev config.
 # Each entry follows the JBrowse assembly schema with remote hosted FASTA files.
 _BUILTIN_ASSEMBLIES: dict[str, dict] = {
@@ -405,6 +430,9 @@ def create_fastapi_app(
             except ValueError:
                 raise HTTPException(status_code=400, detail="Invalid path")
 
+            if _looks_like_static_asset(path):
+                raise HTTPException(status_code=404, detail="Not found")
+
             return _serve_file(jbrowse_index)
 
     else:
@@ -435,6 +463,9 @@ def create_fastapi_app(
 
             if candidate.exists() and candidate.is_file():
                 return _serve_file(candidate)
+
+            if _looks_like_static_asset(path):
+                raise HTTPException(status_code=404, detail="Not found")
 
             return _serve_file(index_html)
 

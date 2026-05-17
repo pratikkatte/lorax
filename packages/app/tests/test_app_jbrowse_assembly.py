@@ -5,6 +5,40 @@ from fastapi.testclient import TestClient
 from lorax_app.app import create_fastapi_app
 
 
+def test_jbrowse_missing_static_js_returns_404_instead_of_html(tmp_path):
+    static_dir = tmp_path / "static"
+    jbrowse_dir = static_dir / "jbrowse"
+    js_dir = jbrowse_dir / "static" / "js"
+    js_dir.mkdir(parents=True)
+    (jbrowse_dir / "index.html").write_text("<html></html>", encoding="utf-8")
+    (js_dir / "main.12345678.js").write_text("console.log('ok')", encoding="utf-8")
+    (static_dir / "lorax-plugin.js").write_text("", encoding="utf-8")
+
+    app = create_fastapi_app(static_dir=static_dir, jbrowse=True, assembly="hg19")
+    client = TestClient(app)
+
+    response = client.get("/static/js/missing.chunk.js")
+
+    assert response.status_code == 404
+    assert response.headers["content-type"].startswith("application/json")
+
+
+def test_lorax_missing_vite_asset_returns_404_instead_of_html(tmp_path):
+    static_dir = tmp_path / "static"
+    assets_dir = static_dir / "assets"
+    assets_dir.mkdir(parents=True)
+    (static_dir / "index.html").write_text("<html></html>", encoding="utf-8")
+    (assets_dir / "index-12345678.js").write_text("console.log('ok')", encoding="utf-8")
+
+    app = create_fastapi_app(static_dir=static_dir)
+    client = TestClient(app)
+
+    response = client.get("/assets/missing.js")
+
+    assert response.status_code == 404
+    assert response.headers["content-type"].startswith("application/json")
+
+
 def test_jbrowse_config_serves_custom_local_assembly(tmp_path):
     static_dir = tmp_path / "static"
     jbrowse_dir = static_dir / "jbrowse"
