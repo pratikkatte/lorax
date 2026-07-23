@@ -37,6 +37,25 @@ docker run -it -p 80:80 lorax
 
 Once running, visit **[http://localhost/](http://localhost/)** in your browser to access the Lorax UI.
 
+### Load testing
+
+Use the asynchronous load-testing helper to simulate concurrent clients hitting the Lorax backend:
+
+```bash
+python load_test.py --base-url http://localhost:8080 --users 50 --requests-per-user 20 --concurrency 15
+```
+
+Flags:
+
+* `--base-url` – service root to target (defaults to `http://localhost:8080`).
+* `--users` – total virtual users to simulate.
+* `--requests-per-user` – number of requests each user makes after session initialization.
+* `--concurrency` – maximum number of users running at once.
+* `--timeout` – per-request timeout in seconds.
+* `--socket-queries` – how many websocket queries to emit per user (also exercises `handle_query`).
+* `--project`/`--filename` – which dataset to load via the Socket.IO `load_file` event (targets `handle_upload`).
+* `--socket-path` – override the Socket.IO path when it differs from `/socket.io`.
+
 
 ---
 
