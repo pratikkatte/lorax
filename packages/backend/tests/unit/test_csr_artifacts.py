@@ -162,6 +162,28 @@ def test_position_lookup_boundaries_and_multi_read_order(tmp_path):
             reader.tree_at_index(2)
 
 
+def test_genomic_range_lookup_uses_half_open_overlap_semantics(tmp_path):
+    from lorax.artifacts.csr_reader import CSRArtifactReader
+
+    source = tmp_path / "ranges.trees"
+    _recombining_tree_sequence(source)
+    result = _build(source, tmp_path / "artifacts")
+
+    with CSRArtifactReader.open(result["artifact_dir"]) as reader:
+        assert list(reader.tree_indices_in_range(0, 10)) == [0]
+        assert list(reader.tree_indices_in_range(2, 10)) == [0]
+        assert list(reader.tree_indices_in_range(2, 10.1)) == [0, 1]
+        assert list(reader.tree_indices_in_range(10, 20)) == [1]
+        assert list(reader.tree_indices_in_range(0, 20)) == [0, 1]
+        assert [
+            genealogy.tree_index
+            for genealogy in reader.trees_in_range(2, 10.1)
+        ] == [0, 1]
+        for invalid_range in [(-1, 1), (0, 0), (10, 9), (0, 21)]:
+            with pytest.raises(ValueError):
+                reader.tree_indices_in_range(*invalid_range)
+
+
 def test_reader_does_not_reopen_source(tmp_path):
     from lorax.artifacts.csr_reader import CSRArtifactReader
 

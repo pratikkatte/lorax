@@ -332,6 +332,33 @@ class CSRArtifactReader:
         tree_index = int(np.searchsorted(self.breakpoints, position, side="right") - 1)
         return self.tree_at_index(tree_index)
 
+    def tree_indices_in_range(self, start: float, end: float) -> range:
+        """Return tree indexes whose genomic intervals overlap ``[start, end)``."""
+        start = float(start)
+        end = float(end)
+        if (
+            not np.isfinite(start)
+            or not np.isfinite(end)
+            or start < 0
+            or end > self.sequence_length
+            or start >= end
+        ):
+            raise ValueError(
+                "Genomic range must satisfy "
+                f"0 <= start < end <= {self.sequence_length}; got [{start}, {end})"
+            )
+        first_tree = int(
+            np.searchsorted(self.breakpoints, start, side="right") - 1
+        )
+        last_tree_exclusive = int(
+            np.searchsorted(self.breakpoints, end, side="left")
+        )
+        return range(first_tree, last_tree_exclusive)
+
+    def trees_in_range(self, start: float, end: float) -> list[GenealogyCSR]:
+        """Decode all genealogies whose genomic intervals overlap ``[start, end)``."""
+        return self.trees_at_indices(self.tree_indices_in_range(start, end))
+
     def trees_at_indices(self, indices: Iterable[int]) -> list[GenealogyCSR]:
         requested = [int(index) for index in indices]
         if not requested:
