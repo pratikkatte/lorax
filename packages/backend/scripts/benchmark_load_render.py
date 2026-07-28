@@ -14,12 +14,14 @@ import argparse
 import asyncio
 import csv
 import logging
+import random
 import re
 import statistics
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+import numpy as np
 import psutil
 
 # Configure logging - suppress verbose Lorax prints during benchmark
@@ -43,13 +45,13 @@ def parse_args() -> argparse.Namespace:
         "--dir",
         type=str,
         default=None,
-        help="Directory to glob for .tsz files (mutually exclusive with --files)",
+        help="Directory to glob for .trees/.tsz files (mutually exclusive with --files)",
     )
     parser.add_argument(
         "--files",
         type=str,
         default=None,
-        help="Comma-separated .tsz file paths (mutually exclusive with --dir)",
+        help="Comma-separated .trees/.tsz file paths (mutually exclusive with --dir)",
     )
     parser.add_argument(
         "--output",
@@ -74,6 +76,27 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Discard first measurement per file (warmup run)",
     )
+    parser.add_argument(
+        "--csr-artifact",
+        type=str,
+        default=None,
+        help=(
+            "Optional lorax-csr-v2 artifact to compare against current "
+            "in-memory genealogy-to-CSR construction; requires exactly one input file"
+        ),
+    )
+    parser.add_argument(
+        "--csr-random-fetches",
+        type=int,
+        default=100,
+        help="Number of seeded random genealogy reads in the CSR comparison",
+    )
+    parser.add_argument(
+        "--csr-seed",
+        type=int,
+        default=42,
+        help="Random seed for CSR comparison tree indices",
+    )
     return parser.parse_args()
 
 
@@ -85,16 +108,18 @@ def collect_files(args: argparse.Namespace) -> List[Path]:
         dir_path = Path(args.dir)
         if not dir_path.is_dir():
             raise ValueError(f"Directory not found: {dir_path}")
-        files = sorted(dir_path.glob("*.tsz"))
+        files = sorted(
+            [*dir_path.glob("*.trees"), *dir_path.glob("*.tsz")]
+        )
         if not files:
-            raise ValueError(f"No .tsz files in {dir_path}")
+            raise ValueError(f"No .trees or .tsz files in {dir_path}")
         return files
     if args.files:
         paths = [Path(p.strip()) for p in args.files.split(",") if p.strip()]
         missing = [p for p in paths if not p.exists()]
         if missing:
             raise ValueError(f"Files not found: {missing}")
-        return [p for p in paths if p.suffix == ".tsz" or str(p).endswith(".tsz")]
+        return [p for p in paths if p.suffix in {".trees", ".tsz"}]
     raise ValueError("Provide --dir or --files")
 
 
@@ -188,6 +213,90 @@ async def run_one_replicate(
     }
 
 
+async def benchmark_csr_random_access(
+    file_path: str,
+    artifact_path: str,
+    *,
+    random_fetches: int,
+    seed: int,
+) -> Dict[str, Any]:
+    """Compare v2 artifact fetches with current in-memory CSR construction."""
+    from lorax.artifacts.csr_reader import CSRArtifactReader
+    from lorax.cache import get_file_context
+    from lorax.tree_graph import construct_tree
+
+    ctx = await get_file_context(file_path, str(Path(file_path).parent))
+    if ctx is None or not hasattr(ctx.tree_sequence, "num_trees"):
+        raise RuntimeError(f"Could not load TreeSequence for CSR benchmark: {file_path}")
+    tree_sequence = ctx.tree_sequence
+    num_fetches = min(max(1, random_fetches), max(1, tree_sequence.num_trees))
+    randomizer = random.Random(seed)
+    indices = [
+        randomizer.randrange(tree_sequence.num_trees)
+        for _ in range(num_fetches)
+    ]
+    edges = tree_sequence.tables.edges
+    nodes = tree_sequence.tables.nodes
+    breakpoints = list(tree_sequence.breakpoints())
+    process = psutil.Process()
+
+    current_times_ms: list[float] = []
+    for tree_index in indices:
+        started = time.perf_counter_ns()
+        construct_tree(
+            tree_sequence,
+            edges,
+            nodes,
+            breakpoints,
+            tree_index,
+        )
+        current_times_ms.append((time.perf_counter_ns() - started) / 1_000_000)
+
+    rss_before = process.memory_info().rss
+    peak_rss = rss_before
+    artifact_times_ms: list[float] = []
+    with CSRArtifactReader.open(artifact_path) as reader:
+        recorded_source = Path(reader.manifest["source"]["path"]).resolve()
+        if recorded_source != Path(file_path).resolve():
+            raise ValueError(
+                f"CSR artifact source {recorded_source} does not match {file_path}"
+            )
+        for tree_index in indices:
+            started = time.perf_counter_ns()
+            reader.tree_at_index(tree_index)
+            artifact_times_ms.append(
+                (time.perf_counter_ns() - started) / 1_000_000
+            )
+            peak_rss = max(peak_rss, process.memory_info().rss)
+
+    current_p95 = float(np.percentile(current_times_ms, 95))
+    artifact_p95 = float(np.percentile(artifact_times_ms, 95))
+    artifact_size = sum(
+        path.stat().st_size
+        for path in Path(artifact_path).rglob("*")
+        if path.is_file()
+    )
+    return {
+        "csr_random_fetches": num_fetches,
+        "current_csr_p50_ms": round(float(np.percentile(current_times_ms, 50)), 6),
+        "current_csr_p95_ms": round(current_p95, 6),
+        "artifact_fetch_p50_ms": round(
+            float(np.percentile(artifact_times_ms, 50)), 6
+        ),
+        "artifact_fetch_p95_ms": round(artifact_p95, 6),
+        "artifact_fetch_p95_no_slower": artifact_p95 <= current_p95,
+        "artifact_p95_speedup": round(
+            current_p95 / artifact_p95 if artifact_p95 else float("inf"),
+            4,
+        ),
+        "artifact_reader_rss_delta_mb": round(
+            (peak_rss - rss_before) / (1024 * 1024),
+            3,
+        ),
+        "csr_artifact_size_mb": round(artifact_size / (1024 * 1024), 4),
+    }
+
+
 def aggregate_replicates(
     replicates: List[Dict[str, Any]],
     file_path: Path,
@@ -254,6 +363,15 @@ def write_csv(rows: List[Dict[str, Any]], output_path: Path) -> None:
         "rss_sd",
         "buffer_size_kb",
         "replicates",
+        "csr_random_fetches",
+        "current_csr_p50_ms",
+        "current_csr_p95_ms",
+        "artifact_fetch_p50_ms",
+        "artifact_fetch_p95_ms",
+        "artifact_fetch_p95_no_slower",
+        "artifact_p95_speedup",
+        "artifact_reader_rss_delta_mb",
+        "csr_artifact_size_mb",
     ]
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w", newline="", encoding="utf-8") as f:
@@ -265,7 +383,9 @@ def write_csv(rows: List[Dict[str, Any]], output_path: Path) -> None:
 
 async def main_async(args: argparse.Namespace) -> None:
     files = collect_files(args)
-    logger.info("Found %d .tsz file(s)", len(files))
+    if args.csr_artifact and len(files) != 1:
+        raise ValueError("--csr-artifact requires exactly one input TreeSequence")
+    logger.info("Found %d TreeSequence file(s)", len(files))
 
     rows: List[Dict[str, Any]] = []
     for i, path in enumerate(files):
@@ -294,6 +414,20 @@ async def main_async(args: argparse.Namespace) -> None:
             raise RuntimeError("No successful replicates")
 
         row = aggregate_replicates(replicates, path, file_size_mb, metadata)
+        if args.csr_artifact:
+            csr_metrics = await benchmark_csr_random_access(
+                file_path,
+                args.csr_artifact,
+                random_fetches=args.csr_random_fetches,
+                seed=args.csr_seed,
+            )
+            row.update(csr_metrics)
+            logger.info(
+                "  csr current_p95=%.3fms artifact_p95=%.3fms speedup=%.2fx",
+                csr_metrics["current_csr_p95_ms"],
+                csr_metrics["artifact_fetch_p95_ms"],
+                csr_metrics["artifact_p95_speedup"],
+            )
         rows.append(row)
 
         # Log summary for this file
@@ -323,6 +457,8 @@ def main() -> None:
     args = parse_args()
     if args.replicates < 1:
         raise ValueError("--replicates must be >= 1")
+    if args.csr_random_fetches < 1:
+        raise ValueError("--csr-random-fetches must be >= 1")
     asyncio.run(main_async(args))
 
 
