@@ -80,12 +80,19 @@ const TreePolygonOverlay = React.memo(({
         ...style
       }}
     >
-      {polygons.map(({ key, vertices, treeIndex, isHovered }) => {
+      {polygons.map(({ key, vertices, treeIndex, intervalLeft, intervalRight, isHovered }) => {
         if (!vertices || vertices.length === 0) return null;
 
         const pointsStr = vertices.map(([x, y]) => `${x},${y}`).join(' ');
         const currentFill = getTreeFillColor(treeIndex, isHovered);
-        const polygon = { key, vertices, treeIndex, isHovered };
+        const polygon = {
+          key,
+          vertices,
+          treeIndex,
+          intervalLeft,
+          intervalRight,
+          isHovered,
+        };
 
         return (
           <polygon

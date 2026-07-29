@@ -6,6 +6,9 @@ Handles query_mutations_window and search_mutations events.
 
 import asyncio
 
+from lorax.artifacts.csr_reader import CSRArtifactCapabilityError
+from lorax.artifacts.features import artifact_mutation_search
+from lorax.artifacts.runtime import context_for_session, is_artifact_session
 from lorax.constants import ERROR_NO_FILE_LOADED
 from lorax.metadata.mutations import (
     get_mutations_in_window, search_mutations_by_position
@@ -51,19 +54,38 @@ def register_mutations_events(sio):
             offset = data.get("offset", 0)
             limit = data.get("limit", 1000)
 
-            ctx = await get_file_context(session.file_path)
-            if ctx is None:
-                await sio.emit("mutations-window-result", {
-                    "error": "Failed to load tree sequence"
-                }, to=sid)
-                return
-
-            ts = ctx.tree_sequence
-
-            # Get mutations in the window
-            result = await asyncio.to_thread(
-                get_mutations_in_window, ts, start, end, offset, limit
-            )
+            if is_artifact_session(session):
+                try:
+                    context = await asyncio.to_thread(context_for_session, session)
+                    result = await asyncio.to_thread(
+                        context.reader.mutations_in_range,
+                        start,
+                        end,
+                        offset=offset,
+                        limit=limit,
+                    )
+                except CSRArtifactCapabilityError as exc:
+                    await sio.emit(
+                        "mutations-window-result",
+                        {"error": str(exc), "code": exc.code},
+                        to=sid,
+                    )
+                    return
+            else:
+                ctx = await get_file_context(session.file_path)
+                if ctx is None:
+                    await sio.emit("mutations-window-result", {
+                        "error": "Failed to load tree sequence"
+                    }, to=sid)
+                    return
+                result = await asyncio.to_thread(
+                    get_mutations_in_window,
+                    ctx.tree_sequence,
+                    start,
+                    end,
+                    offset,
+                    limit,
+                )
 
             # Convert to PyArrow buffer
             buffer = await asyncio.to_thread(mutations_to_arrow_buffer, result)
@@ -120,19 +142,39 @@ def register_mutations_events(sio):
             offset = data.get("offset", 0)
             limit = data.get("limit", 1000)
 
-            ctx = await get_file_context(session.file_path)
-            if ctx is None:
-                await sio.emit("mutations-search-result", {
-                    "error": "Failed to load tree sequence"
-                }, to=sid)
-                return
-
-            ts = ctx.tree_sequence
-
-            # Search mutations around the position
-            result = await asyncio.to_thread(
-                search_mutations_by_position, ts, position, range_bp, offset, limit
-            )
+            if is_artifact_session(session):
+                try:
+                    context = await asyncio.to_thread(context_for_session, session)
+                    result = await asyncio.to_thread(
+                        artifact_mutation_search,
+                        context.reader,
+                        position,
+                        range_bp,
+                        offset,
+                        limit,
+                    )
+                except CSRArtifactCapabilityError as exc:
+                    await sio.emit(
+                        "mutations-search-result",
+                        {"error": str(exc), "code": exc.code},
+                        to=sid,
+                    )
+                    return
+            else:
+                ctx = await get_file_context(session.file_path)
+                if ctx is None:
+                    await sio.emit("mutations-search-result", {
+                        "error": "Failed to load tree sequence"
+                    }, to=sid)
+                    return
+                result = await asyncio.to_thread(
+                    search_mutations_by_position,
+                    ctx.tree_sequence,
+                    position,
+                    range_bp,
+                    offset,
+                    limit,
+                )
 
             # Convert to PyArrow buffer
             buffer = await asyncio.to_thread(mutations_to_arrow_buffer, result)

@@ -182,8 +182,17 @@ function updateCacheFromResponse(cache, parsed) {
  * @param {number} marginFactor - Extra viewport width to keep (default 0.5 = 50%)
  * @returns {number} Count of evicted trees
  */
-function evictOutOfViewTrees(cache, intervals, genomicCoords, displayArray = [], marginFactor = 0.5) {
-  if (!intervals || !genomicCoords || intervals.length === 0) return 0;
+function evictOutOfViewTrees(
+  cache,
+  intervals,
+  genomicCoords,
+  displayArray = [],
+  marginFactor = 0.5,
+  intervalByTree = null
+) {
+  const hasInlineIntervals = Array.isArray(intervals) && intervals.length > 0;
+  const hasIndexedIntervals = intervalByTree instanceof Map && intervalByTree.size > 0;
+  if ((!hasInlineIntervals && !hasIndexedIntervals) || !genomicCoords) return 0;
 
   const displaySet = new Set(Array.isArray(displayArray) ? displayArray : []);
 
@@ -202,8 +211,12 @@ function evictOutOfViewTrees(cache, intervals, genomicCoords, displayArray = [],
     if (displaySet.has(treeIdx)) continue;
 
     // Tree spans from intervals[treeIdx] to intervals[treeIdx + 1]
-    const treeStart = intervals[treeIdx];
-    const treeEnd = intervals[treeIdx + 1] ?? intervals[treeIdx];
+    const indexedBounds = hasIndexedIntervals ? intervalByTree.get(treeIdx) : null;
+    const treeStart = hasInlineIntervals ? intervals[treeIdx] : indexedBounds?.[0];
+    const treeEnd = hasInlineIntervals
+      ? (intervals[treeIdx + 1] ?? intervals[treeIdx])
+      : indexedBounds?.[1];
+    if (!Number.isFinite(treeStart) || !Number.isFinite(treeEnd)) continue;
 
     // Evict if tree is completely outside viewport + margin
     if (treeEnd < evictStart || treeStart > evictEnd) {
@@ -326,6 +339,7 @@ export function useTreeData({
 
   // Cache: Map<tree_idx, {node data for that tree}>
   const treeDataCacheRef = useRef(new Map());
+  const intervalByTreeRef = useRef(new Map());
 
   // Time bounds (file-level constants, cached from first fetch)
   const timeBoundsRef = useRef(null);
@@ -342,7 +356,12 @@ export function useTreeData({
   });
 
   // Derive stable file identity from tsconfig
-  const tsconfigId = tsconfig?.file_path || tsconfig?.genome_length || null;
+  const tsconfigId = tsconfig?.artifact_fingerprint
+    || tsconfig?.file_path
+    || (tsconfig?.project && tsconfig?.filename
+      ? `${tsconfig.project}/${tsconfig.filename}`
+      : tsconfig?.genome_length)
+    || null;
 
   const resolvedTimeScale = normalizeTimeScale(timeScale);
 
@@ -375,6 +394,7 @@ export function useTreeData({
         cacheKeyRef.current.timeScale !== resolvedTimeScale) {
       requestGenerationRef.current += 1;
       treeDataCacheRef.current.clear();
+      intervalByTreeRef.current.clear();
       timeBoundsRef.current = null;
       cacheKeyRef.current = { tsconfigId, timeScale: resolvedTimeScale };
       previousDisplayArrayRef.current = [];
@@ -388,6 +408,7 @@ export function useTreeData({
     pendingSyncRef.current = false;
     latestSnapshotRef.current = null;
     treeDataCacheRef.current.clear();
+    intervalByTreeRef.current.clear();
     timeBoundsRef.current = null;
     previousDisplayArrayRef.current = [];
     lastLockRefreshRef.current = { targetTreeIndex: null, targetLocalBBox: null };
@@ -539,6 +560,24 @@ export function useTreeData({
 
       // Update cache with new trees
       updateCacheFromResponse(cache, parsed);
+      if (
+        Array.isArray(response.tree_indices)
+        && Array.isArray(response.tree_intervals)
+      ) {
+        response.tree_indices.forEach((treeIndex, offset) => {
+          const bounds = response.tree_intervals[offset];
+          if (
+            Array.isArray(bounds)
+            && Number.isFinite(bounds[0])
+            && Number.isFinite(bounds[1])
+          ) {
+            intervalByTreeRef.current.set(Number(treeIndex), [
+              Number(bounds[0]),
+              Number(bounds[1]),
+            ]);
+          }
+        });
+      }
       if (requestKind === 'lock-refresh' && snapshotLockTargetIndex != null) {
         const returnedTreeIndices = new Set(
           (parsed?.tree_idx || [])
@@ -552,8 +591,15 @@ export function useTreeData({
 
       // Evict trees outside visible genomic window (with margin).
       // Never evict displayArray trees (lock-mode zoom can narrow genomicCoords).
-      if (snapshotGenomicCoords && snapshotTsconfig?.intervals) {
-        evictOutOfViewTrees(cache, snapshotTsconfig.intervals, snapshotGenomicCoords, snapshotDisplayArray);
+      if (snapshotGenomicCoords) {
+        evictOutOfViewTrees(
+          cache,
+          snapshotTsconfig?.intervals,
+          snapshotGenomicCoords,
+          snapshotDisplayArray,
+          0.5,
+          intervalByTreeRef.current
+        );
       }
 
       // Cache time bounds on first fetch (they're file-level constants)

@@ -9,6 +9,10 @@ Handles ancestry and descendant operations:
 - get_mrca_event
 """
 
+import asyncio
+
+from lorax.artifacts.graph import CompactGenealogyGraph
+from lorax.artifacts.runtime import context_for_session, is_artifact_session
 from lorax.context import tree_graph_cache
 from lorax.handlers import get_or_construct_tree_graph
 from lorax.lineage import (
@@ -17,6 +21,31 @@ from lorax.lineage import (
 )
 from lorax.sockets.decorators import require_session
 from lorax.sockets.utils import is_csv_session_file
+
+
+async def _ensure_session_graph(session, tree_index: int):
+    cached = await tree_graph_cache.get(session.sid, tree_index)
+    if cached is not None:
+        return cached
+    if is_artifact_session(session):
+        context = await asyncio.to_thread(context_for_session, session)
+        genealogy = await asyncio.to_thread(
+            context.reader.tree_at_index,
+            tree_index,
+        )
+        graph = CompactGenealogyGraph.from_genealogy(
+            genealogy,
+            global_min_time=context.reader.global_min_time,
+            global_max_time=context.reader.global_max_time,
+        )
+        await tree_graph_cache.set(session.sid, tree_index, graph)
+        return graph
+    return await get_or_construct_tree_graph(
+        session.file_path,
+        tree_index,
+        session.sid,
+        tree_graph_cache,
+    )
 
 
 def register_lineage_events(sio):
@@ -60,12 +89,7 @@ def register_lineage_events(sio):
                 return {"error": "Missing tree_index or node_id", "ancestors": [], "path": []}
 
             # Ensure tree is cached
-            await get_or_construct_tree_graph(
-                session.file_path,
-                int(tree_index),
-                lorax_sid,
-                tree_graph_cache
-            )
+            await _ensure_session_graph(session, int(tree_index))
 
             result = await get_ancestors(
                 tree_graph_cache,
@@ -117,12 +141,7 @@ def register_lineage_events(sio):
                 return {"error": "Missing tree_index or node_id", "descendants": [], "tips": []}
 
             # Ensure tree is cached
-            await get_or_construct_tree_graph(
-                session.file_path,
-                int(tree_index),
-                lorax_sid,
-                tree_graph_cache
-            )
+            await _ensure_session_graph(session, int(tree_index))
 
             result = await get_descendants(
                 tree_graph_cache,
@@ -177,12 +196,7 @@ def register_lineage_events(sio):
                 return {"error": "Missing tree_index", "matches": [], "positions": []}
 
             # Ensure tree is cached
-            await get_or_construct_tree_graph(
-                session.file_path,
-                int(tree_index),
-                lorax_sid,
-                tree_graph_cache
-            )
+            await _ensure_session_graph(session, int(tree_index))
 
             result = await search_nodes_by_criteria(
                 tree_graph_cache,
@@ -230,12 +244,7 @@ def register_lineage_events(sio):
                 return {"error": "Missing tree_index or root_node_id", "nodes": [], "edges": []}
 
             # Ensure tree is cached
-            await get_or_construct_tree_graph(
-                session.file_path,
-                int(tree_index),
-                lorax_sid,
-                tree_graph_cache
-            )
+            await _ensure_session_graph(session, int(tree_index))
 
             result = await get_subtree(
                 tree_graph_cache,
@@ -288,12 +297,7 @@ def register_lineage_events(sio):
                 return {"error": "Need at least 2 nodes", "mrca": None}
 
             # Ensure tree is cached
-            await get_or_construct_tree_graph(
-                session.file_path,
-                int(tree_index),
-                lorax_sid,
-                tree_graph_cache
-            )
+            await _ensure_session_graph(session, int(tree_index))
 
             result = await get_mrca(
                 tree_graph_cache,

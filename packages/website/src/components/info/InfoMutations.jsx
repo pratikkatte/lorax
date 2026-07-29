@@ -60,12 +60,15 @@ export default function InfoMutations({
 
   // Handle click on a mutation - navigate to the tree containing this position
   const handleMutationClick = useCallback((mutation) => {
-    if (!intervals || !setClickedGenomeInfo) return;
+    if (!setClickedGenomeInfo) return;
 
     const position = mutation.position;
 
     // Find the tree index for this position
-    const treeIndex = findTreeIndex(intervals, position);
+    const indexedTree = Number(mutation.tree_index);
+    const treeIndex = Number.isInteger(indexedTree) && indexedTree >= 0
+      ? indexedTree
+      : findTreeIndex(intervals, position);
     if (treeIndex < 0) return;
 
     // Set the highlighted mutation tree index (so we can draw exactly one ring)
@@ -74,10 +77,20 @@ export default function InfoMutations({
     }
 
     // Get the start and end positions for this tree
-    const start = intervals[treeIndex];
-    const end = intervals[treeIndex + 1] !== undefined
+    const hasInlineIntervals = Array.isArray(intervals);
+    const indexedStart = Number(mutation.interval_left);
+    const indexedEnd = Number(mutation.interval_right);
+    const hasIndexedInterval = Number.isFinite(indexedStart)
+      && Number.isFinite(indexedEnd)
+      && indexedStart < indexedEnd;
+    const start = hasInlineIntervals
+      ? intervals[treeIndex]
+      : (hasIndexedInterval ? indexedStart : position);
+    const end = hasInlineIntervals && intervals[treeIndex + 1] !== undefined
       ? intervals[treeIndex + 1]
-      : (genomeLength || start + 1000);
+      : (hasIndexedInterval
+        ? indexedEnd
+        : Math.min(genomeLength || position + 1, position + 1));
 
     // Trigger the zoom to this tree
     setClickedGenomeInfo({ s: start, e: end });

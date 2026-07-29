@@ -6,12 +6,30 @@ Handles load_file, details, and query events.
 
 import os
 import json
+import asyncio
+import logging
 from pathlib import Path
 
 from lorax.context import session_manager, BUCKET_NAME, tree_graph_cache, csv_tree_graph_cache
 from lorax.modes import CURRENT_MODE
 from lorax.constants import (
-    UPLOADS_DIR, ERROR_SESSION_NOT_FOUND, ERROR_MISSING_SESSION, ERROR_NO_FILE_LOADED,
+    UPLOADS_DIR,
+    ERROR_SESSION_NOT_FOUND,
+    ERROR_MISSING_SESSION,
+    ERROR_NO_FILE_LOADED,
+    CSR_ARTIFACTS_ENABLED,
+)
+from lorax.artifacts.metrics import csr_artifact_metrics
+from lorax.artifacts.csr_reader import (
+    CSRArtifactCapabilityError,
+    CSRArtifactCorruptError,
+)
+from lorax.artifacts.features import artifact_details
+from lorax.artifacts.runtime import (
+    artifact_context_registry,
+    artifact_resolver,
+    context_for_session,
+    is_artifact_session,
 )
 from lorax.cloud.gcs_utils import download_gcs_file
 from lorax.handlers import handle_upload, handle_details
@@ -27,6 +45,7 @@ UPLOAD_DIR = Path(UPLOADS_DIR)
 UPLOAD_DIR.mkdir(exist_ok=True)
 
 DEV_MODE = CURRENT_MODE == "development"
+logger = logging.getLogger(__name__)
 
 
 def dev_print(*args, **kwargs):
@@ -163,6 +182,102 @@ def register_file_events(sio):
                     file_path = UPLOAD_DIR / project / filename
                     blob_path = f"{project}/{filename}"
 
+            artifact_context = None
+            if (
+                CSR_ARTIFACTS_ENABLED
+                and not str(file_path).lower().endswith(".csv")
+            ):
+                try:
+                    resolved_artifact = await asyncio.to_thread(
+                        artifact_resolver.resolve,
+                        file_path,
+                    )
+                    if resolved_artifact is not None:
+                        artifact_context = await asyncio.to_thread(
+                            artifact_context_registry.open,
+                            resolved_artifact,
+                        )
+                        csr_artifact_metrics.increment(
+                            f"resolution.hit_v{artifact_context.schema_version}"
+                        )
+                        logger.info(
+                            "Resolved CSR artifact",
+                            extra={
+                                "artifact_fingerprint": artifact_context.fingerprint,
+                                "artifact_format": artifact_context.artifact_format,
+                                "source_path": str(file_path),
+                            },
+                        )
+                    else:
+                        csr_artifact_metrics.increment(
+                            "fallback.artifact_not_found"
+                        )
+                except Exception as artifact_error:
+                    csr_artifact_metrics.increment(
+                        "resolution.corrupt_artifact"
+                        if isinstance(artifact_error, CSRArtifactCorruptError)
+                        else "resolution.open_failed"
+                    )
+                    csr_artifact_metrics.increment("fallback.artifact_open_failed")
+                    if "resolved_artifact" in locals() and resolved_artifact is not None:
+                        artifact_resolver.mark_unhealthy(
+                            resolved_artifact.fingerprint
+                        )
+                        artifact_context_registry.discard(
+                            resolved_artifact.fingerprint
+                        )
+                    dev_print(
+                        f"CSR artifact unavailable for {file_path}: {artifact_error}"
+                    )
+                    logger.warning(
+                        "CSR artifact open failed; using legacy source",
+                        extra={
+                            "source_path": str(file_path),
+                            "reason": str(artifact_error),
+                        },
+                    )
+
+            if artifact_context is not None:
+                await tree_graph_cache.clear_session(lorax_sid)
+                await csv_tree_graph_cache.clear_session(lorax_sid)
+                session.file_path = str(file_path)
+                session.dataset_backend = (
+                    f"csr-v{artifact_context.schema_version}"
+                )
+                session.artifact_path = artifact_context.artifact_directory
+                session.artifact_fingerprint = artifact_context.fingerprint
+                session.artifact_format = artifact_context.artifact_format
+                await session_manager.save_session(session)
+                config = artifact_context.reader.frontend_config(
+                    filename=filename,
+                    project=project,
+                )
+                if genomiccoordstart is not None and genomiccoordend is not None:
+                    try:
+                        config["initial_position"] = [
+                            int(genomiccoordstart),
+                            int(genomiccoordend),
+                        ]
+                    except (ValueError, TypeError):
+                        pass
+                await sio.emit(
+                    "status",
+                    {
+                        "status": "processing-file",
+                        "message": "Opening preprocessed genealogy artifact...",
+                        "filename": filename,
+                        "project": project,
+                    },
+                    to=sid,
+                )
+                return _load_file_success_payload(
+                    request_id=request_id,
+                    filename=filename,
+                    project=project,
+                    owner_sid=share_sid if share_sid else lorax_sid,
+                    config=config,
+                )
+
             if BUCKET_NAME and gcs_allowed and blob_path:
                 if file_path.exists():
                     dev_print(f"File {file_path} already exists, skipping download.")
@@ -187,6 +302,14 @@ def register_file_events(sio):
             await csv_tree_graph_cache.clear_session(lorax_sid)
 
             session.file_path = str(file_path)
+            session.dataset_backend = (
+                "csv"
+                if str(file_path).lower().endswith(".csv")
+                else "legacy"
+            )
+            session.artifact_path = None
+            session.artifact_fingerprint = None
+            session.artifact_format = None
             await session_manager.save_session(session)
 
             await sio.emit("status", {
@@ -307,8 +430,33 @@ def register_file_events(sio):
 
             dev_print("fetch details in ", session.sid, os.getpid())
 
-            result = await handle_details(session.file_path, data)
-            await sio.emit("details-result", {"request_id": request_id, "data": json.loads(result)}, to=sid)
+            if is_artifact_session(session):
+                try:
+                    context = await asyncio.to_thread(context_for_session, session)
+                    result_data = await asyncio.to_thread(
+                        artifact_details,
+                        context.reader,
+                        data,
+                    )
+                except CSRArtifactCapabilityError as exc:
+                    await sio.emit(
+                        "details-result",
+                        {
+                            "request_id": request_id,
+                            "error": str(exc),
+                            "code": exc.code,
+                        },
+                        to=sid,
+                    )
+                    return
+            else:
+                result = await handle_details(session.file_path, data)
+                result_data = json.loads(result)
+            await sio.emit(
+                "details-result",
+                {"request_id": request_id, "data": result_data},
+                to=sid,
+            )
         except Exception as e:
             dev_print(f"❌ Details error: {e}")
             await sio.emit("details-result", {"request_id": request_id, "error": str(e)}, to=sid)

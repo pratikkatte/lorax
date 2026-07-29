@@ -16,6 +16,49 @@ if TYPE_CHECKING:
     from lorax.tree_graph_cache import TreeGraphCache
 
 
+def _is_compact_graph(graph) -> bool:
+    return hasattr(graph, "parent_of") and hasattr(graph, "node_ids")
+
+
+def _has_node(graph, node_id: int) -> bool:
+    if _is_compact_graph(graph):
+        return graph.has_node(node_id)
+    return (
+        0 <= node_id < len(graph.parent)
+        and bool(graph.in_tree[node_id])
+    )
+
+
+def _node_ids(graph):
+    if _is_compact_graph(graph):
+        return graph.node_ids
+    return np.where(graph.in_tree)[0]
+
+
+def _parent(graph, node_id: int) -> int:
+    if _is_compact_graph(graph):
+        return int(graph.parent_of(node_id))
+    return int(graph.parent[node_id])
+
+
+def _time(graph, node_id: int) -> float:
+    if _is_compact_graph(graph):
+        return graph.node_time(node_id)
+    return float(graph.time[node_id])
+
+
+def _x(graph, node_id: int) -> float:
+    if _is_compact_graph(graph):
+        return graph.node_x(node_id)
+    return float(graph.x[node_id])
+
+
+def _y(graph, node_id: int) -> float:
+    if _is_compact_graph(graph):
+        return graph.node_y(node_id)
+    return float(graph.y[node_id])
+
+
 async def get_ancestors(
     tree_graph_cache: "TreeGraphCache",
     session_id: str,
@@ -48,17 +91,9 @@ async def get_ancestors(
         }
 
     # Validate node_id
-    if node_id < 0 or node_id >= len(tg.parent):
+    if not _has_node(tg, node_id):
         return {
             "error": f"Invalid node_id {node_id}",
-            "ancestors": [],
-            "path": []
-        }
-
-    # Check if node is in this tree
-    if not tg.in_tree[node_id]:
-        return {
-            "error": f"Node {node_id} is not in tree {tree_index}",
             "ancestors": [],
             "path": []
         }
@@ -69,23 +104,23 @@ async def get_ancestors(
     # Include starting node in path
     path.append({
         "node_id": int(node_id),
-        "time": float(tg.time[node_id]),
-        "x": float(tg.x[node_id]),
-        "y": float(tg.y[node_id])
+        "time": _time(tg, node_id),
+        "x": _x(tg, node_id),
+        "y": _y(tg, node_id)
     })
 
     current = node_id
     while True:
-        parent = tg.parent[current]
+        parent = _parent(tg, current)
         if parent == -1:
             # Reached root
             break
         ancestors.append(int(parent))
         path.append({
             "node_id": int(parent),
-            "time": float(tg.time[parent]),
-            "x": float(tg.x[parent]),
-            "y": float(tg.y[parent])
+            "time": _time(tg, parent),
+            "x": _x(tg, parent),
+            "y": _y(tg, parent)
         })
         current = parent
 
@@ -131,17 +166,9 @@ async def get_descendants(
         }
 
     # Validate node_id
-    if node_id < 0 or node_id >= len(tg.parent):
+    if not _has_node(tg, node_id):
         return {
             "error": f"Invalid node_id {node_id}",
-            "descendants": [],
-            "tips": []
-        }
-
-    # Check if node is in this tree
-    if not tg.in_tree[node_id]:
-        return {
-            "error": f"Node {node_id} is not in tree {tree_index}",
             "descendants": [],
             "tips": []
         }
@@ -218,7 +245,7 @@ async def search_nodes_by_criteria(
     positions = []
 
     # Get all nodes in this tree
-    in_tree_indices = np.where(tg.in_tree)[0]
+    in_tree_indices = _node_ids(tg)
 
     # Optional: filter to specific node IDs first
     node_id_filter = criteria.get("node_ids")
@@ -231,9 +258,9 @@ async def search_nodes_by_criteria(
             matches.append(int(node_id))
             positions.append({
                 "node_id": int(node_id),
-                "x": float(tg.x[node_id]),
-                "y": float(tg.y[node_id]),
-                "time": float(tg.time[node_id])
+                "x": _x(tg, node_id),
+                "y": _y(tg, node_id),
+                "time": _time(tg, node_id)
             })
 
     return {
@@ -259,11 +286,11 @@ def _matches_criteria(tg: "TreeGraph", node_id: int, criteria: Dict[str, Any]) -
     """
     # Time range filters
     if "min_time" in criteria:
-        if tg.time[node_id] < criteria["min_time"]:
+        if _time(tg, node_id) < criteria["min_time"]:
             return False
 
     if "max_time" in criteria:
-        if tg.time[node_id] > criteria["max_time"]:
+        if _time(tg, node_id) > criteria["max_time"]:
             return False
 
     # Tip/internal filter
@@ -280,11 +307,11 @@ def _matches_criteria(tg: "TreeGraph", node_id: int, criteria: Dict[str, Any]) -
 
     # Y (time) position range
     if "min_y" in criteria:
-        if tg.y[node_id] < criteria["min_y"]:
+        if _y(tg, node_id) < criteria["min_y"]:
             return False
 
     if "max_y" in criteria:
-        if tg.y[node_id] > criteria["max_y"]:
+        if _y(tg, node_id) > criteria["max_y"]:
             return False
 
     return True
@@ -322,16 +349,9 @@ async def get_subtree(
         }
 
     # Validate node_id
-    if root_node_id < 0 or root_node_id >= len(tg.parent):
+    if not _has_node(tg, root_node_id):
         return {
             "error": f"Invalid node_id {root_node_id}",
-            "nodes": [],
-            "edges": []
-        }
-
-    if not tg.in_tree[root_node_id]:
-        return {
-            "error": f"Node {root_node_id} is not in tree {tree_index}",
             "nodes": [],
             "edges": []
         }
@@ -351,10 +371,10 @@ async def get_subtree(
 
         nodes.append({
             "node_id": int(node_id),
-            "parent_id": int(tg.parent[node_id]),
-            "x": float(tg.x[node_id]),
-            "y": float(tg.y[node_id]),
-            "time": float(tg.time[node_id]),
+            "parent_id": _parent(tg, node_id),
+            "x": _x(tg, node_id),
+            "y": _y(tg, node_id),
+            "time": _time(tg, node_id),
             "is_tip": tg.is_tip(node_id)
         })
 
@@ -414,10 +434,8 @@ async def get_mrca(
 
     # Validate all nodes
     for node_id in node_ids:
-        if node_id < 0 or node_id >= len(tg.parent):
+        if not _has_node(tg, node_id):
             return {"error": f"Invalid node_id {node_id}", "mrca": None}
-        if not tg.in_tree[node_id]:
-            return {"error": f"Node {node_id} not in tree {tree_index}", "mrca": None}
 
     # Get ancestor sets for each node
     ancestor_sets = []
@@ -426,7 +444,7 @@ async def get_mrca(
         current = node_id
         while current != -1:
             ancestors.add(current)
-            current = tg.parent[current]
+            current = _parent(tg, current)
         ancestor_sets.append(ancestors)
 
     # Find intersection (common ancestors)
@@ -442,14 +460,14 @@ async def get_mrca(
         }
 
     # MRCA is the common ancestor with the highest time (most recent)
-    mrca = max(common_ancestors, key=lambda n: tg.time[n])
+    mrca = max(common_ancestors, key=lambda n: _time(tg, n))
 
     return {
         "mrca": int(mrca),
-        "mrca_time": float(tg.time[mrca]),
+        "mrca_time": _time(tg, mrca),
         "mrca_position": {
-            "x": float(tg.x[mrca]),
-            "y": float(tg.y[mrca])
+            "x": _x(tg, mrca),
+            "y": _y(tg, mrca)
         },
         "tree_index": tree_index,
         "query_nodes": node_ids

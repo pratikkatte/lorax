@@ -6,6 +6,9 @@ Handles search_metadata and fetch_metadata_array events.
 
 import asyncio
 
+from lorax.artifacts.csr_reader import CSRArtifactCapabilityError
+from lorax.artifacts.features import artifact_metadata_array
+from lorax.artifacts.runtime import context_for_session, is_artifact_session
 from lorax.constants import ERROR_NO_FILE_LOADED
 from lorax.metadata.loader import (
     search_samples_by_metadata, get_metadata_array_for_key
@@ -63,17 +66,46 @@ def register_metadata_events(sio):
                 }, to=sid)
                 return
 
-            ctx = await get_file_context(session.file_path)
-            if ctx is None:
-                await sio.emit("search-result", {
-                    "error": "Failed to load tree sequence"
-                }, to=sid)
-                return
-
-            # Pass FileContext to metadata function
-            result = await asyncio.to_thread(
-                search_samples_by_metadata, ctx, key, value
-            )
+            if is_artifact_session(session):
+                try:
+                    context = await asyncio.to_thread(context_for_session, session)
+                    if key == "sample":
+                        matches = await asyncio.to_thread(
+                            context.reader.search_samples,
+                            str(value),
+                        )
+                        result = [
+                            match["name"]
+                            for match in matches
+                            if match["name"] == str(value)
+                        ]
+                    else:
+                        metadata_result = await asyncio.to_thread(
+                            context.reader.metadata_samples,
+                            key,
+                            value,
+                        )
+                        result = metadata_result["samples"]
+                except CSRArtifactCapabilityError as exc:
+                    await sio.emit(
+                        "search-result",
+                        {"error": str(exc), "code": exc.code},
+                        to=sid,
+                    )
+                    return
+            else:
+                ctx = await get_file_context(session.file_path)
+                if ctx is None:
+                    await sio.emit("search-result", {
+                        "error": "Failed to load tree sequence"
+                    }, to=sid)
+                    return
+                result = await asyncio.to_thread(
+                    search_samples_by_metadata,
+                    ctx,
+                    key,
+                    value,
+                )
             await sio.emit("search-result", {
                 "key": key,
                 "value": value,
@@ -150,17 +182,33 @@ def register_metadata_events(sio):
                 }, to=sid)
                 return
 
-            ctx = await get_file_context(session.file_path)
-            if ctx is None:
-                await sio.emit("metadata-array-result", {
-                    "error": "Failed to load tree sequence"
-                }, to=sid)
-                return
-
-            # Pass FileContext to metadata function
-            result = await asyncio.to_thread(
-                get_metadata_array_for_key, ctx, key
-            )
+            if is_artifact_session(session):
+                try:
+                    context = await asyncio.to_thread(context_for_session, session)
+                    result = await asyncio.to_thread(
+                        artifact_metadata_array,
+                        context.reader,
+                        key,
+                    )
+                except CSRArtifactCapabilityError as exc:
+                    await sio.emit(
+                        "metadata-array-result",
+                        {"error": str(exc), "code": exc.code},
+                        to=sid,
+                    )
+                    return
+            else:
+                ctx = await get_file_context(session.file_path)
+                if ctx is None:
+                    await sio.emit("metadata-array-result", {
+                        "error": "Failed to load tree sequence"
+                    }, to=sid)
+                    return
+                result = await asyncio.to_thread(
+                    get_metadata_array_for_key,
+                    ctx,
+                    key,
+                )
 
             # Send metadata with Arrow buffer as binary
             await sio.emit("metadata-array-result", {

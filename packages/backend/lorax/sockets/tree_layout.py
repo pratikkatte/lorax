@@ -6,8 +6,28 @@ Handles process_postorder_layout and cache_trees events.
 
 import logging
 import math
+import asyncio
+from pathlib import Path
 
-from lorax.context import tree_graph_cache, csv_tree_graph_cache
+from lorax.context import (
+    tree_graph_cache,
+    csv_tree_graph_cache,
+    session_manager,
+)
+from lorax.artifacts.csr_reader import (
+    CSRArtifactCapabilityError,
+    CSRArtifactError,
+)
+from lorax.artifacts.metrics import csr_artifact_metrics
+from lorax.artifacts.render import serialize_csr_genealogies
+from lorax.artifacts.graph import CompactGenealogyGraph
+from lorax.artifacts.runtime import (
+    artifact_context_registry,
+    artifact_resolver,
+    context_for_session,
+    is_artifact_session,
+)
+from lorax.datasets import resolve_dataset_context
 from lorax.handlers import handle_tree_graph_query, ensure_trees_cached
 from lorax.sockets.decorators import require_session
 from lorax.sockets.utils import is_csv_session_file
@@ -161,6 +181,78 @@ def _resolve_lock_adaptive_request(display_array, lock_view_info):
     return (True, bbox_tree_index, target_sparsify_multiplier, target_sparsify_bbox)
 
 
+async def _render_artifact_session(
+    session,
+    *,
+    context=None,
+    display_array,
+    actual_display_array,
+    sparsification,
+    sparsify_cell_size_multiplier,
+    adaptive_sparsify_bbox,
+    adaptive_target_tree_idx,
+    time_scale,
+):
+    context = context or await asyncio.to_thread(context_for_session, session)
+    if context is None:
+        raise CSRArtifactError("Artifact session has no readable context")
+
+    def render():
+        with csr_artifact_metrics.timer("shard.read_decode"):
+            genealogies = context.reader.trees_at_indices(display_array)
+        with csr_artifact_metrics.timer("render.serialize"):
+            return serialize_csr_genealogies(
+                genealogies,
+                global_min_time=context.reader.global_min_time,
+                global_max_time=context.reader.global_max_time,
+                time_scale=time_scale,
+                sparsification=sparsification,
+                sparsify_cell_size_multiplier=sparsify_cell_size_multiplier,
+                adaptive_sparsify_bbox=adaptive_sparsify_bbox,
+                adaptive_target_tree_idx=adaptive_target_tree_idx,
+            ), genealogies
+
+    (result, genealogies) = await asyncio.to_thread(render)
+    csr_artifact_metrics.increment("render.requests")
+    csr_artifact_metrics.increment("render.trees", len(genealogies))
+    csr_artifact_metrics.increment("render.response_bytes", len(result["buffer"]))
+    csr_artifact_metrics.set_gauge("render.last_response_bytes", len(result["buffer"]))
+    for genealogy in genealogies:
+        await tree_graph_cache.set(
+            session.sid,
+            genealogy.tree_index,
+            CompactGenealogyGraph.from_genealogy(
+                genealogy,
+                global_min_time=context.reader.global_min_time,
+                global_max_time=context.reader.global_max_time,
+                time_scale=time_scale,
+            ),
+        )
+    if actual_display_array is not None:
+        await tree_graph_cache.evict_not_visible(
+            session.sid,
+            set(actual_display_array),
+        )
+    return result
+
+
+async def _fallback_artifact_session(session) -> bool:
+    """Switch a failed artifact session to legacy when the source is available."""
+    fingerprint = session.artifact_fingerprint
+    if fingerprint:
+        artifact_resolver.mark_unhealthy(fingerprint)
+        artifact_context_registry.discard(fingerprint)
+    if not session.file_path or not Path(session.file_path).is_file():
+        return False
+    session.dataset_backend = "legacy"
+    session.artifact_path = None
+    session.artifact_fingerprint = None
+    session.artifact_format = None
+    await session_manager.save_session(session)
+    csr_artifact_metrics.increment("fallback.shard_error")
+    return True
+
+
 def register_tree_layout_events(sio):
     """Register tree layout socket events."""
 
@@ -234,20 +326,54 @@ def register_tree_layout_events(sio):
                 time_scale,
             )
 
-            result = await handle_tree_graph_query(
-                session.file_path,
-                display_array,
-                sparsification=sparsification,
-                session_id=lorax_sid,
-                tree_graph_cache=tree_graph_cache,
-                csv_tree_graph_cache=csv_tree_graph_cache,
-                actual_display_array=actual_display_array,
-                sparsify_cell_size_multiplier=target_sparsify_multiplier,
-                adaptive_sparsify_bbox=target_sparsify_bbox,
-                adaptive_target_tree_idx=target_tree_idx,
-                adaptive_outside_cell_size=None,
-                time_scale=time_scale,
-            )
+            result = None
+            if is_artifact_session(session):
+                try:
+                    dataset_context = await resolve_dataset_context(session)
+                    result = await _render_artifact_session(
+                        session,
+                        context=dataset_context,
+                        display_array=display_array,
+                        actual_display_array=actual_display_array,
+                        sparsification=sparsification,
+                        sparsify_cell_size_multiplier=target_sparsify_multiplier,
+                        adaptive_sparsify_bbox=target_sparsify_bbox,
+                        adaptive_target_tree_idx=target_tree_idx,
+                        time_scale=time_scale,
+                    )
+                except CSRArtifactCapabilityError as exc:
+                    return {
+                        "error": str(exc),
+                        "code": exc.code,
+                        "request_id": request_id,
+                    }
+                except Exception as exc:
+                    logger.exception("CSR artifact render failed")
+                    if not await _fallback_artifact_session(session):
+                        return {
+                            "error": str(exc),
+                            "code": "CSR_ARTIFACT_READ_FAILED",
+                            "request_id": request_id,
+                        }
+
+            if result is None:
+                # Resolve legacy/CSV state through the shared dispatcher before
+                # entering the unchanged source-backed renderer.
+                await resolve_dataset_context(session)
+                result = await handle_tree_graph_query(
+                    session.file_path,
+                    display_array,
+                    sparsification=sparsification,
+                    session_id=lorax_sid,
+                    tree_graph_cache=tree_graph_cache,
+                    csv_tree_graph_cache=csv_tree_graph_cache,
+                    actual_display_array=actual_display_array,
+                    sparsify_cell_size_multiplier=target_sparsify_multiplier,
+                    adaptive_sparsify_bbox=target_sparsify_bbox,
+                    adaptive_target_tree_idx=target_tree_idx,
+                    adaptive_outside_cell_size=None,
+                    time_scale=time_scale,
+                )
 
             if "error" in result:
                 return {"error": result["error"], "request_id": request_id}
@@ -258,6 +384,7 @@ def register_tree_layout_events(sio):
                     "global_min_time": result["global_min_time"],
                     "global_max_time": result["global_max_time"],
                     "tree_indices": result["tree_indices"],
+                    "tree_intervals": result.get("tree_intervals"),
                     "request_id": request_id
                 }
         except Exception as e:
@@ -296,12 +423,39 @@ def register_tree_layout_events(sio):
             if not tree_indices:
                 return {"cached_count": 0, "total_cached": 0}
 
-            newly_cached = await ensure_trees_cached(
-                session.file_path,
-                tree_indices,
-                lorax_sid,
-                tree_graph_cache
-            )
+            if is_artifact_session(session):
+                context = await asyncio.to_thread(context_for_session, session)
+                genealogies = await asyncio.to_thread(
+                    context.reader.trees_at_indices,
+                    tree_indices,
+                )
+                newly_cached = 0
+                for genealogy in genealogies:
+                    if await tree_graph_cache.get(
+                        lorax_sid,
+                        genealogy.tree_index,
+                    ) is None:
+                        newly_cached += 1
+                    await tree_graph_cache.set(
+                        lorax_sid,
+                        genealogy.tree_index,
+                        CompactGenealogyGraph.from_genealogy(
+                            genealogy,
+                            global_min_time=context.reader.global_min_time,
+                            global_max_time=context.reader.global_max_time,
+                        ),
+                    )
+                await tree_graph_cache.evict_not_visible(
+                    lorax_sid,
+                    {int(index) for index in tree_indices},
+                )
+            else:
+                newly_cached = await ensure_trees_cached(
+                    session.file_path,
+                    tree_indices,
+                    lorax_sid,
+                    tree_graph_cache
+                )
 
             # Get total cached
             all_cached = await tree_graph_cache.get_all_for_session(lorax_sid)

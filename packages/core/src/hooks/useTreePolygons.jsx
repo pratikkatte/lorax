@@ -105,6 +105,8 @@ export function useTreePolygons({
           key,
           vertices,
           treeIndex: bin.global_index,
+          intervalLeft: bin.s,
+          intervalRight: bin.e,
           isHovered: key === hovered
         });
       }

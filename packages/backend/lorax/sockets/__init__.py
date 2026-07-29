@@ -30,6 +30,7 @@ from lorax.sockets.mutations import register_mutations_events
 from lorax.sockets.node_search import register_node_search_events
 from lorax.sockets.lineage import register_lineage_events
 from lorax.sockets.debug import register_debug_events
+from lorax.sockets.intervals import register_interval_events
 
 
 def register_socket_events(sio):
@@ -42,6 +43,7 @@ def register_socket_events(sio):
     register_node_search_events(sio)
     register_lineage_events(sio)
     register_debug_events(sio)
+    register_interval_events(sio)
 
 
 __all__ = [

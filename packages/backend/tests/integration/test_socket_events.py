@@ -21,6 +21,7 @@ import pytest
 import json
 import asyncio
 from datetime import datetime, timezone, timedelta
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch, AsyncMock
 
@@ -356,9 +357,361 @@ class TestLoadFileEvent:
         assert len(emitted) == 2
         assert any(evt["data"]["ok"] is False and evt["data"]["code"] == "SERVER_BUSY" for evt in emitted)
 
+    @pytest.mark.asyncio
+    async def test_artifact_load_render_and_intervals_never_open_source(
+        self,
+        socket_harness,
+        mock_sio,
+        session_manager_memory,
+        minimal_ts_file,
+        temp_dir,
+    ):
+        from lorax.artifacts import build_csr_artifact
+        from lorax.artifacts.runtime import ArtifactContextRegistry, ArtifactResolver
+        from lorax.sockets import register_socket_events
+        from lorax.sockets.load_scheduler import LoadScheduler
+
+        artifact_root = temp_dir / "artifacts"
+        build_csr_artifact(
+            minimal_ts_file,
+            artifact_root,
+            target_shard_mb=1,
+        )
+        resolver = ArtifactResolver(artifact_root)
+        registry = ArtifactContextRegistry(max_contexts=2, max_open_shards=2)
+        session = await session_manager_memory.create_session()
+        source_error = AssertionError("artifact request reopened the source")
+        legacy_query = AsyncMock(side_effect=source_error)
+        legacy_upload = AsyncMock(side_effect=source_error)
+
+        with (
+            patch("lorax.sockets.file_ops.CSR_ARTIFACTS_ENABLED", True),
+            patch("lorax.sockets.file_ops.artifact_resolver", resolver),
+            patch("lorax.sockets.file_ops.artifact_context_registry", registry),
+            patch("lorax.artifacts.runtime.artifact_context_registry", registry),
+            patch("lorax.sockets.file_ops.session_manager", session_manager_memory),
+            patch("lorax.sockets.tree_layout.session_manager", session_manager_memory),
+            patch("lorax.sockets.decorators.session_manager", session_manager_memory),
+            patch("lorax.sockets.connection.session_manager", session_manager_memory),
+            patch("lorax.sockets.file_ops.load_scheduler", LoadScheduler()),
+            patch("lorax.sockets.file_ops.handle_upload", legacy_upload),
+            patch("lorax.sockets.tree_layout.handle_tree_graph_query", legacy_query),
+            patch("lorax.sockets.file_ops.download_gcs_file", AsyncMock(side_effect=source_error)),
+            patch("tskit.load", side_effect=source_error),
+            patch("tszip.load", side_effect=source_error),
+        ):
+            register_socket_events(mock_sio)
+            loaded = await socket_harness._event_handlers["load_file"](
+                "socket-artifact",
+                {
+                    "lorax_sid": session.sid,
+                    "file_path": str(minimal_ts_file),
+                    "request_id": "artifact-load",
+                },
+            )
+            rendered = await socket_harness._event_handlers[
+                "process_postorder_layout"
+            ](
+                "socket-artifact",
+                {
+                    "lorax_sid": session.sid,
+                    "displayArray": [0],
+                    "request_id": "artifact-render",
+                },
+            )
+            interval_result = await socket_harness._event_handlers[
+                "query_intervals"
+            ](
+                "socket-artifact",
+                {
+                    "lorax_sid": session.sid,
+                    "start": 0,
+                    "end": float(loaded["config"]["genome_length"]),
+                    "maxIntervals": 10,
+                },
+            )
+            local_result = await socket_harness._event_handlers[
+                "query_local_data"
+            ](
+                "socket-artifact",
+                {
+                    "lorax_sid": session.sid,
+                    "lo": interval_result["lo"],
+                    "hi": interval_result["hi"],
+                    "start": 0,
+                    "end": float(loaded["config"]["genome_length"]),
+                    "globalBpPerUnit": (
+                        loaded["config"]["genome_length"]
+                        / loaded["config"]["num_breakpoints"]
+                    ),
+                    "new_globalBp": 1,
+                    "displayOptions": {"selectionStrategy": "largestSpan"},
+                },
+            )
+            await socket_harness._event_handlers["details"](
+                "socket-artifact",
+                {
+                    "lorax_sid": session.sid,
+                    "treeIndex": 0,
+                    "node": 0,
+                    "request_id": "artifact-details",
+                },
+            )
+            await socket_harness._event_handlers["fetch_metadata_array"](
+                "socket-artifact",
+                {
+                    "lorax_sid": session.sid,
+                    "key": "sample",
+                },
+            )
+            await socket_harness._event_handlers["search_nodes"](
+                "socket-artifact",
+                {
+                    "lorax_sid": session.sid,
+                    "sample_names": ["0"],
+                    "tree_indices": [0],
+                    "show_lineages": True,
+                },
+            )
+            ancestry = await socket_harness._event_handlers[
+                "get_ancestors_event"
+            ](
+                "socket-artifact",
+                {
+                    "lorax_sid": session.sid,
+                    "tree_index": 0,
+                    "node_id": 0,
+                },
+            )
+            await socket_harness._event_handlers["query_mutations_window"](
+                "socket-artifact",
+                {
+                    "lorax_sid": session.sid,
+                    "start": 0,
+                    "end": float(loaded["config"]["genome_length"]),
+                },
+            )
+
+        restored = await session_manager_memory.get_session(session.sid)
+        assert loaded["ok"] is True
+        assert loaded["config"]["interval_source"] == "backend"
+        assert loaded["config"]["intervals"] is None
+        assert restored.dataset_backend == "csr-v3"
+        assert isinstance(rendered["buffer"], bytes)
+        assert rendered["tree_indices"] == [0]
+        assert rendered["tree_intervals"]
+        assert interval_result["first_tree"] == 0
+        assert local_result["displayArray"]
+        details = socket_harness.get_emitted("details-result")
+        assert details[-1]["data"]["data"]["node"]["id"] == 0
+        metadata = socket_harness.get_emitted("metadata-array-result")
+        assert metadata[-1]["data"]["key"] == "sample"
+        assert isinstance(metadata[-1]["data"]["buffer"], bytes)
+        node_search = socket_harness.get_emitted("search-nodes-result")
+        assert node_search[-1]["data"]["highlights"][0][0]["node_id"] == 0
+        assert ancestry["query_node"] == 0
+        mutations = socket_harness.get_emitted("mutations-window-result")
+        assert isinstance(mutations[-1]["data"]["buffer"], bytes)
+        legacy_upload.assert_not_awaited()
+        legacy_query.assert_not_awaited()
+        registry.close()
+
+    @pytest.mark.asyncio
+    async def test_corrupt_shard_retries_once_through_legacy_source(
+        self,
+        socket_harness,
+        mock_sio,
+        session_manager_memory,
+        minimal_ts_file,
+        temp_dir,
+    ):
+        from lorax.artifacts import build_csr_artifact
+        from lorax.artifacts.runtime import ArtifactContextRegistry, ArtifactResolver
+        from lorax.sockets import register_socket_events
+        from lorax.sockets.load_scheduler import LoadScheduler
+
+        artifact_root = temp_dir / "artifacts"
+        built = build_csr_artifact(
+            minimal_ts_file,
+            artifact_root,
+            target_shard_mb=1,
+        )
+        resolver = ArtifactResolver(artifact_root)
+        registry = ArtifactContextRegistry(max_contexts=2, max_open_shards=2)
+        session = await session_manager_memory.create_session()
+        legacy_result = {
+            "buffer": b"legacy",
+            "global_min_time": 0.0,
+            "global_max_time": 1.0,
+            "tree_indices": [0],
+        }
+        legacy_query = AsyncMock(return_value=legacy_result)
+
+        with (
+            patch("lorax.sockets.file_ops.CSR_ARTIFACTS_ENABLED", True),
+            patch("lorax.sockets.file_ops.artifact_resolver", resolver),
+            patch("lorax.sockets.file_ops.artifact_context_registry", registry),
+            patch("lorax.sockets.tree_layout.artifact_resolver", resolver),
+            patch("lorax.sockets.tree_layout.artifact_context_registry", registry),
+            patch("lorax.artifacts.runtime.artifact_context_registry", registry),
+            patch("lorax.sockets.file_ops.session_manager", session_manager_memory),
+            patch("lorax.sockets.tree_layout.session_manager", session_manager_memory),
+            patch("lorax.sockets.decorators.session_manager", session_manager_memory),
+            patch("lorax.sockets.connection.session_manager", session_manager_memory),
+            patch("lorax.sockets.file_ops.load_scheduler", LoadScheduler()),
+            patch("lorax.sockets.tree_layout.handle_tree_graph_query", legacy_query),
+        ):
+            register_socket_events(mock_sio)
+            loaded = await socket_harness._event_handlers["load_file"](
+                "socket-fallback",
+                {
+                    "lorax_sid": session.sid,
+                    "file_path": str(minimal_ts_file),
+                },
+            )
+            assert loaded["ok"] is True
+
+            shard = next(Path(built["artifact_dir"]).glob("csr-*.arrow"))
+            shard.write_bytes(shard.read_bytes() + b"corrupt")
+            rendered = await socket_harness._event_handlers[
+                "process_postorder_layout"
+            ](
+                "socket-fallback",
+                {
+                    "lorax_sid": session.sid,
+                    "displayArray": [0],
+                    "request_id": "fallback-render",
+                },
+            )
+
+        restored = await session_manager_memory.get_session(session.sid)
+        assert rendered["buffer"] == b"legacy"
+        assert restored.dataset_backend == "legacy"
+        assert restored.artifact_path is None
+        legacy_query.assert_awaited_once()
+        registry.close()
+
+    @pytest.mark.asyncio
+    async def test_artifact_flag_disabled_preserves_legacy_load(
+        self,
+        socket_harness,
+        mock_sio,
+        session_manager_memory,
+        minimal_ts_file,
+    ):
+        from lorax.sockets import register_socket_events
+        from lorax.sockets.load_scheduler import LoadScheduler
+
+        session = await session_manager_memory.create_session()
+        legacy_upload = AsyncMock(
+            return_value=SimpleNamespace(
+                config={
+                    "filename": minimal_ts_file.name,
+                    "initial_position": [0, 1],
+                    "times": {"values": [0, 1]},
+                }
+            )
+        )
+
+        with (
+            patch("lorax.sockets.file_ops.CSR_ARTIFACTS_ENABLED", False),
+            patch(
+                "lorax.sockets.file_ops.artifact_resolver.resolve",
+                side_effect=AssertionError("disabled resolver was called"),
+            ),
+            patch("lorax.sockets.file_ops.session_manager", session_manager_memory),
+            patch("lorax.sockets.decorators.session_manager", session_manager_memory),
+            patch("lorax.sockets.connection.session_manager", session_manager_memory),
+            patch("lorax.sockets.file_ops.load_scheduler", LoadScheduler()),
+            patch("lorax.sockets.file_ops.handle_upload", legacy_upload),
+        ):
+            register_socket_events(mock_sio)
+            loaded = await socket_harness._event_handlers["load_file"](
+                "socket-legacy",
+                {
+                    "lorax_sid": session.sid,
+                    "file_path": str(minimal_ts_file),
+                },
+            )
+
+        restored = await session_manager_memory.get_session(session.sid)
+        assert loaded["ok"] is True
+        assert restored.dataset_backend == "legacy"
+        assert restored.artifact_path is None
+        legacy_upload.assert_awaited_once()
+
 
 class TestDetailsEvent:
     """Tests for the details event."""
+
+    @pytest.mark.asyncio
+    async def test_v2_renders_source_free_and_details_require_rebuild(
+        self,
+        socket_harness,
+        mock_sio,
+        session_manager_memory,
+        minimal_ts_file,
+        temp_dir,
+    ):
+        from lorax.artifacts import build_csr_artifact
+        from lorax.artifacts.runtime import ArtifactContextRegistry
+        from lorax.sockets import register_socket_events
+
+        built = build_csr_artifact(
+            minimal_ts_file,
+            temp_dir / "v2-artifacts",
+            target_shard_mb=1,
+            format_version=2,
+        )
+        session = await session_manager_memory.create_session()
+        session.file_path = str(minimal_ts_file)
+        session.dataset_backend = "csr-v2"
+        session.artifact_path = built["artifact_dir"]
+        session.artifact_fingerprint = built["fingerprint"]
+        session.artifact_format = "lorax-csr-v2"
+        await session_manager_memory.save_session(session)
+        minimal_ts_file.unlink()
+        registry = ArtifactContextRegistry(max_contexts=1, max_open_shards=1)
+
+        with (
+            patch("lorax.artifacts.runtime.artifact_context_registry", registry),
+            patch("lorax.sockets.file_ops.session_manager", session_manager_memory),
+            patch("lorax.sockets.tree_layout.session_manager", session_manager_memory),
+            patch("lorax.sockets.decorators.session_manager", session_manager_memory),
+            patch("lorax.sockets.connection.session_manager", session_manager_memory),
+            patch(
+                "lorax.sockets.tree_layout.handle_tree_graph_query",
+                AsyncMock(side_effect=AssertionError("legacy renderer called")),
+            ),
+            patch("tskit.load", side_effect=AssertionError("source reopened")),
+            patch("tszip.load", side_effect=AssertionError("source reopened")),
+        ):
+            register_socket_events(mock_sio)
+            rendered = await socket_harness._event_handlers[
+                "process_postorder_layout"
+            ](
+                "socket-v2",
+                {
+                    "lorax_sid": session.sid,
+                    "displayArray": [0],
+                    "request_id": "v2-render",
+                },
+            )
+            await socket_harness._event_handlers["details"](
+                "socket-v2",
+                {
+                    "lorax_sid": session.sid,
+                    "treeIndex": 0,
+                    "node": 0,
+                    "request_id": "v2-details",
+                },
+            )
+
+        result = socket_harness.get_emitted("details-result")[-1]["data"]
+        assert isinstance(rendered["buffer"], bytes)
+        assert rendered["tree_indices"] == [0]
+        assert result["code"] == "CSR_REBUILD_REQUIRED"
+        registry.close()
 
     @pytest.mark.asyncio
     async def test_details_requires_session(self, socket_harness, mock_sio, session_manager_memory):

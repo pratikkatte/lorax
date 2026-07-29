@@ -105,4 +105,95 @@ describe('useLoraxConfig worker fan-out', () => {
     expect(result.current.workerConfigReady).toBe(false);
     expect(intervalWorker.request).not.toHaveBeenCalledWith('config', expect.anything());
   });
+
+  it('routes artifact interval work to the backend without inline breakpoints', async () => {
+    const intervalWorker = {
+      isReady: true,
+      request: vi.fn().mockResolvedValue(null)
+    };
+    const localDataWorker = {
+      isReady: true,
+      request: vi.fn().mockResolvedValue(null)
+    };
+    mocks.useWorker.mockImplementation((loader) => {
+      if (loader === mocks.getIntervalWorker) return intervalWorker;
+      if (loader === mocks.getLocalDataWorker) return localDataWorker;
+      throw new Error('Unexpected worker loader in test');
+    });
+    const backend = {
+      isConnected: true,
+      queryIntervals: vi.fn().mockResolvedValue({ lo: 0, hi: 2 }),
+      queryLocalData: vi.fn().mockResolvedValue({ displayArray: [0] })
+    };
+
+    const { result } = renderHook(() => useLoraxConfig({ backend }));
+    act(() => {
+      result.current.handleConfigUpdate({
+        filename: 'artifact.trees',
+        genome_length: 100,
+        intervals: null,
+        interval_source: 'backend',
+        num_trees: 4,
+        num_breakpoints: 5,
+        sample_names: {},
+        metadata_schema: { metadata_keys: [] }
+      });
+    });
+    await waitFor(() => expect(result.current.workerConfigReady).toBe(true));
+
+    await act(async () => {
+      await result.current.worker.request('intervals', { start: 5, end: 25 });
+      await result.current.worker.request('local-data', { lo: 0, hi: 2 });
+    });
+
+    expect(backend.queryIntervals).toHaveBeenCalledWith({ start: 5, end: 25 });
+    expect(backend.queryLocalData).toHaveBeenCalledWith({ lo: 0, hi: 2 });
+    expect(result.current.globalBpPerUnit).toBe(20);
+  });
+
+  it('routes artifact intervals to the backend when an RPC worker is supplied', async () => {
+    mocks.useWorker.mockReturnValue({
+      isReady: false,
+      request: vi.fn()
+    });
+    const workerOverride = {
+      isReady: true,
+      request: vi.fn().mockResolvedValue(null)
+    };
+    const backend = {
+      isConnected: true,
+      queryIntervals: vi.fn().mockResolvedValue({ lo: 0, hi: 2 }),
+      queryLocalData: vi.fn().mockResolvedValue({ displayArray: [0] })
+    };
+    const { result } = renderHook(() => useLoraxConfig({
+      backend,
+      workerOverride
+    }));
+
+    act(() => {
+      result.current.handleConfigUpdate({
+        filename: 'rpc-artifact.trees',
+        genome_length: 100,
+        intervals: null,
+        interval_source: 'backend',
+        num_trees: 4,
+        num_breakpoints: 5,
+        sample_names: {},
+        metadata_schema: { metadata_keys: [] }
+      });
+    });
+    await waitFor(() => expect(result.current.workerConfigReady).toBe(true));
+
+    await act(async () => {
+      await result.current.worker.request('intervals', { start: 0, end: 25 });
+      await result.current.worker.request('local-data', { lo: 0, hi: 2 });
+    });
+
+    expect(backend.queryIntervals).toHaveBeenCalledWith({ start: 0, end: 25 });
+    expect(backend.queryLocalData).toHaveBeenCalledWith({ lo: 0, hi: 2 });
+    expect(workerOverride.request).toHaveBeenCalledWith(
+      'config',
+      expect.objectContaining({ filename: 'rpc-artifact.trees' })
+    );
+  });
 });

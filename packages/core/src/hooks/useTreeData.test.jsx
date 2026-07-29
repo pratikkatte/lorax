@@ -123,4 +123,45 @@ describe('useTreeData cache invalidation', () => {
       timeScale: 'log'
     });
   });
+
+  it('evicts source-free artifact trees using intervals returned by rendering', async () => {
+    const queryTreeLayout = vi.fn(async (indices) => ({
+      buffer: indices,
+      global_min_time: 0,
+      global_max_time: 1,
+      tree_indices: indices,
+      tree_intervals: indices.map((idx) => [idx * 10, (idx + 1) * 10])
+    }));
+    const baseProps = createProps({
+      displayArray: [0],
+      queryTreeLayout,
+      tsconfig: {
+        artifact_fingerprint: 'artifact-123',
+        genome_length: 40,
+        intervals: null,
+        interval_source: 'backend'
+      },
+      genomicCoords: [0, 10]
+    });
+    const { rerender } = renderHook((props) => useTreeData(props), {
+      initialProps: baseProps
+    });
+
+    await waitFor(() => expect(queryTreeLayout).toHaveBeenCalledTimes(1));
+
+    rerender({
+      ...baseProps,
+      displayArray: [2],
+      genomicCoords: [20, 30]
+    });
+    await waitFor(() => expect(queryTreeLayout).toHaveBeenCalledTimes(2));
+
+    rerender({
+      ...baseProps,
+      displayArray: [0],
+      genomicCoords: [20, 30]
+    });
+    await waitFor(() => expect(queryTreeLayout).toHaveBeenCalledTimes(3));
+    expect(queryTreeLayout.mock.calls[2][0]).toEqual([0]);
+  });
 });

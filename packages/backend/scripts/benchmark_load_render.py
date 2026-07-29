@@ -81,7 +81,7 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default=None,
         help=(
-            "Optional lorax-csr-v2 artifact to compare against current "
+            "Optional lorax-csr-v2/v3 artifact to compare against current "
             "in-memory genealogy-to-CSR construction; requires exactly one input file"
         ),
     )
@@ -220,10 +220,11 @@ async def benchmark_csr_random_access(
     random_fetches: int,
     seed: int,
 ) -> Dict[str, Any]:
-    """Compare v2 artifact fetches with current in-memory CSR construction."""
+    """Compare artifact read/decode/render with in-memory CSR construction."""
     from lorax.artifacts.csr_reader import CSRArtifactReader
+    from lorax.artifacts.render import serialize_csr_genealogies
     from lorax.cache import get_file_context
-    from lorax.tree_graph import construct_tree
+    from lorax.tree_graph import construct_trees_batch
 
     ctx = await get_file_context(file_path, str(Path(file_path).parent))
     if ctx is None or not hasattr(ctx.tree_sequence, "num_trees"):
@@ -235,42 +236,79 @@ async def benchmark_csr_random_access(
         randomizer.randrange(tree_sequence.num_trees)
         for _ in range(num_fetches)
     ]
-    edges = tree_sequence.tables.edges
-    nodes = tree_sequence.tables.nodes
-    breakpoints = list(tree_sequence.breakpoints())
     process = psutil.Process()
 
     current_times_ms: list[float] = []
     for tree_index in indices:
         started = time.perf_counter_ns()
-        construct_tree(
+        construct_trees_batch(
             tree_sequence,
-            edges,
-            nodes,
-            breakpoints,
-            tree_index,
+            [tree_index],
+            sparsification=True,
+            sparsify_mutations=True,
+            pre_cached_graphs={},
         )
         current_times_ms.append((time.perf_counter_ns() - started) / 1_000_000)
 
     rss_before = process.memory_info().rss
     peak_rss = rss_before
     artifact_times_ms: list[float] = []
+    serialization_times_ms: list[float] = []
+    fetch_render_times_ms: list[float] = []
+    response_sizes: list[int] = []
     with CSRArtifactReader.open(artifact_path) as reader:
         recorded_source = Path(reader.manifest["source"]["path"]).resolve()
         if recorded_source != Path(file_path).resolve():
             raise ValueError(
                 f"CSR artifact source {recorded_source} does not match {file_path}"
-            )
+        )
         for tree_index in indices:
-            started = time.perf_counter_ns()
-            reader.tree_at_index(tree_index)
+            combined_started = time.perf_counter_ns()
+            started = combined_started
+            genealogy = reader.tree_at_index(tree_index)
             artifact_times_ms.append(
                 (time.perf_counter_ns() - started) / 1_000_000
             )
+            serialize_started = time.perf_counter_ns()
+            rendered = serialize_csr_genealogies(
+                [genealogy],
+                global_min_time=reader.global_min_time,
+                global_max_time=reader.global_max_time,
+                sparsification=True,
+            )
+            serialization_times_ms.append(
+                (time.perf_counter_ns() - serialize_started) / 1_000_000
+            )
+            response_sizes.append(len(rendered["buffer"]))
+            fetch_render_times_ms.append(
+                (time.perf_counter_ns() - combined_started) / 1_000_000
+            )
             peak_rss = max(peak_rss, process.memory_info().rss)
+
+        adjacent_count = min(num_fetches, reader.num_trees)
+        adjacent_start = randomizer.randrange(
+            max(1, reader.num_trees - adjacent_count + 1)
+        )
+        adjacent_indices = range(
+            adjacent_start,
+            adjacent_start + adjacent_count,
+        )
+        adjacent_times_ms: list[float] = []
+        for tree_index in adjacent_indices:
+            started = time.perf_counter_ns()
+            reader.tree_at_index(tree_index)
+            adjacent_times_ms.append(
+                (time.perf_counter_ns() - started) / 1_000_000
+            )
+            peak_rss = max(peak_rss, process.memory_info().rss)
+        build_seconds = float(reader.manifest.get("build_seconds") or 0.0)
+        build_throughput = (
+            reader.num_trees / build_seconds if build_seconds > 0 else None
+        )
 
     current_p95 = float(np.percentile(current_times_ms, 95))
     artifact_p95 = float(np.percentile(artifact_times_ms, 95))
+    fetch_render_p95 = float(np.percentile(fetch_render_times_ms, 95))
     artifact_size = sum(
         path.stat().st_size
         for path in Path(artifact_path).rglob("*")
@@ -284,7 +322,26 @@ async def benchmark_csr_random_access(
             float(np.percentile(artifact_times_ms, 50)), 6
         ),
         "artifact_fetch_p95_ms": round(artifact_p95, 6),
+        "artifact_adjacent_fetch_p50_ms": round(
+            float(np.percentile(adjacent_times_ms, 50)), 6
+        ),
+        "artifact_adjacent_fetch_p95_ms": round(
+            float(np.percentile(adjacent_times_ms, 95)), 6
+        ),
+        "artifact_serialization_p50_ms": round(
+            float(np.percentile(serialization_times_ms, 50)), 6
+        ),
+        "artifact_serialization_p95_ms": round(
+            float(np.percentile(serialization_times_ms, 95)), 6
+        ),
+        "artifact_fetch_render_p50_ms": round(
+            float(np.percentile(fetch_render_times_ms, 50)), 6
+        ),
+        "artifact_fetch_render_p95_ms": round(fetch_render_p95, 6),
         "artifact_fetch_p95_no_slower": artifact_p95 <= current_p95,
+        "artifact_fetch_render_p95_no_slower": (
+            fetch_render_p95 <= current_p95
+        ),
         "artifact_p95_speedup": round(
             current_p95 / artifact_p95 if artifact_p95 else float("inf"),
             4,
@@ -294,6 +351,19 @@ async def benchmark_csr_random_access(
             3,
         ),
         "csr_artifact_size_mb": round(artifact_size / (1024 * 1024), 4),
+        "artifact_build_trees_per_sec": (
+            round(build_throughput, 3)
+            if build_throughput is not None
+            else ""
+        ),
+        "artifact_response_p50_kb": round(
+            float(np.percentile(response_sizes, 50)) / 1024,
+            3,
+        ),
+        "artifact_reader_peak_rss_mb": round(
+            peak_rss / (1024 * 1024),
+            3,
+        ),
     }
 
 
@@ -368,10 +438,20 @@ def write_csv(rows: List[Dict[str, Any]], output_path: Path) -> None:
         "current_csr_p95_ms",
         "artifact_fetch_p50_ms",
         "artifact_fetch_p95_ms",
+        "artifact_adjacent_fetch_p50_ms",
+        "artifact_adjacent_fetch_p95_ms",
+        "artifact_serialization_p50_ms",
+        "artifact_serialization_p95_ms",
+        "artifact_fetch_render_p50_ms",
+        "artifact_fetch_render_p95_ms",
         "artifact_fetch_p95_no_slower",
+        "artifact_fetch_render_p95_no_slower",
         "artifact_p95_speedup",
         "artifact_reader_rss_delta_mb",
         "csr_artifact_size_mb",
+        "artifact_build_trees_per_sec",
+        "artifact_response_p50_kb",
+        "artifact_reader_peak_rss_mb",
     ]
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w", newline="", encoding="utf-8") as f:

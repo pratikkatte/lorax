@@ -6,6 +6,9 @@ Handles search_nodes and get_highlight_positions_event events.
 
 import asyncio
 
+from lorax.artifacts.graph import CompactGenealogyGraph
+from lorax.artifacts.csr_reader import CSRArtifactCapabilityError
+from lorax.artifacts.runtime import context_for_session, is_artifact_session
 from lorax.context import tree_graph_cache, csv_tree_graph_cache
 from lorax.constants import ERROR_NO_FILE_LOADED
 from lorax.handlers import (
@@ -18,7 +21,12 @@ from lorax.handlers import (
 from lorax.cache import get_file_context
 from lorax.sockets.decorators import require_session
 from lorax.sockets.utils import is_csv_session_file
-from lorax.tree_graph.time_scale import newick_node_position, normalize_time_scale
+from lorax.tree_graph.time_scale import (
+    newick_node_position,
+    normalize_time_scale,
+    tree_graph_edge_coordinates,
+    times_to_y,
+)
 
 
 async def _get_or_parse_csv_tree_graph(ctx, session_id: str, tree_idx: int):
@@ -45,6 +53,162 @@ def _find_node_index(graph, node_id: int):
         return int(idxs[0])
     except Exception:
         return None
+
+
+def _compare_artifact_trees(context, tree_indices, time_scale):
+    indices = [
+        int(index)
+        for index in tree_indices
+        if 0 <= int(index) < context.reader.num_trees
+    ]
+    genealogies = context.reader.trees_at_indices(indices)
+    graphs = [
+        CompactGenealogyGraph.from_genealogy(
+            genealogy,
+            global_min_time=context.reader.global_min_time,
+            global_max_time=context.reader.global_max_time,
+            time_scale=time_scale,
+        )
+        for genealogy in genealogies
+    ]
+    comparisons = []
+    for previous, following in zip(graphs, graphs[1:]):
+        previous_edges = previous.edges()
+        following_edges = following.edges()
+        comparisons.append(
+            {
+                "prev_idx": previous.tree_index,
+                "next_idx": following.tree_index,
+                "inserted": [
+                    tree_graph_edge_coordinates(
+                        following,
+                        parent,
+                        child,
+                        context.reader.global_min_time,
+                        context.reader.global_max_time,
+                        time_scale,
+                    )
+                    for parent, child in sorted(following_edges - previous_edges)
+                ],
+                "removed": [
+                    tree_graph_edge_coordinates(
+                        previous,
+                        parent,
+                        child,
+                        context.reader.global_min_time,
+                        context.reader.global_max_time,
+                        time_scale,
+                    )
+                    for parent, child in sorted(previous_edges - following_edges)
+                ],
+            }
+        )
+    return {"comparisons": comparisons}
+
+
+def _artifact_sample_name_map(reader):
+    reader.require_capability("sample_search")
+    return {
+        str(row["display_name"]).casefold(): int(row["node_id"])
+        for row in reader._sidecar_table("sample_names").to_pylist()
+    }
+
+
+def _artifact_matching_nodes(reader, metadata_key, metadata_value):
+    if metadata_key == "sample":
+        node_id = _artifact_sample_name_map(reader).get(
+            str(metadata_value).casefold()
+        )
+        return [] if node_id is None else [node_id]
+    return reader.metadata_samples(
+        metadata_key,
+        metadata_value,
+    )["sample_node_ids"]
+
+
+def _artifact_positions(
+    context,
+    node_ids,
+    tree_indices,
+    time_scale,
+    *,
+    show_lineages=False,
+):
+    positions = []
+    lineages = {}
+    wanted = {int(node_id) for node_id in node_ids}
+    ranges_by_node = {
+        node_id: context.reader.tree_ranges_for_node(node_id)
+        for node_id in wanted
+    }
+    requested_indices = [int(index) for index in tree_indices]
+    relevant_indices = [
+        tree_index
+        for tree_index in requested_indices
+        if any(
+            start <= tree_index < stop
+            for ranges in ranges_by_node.values()
+            for start, stop in ranges
+        )
+    ]
+    genealogies = context.reader.trees_at_indices(relevant_indices)
+    for genealogy in genealogies:
+        for node_id in wanted:
+            if not genealogy.has_node(node_id):
+                continue
+            offset = genealogy.node_offset(node_id)
+            positions.append(
+                {
+                    "node_id": node_id,
+                    "tree_idx": genealogy.tree_index,
+                    "x": float(genealogy.layout_x[offset]),
+                    "y": float(
+                        times_to_y(
+                            [genealogy.node_times[offset]],
+                            context.reader.global_min_time,
+                            context.reader.global_max_time,
+                            time_scale,
+                        )[0]
+                    ),
+                }
+            )
+            if show_lineages:
+                path = list(reversed(genealogy.ancestors(node_id)))
+                if len(path) > 1:
+                    lineages.setdefault(genealogy.tree_index, []).append(
+                        {"path_node_ids": path, "color": None}
+                    )
+    return positions, lineages
+
+
+def _artifact_search_nodes(context, data):
+    name_map = _artifact_sample_name_map(context.reader)
+    names = [str(name) for name in data.get("sample_names", [])]
+    tree_indices = [int(index) for index in data.get("tree_indices", [])]
+    genealogies = context.reader.trees_at_indices(tree_indices)
+    highlights = {}
+    lineages = {}
+    for genealogy in genealogies:
+        hits = []
+        for name in names:
+            node_id = name_map.get(name.casefold())
+            if node_id is None or not genealogy.has_node(node_id):
+                continue
+            hits.append({"node_id": node_id, "name": name})
+            if data.get("show_lineages"):
+                path = list(reversed(genealogy.ancestors(node_id)))
+                if len(path) > 1:
+                    lineages.setdefault(genealogy.tree_index, []).append(
+                        {
+                            "path_node_ids": path,
+                            "color": (data.get("sample_colors") or {}).get(
+                                name.casefold()
+                            ),
+                        }
+                    )
+        if hits:
+            highlights[genealogy.tree_index] = hits
+    return {"highlights": highlights, "lineage": lineages}
 
 
 def _build_node_id_to_index(graph):
@@ -191,6 +355,19 @@ def register_node_search_events(sio):
                 }, to=sid)
                 return
 
+            if is_artifact_session(session):
+                try:
+                    context = await asyncio.to_thread(context_for_session, session)
+                    result = await asyncio.to_thread(
+                        _artifact_search_nodes,
+                        context,
+                        data,
+                    )
+                except CSRArtifactCapabilityError as exc:
+                    result = {"error": str(exc), "code": exc.code}
+                await sio.emit("search-nodes-result", result, to=sid)
+                return
+
             ctx = await get_file_context(session.file_path)
             if ctx is None:
                 await sio.emit("search-nodes-result", {
@@ -318,6 +495,28 @@ def register_node_search_events(sio):
 
             if not tree_indices:
                 await sio.emit("highlight-positions-result", {"positions": []}, to=sid)
+                return
+
+            if is_artifact_session(session):
+                try:
+                    context = await asyncio.to_thread(context_for_session, session)
+                    node_ids = await asyncio.to_thread(
+                        _artifact_matching_nodes,
+                        context.reader,
+                        metadata_key,
+                        metadata_value,
+                    )
+                    positions, _lineages = await asyncio.to_thread(
+                        _artifact_positions,
+                        context,
+                        node_ids,
+                        tree_indices,
+                        time_scale,
+                    )
+                    result = {"positions": positions}
+                except CSRArtifactCapabilityError as exc:
+                    result = {"error": str(exc), "code": exc.code}
+                await sio.emit("highlight-positions-result", result, to=sid)
                 return
 
             ctx = await get_file_context(session.file_path)
@@ -495,6 +694,41 @@ def register_node_search_events(sio):
                 }, to=sid)
                 return
 
+            if is_artifact_session(session):
+                try:
+                    context = await asyncio.to_thread(context_for_session, session)
+                    positions_by_value = {}
+                    lineages = {}
+                    total_count = 0
+                    for value in dict.fromkeys(str(v) for v in metadata_values):
+                        node_ids = await asyncio.to_thread(
+                            _artifact_matching_nodes,
+                            context.reader,
+                            metadata_key,
+                            value,
+                        )
+                        positions, value_lineages = await asyncio.to_thread(
+                            _artifact_positions,
+                            context,
+                            node_ids,
+                            tree_indices,
+                            time_scale,
+                            show_lineages=show_lineages,
+                        )
+                        positions_by_value[value] = positions
+                        total_count += len(positions)
+                        if value_lineages:
+                            lineages[value] = value_lineages
+                    result = {
+                        "positions_by_value": positions_by_value,
+                        "lineages": lineages,
+                        "total_count": total_count,
+                    }
+                except CSRArtifactCapabilityError as exc:
+                    result = {"error": str(exc), "code": exc.code}
+                await sio.emit("search-metadata-multi-result", result, to=sid)
+                return
+
             ctx = await get_file_context(session.file_path)
             if ctx is None:
                 await sio.emit("search-metadata-multi-result", {
@@ -546,14 +780,23 @@ def register_node_search_events(sio):
                 )
                 return
 
-            result = await get_compare_trees_diff(
-                session.file_path,
-                tree_indices,
-                lorax_sid,
-                tree_graph_cache,
-                csv_tree_graph_cache=csv_tree_graph_cache,
-                time_scale=time_scale,
-            )
+            if is_artifact_session(session):
+                context = await asyncio.to_thread(context_for_session, session)
+                result = await asyncio.to_thread(
+                    _compare_artifact_trees,
+                    context,
+                    tree_indices,
+                    time_scale,
+                )
+            else:
+                result = await get_compare_trees_diff(
+                    session.file_path,
+                    tree_indices,
+                    lorax_sid,
+                    tree_graph_cache,
+                    csv_tree_graph_cache=csv_tree_graph_cache,
+                    time_scale=time_scale,
+                )
             await sio.emit("compare-trees-result", result, to=sid)
         except Exception as e:
             print(f"❌ Compare trees event error: {e}")

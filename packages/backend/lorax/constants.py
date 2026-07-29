@@ -29,6 +29,13 @@ def _get_env_int(name: str, default: int, min_value: int = 0) -> int:
     return max(min_value, parsed)
 
 
+def _get_env_bool(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return bool(default)
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
 # Session Configuration
 SESSION_COOKIE = "lorax_sid"
 COOKIE_MAX_AGE = _get_env_int("LORAX_COOKIE_MAX_AGE_SEC", 3600, min_value=1)
@@ -44,6 +51,22 @@ CACHE_CLEANUP_INTERVAL_SECONDS = _get_env_int("LORAX_CACHE_CLEANUP_INTERVAL_SEC"
 DISK_CACHE_ENABLED = CURRENT_CONFIG.disk_cache_enabled
 DISK_CACHE_DIR = get_cache_dir(CURRENT_CONFIG)
 DISK_CACHE_MAX_BYTES = CURRENT_CONFIG.disk_cache_max_gb * 1024 * 1024 * 1024
+
+# Artifact-backed TreeSequence loading (opt-in during rollout).
+CSR_ARTIFACTS_ENABLED = _get_env_bool("LORAX_CSR_ARTIFACTS_ENABLED", False)
+CSR_ARTIFACT_ROOT = Path(
+    os.getenv("LORAX_CSR_ARTIFACT_ROOT", str(Path(DISK_CACHE_DIR) / "artifacts"))
+).expanduser()
+CSR_CONTEXT_CACHE_SIZE = _get_env_int(
+    "LORAX_CSR_CONTEXT_CACHE_SIZE",
+    8,
+    min_value=1,
+)
+CSR_MAX_OPEN_SHARDS = _get_env_int(
+    "LORAX_CSR_MAX_OPEN_SHARDS",
+    8,
+    min_value=1,
+)
 
 # Connection Limits (mode-aware)
 MAX_SOCKETS_PER_SESSION = CURRENT_CONFIG.max_sockets_per_session

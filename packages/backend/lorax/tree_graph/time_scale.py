@@ -56,10 +56,16 @@ def normalized_y_to_scaled_y(y_values, min_time: float, max_time: float, time_sc
 def tree_graph_node_position(graph, node_id: int, min_time: float, max_time: float, time_scale: str | None = None) -> dict:
     """Return emitted local coordinates for a TreeGraph node."""
     node_id = int(node_id)
+    if hasattr(graph, "node_x") and hasattr(graph, "node_time"):
+        x = graph.node_x(node_id)
+        time_value = graph.node_time(node_id)
+    else:
+        x = float(graph.x[node_id])
+        time_value = float(graph.time[node_id])
     return {
         "node_id": node_id,
-        "x": float(graph.x[node_id]),
-        "y": time_to_y(float(graph.time[node_id]), min_time, max_time, time_scale),
+        "x": float(x),
+        "y": time_to_y(time_value, min_time, max_time, time_scale),
     }
 
 

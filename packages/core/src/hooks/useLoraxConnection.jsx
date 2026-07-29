@@ -314,6 +314,40 @@ export function useLoraxConnection({
     });
   }, [socketRef, sidRef]);
 
+  const queryIntervals = useCallback((request = {}) => {
+    return new Promise((resolve, reject) => {
+      if (!socketRef.current) {
+        reject(new Error("Socket not available"));
+        return;
+      }
+      socketRef.current.emit(
+        "query_intervals",
+        { ...request, lorax_sid: sidRef.current },
+        (response) => {
+          if (response?.error) reject(new Error(response.error));
+          else resolve(response);
+        }
+      );
+    });
+  }, [socketRef, sidRef]);
+
+  const queryLocalData = useCallback((request = {}) => {
+    return new Promise((resolve, reject) => {
+      if (!socketRef.current) {
+        reject(new Error("Socket not available"));
+        return;
+      }
+      socketRef.current.emit(
+        "query_local_data",
+        { ...request, lorax_sid: sidRef.current },
+        (response) => {
+          if (response?.error) reject(new Error(response.error));
+          else resolve(response);
+        }
+      );
+    });
+  }, [socketRef, sidRef]);
+
   /**
    * Query tree/node/individual details from backend via socket.
    * Emits `details` and resolves with `details-result.data`.
@@ -386,6 +420,9 @@ export function useLoraxConnection({
             const siteIdCol = table.getChild('site_id');
             const ancestralStateCol = table.getChild('ancestral_state');
             const derivedStateCol = table.getChild('derived_state');
+            const treeIndexCol = table.getChild('tree_index');
+            const intervalLeftCol = table.getChild('interval_left');
+            const intervalRightCol = table.getChild('interval_right');
 
             for (let i = 0; i < numRows; i++) {
               mutations.push({
@@ -395,6 +432,9 @@ export function useLoraxConnection({
                 site_id: siteIdCol.get(i),
                 ancestral_state: ancestralStateCol.get(i),
                 derived_state: derivedStateCol.get(i),
+                tree_index: treeIndexCol ? Number(treeIndexCol.get(i)) : -1,
+                interval_left: intervalLeftCol ? Number(intervalLeftCol.get(i)) : null,
+                interval_right: intervalRightCol ? Number(intervalRightCol.get(i)) : null,
               });
             }
           }
@@ -592,6 +632,9 @@ export function useLoraxConnection({
             const ancestralStateCol = table.getChild('ancestral_state');
             const derivedStateCol = table.getChild('derived_state');
             const distanceCol = table.getChild('distance');
+            const treeIndexCol = table.getChild('tree_index');
+            const intervalLeftCol = table.getChild('interval_left');
+            const intervalRightCol = table.getChild('interval_right');
 
             for (let i = 0; i < numRows; i++) {
               mutations.push({
@@ -602,6 +645,9 @@ export function useLoraxConnection({
                 ancestral_state: ancestralStateCol.get(i),
                 derived_state: derivedStateCol.get(i),
                 distance: Number(distanceCol.get(i)),
+                tree_index: treeIndexCol ? Number(treeIndexCol.get(i)) : -1,
+                interval_left: intervalLeftCol ? Number(intervalLeftCol.get(i)) : null,
+                interval_right: intervalRightCol ? Number(intervalRightCol.get(i)) : null,
               });
             }
           }
@@ -753,6 +799,8 @@ export function useLoraxConnection({
       isConnected,
       queryFile,
       queryTreeLayout,
+      queryIntervals,
+      queryLocalData,
       queryDetails,
       queryMutationsWindow,
       queryHighlightPositions,
@@ -772,6 +820,8 @@ export function useLoraxConnection({
       isConnected,
       queryFile,
       queryTreeLayout,
+      queryIntervals,
+      queryLocalData,
       queryDetails,
       queryMutationsWindow,
       queryHighlightPositions,

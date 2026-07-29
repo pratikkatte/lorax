@@ -53,9 +53,23 @@ def _parse_iso_timestamp(value: Optional[str]) -> Optional[datetime]:
 class Session:
     """Per-user session with socket connection tracking."""
 
-    def __init__(self, sid, file_path=None, socket_connections=None, last_activity=None):
+    def __init__(
+        self,
+        sid,
+        file_path=None,
+        socket_connections=None,
+        last_activity=None,
+        dataset_backend="legacy",
+        artifact_path=None,
+        artifact_fingerprint=None,
+        artifact_format=None,
+    ):
         self.sid = sid
         self.file_path = file_path
+        self.dataset_backend = dataset_backend or "legacy"
+        self.artifact_path = artifact_path
+        self.artifact_fingerprint = artifact_fingerprint
+        self.artifact_format = artifact_format
         self.created_at = datetime.now(timezone.utc).isoformat()
         self.last_activity = last_activity or self.created_at
         # socket_connections: {socket_sid: connected_at_iso_string}
@@ -65,6 +79,10 @@ class Session:
         return {
             "sid": self.sid,
             "file_path": self.file_path,
+            "dataset_backend": self.dataset_backend,
+            "artifact_path": self.artifact_path,
+            "artifact_fingerprint": self.artifact_fingerprint,
+            "artifact_format": self.artifact_format,
             "created_at": self.created_at,
             "last_activity": self.last_activity,
             "socket_connections": self.socket_connections,
@@ -77,6 +95,10 @@ class Session:
             file_path=data.get("file_path"),
             socket_connections=data.get("socket_connections", {}),
             last_activity=data.get("last_activity"),
+            dataset_backend=data.get("dataset_backend", "legacy"),
+            artifact_path=data.get("artifact_path"),
+            artifact_fingerprint=data.get("artifact_fingerprint"),
+            artifact_format=data.get("artifact_format"),
         )
         session.created_at = data.get("created_at", session.created_at)
         return session

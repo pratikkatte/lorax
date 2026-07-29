@@ -36,11 +36,17 @@ def register_debug_events(sio):
 
             # Get global stats
             global_stats = tree_graph_cache.get_stats()
+            from lorax.artifacts.metrics import csr_artifact_metrics
+            from lorax.artifacts.runtime import artifact_context_registry
 
             return {
                 "session_trees": len(cached_trees),
                 "cached_tree_indices": list(cached_trees.keys()),
-                "stats": global_stats
+                "stats": global_stats,
+                "csr_artifacts": {
+                    "metrics": csr_artifact_metrics.snapshot(),
+                    "registry": artifact_context_registry.snapshot(),
+                },
             }
         except Exception as e:
             print(f"❌ Get cache stats error: {e}")

@@ -127,14 +127,14 @@ def _get_table_counts(ts):
         "populations": int(getattr(ts, "num_populations", 0)),
     }
 
-def get_config_tskit(ts, file_path, root_dir):
+def get_config_tskit(ts, file_path, root_dir, *, include_intervals=True):
     """Extract configuration and metadata from a tree sequence file.
 
     Note: Uses get_metadata_schema() for lightweight initial load.
     Full metadata values are fetched on-demand via fetch_metadata_array.
     """
     try:
-        intervals = list(ts.breakpoints())
+        intervals = list(ts.breakpoints()) if include_intervals else None
         times = [ts.min_time, ts.max_time]
         genome_length = ts.sequence_length
 
@@ -163,6 +163,8 @@ def get_config_tskit(ts, file_path, root_dir):
             'initial_position': [int(start), int(end)],
             'times': {'type': timeline_type, 'values': times},
             'intervals': intervals,
+            'interval_source': 'inline' if include_intervals else 'backend',
+            'num_trees': int(ts.num_trees),
             'filename': str(filename),
             'project': project_name,
             'num_samples': ts.num_samples,

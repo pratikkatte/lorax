@@ -85,8 +85,12 @@ export function useLocalData({
 
   // Compute scale factors from viewState
   const globalBpPerUnit = useMemo(() => {
-    if (!tsconfig?.genome_length || !tsconfig?.intervals?.length) return null;
-    return tsconfig.genome_length / tsconfig.intervals.length;
+    if (!tsconfig?.genome_length) return null;
+    const intervalCount = tsconfig?.intervals?.length
+      || tsconfig?.num_breakpoints
+      || tsconfig?.num_trees;
+    if (!intervalCount) return null;
+    return tsconfig.genome_length / intervalCount;
   }, [tsconfig]);
 
   const getCurrentXZoom = useCallback(() => {

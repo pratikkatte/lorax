@@ -23,6 +23,9 @@ def mutations_to_arrow_buffer(mutations_data):
             'ancestral_state': pa.array([], type=pa.string()),
             'derived_state': pa.array([], type=pa.string()),
             'distance': pa.array([], type=pa.int64()),
+            'tree_index': pa.array([], type=pa.int64()),
+            'interval_left': pa.array([], type=pa.float64()),
+            'interval_right': pa.array([], type=pa.float64()),
         })
     else:
         table = pa.table({
@@ -33,6 +36,9 @@ def mutations_to_arrow_buffer(mutations_data):
             'ancestral_state': pa.array([m['ancestral_state'] for m in mutations], type=pa.string()),
             'derived_state': pa.array([m['derived_state'] for m in mutations], type=pa.string()),
             'distance': pa.array([m.get('distance', 0) for m in mutations], type=pa.int64()),
+            'tree_index': pa.array([m.get('tree_index', -1) for m in mutations], type=pa.int64()),
+            'interval_left': pa.array([m.get('interval_left') for m in mutations], type=pa.float64()),
+            'interval_right': pa.array([m.get('interval_right') for m in mutations], type=pa.float64()),
         })
 
     sink = pa.BufferOutputStream()

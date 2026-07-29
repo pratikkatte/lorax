@@ -55,8 +55,12 @@ function useLoraxConfig({
   // Derived values
   const genomeLength = useMemo(() => tsconfig?.genome_length ?? null, [tsconfig]);
   const globalBpPerUnit = useMemo(() => {
-    if (!tsconfig?.intervals?.length || !tsconfig?.genome_length) return null;
-    return tsconfig.genome_length / tsconfig.intervals.length;
+    if (!tsconfig?.genome_length) return null;
+    const intervalCount = tsconfig?.intervals?.length
+      || tsconfig?.num_breakpoints
+      || tsconfig?.num_trees;
+    if (!intervalCount) return null;
+    return tsconfig.genome_length / intervalCount;
   }, [tsconfig]);
 
   // Dedicated workers: interval queries and local-data/binning.
@@ -120,10 +124,30 @@ function useLoraxConfig({
   // Backward-compatible worker alias that routes messages to the right worker.
   // Legacy callers can continue using `worker.request(type, ...)`.
   const worker = useMemo(() => {
-    if (workerOverride) return workerOverride;
+    const remoteIntervals = tsconfig?.interval_source === 'backend';
+    if (workerOverride) {
+      return {
+        isReady: workerOverride.isReady,
+        request: (type, data, timeoutOrOpts) => {
+          if (remoteIntervals && type === 'intervals') {
+            return backend.queryIntervals(data);
+          }
+          if (remoteIntervals && type === 'local-data') {
+            return backend.queryLocalData(data);
+          }
+          return workerOverride.request(type, data, timeoutOrOpts);
+        }
+      };
+    }
     return {
       isReady: intervalWorkerLocal.isReady && localDataWorkerLocal.isReady,
       request: (type, data, timeoutOrOpts) => {
+        if (remoteIntervals && type === 'intervals') {
+          return backend.queryIntervals(data);
+        }
+        if (remoteIntervals && type === 'local-data') {
+          return backend.queryLocalData(data);
+        }
         if (type === 'intervals') {
           return intervalWorkerLocal.request(type, data, timeoutOrOpts);
         }
@@ -140,7 +164,7 @@ function useLoraxConfig({
         return localDataWorkerLocal.request(type, data, timeoutOrOpts);
       }
     };
-  }, [workerOverride, intervalWorkerLocal, localDataWorkerLocal]);
+  }, [workerOverride, intervalWorkerLocal, localDataWorkerLocal, tsconfig, backend]);
 
   /**
    * Process incoming config data from backend.

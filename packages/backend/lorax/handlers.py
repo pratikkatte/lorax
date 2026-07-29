@@ -85,11 +85,18 @@ async def cache_status():
     rss_mb = mem_info.rss / (1024 * 1024)
     vms_mb = mem_info.vms / (1024 * 1024)
 
+    from lorax.artifacts.metrics import csr_artifact_metrics
+    from lorax.artifacts.runtime import artifact_context_registry
+
     return {
         "rss_MB": round(rss_mb, 2),
         "vms_MB": round(vms_mb, 2),
         "file_cache_size": get_file_cache_size(),
         "pid": os.getpid(),
+        "csr_artifacts": {
+            "metrics": csr_artifact_metrics.snapshot(),
+            "registry": artifact_context_registry.snapshot(),
+        },
     }
 
 
@@ -739,6 +746,8 @@ async def get_or_construct_tree_graph(
 
 def _edges_from_tree_graph(tg) -> set:
     """Extract (parent, child) edge set from TreeGraph."""
+    if hasattr(tg, "edges"):
+        return set(tg.edges())
     edges = set()
     for n in np.where(tg.in_tree)[0]:
         p = int(tg.parent[n])

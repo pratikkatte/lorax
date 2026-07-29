@@ -17,6 +17,7 @@ import shutil
 import time
 import uuid
 from pathlib import Path
+from collections import defaultdict
 from typing import Any, Callable, Iterable
 
 import numpy as np
@@ -24,12 +25,17 @@ import pyarrow as pa
 import tskit
 import tszip
 
+from lorax.loaders.tskit_loader import get_config_tskit
 from lorax.tree_graph.tree_graph import _compute_x_postorder
+from lorax.utils import ensure_json_dict, make_json_serializable
 
-CSR_ARTIFACT_SCHEMA_VERSION = 2
-CSR_ARTIFACT_FORMAT = "lorax-csr-v2"
+CSR_ARTIFACT_V2_SCHEMA_VERSION = 2
+CSR_ARTIFACT_V2_FORMAT = "lorax-csr-v2"
+CSR_ARTIFACT_SCHEMA_VERSION = 3
+CSR_ARTIFACT_FORMAT = "lorax-csr-v3"
 DEFAULT_TARGET_SHARD_MB = 48
 SUPPORTED_COMPRESSIONS = {"zstd", "lz4", "none"}
+SIDECAR_BATCH_ROWS = 65_536
 
 ProgressCallback = Callable[[dict[str, Any]], None]
 
@@ -75,6 +81,90 @@ SHARD_INDEX_SCHEMA = pa.schema(
     ]
 )
 
+NODE_SCHEMA = pa.schema(
+    [
+        pa.field("id", pa.int32()),
+        pa.field("flags", pa.uint32()),
+        pa.field("time", pa.float64()),
+        pa.field("population", pa.int32()),
+        pa.field("individual", pa.int32()),
+        pa.field("metadata_json", pa.string()),
+        pa.field("metadata_raw", pa.binary()),
+    ]
+)
+
+SITE_SCHEMA = pa.schema(
+    [
+        pa.field("id", pa.int32()),
+        pa.field("position", pa.float64()),
+        pa.field("ancestral_state", pa.string()),
+        pa.field("metadata_json", pa.string()),
+        pa.field("metadata_raw", pa.binary()),
+    ]
+)
+
+INDIVIDUAL_SCHEMA = pa.schema(
+    [
+        pa.field("id", pa.int32()),
+        pa.field("flags", pa.uint32()),
+        pa.field("location", pa.list_(pa.float64())),
+        pa.field("parents", pa.list_(pa.int32())),
+        pa.field("nodes", pa.list_(pa.int32())),
+        pa.field("metadata_json", pa.string()),
+        pa.field("metadata_raw", pa.binary()),
+    ]
+)
+
+POPULATION_SCHEMA = pa.schema(
+    [
+        pa.field("id", pa.int32()),
+        pa.field("metadata_json", pa.string()),
+        pa.field("metadata_raw", pa.binary()),
+    ]
+)
+
+GLOBAL_MUTATION_SCHEMA = pa.schema(
+    [
+        pa.field("id", pa.int32()),
+        pa.field("site_id", pa.int32()),
+        pa.field("node_id", pa.int32()),
+        pa.field("parent_id", pa.int32()),
+        pa.field("position", pa.float64()),
+        pa.field("time", pa.float64()),
+        pa.field("ancestral_state", pa.string()),
+        pa.field("derived_state", pa.string()),
+        pa.field("inherited_state", pa.string()),
+        pa.field("metadata_json", pa.string()),
+        pa.field("metadata_raw", pa.binary()),
+    ]
+)
+
+SAMPLE_NAME_SCHEMA = pa.schema(
+    [
+        pa.field("normalized_name", pa.string()),
+        pa.field("display_name", pa.string()),
+        pa.field("node_id", pa.int32()),
+    ]
+)
+
+METADATA_SAMPLE_SCHEMA = pa.schema(
+    [
+        pa.field("source", pa.dictionary(pa.int32(), pa.string())),
+        pa.field("key", pa.dictionary(pa.int32(), pa.string())),
+        pa.field("value", pa.dictionary(pa.int32(), pa.string())),
+        pa.field("sample_node_ids", pa.list_(pa.int32())),
+        pa.field("sample_names", pa.list_(pa.string())),
+    ]
+)
+
+NODE_TREE_RANGE_SCHEMA = pa.schema(
+    [
+        pa.field("node_id", pa.int32()),
+        pa.field("first_tree", pa.int64()),
+        pa.field("last_tree_exclusive", pa.int64()),
+    ]
+)
+
 
 class CSRArtifactBuildError(RuntimeError):
     """Raised when a CSR artifact cannot be built safely."""
@@ -97,10 +187,24 @@ def source_fingerprint(file_path: str | Path) -> str:
 
 
 def default_csr_artifact_root() -> Path:
-    """Return the default root containing fingerprint-addressed v2 artifacts."""
+    """Return the default root containing fingerprint-addressed v3 artifacts."""
     from lorax.constants import DISK_CACHE_DIR
 
-    return Path(DISK_CACHE_DIR).expanduser().resolve() / "artifacts" / "v2"
+    return Path(DISK_CACHE_DIR).expanduser().resolve() / "artifacts" / "v3"
+
+
+def source_locator_key(source: str | Path) -> str:
+    """Return the stable locator key for a canonical source path."""
+    canonical = str(Path(source).expanduser().resolve())
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def source_locator_directory(artifact_root: str | Path) -> Path:
+    """Return the locator directory adjacent to a versioned artifact root."""
+    root = Path(artifact_root).expanduser().resolve()
+    if root.name in {"v2", "v3"} and root.parent.name == "artifacts":
+        return root.parent / "locators"
+    return root / ".locators"
 
 
 def _checksum(path: Path) -> str:
@@ -112,12 +216,151 @@ def _checksum(path: Path) -> str:
 
 
 def _write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
     temporary.write_text(
         json.dumps(payload, sort_keys=True, separators=(",", ":")),
         encoding="utf-8",
     )
     os.replace(temporary, path)
+
+
+def _write_npy_atomic(path: Path, values: np.ndarray) -> None:
+    available = shutil.disk_usage(path.parent).free
+    if int(values.nbytes) > available:
+        raise CSRArtifactBuildError(
+            f"Index {path.name} needs approximately {values.nbytes} bytes, "
+            f"but only {available} bytes are available"
+        )
+    temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        with temporary.open("wb") as sink:
+            np.save(sink, values, allow_pickle=False)
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _ipc_write_options(compression: str) -> pa.ipc.IpcWriteOptions:
+    codec = None if compression == "none" else compression
+    return pa.ipc.IpcWriteOptions(compression=codec)
+
+
+def _write_arrow_table_atomic(
+    path: Path,
+    table: pa.Table,
+    *,
+    compression: str,
+) -> dict[str, Any]:
+    available = shutil.disk_usage(path.parent).free
+    if int(table.nbytes) > available:
+        raise CSRArtifactBuildError(
+            f"Sidecar {path.name} needs approximately {table.nbytes} bytes, "
+            f"but only {available} bytes are available"
+        )
+    temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        with pa.OSFile(str(temporary), "wb") as sink:
+            with pa.ipc.new_file(
+                sink,
+                table.schema,
+                options=_ipc_write_options(compression),
+            ) as writer:
+                writer.write_table(table, max_chunksize=SIDECAR_BATCH_ROWS)
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+    return {
+        "name": path.name,
+        "size_bytes": path.stat().st_size,
+        "sha256": _checksum(path),
+        "rows": table.num_rows,
+        "batch_rows": SIDECAR_BATCH_ROWS,
+        "batch_count": (
+            int(math.ceil(table.num_rows / SIDECAR_BATCH_ROWS))
+            if table.num_rows
+            else 0
+        ),
+    }
+
+
+def _file_metadata(path: Path, *, rows: int | None = None) -> dict[str, Any]:
+    metadata = {
+        "name": path.name,
+        "size_bytes": path.stat().st_size,
+        "sha256": _checksum(path),
+    }
+    if rows is not None:
+        metadata["rows"] = int(rows)
+    return metadata
+
+
+def _metadata_payload(
+    value: Any,
+    *,
+    raw_metadata: bytes | None = None,
+) -> tuple[str, bytes]:
+    """Return deterministic JSON plus bytes suitable for lossless round trips."""
+    if value is None:
+        return "null", bytes(raw_metadata or b"")
+    if isinstance(value, bytes):
+        raw = bytes(value) if raw_metadata is None else bytes(raw_metadata)
+        if not raw:
+            return "null", raw
+        try:
+            decoded = ensure_json_dict(raw)
+        except Exception:
+            decoded = {"__raw_hex__": raw.hex()}
+    else:
+        try:
+            decoded = make_json_serializable(value)
+        except Exception:
+            decoded = str(value)
+        raw = (
+            bytes(raw_metadata)
+            if raw_metadata is not None
+            else json.dumps(
+                decoded,
+                sort_keys=True,
+                separators=(",", ":"),
+                default=str,
+            ).encode("utf-8")
+        )
+    try:
+        normalized = json.dumps(
+            make_json_serializable(decoded),
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
+        )
+    except Exception:
+        normalized = json.dumps(str(decoded))
+    return normalized, raw
+
+
+def _metadata_dict(value: Any) -> dict[str, Any]:
+    if value is None:
+        return {}
+    try:
+        decoded = ensure_json_dict(value)
+    except Exception:
+        decoded = value if isinstance(value, dict) else {}
+    return decoded if isinstance(decoded, dict) else {}
+
+
+def _metadata_index_value(value: Any) -> str:
+    if isinstance(value, (dict, list, tuple)):
+        # Preserve the strings already exposed by Lorax's metadata filters.
+        return repr(make_json_serializable(value))
+    return str(value)
+
+
+def _raw_metadata_at(table: Any, row_id: int) -> bytes:
+    """Return the exact encoded metadata bytes from a tskit table row."""
+    offsets = table.metadata_offset
+    start = int(offsets[int(row_id)])
+    stop = int(offsets[int(row_id) + 1])
+    return bytes(np.asarray(table.metadata[start:stop], dtype=np.int8))
 
 
 def _load_source(source: Path) -> tskit.TreeSequence:
@@ -305,15 +548,468 @@ def _write_shard_index(path: Path, shards: list[dict[str, Any]]) -> None:
         partial.unlink(missing_ok=True)
 
 
+def _table_from_rows(
+    rows: list[dict[str, Any]],
+    schema: pa.Schema,
+) -> pa.Table:
+    if rows:
+        return pa.Table.from_pylist(rows, schema=schema)
+    return pa.Table.from_batches([], schema=schema)
+
+
+def _build_node_rows(
+    tree_sequence: tskit.TreeSequence,
+) -> list[dict[str, Any]]:
+    rows = []
+    table = tree_sequence.tables.nodes
+    for node in tree_sequence.nodes():
+        metadata_json, metadata_raw = _metadata_payload(
+            node.metadata,
+            raw_metadata=_raw_metadata_at(table, node.id),
+        )
+        rows.append(
+            {
+                "id": int(node.id),
+                "flags": int(node.flags),
+                "time": float(node.time),
+                "population": int(node.population),
+                "individual": int(node.individual),
+                "metadata_json": metadata_json,
+                "metadata_raw": metadata_raw,
+            }
+        )
+    return rows
+
+
+def _build_site_rows(
+    tree_sequence: tskit.TreeSequence,
+) -> list[dict[str, Any]]:
+    rows = []
+    table = tree_sequence.tables.sites
+    for site in tree_sequence.sites():
+        metadata_json, metadata_raw = _metadata_payload(
+            site.metadata,
+            raw_metadata=_raw_metadata_at(table, site.id),
+        )
+        rows.append(
+            {
+                "id": int(site.id),
+                "position": float(site.position),
+                "ancestral_state": site.ancestral_state,
+                "metadata_json": metadata_json,
+                "metadata_raw": metadata_raw,
+            }
+        )
+    return rows
+
+
+def _build_individual_rows(
+    tree_sequence: tskit.TreeSequence,
+) -> list[dict[str, Any]]:
+    rows = []
+    table = tree_sequence.tables.individuals
+    for individual in tree_sequence.individuals():
+        metadata_json, metadata_raw = _metadata_payload(
+            individual.metadata,
+            raw_metadata=_raw_metadata_at(table, individual.id),
+        )
+        rows.append(
+            {
+                "id": int(individual.id),
+                "flags": int(individual.flags),
+                "location": np.asarray(individual.location, dtype=np.float64),
+                "parents": np.asarray(individual.parents, dtype=np.int32),
+                "nodes": np.asarray(individual.nodes, dtype=np.int32),
+                "metadata_json": metadata_json,
+                "metadata_raw": metadata_raw,
+            }
+        )
+    return rows
+
+
+def _build_population_rows(
+    tree_sequence: tskit.TreeSequence,
+) -> list[dict[str, Any]]:
+    rows = []
+    table = tree_sequence.tables.populations
+    for population in tree_sequence.populations():
+        metadata_json, metadata_raw = _metadata_payload(
+            population.metadata,
+            raw_metadata=_raw_metadata_at(table, population.id),
+        )
+        rows.append(
+            {
+                "id": int(population.id),
+                "metadata_json": metadata_json,
+                "metadata_raw": metadata_raw,
+            }
+        )
+    return rows
+
+
+def _build_global_mutation_rows(
+    tree_sequence: tskit.TreeSequence,
+) -> list[dict[str, Any]]:
+    rows = []
+    table = tree_sequence.tables.mutations
+    for mutation in tree_sequence.mutations():
+        site = tree_sequence.site(int(mutation.site))
+        parent_id = int(mutation.parent)
+        inherited_state = (
+            site.ancestral_state
+            if parent_id == tskit.NULL
+            else tree_sequence.mutation(parent_id).derived_state
+        )
+        metadata_json, metadata_raw = _metadata_payload(
+            mutation.metadata,
+            raw_metadata=_raw_metadata_at(table, mutation.id),
+        )
+        rows.append(
+            {
+                "id": int(mutation.id),
+                "site_id": int(site.id),
+                "node_id": int(mutation.node),
+                "parent_id": parent_id,
+                "position": float(site.position),
+                "time": float(mutation.time),
+                "ancestral_state": site.ancestral_state,
+                "derived_state": mutation.derived_state,
+                "inherited_state": inherited_state,
+                "metadata_json": metadata_json,
+                "metadata_raw": metadata_raw,
+            }
+        )
+    rows.sort(key=lambda row: (row["position"], row["id"]))
+    return rows
+
+
+def _sample_metadata_sources(
+    tree_sequence: tskit.TreeSequence,
+    node_id: int,
+) -> list[tuple[str, dict[str, Any]]]:
+    node = tree_sequence.node(node_id)
+    sources = [("node", _metadata_dict(node.metadata))]
+    if node.individual != tskit.NULL:
+        sources.append(
+            (
+                "individual",
+                _metadata_dict(tree_sequence.individual(node.individual).metadata),
+            )
+        )
+    if node.population != tskit.NULL:
+        sources.append(
+            (
+                "population",
+                _metadata_dict(tree_sequence.population(node.population).metadata),
+            )
+        )
+    return sources
+
+
+def _build_sample_indexes(
+    tree_sequence: tskit.TreeSequence,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    name_rows: list[dict[str, Any]] = []
+    grouped: dict[
+        tuple[str, str, str],
+        tuple[list[int], list[str]],
+    ] = {}
+    for raw_node_id in tree_sequence.samples():
+        node_id = int(raw_node_id)
+        sources = _sample_metadata_sources(tree_sequence, node_id)
+        node_metadata = next(
+            metadata for source, metadata in sources if source == "node"
+        )
+        display_name = str(node_metadata.get("name", node_id))
+        name_rows.append(
+            {
+                "normalized_name": display_name.casefold(),
+                "display_name": display_name,
+                "node_id": node_id,
+            }
+        )
+        for source, metadata in sources:
+            for key, value in metadata.items():
+                index_key = (source, str(key), _metadata_index_value(value))
+                node_ids, sample_names = grouped.setdefault(index_key, ([], []))
+                node_ids.append(node_id)
+                sample_names.append(display_name)
+    name_rows.sort(key=lambda row: (row["normalized_name"], row["node_id"]))
+    metadata_rows = [
+        {
+            "source": source,
+            "key": key,
+            "value": value,
+            "sample_node_ids": np.asarray(node_ids, dtype=np.int32),
+            "sample_names": sample_names,
+        }
+        for (source, key, value), (node_ids, sample_names) in sorted(
+            grouped.items()
+        )
+    ]
+    return name_rows, metadata_rows
+
+
+def _build_node_tree_ranges(
+    tree_sequence: tskit.TreeSequence,
+) -> list[dict[str, Any]]:
+    """Build run-length encoded node membership using the sequential iterator."""
+    open_starts: dict[int, int] = {}
+    previous_nodes: set[int] = set()
+    ranges: list[dict[str, Any]] = []
+    for tree in tree_sequence.trees():
+        current_nodes = {int(node_id) for node_id in tree.nodes()}
+        tree_index = int(tree.index)
+        for node_id in current_nodes - previous_nodes:
+            open_starts[node_id] = tree_index
+        for node_id in previous_nodes - current_nodes:
+            ranges.append(
+                {
+                    "node_id": node_id,
+                    "first_tree": open_starts.pop(node_id),
+                    "last_tree_exclusive": tree_index,
+                }
+            )
+        previous_nodes = current_nodes
+    for node_id in previous_nodes:
+        ranges.append(
+            {
+                "node_id": node_id,
+                "first_tree": open_starts[node_id],
+                "last_tree_exclusive": int(tree_sequence.num_trees),
+            }
+        )
+    ranges.sort(key=lambda row: (row["node_id"], row["first_tree"]))
+    return ranges
+
+
+def _write_v3_sidecars(
+    staging: Path,
+    tree_sequence: tskit.TreeSequence,
+    source_path: Path,
+    *,
+    compression: str,
+    state: dict[str, Any],
+    state_path: Path,
+) -> tuple[dict[str, dict[str, Any]], dict[str, bool]]:
+    capabilities = {
+        "render": True,
+        "intervals": True,
+        "details": True,
+        "mutations": True,
+        "metadata": True,
+        "sample_search": True,
+        "node_tree_ranges": True,
+        "lineage": True,
+        "topology_comparison": True,
+    }
+    indexes: dict[str, dict[str, Any]] = dict(
+        state.get("sidecar_indexes") or {}
+    )
+
+    def checkpoint(key: str, metadata: dict[str, Any]) -> None:
+        indexes[key] = metadata
+        state["sidecar_indexes"] = indexes
+        state["sidecar_stage"] = key
+        _write_json_atomic(state_path, state)
+
+    def write_arrow(
+        key: str,
+        name: str,
+        rows: list[dict[str, Any]],
+        schema: pa.Schema,
+    ) -> None:
+        if key in indexes:
+            return
+        checkpoint(
+            key,
+            _write_arrow_table_atomic(
+                staging / name,
+                _table_from_rows(rows, schema),
+                compression=compression,
+            ),
+        )
+
+    def write_npy(key: str, name: str, values: np.ndarray) -> None:
+        if key in indexes:
+            return
+        path = staging / name
+        _write_npy_atomic(path, values)
+        checkpoint(key, _file_metadata(path, rows=len(values)))
+
+    if "config" not in indexes:
+        config = get_config_tskit(
+            tree_sequence,
+            str(source_path),
+            str(source_path.parent),
+            include_intervals=False,
+        )
+        if config is None:
+            raise CSRArtifactBuildError(
+                "Unable to build artifact frontend configuration"
+            )
+        config["artifact_format"] = CSR_ARTIFACT_FORMAT
+        config["artifact_capabilities"] = capabilities
+        config_path = staging / "config.json"
+        _write_json_atomic(config_path, config)
+        checkpoint("config", _file_metadata(config_path))
+
+    write_arrow(
+        "nodes",
+        "nodes.arrow",
+        _build_node_rows(tree_sequence) if "nodes" not in indexes else [],
+        NODE_SCHEMA,
+    )
+    write_arrow(
+        "sites",
+        "sites.arrow",
+        _build_site_rows(tree_sequence) if "sites" not in indexes else [],
+        SITE_SCHEMA,
+    )
+    write_arrow(
+        "individuals",
+        "individuals.arrow",
+        (
+            _build_individual_rows(tree_sequence)
+            if "individuals" not in indexes
+            else []
+        ),
+        INDIVIDUAL_SCHEMA,
+    )
+    write_arrow(
+        "populations",
+        "populations.arrow",
+        (
+            _build_population_rows(tree_sequence)
+            if "populations" not in indexes
+            else []
+        ),
+        POPULATION_SCHEMA,
+    )
+
+    mutation_keys = {
+        "mutations",
+        "mutation_positions",
+        "mutation_rows_by_id",
+        "node_mutation_offsets",
+        "node_mutation_ids",
+    }
+    mutation_rows = (
+        _build_global_mutation_rows(tree_sequence)
+        if not mutation_keys.issubset(indexes)
+        else []
+    )
+    write_arrow(
+        "mutations",
+        "mutations.arrow",
+        mutation_rows,
+        GLOBAL_MUTATION_SCHEMA,
+    )
+    if "mutation_positions" not in indexes:
+        write_npy(
+            "mutation_positions",
+            "mutation-positions.npy",
+            np.asarray(
+                [row["position"] for row in mutation_rows],
+                dtype=np.float64,
+            ),
+        )
+    if "mutation_rows_by_id" not in indexes:
+        mutation_rows_by_id = np.empty(len(mutation_rows), dtype=np.int64)
+        for row_index, row in enumerate(mutation_rows):
+            mutation_rows_by_id[int(row["id"])] = row_index
+        write_npy(
+            "mutation_rows_by_id",
+            "mutation-rows-by-id.npy",
+            mutation_rows_by_id,
+        )
+    if not {
+        "node_mutation_offsets",
+        "node_mutation_ids",
+    }.issubset(indexes):
+        node_mutations: dict[int, list[int]] = defaultdict(list)
+        for row in mutation_rows:
+            node_mutations[int(row["node_id"])].append(int(row["id"]))
+        offsets = np.zeros(int(tree_sequence.num_nodes) + 1, dtype=np.int64)
+        mutation_ids: list[int] = []
+        for node_id in range(int(tree_sequence.num_nodes)):
+            mutation_ids.extend(node_mutations.get(node_id, ()))
+            offsets[node_id + 1] = len(mutation_ids)
+        write_npy(
+            "node_mutation_offsets",
+            "node-mutation-offsets.npy",
+            offsets,
+        )
+        write_npy(
+            "node_mutation_ids",
+            "node-mutation-ids.npy",
+            np.asarray(mutation_ids, dtype=np.int32),
+        )
+
+    if not {"sample_names", "metadata_samples"}.issubset(indexes):
+        sample_name_rows, metadata_rows = _build_sample_indexes(tree_sequence)
+        write_arrow(
+            "sample_names",
+            "sample-names.arrow",
+            sample_name_rows,
+            SAMPLE_NAME_SCHEMA,
+        )
+        write_arrow(
+            "metadata_samples",
+            "metadata-samples.arrow",
+            metadata_rows,
+            METADATA_SAMPLE_SCHEMA,
+        )
+
+    node_tree_ranges = (
+        _build_node_tree_ranges(tree_sequence)
+        if not {
+            "node_tree_ranges",
+            "node_tree_range_offsets",
+        }.issubset(indexes)
+        else []
+    )
+    write_arrow(
+        "node_tree_ranges",
+        "node-tree-ranges.arrow",
+        node_tree_ranges,
+        NODE_TREE_RANGE_SCHEMA,
+    )
+    if "node_tree_range_offsets" not in indexes:
+        node_tree_offsets = np.zeros(
+            int(tree_sequence.num_nodes) + 1,
+            dtype=np.int64,
+        )
+        range_offset = 0
+        for node_id in range(int(tree_sequence.num_nodes)):
+            while (
+                range_offset < len(node_tree_ranges)
+                and int(node_tree_ranges[range_offset]["node_id"]) == node_id
+            ):
+                range_offset += 1
+            node_tree_offsets[node_id + 1] = range_offset
+        write_npy(
+            "node_tree_range_offsets",
+            "node-tree-range-offsets.npy",
+            node_tree_offsets,
+        )
+
+    state["sidecars_complete"] = True
+    state["sidecar_indexes"] = indexes
+    _write_json_atomic(state_path, state)
+    return indexes, capabilities
+
+
 def _validate_resume_state(
     state: dict[str, Any],
     *,
+    artifact_format: str,
     fingerprint: str,
     source_size: int,
     options: dict[str, Any],
     staging: Path,
 ) -> None:
-    if state.get("format") != CSR_ARTIFACT_FORMAT:
+    if state.get("format") != artifact_format:
         raise CSRArtifactBuildError("Staging directory contains another artifact format")
     if state.get("fingerprint") != fingerprint:
         raise CSRArtifactBuildError(
@@ -343,6 +1039,20 @@ def _validate_resume_state(
         expected_next = int(shard["last_tree_exclusive"])
     if int(state.get("next_tree", -1)) != expected_next:
         raise CSRArtifactBuildError("Interrupted build checkpoint is inconsistent")
+    for key, metadata in (state.get("sidecar_indexes") or {}).items():
+        path = staging / str(metadata.get("name", ""))
+        if not path.is_file():
+            raise CSRArtifactBuildError(
+                f"Interrupted build is missing completed sidecar {key}"
+            )
+        if path.stat().st_size != int(metadata.get("size_bytes", -1)):
+            raise CSRArtifactBuildError(
+                f"Completed sidecar {key} has an unexpected size"
+            )
+        if _checksum(path) != metadata.get("sha256"):
+            raise CSRArtifactBuildError(
+                f"Completed sidecar {key} failed checksum validation"
+            )
 
 
 def _publish(staging: Path, destination: Path) -> None:
@@ -363,13 +1073,49 @@ def _publish(staging: Path, destination: Path) -> None:
             shutil.rmtree(backup, ignore_errors=True)
 
 
+def _publish_source_locator(
+    artifact_root: Path,
+    source_path: Path,
+    destination: Path,
+    manifest: dict[str, Any],
+) -> None:
+    source_stat = source_path.stat()
+    locator_path = (
+        source_locator_directory(artifact_root)
+        / f"{source_locator_key(source_path)}.json"
+    )
+    _write_json_atomic(
+        locator_path,
+        {
+            "source_path": str(source_path),
+            "source_size_bytes": int(source_stat.st_size),
+            "source_mtime_ns": int(source_stat.st_mtime_ns),
+            "fingerprint": manifest["fingerprint"],
+            "format": manifest["format"],
+            "schema_version": int(manifest["schema_version"]),
+            "artifact_directory": str(destination),
+        },
+    )
+
+
 def _ready_result(destination: Path, manifest: dict[str, Any]) -> dict[str, Any]:
+    build_seconds = float(manifest.get("build_seconds") or 0.0)
+    num_trees = int(manifest["dataset"]["num_trees"])
     return {
         "status": "ready",
         "artifact_dir": str(destination),
         "fingerprint": manifest["fingerprint"],
-        "num_trees": manifest["dataset"]["num_trees"],
+        "format": manifest["format"],
+        "schema_version": int(manifest["schema_version"]),
+        "num_trees": num_trees,
+        "num_shards": int(manifest["artifact"]["num_shards"]),
         "size_bytes": manifest["artifact"]["size_bytes"],
+        "source_size_bytes": int(manifest["source"]["size_bytes"]),
+        "output_source_ratio": manifest["artifact"]["output_source_ratio"],
+        "build_seconds": build_seconds,
+        "build_trees_per_second": (
+            num_trees / build_seconds if build_seconds > 0 else None
+        ),
         "manifest": manifest,
     }
 
@@ -382,6 +1128,7 @@ def build_csr_artifact(
     compression: str = "zstd",
     force: bool = False,
     resume: bool = True,
+    format_version: int = CSR_ARTIFACT_SCHEMA_VERSION,
     progress: ProgressCallback | None = None,
 ) -> dict[str, Any]:
     """Build and atomically publish a random-access CSR genealogy artifact."""
@@ -392,6 +1139,16 @@ def build_csr_artifact(
         raise ValueError("CSR preprocessing supports only .trees and .tsz files")
     if target_shard_mb < 1:
         raise ValueError("target_shard_mb must be at least 1")
+    if format_version not in {
+        CSR_ARTIFACT_V2_SCHEMA_VERSION,
+        CSR_ARTIFACT_SCHEMA_VERSION,
+    }:
+        raise ValueError("format_version must be 2 or 3")
+    artifact_format = (
+        CSR_ARTIFACT_FORMAT
+        if format_version == CSR_ARTIFACT_SCHEMA_VERSION
+        else CSR_ARTIFACT_V2_FORMAT
+    )
     compression = compression.lower()
     if compression not in SUPPORTED_COMPRESSIONS:
         raise ValueError(
@@ -413,10 +1170,16 @@ def build_csr_artifact(
     if manifest_path.exists() and not force:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         if (
-            manifest.get("format") == CSR_ARTIFACT_FORMAT
-            and manifest.get("schema_version") == CSR_ARTIFACT_SCHEMA_VERSION
+            manifest.get("format") == artifact_format
+            and manifest.get("schema_version") == format_version
             and manifest.get("fingerprint") == fingerprint
         ):
+            _publish_source_locator(
+                root,
+                source_path,
+                destination,
+                manifest,
+            )
             return _ready_result(destination, manifest)
         raise CSRArtifactBuildError(
             f"Existing artifact at {destination} is incompatible; use --force"
@@ -426,7 +1189,10 @@ def build_csr_artifact(
     options = {
         "compression": compression,
         "target_shard_bytes": target_shard_bytes,
+        "format_version": format_version,
     }
+    # Keep the historical staging suffix so interrupted v2-era builds and
+    # operational cleanup tooling continue to be discoverable.
     staging = root / f".{fingerprint}.csr-v2.inprogress"
     state_path = staging / "build-state.json"
     if force or (staging.exists() and not resume):
@@ -437,6 +1203,7 @@ def build_csr_artifact(
         state = json.loads(state_path.read_text(encoding="utf-8"))
         _validate_resume_state(
             state,
+            artifact_format=artifact_format,
             fingerprint=fingerprint,
             source_size=source_stat.st_size,
             options=options,
@@ -448,15 +1215,15 @@ def build_csr_artifact(
         )
     else:
         state = {
-            "format": CSR_ARTIFACT_FORMAT,
-            "schema_version": CSR_ARTIFACT_SCHEMA_VERSION,
+            "format": artifact_format,
+            "schema_version": format_version,
             "fingerprint": fingerprint,
             "source_size": source_stat.st_size,
             "options": options,
             "next_tree": 0,
             "shards": [],
             "estimate_completed": False,
-            "started_at_unix": int(time.time()),
+            "started_at_unix": time.time(),
         }
         _write_json_atomic(state_path, state)
 
@@ -569,18 +1336,40 @@ def build_csr_artifact(
             "sha256": _checksum(shard_index_path),
         },
     }
+    capabilities = {
+        "render": True,
+        "intervals": True,
+        "lineage": True,
+        "topology_comparison": True,
+    }
+    if format_version == CSR_ARTIFACT_SCHEMA_VERSION:
+        sidecar_indexes, v3_capabilities = _write_v3_sidecars(
+            staging,
+            tree_sequence,
+            source_path,
+            compression=compression,
+            state=state,
+            state_path=state_path,
+        )
+        indexes.update(sidecar_indexes)
+        capabilities.update(v3_capabilities)
     shard_bytes = sum(int(item["size_bytes"]) for item in state["shards"])
     total_size = (
         shard_bytes
-        + indexes["breakpoints"]["size_bytes"]
-        + indexes["shards"]["size_bytes"]
+        + sum(int(metadata["size_bytes"]) for metadata in indexes.values())
     )
     manifest = {
-        "schema_version": CSR_ARTIFACT_SCHEMA_VERSION,
-        "format": CSR_ARTIFACT_FORMAT,
+        "schema_version": format_version,
+        "format": artifact_format,
         "builder_version": _builder_version(),
         "created_at_unix": int(time.time()),
-        "build_seconds": round(time.perf_counter() - started, 3),
+        "build_seconds": round(
+            max(
+                time.perf_counter() - started,
+                time.time() - float(state.get("started_at_unix", time.time())),
+            ),
+            3,
+        ),
         "fingerprint": fingerprint,
         "source": {
             "path": str(source_path),
@@ -595,7 +1384,11 @@ def build_csr_artifact(
             "num_nodes": int(tree_sequence.num_nodes),
             "num_edges": int(tree_sequence.num_edges),
             "num_samples": int(tree_sequence.num_samples),
+            "num_sites": int(tree_sequence.num_sites),
             "num_mutations": int(tree_sequence.num_mutations),
+            "num_individuals": int(tree_sequence.num_individuals),
+            "num_populations": int(tree_sequence.num_populations),
+            "time_units": str(getattr(tree_sequence, "time_units", "unknown")),
             "global_min_time": float(tree_sequence.min_time),
             "global_max_time": float(tree_sequence.max_time),
         },
@@ -606,6 +1399,7 @@ def build_csr_artifact(
             "precomputed_layout_x": True,
             "precomputed_layout_y": False,
         },
+        "capabilities": capabilities,
         "indexes": indexes,
         "artifact": {
             "num_shards": len(state["shards"]),
@@ -619,12 +1413,15 @@ def build_csr_artifact(
     _write_json_atomic(staging / "manifest.json", manifest)
     _publish(staging, destination)
     (destination / "build-state.json").unlink(missing_ok=True)
+    _publish_source_locator(root, source_path, destination, manifest)
     return _ready_result(destination, manifest)
 
 
 __all__ = [
     "CSR_ARTIFACT_FORMAT",
     "CSR_ARTIFACT_SCHEMA_VERSION",
+    "CSR_ARTIFACT_V2_FORMAT",
+    "CSR_ARTIFACT_V2_SCHEMA_VERSION",
     "CSRArtifactBuildError",
     "DEFAULT_TARGET_SHARD_MB",
     "GENEALOGY_SCHEMA",
@@ -634,4 +1431,6 @@ __all__ = [
     "default_csr_artifact_root",
     "genealogy_record_batch",
     "source_fingerprint",
+    "source_locator_directory",
+    "source_locator_key",
 ]

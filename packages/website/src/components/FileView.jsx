@@ -988,10 +988,12 @@ function FileView() {
 
     try {
       const intervals = tsconfig?.intervals;
-      if (!Array.isArray(intervals)) return;
-
-      const start = intervals[treeIndex];
-      const end = intervals[treeIndex + 1];
+      const start = Array.isArray(intervals)
+        ? intervals[treeIndex]
+        : payload?.polygon?.intervalLeft;
+      const end = Array.isArray(intervals)
+        ? intervals[treeIndex + 1]
+        : payload?.polygon?.intervalRight;
       if (!Number.isFinite(start) || !Number.isFinite(end)) return;
 
       // Zoom to the clicked tree interval
