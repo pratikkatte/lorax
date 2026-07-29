@@ -88,6 +88,15 @@ def max_branch_length_from_newick(nwk):
     return max(map(float, values))
 
 
+def is_csr_artifact_directory(name):
+    """Return whether a directory is a published or temporary CSR artifact."""
+    return (
+        name.endswith(".artifact")
+        or name.endswith(".artifact.inprogress")
+        or ".artifact.obsolete-" in name
+    )
+
+
 def list_project_files(directory, projects, root, exclude_dirs=None):
         """
         Recursively list files and folders for the given directory.
@@ -99,7 +108,10 @@ def list_project_files(directory, projects, root, exclude_dirs=None):
             if os.path.isdir(item_path):
                 directory_name = os.path.relpath(item_path, root)
                 directory_basename = os.path.basename(item_path)
-                if directory_basename in exclude:
+                if (
+                    directory_basename in exclude
+                    or is_csr_artifact_directory(directory_basename)
+                ):
                     continue
                 if directory_basename not in projects:
                     projects[str(directory_basename)] = {

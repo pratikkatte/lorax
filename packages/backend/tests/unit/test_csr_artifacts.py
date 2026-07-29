@@ -48,12 +48,11 @@ def _recombining_tree_sequence(path: Path) -> tskit.TreeSequence:
     return tree_sequence
 
 
-def _build(source: Path, root: Path, **kwargs):
+def _build(source: Path, **kwargs):
     from lorax.artifacts.csr_builder import build_csr_artifact
 
     return build_csr_artifact(
         source,
-        root,
         target_shard_mb=1,
         **kwargs,
     )
@@ -65,7 +64,7 @@ def test_builder_and_reader_match_tskit_and_lorax_layout(tmp_path):
 
     source = tmp_path / "recombining.trees"
     tree_sequence = _recombining_tree_sequence(source)
-    result = _build(source, tmp_path / "artifacts")
+    result = _build(source)
     artifact = Path(result["artifact_dir"])
 
     assert (artifact / "manifest.json").is_file()
@@ -137,12 +136,31 @@ def test_builder_and_reader_match_tskit_and_lorax_layout(tmp_path):
         assert len(reader.tree_at_index(1).mutations) == 0
 
 
+def test_builder_uses_exact_colocated_path_without_locators(tmp_path):
+    import tszip
+
+    from lorax.artifacts import artifact_path_for_source
+
+    uncompressed = tmp_path / "colocated-source.trees"
+    tree_sequence = _recombining_tree_sequence(uncompressed)
+    source = tmp_path / "colocated.trees.tsz"
+    tszip.compress(tree_sequence, source)
+    result = _build(source)
+    expected = tmp_path / "colocated.trees.tsz.artifact"
+
+    assert artifact_path_for_source(source) == expected
+    assert Path(result["artifact_dir"]) == expected
+    assert expected.name != result["fingerprint"]
+    assert not (tmp_path / "locators").exists()
+    assert not (tmp_path / ".locators").exists()
+
+
 def test_position_lookup_boundaries_and_multi_read_order(tmp_path):
     from lorax.artifacts.csr_reader import CSRArtifactReader
 
     source = tmp_path / "positions.trees"
     _recombining_tree_sequence(source)
-    result = _build(source, tmp_path / "artifacts")
+    result = _build(source)
 
     with CSRArtifactReader.open(result["artifact_dir"]) as reader:
         assert reader.tree_at_position(0).tree_index == 0
@@ -166,7 +184,7 @@ def test_genomic_range_lookup_uses_half_open_overlap_semantics(tmp_path):
 
     source = tmp_path / "ranges.trees"
     _recombining_tree_sequence(source)
-    result = _build(source, tmp_path / "artifacts")
+    result = _build(source)
 
     with CSRArtifactReader.open(result["artifact_dir"]) as reader:
         assert list(reader.tree_indices_in_range(0, 10)) == [0]
@@ -188,7 +206,7 @@ def test_reader_does_not_reopen_source(tmp_path):
 
     source = tmp_path / "closed-source.trees"
     _recombining_tree_sequence(source)
-    result = _build(source, tmp_path / "artifacts")
+    result = _build(source)
     source.unlink()
 
     with (
@@ -209,7 +227,7 @@ def test_corrupt_index_is_rejected_and_shard_is_verified_lazily(tmp_path):
 
     source = tmp_path / "corrupt.trees"
     _recombining_tree_sequence(source)
-    result = _build(source, tmp_path / "artifacts")
+    result = _build(source)
     artifact = Path(result["artifact_dir"])
 
     manifest = json.loads((artifact / "manifest.json").read_text())
@@ -231,35 +249,51 @@ def test_corrupt_index_is_rejected_and_shard_is_verified_lazily(tmp_path):
 def test_existing_ready_artifact_is_reused_and_force_rebuilds(tmp_path):
     source = tmp_path / "reuse.trees"
     _recombining_tree_sequence(source)
-    root = tmp_path / "artifacts"
-    first = _build(source, root)
-    second = _build(source, root)
+    first = _build(source)
+    second = _build(source)
     assert second["fingerprint"] == first["fingerprint"]
     assert second["artifact_dir"] == first["artifact_dir"]
 
-    rebuilt = _build(source, root, force=True)
+    rebuilt = _build(source, force=True)
     assert rebuilt["fingerprint"] == first["fingerprint"]
-    assert not list(root.glob(".obsolete-*"))
+    assert not list(tmp_path.glob(".*.artifact.obsolete-*"))
 
 
-def test_default_root_and_tsz_input_are_supported(tmp_path, monkeypatch):
+def test_changed_source_requires_force_to_replace_colocated_artifact(tmp_path):
+    from lorax.artifacts import CSRArtifactBuildError
+
+    source = tmp_path / "changed.trees"
+    _recombining_tree_sequence(source)
+    first = _build(source)
+
+    replacement = tskit.TableCollection(sequence_length=1)
+    replacement.nodes.add_row(flags=tskit.NODE_IS_SAMPLE, time=0)
+    replacement.tree_sequence().dump(source)
+
+    with pytest.raises(CSRArtifactBuildError, match="use --force"):
+        _build(source)
+
+    rebuilt = _build(source, force=True)
+    assert rebuilt["artifact_dir"] == first["artifact_dir"]
+    assert rebuilt["fingerprint"] != first["fingerprint"]
+
+
+def test_colocated_tsz_input_is_supported(tmp_path):
     import tszip
-    import lorax.artifacts.csr_builder as builder
     from lorax.artifacts.csr_reader import CSRArtifactReader
+    from lorax.artifacts.csr_builder import build_csr_artifact
 
     source = tmp_path / "compressed-source.trees"
     tree_sequence = _recombining_tree_sequence(source)
     compressed = tmp_path / "compressed-source.tsz"
     tszip.compress(tree_sequence, compressed)
-    default_root = tmp_path / "default-v2-root"
-    monkeypatch.setattr(builder, "default_csr_artifact_root", lambda: default_root)
 
-    result = builder.build_csr_artifact(
+    result = build_csr_artifact(
         compressed,
         target_shard_mb=1,
     )
 
-    assert Path(result["artifact_dir"]).parent == default_root
+    assert Path(result["artifact_dir"]) == Path(f"{compressed}.artifact")
     with CSRArtifactReader.open(result["artifact_dir"]) as reader:
         assert reader.num_trees == tree_sequence.num_trees
         assert reader.tree_at_position(10).tree_index == 1
@@ -273,7 +307,6 @@ def test_supported_compressions_round_trip(tmp_path, compression):
     _recombining_tree_sequence(source)
     result = _build(
         source,
-        tmp_path / compression,
         compression=compression,
     )
     with CSRArtifactReader.open(result["artifact_dir"]) as reader:
@@ -293,7 +326,6 @@ def test_single_genealogy_may_exceed_target_shard_size(tmp_path):
 
     result = _build(
         source,
-        tmp_path / "oversized-artifact",
         compression="none",
     )
 
@@ -344,7 +376,6 @@ def test_interrupted_build_resumes_completed_shards(tmp_path, monkeypatch):
 
     source = tmp_path / "resume.trees"
     _recombining_tree_sequence(source)
-    root = tmp_path / "artifacts"
     monkeypatch.setattr(
         builder,
         "genealogy_record_batch",
@@ -362,17 +393,45 @@ def test_interrupted_build_resumes_completed_shards(tmp_path, monkeypatch):
 
     monkeypatch.setattr(builder, "_write_shard", fail_second_shard)
     with pytest.raises(RuntimeError, match="simulated interruption"):
-        builder.build_csr_artifact(source, root, target_shard_mb=1)
+        builder.build_csr_artifact(source, target_shard_mb=1)
 
-    staging = next(root.glob(".*.csr-v2.inprogress"))
+    staging = tmp_path / ".resume.trees.artifact.inprogress"
     state = json.loads((staging / "build-state.json").read_text())
     assert state["next_tree"] == 1
     assert len(state["shards"]) == 1
 
     monkeypatch.setattr(builder, "_write_shard", original_write)
-    result = builder.build_csr_artifact(source, root, target_shard_mb=1)
+    result = builder.build_csr_artifact(source, target_shard_mb=1)
     assert result["num_trees"] == 2
-    assert not list(root.glob(".*.csr-v2.inprogress"))
+    assert not staging.exists()
+
+
+def test_projected_size_checks_space_beside_source(tmp_path, monkeypatch):
+    import lorax.artifacts.csr_builder as builder
+
+    source = tmp_path / "no-space.trees"
+    _recombining_tree_sequence(source)
+
+    class NoFreeSpace:
+        free = 0
+
+    monkeypatch.setattr(
+        builder.shutil,
+        "disk_usage",
+        lambda checked_path: (
+            NoFreeSpace()
+            if Path(checked_path) == tmp_path
+            else pytest.fail("disk space checked on the wrong filesystem")
+        ),
+    )
+
+    with pytest.raises(
+        builder.CSRArtifactBuildError,
+        match="exceeds available disk space",
+    ):
+        builder.build_csr_artifact(source, target_shard_mb=1)
+
+    assert (tmp_path / ".no-space.trees.artifact.inprogress").is_dir()
 
 
 def test_interrupted_v3_build_resumes_completed_sidecars(tmp_path, monkeypatch):
@@ -380,7 +439,6 @@ def test_interrupted_v3_build_resumes_completed_sidecars(tmp_path, monkeypatch):
 
     source = tmp_path / "resume-sidecars.trees"
     _metadata_tree_sequence(source)
-    root = tmp_path / "artifacts"
     original_write = builder._write_arrow_table_atomic
 
     def interrupt_at_sites(path, table, *, compression):
@@ -390,9 +448,9 @@ def test_interrupted_v3_build_resumes_completed_sidecars(tmp_path, monkeypatch):
 
     monkeypatch.setattr(builder, "_write_arrow_table_atomic", interrupt_at_sites)
     with pytest.raises(RuntimeError, match="sidecar interruption"):
-        builder.build_csr_artifact(source, root, target_shard_mb=1)
+        builder.build_csr_artifact(source, target_shard_mb=1)
 
-    staging = next(root.glob(".*.csr-v2.inprogress"))
+    staging = tmp_path / ".resume-sidecars.trees.artifact.inprogress"
     state = json.loads((staging / "build-state.json").read_text())
     assert "config" in state["sidecar_indexes"]
     assert "nodes" in state["sidecar_indexes"]
@@ -406,15 +464,14 @@ def test_interrupted_v3_build_resumes_completed_sidecars(tmp_path, monkeypatch):
             AssertionError("completed nodes sidecar was rebuilt")
         ),
     )
-    result = builder.build_csr_artifact(source, root, target_shard_mb=1)
+    result = builder.build_csr_artifact(source, target_shard_mb=1)
     assert result["manifest"]["capabilities"]["details"] is True
-    assert not list(root.glob(".*.csr-v2.inprogress"))
+    assert not staging.exists()
 
 
-def test_standalone_script_explicit_output_and_verify(tmp_path):
+def test_standalone_script_uses_colocated_output_and_verify(tmp_path):
     source = tmp_path / "script.trees"
     _recombining_tree_sequence(source)
-    output = tmp_path / "script-output"
     script = (
         Path(__file__).parents[2]
         / "scripts"
@@ -425,8 +482,6 @@ def test_standalone_script_explicit_output_and_verify(tmp_path):
             sys.executable,
             str(script),
             str(source),
-            "--output-dir",
-            str(output),
             "--target-shard-mb",
             "1",
             "--verify",
@@ -439,7 +494,33 @@ def test_standalone_script_explicit_output_and_verify(tmp_path):
     result = json.loads(completed.stdout.strip().splitlines()[-1])
     assert result["status"] == "ready"
     assert result["verification"]["ok"] is True
-    assert Path(result["artifact_dir"]).is_relative_to(output)
+    assert Path(result["artifact_dir"]) == Path(f"{source}.artifact")
+
+
+def test_standalone_script_rejects_removed_output_dir_option(tmp_path):
+    source = tmp_path / "script-output-option.trees"
+    _recombining_tree_sequence(source)
+    script = (
+        Path(__file__).parents[2]
+        / "scripts"
+        / "preprocess_treesequence_csr.py"
+    )
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            str(source),
+            "--output-dir",
+            str(tmp_path / "elsewhere"),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 2
+    assert "unrecognized arguments: --output-dir" in completed.stderr
 
 
 def _metadata_tree_sequence(path: Path) -> tskit.TreeSequence:
@@ -515,7 +596,7 @@ def test_v3_config_sidecars_and_feature_indexes_are_source_free(tmp_path):
 
     source = tmp_path / "metadata.trees"
     tree_sequence = _metadata_tree_sequence(source)
-    result = _build(source, tmp_path / "artifacts")
+    result = _build(source)
     artifact = Path(result["artifact_dir"])
     manifest = result["manifest"]
 
@@ -586,7 +667,6 @@ def test_v2_remains_renderable_but_rejects_v3_capabilities(tmp_path):
     _recombining_tree_sequence(source)
     result = build_csr_artifact(
         source,
-        tmp_path / "v2-artifacts",
         target_shard_mb=1,
         format_version=2,
     )
@@ -605,7 +685,7 @@ def test_v3_manifest_cannot_claim_an_incomplete_feature_set(tmp_path):
 
     source = tmp_path / "incomplete-v3.trees"
     _recombining_tree_sequence(source)
-    result = _build(source, tmp_path / "artifacts")
+    result = _build(source)
     artifact = Path(result["artifact_dir"])
     manifest_path = artifact / "manifest.json"
     manifest = json.loads(manifest_path.read_text())
@@ -629,7 +709,7 @@ def test_csr_frontend_serializer_matches_legacy_contract(
 
     source = tmp_path / "render.trees"
     tree_sequence = _recombining_tree_sequence(source)
-    result = _build(source, tmp_path / "artifacts")
+    result = _build(source)
 
     legacy_buffer, min_time, max_time, indices, _graphs = construct_trees_batch(
         tree_sequence,
@@ -656,16 +736,14 @@ def test_csr_frontend_serializer_matches_legacy_contract(
     assert artifact_result["tree_indices"] == indices
 
 
-def test_resolver_and_context_registry_open_artifact_without_source(tmp_path):
+def test_resolver_and_context_registry_open_adjacent_artifact(tmp_path):
     from lorax.artifacts.runtime import ArtifactContextRegistry, ArtifactResolver
 
     source = tmp_path / "resolver.trees"
     _recombining_tree_sequence(source)
-    root = tmp_path / "artifacts"
-    result = _build(source, root)
-    source.unlink()
+    result = _build(source)
 
-    resolver = ArtifactResolver(root)
+    resolver = ArtifactResolver()
     resolved = resolver.resolve(source)
     assert resolved is not None
     registry = ArtifactContextRegistry(max_contexts=1, max_open_shards=1)
@@ -676,23 +754,83 @@ def test_resolver_and_context_registry_open_artifact_without_source(tmp_path):
     registry.close()
 
 
-def test_reusing_content_hash_refreshes_the_fast_source_locator(tmp_path):
+def test_resolver_ignores_old_fingerprint_addressed_artifact(tmp_path):
+    from lorax.artifacts.runtime import ArtifactResolver
+
+    source = tmp_path / "old-layout.trees"
+    _recombining_tree_sequence(source)
+    built = _build(source)
+    artifact = Path(built["artifact_dir"])
+    old_destination = (
+        tmp_path / "cache" / "artifacts" / "v3" / built["fingerprint"]
+    )
+    old_destination.parent.mkdir(parents=True)
+    artifact.rename(old_destination)
+
+    assert ArtifactResolver().resolve(source) is None
+
+
+def test_resolver_rejects_stale_and_corrupt_adjacent_manifests(tmp_path):
+    from lorax.artifacts.runtime import ArtifactResolver
+
+    stale_source = tmp_path / "stale.trees"
+    _recombining_tree_sequence(stale_source)
+    _build(stale_source)
+    stale_source.write_bytes(stale_source.read_bytes() + b"changed")
+    assert ArtifactResolver().resolve(stale_source) is None
+
+    corrupt_source = tmp_path / "corrupt-manifest.trees"
+    _recombining_tree_sequence(corrupt_source)
+    corrupt = _build(corrupt_source)
+    manifest_path = Path(corrupt["artifact_dir"]) / "manifest.json"
+    manifest_path.write_text("{not-json")
+    assert ArtifactResolver().resolve(corrupt_source) is None
+
+
+def test_contexts_and_unhealthy_state_are_keyed_by_artifact_path(tmp_path):
+    from lorax.artifacts.runtime import ArtifactContextRegistry, ArtifactResolver
+
+    source_a = tmp_path / "copy-a.trees"
+    source_b = tmp_path / "copy-b.trees"
+    _recombining_tree_sequence(source_a)
+    source_b.write_bytes(source_a.read_bytes())
+    built_a = _build(source_a)
+    built_b = _build(source_b)
+    assert built_a["fingerprint"] == built_b["fingerprint"]
+
+    resolver = ArtifactResolver()
+    resolved_a = resolver.resolve(source_a)
+    resolved_b = resolver.resolve(source_b)
+    assert resolved_a is not None
+    assert resolved_b is not None
+    registry = ArtifactContextRegistry(max_contexts=2)
+    context_a = registry.open(resolved_a)
+    context_b = registry.open(resolved_b)
+    assert context_a is not context_b
+    assert registry.snapshot()["contexts"] == 2
+
+    resolver.mark_unhealthy(resolved_a.artifact_directory)
+    assert resolver.resolve(source_a) is None
+    assert resolver.resolve(source_b) is not None
+    registry.close()
+
+
+def test_reusing_content_hash_refreshes_manifest_source_timestamp(tmp_path):
     from lorax.artifacts.runtime import ArtifactResolver
 
     source = tmp_path / "retouched.trees"
     _recombining_tree_sequence(source)
-    root = tmp_path / "artifacts"
-    first = _build(source, root)
+    first = _build(source)
     source_stat = source.stat()
     os.utime(
         source,
         ns=(source_stat.st_atime_ns, source_stat.st_mtime_ns + 1_000_000_000),
     )
 
-    assert ArtifactResolver(root).resolve(source) is None
-    reused = _build(source, root)
+    assert ArtifactResolver().resolve(source) is None
+    reused = _build(source)
     assert reused["artifact_dir"] == first["artifact_dir"]
-    assert ArtifactResolver(root).resolve(source) is not None
+    assert ArtifactResolver().resolve(source) is not None
 
 
 @pytest.mark.asyncio
@@ -703,7 +841,7 @@ async def test_v3_details_adapter_matches_legacy_response(tmp_path):
 
     source = tmp_path / "details.trees"
     _metadata_tree_sequence(source)
-    result = _build(source, tmp_path / "artifacts")
+    result = _build(source)
 
     for request in (
         {"treeIndex": 0, "node": 0},
@@ -721,7 +859,7 @@ def test_backend_local_data_uses_compact_viewport_slice(tmp_path):
 
     source = tmp_path / "local-data.trees"
     _recombining_tree_sequence(source)
-    result = _build(source, tmp_path / "artifacts")
+    result = _build(source)
 
     with CSRArtifactReader.open(result["artifact_dir"]) as reader:
         interval_result = reader.intervals_in_range(0, 20, 10)

@@ -178,7 +178,7 @@ def _builder_version() -> str:
 
 
 def source_fingerprint(file_path: str | Path) -> str:
-    """Return a stable content hash for source-addressed publication."""
+    """Return the source content hash recorded in the artifact manifest."""
     digest = hashlib.sha256()
     with Path(file_path).open("rb") as source:
         while chunk := source.read(8 * 1024 * 1024):
@@ -186,25 +186,10 @@ def source_fingerprint(file_path: str | Path) -> str:
     return digest.hexdigest()
 
 
-def default_csr_artifact_root() -> Path:
-    """Return the default root containing fingerprint-addressed v3 artifacts."""
-    from lorax.constants import DISK_CACHE_DIR
-
-    return Path(DISK_CACHE_DIR).expanduser().resolve() / "artifacts" / "v3"
-
-
-def source_locator_key(source: str | Path) -> str:
-    """Return the stable locator key for a canonical source path."""
-    canonical = str(Path(source).expanduser().resolve())
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
-
-
-def source_locator_directory(artifact_root: str | Path) -> Path:
-    """Return the locator directory adjacent to a versioned artifact root."""
-    root = Path(artifact_root).expanduser().resolve()
-    if root.name in {"v2", "v3"} and root.parent.name == "artifacts":
-        return root.parent / "locators"
-    return root / ".locators"
+def artifact_path_for_source(source: str | Path) -> Path:
+    """Return the deterministic CSR artifact directory beside a source file."""
+    source_path = Path(source).expanduser().resolve()
+    return Path(f"{source_path}.artifact")
 
 
 def _checksum(path: Path) -> str:
@@ -1059,7 +1044,7 @@ def _publish(staging: Path, destination: Path) -> None:
     backup: Path | None = None
     if destination.exists():
         backup = destination.parent / (
-            f".obsolete-{destination.name[:12]}-{uuid.uuid4().hex}"
+            f".{destination.name}.obsolete-{uuid.uuid4().hex}"
         )
         os.replace(destination, backup)
     try:
@@ -1071,31 +1056,6 @@ def _publish(staging: Path, destination: Path) -> None:
     finally:
         if backup is not None:
             shutil.rmtree(backup, ignore_errors=True)
-
-
-def _publish_source_locator(
-    artifact_root: Path,
-    source_path: Path,
-    destination: Path,
-    manifest: dict[str, Any],
-) -> None:
-    source_stat = source_path.stat()
-    locator_path = (
-        source_locator_directory(artifact_root)
-        / f"{source_locator_key(source_path)}.json"
-    )
-    _write_json_atomic(
-        locator_path,
-        {
-            "source_path": str(source_path),
-            "source_size_bytes": int(source_stat.st_size),
-            "source_mtime_ns": int(source_stat.st_mtime_ns),
-            "fingerprint": manifest["fingerprint"],
-            "format": manifest["format"],
-            "schema_version": int(manifest["schema_version"]),
-            "artifact_directory": str(destination),
-        },
-    )
 
 
 def _ready_result(destination: Path, manifest: dict[str, Any]) -> dict[str, Any]:
@@ -1122,7 +1082,6 @@ def _ready_result(destination: Path, manifest: dict[str, Any]) -> dict[str, Any]
 
 def build_csr_artifact(
     source: str | Path,
-    output_dir: str | Path | None = None,
     *,
     target_shard_mb: int = DEFAULT_TARGET_SHARD_MB,
     compression: str = "zstd",
@@ -1131,7 +1090,7 @@ def build_csr_artifact(
     format_version: int = CSR_ARTIFACT_SCHEMA_VERSION,
     progress: ProgressCallback | None = None,
 ) -> dict[str, Any]:
-    """Build and atomically publish a random-access CSR genealogy artifact."""
+    """Build and atomically publish ``<source>.artifact`` beside the source."""
     source_path = Path(source).expanduser().resolve()
     if not source_path.is_file():
         raise FileNotFoundError(source_path)
@@ -1159,13 +1118,7 @@ def build_csr_artifact(
 
     source_stat = source_path.stat()
     fingerprint = source_fingerprint(source_path)
-    root = (
-        Path(output_dir).expanduser().resolve()
-        if output_dir is not None
-        else default_csr_artifact_root()
-    )
-    root.mkdir(parents=True, exist_ok=True)
-    destination = root / fingerprint
+    destination = artifact_path_for_source(source_path)
     manifest_path = destination / "manifest.json"
     if manifest_path.exists() and not force:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -1174,15 +1127,24 @@ def build_csr_artifact(
             and manifest.get("schema_version") == format_version
             and manifest.get("fingerprint") == fingerprint
         ):
-            _publish_source_locator(
-                root,
-                source_path,
-                destination,
-                manifest,
-            )
+            refreshed_source = {
+                **manifest.get("source", {}),
+                "path": str(source_path),
+                "name": source_path.name,
+                "size_bytes": source_stat.st_size,
+                "mtime_ns": source_stat.st_mtime_ns,
+                "sha256": fingerprint,
+            }
+            if refreshed_source != manifest.get("source"):
+                manifest["source"] = refreshed_source
+                _write_json_atomic(manifest_path, manifest)
             return _ready_result(destination, manifest)
         raise CSRArtifactBuildError(
             f"Existing artifact at {destination} is incompatible; use --force"
+        )
+    if destination.exists() and not force:
+        raise CSRArtifactBuildError(
+            f"Existing artifact at {destination} has no valid manifest; use --force"
         )
 
     target_shard_bytes = target_shard_mb * 1024 * 1024
@@ -1191,9 +1153,7 @@ def build_csr_artifact(
         "target_shard_bytes": target_shard_bytes,
         "format_version": format_version,
     }
-    # Keep the historical staging suffix so interrupted v2-era builds and
-    # operational cleanup tooling continue to be discoverable.
-    staging = root / f".{fingerprint}.csr-v2.inprogress"
+    staging = destination.with_name(f".{destination.name}.inprogress")
     state_path = staging / "build-state.json"
     if force or (staging.exists() and not resume):
         shutil.rmtree(staging, ignore_errors=True)
@@ -1269,7 +1229,7 @@ def build_csr_artifact(
             else total_size
         )
         if not first_estimate_reported:
-            available = shutil.disk_usage(root).free
+            available = shutil.disk_usage(destination.parent).free
             if projected_size > available:
                 raise CSRArtifactBuildError(
                     "Projected CSR artifact size "
@@ -1413,7 +1373,6 @@ def build_csr_artifact(
     _write_json_atomic(staging / "manifest.json", manifest)
     _publish(staging, destination)
     (destination / "build-state.json").unlink(missing_ok=True)
-    _publish_source_locator(root, source_path, destination, manifest)
     return _ready_result(destination, manifest)
 
 
@@ -1427,10 +1386,8 @@ __all__ = [
     "GENEALOGY_SCHEMA",
     "MUTATION_TYPE",
     "SHARD_INDEX_SCHEMA",
+    "artifact_path_for_source",
     "build_csr_artifact",
-    "default_csr_artifact_root",
     "genealogy_record_batch",
     "source_fingerprint",
-    "source_locator_directory",
-    "source_locator_key",
 ]

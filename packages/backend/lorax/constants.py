@@ -6,7 +6,6 @@ Mode-aware configuration based on deployment environment.
 """
 
 import os
-from pathlib import Path
 
 # Import mode configuration
 from lorax.modes import (
@@ -54,9 +53,6 @@ DISK_CACHE_MAX_BYTES = CURRENT_CONFIG.disk_cache_max_gb * 1024 * 1024 * 1024
 
 # Artifact-backed TreeSequence loading (opt-in during rollout).
 CSR_ARTIFACTS_ENABLED = _get_env_bool("LORAX_CSR_ARTIFACTS_ENABLED", False)
-CSR_ARTIFACT_ROOT = Path(
-    os.getenv("LORAX_CSR_ARTIFACT_ROOT", str(Path(DISK_CACHE_DIR) / "artifacts"))
-).expanduser()
 CSR_CONTEXT_CACHE_SIZE = _get_env_int(
     "LORAX_CSR_CONTEXT_CACHE_SIZE",
     8,

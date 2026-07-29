@@ -36,6 +36,43 @@ async def test_get_projects_skips_gcs_when_bucket_unset(monkeypatch, tmp_path):
 
 
 @pytest.mark.anyio
+async def test_get_projects_hides_colocated_artifact_directories(
+    monkeypatch,
+    tmp_path,
+):
+    project_dir = tmp_path / "ProjectA"
+    project_dir.mkdir(parents=True)
+    (project_dir / "source.trees.tsz").write_text("source")
+    for directory_name in (
+        "source.trees.tsz.artifact",
+        ".source.trees.tsz.artifact.inprogress",
+        ".source.trees.tsz.artifact.obsolete-test",
+    ):
+        artifact_directory = project_dir / directory_name
+        artifact_directory.mkdir()
+        (artifact_directory / "manifest.json").write_text("{}")
+
+    monkeypatch.setattr(handlers, "CURRENT_MODE", "local")
+    monkeypatch.setattr(
+        handlers,
+        "get_public_gcs_dict",
+        AsyncMock(return_value={}),
+    )
+
+    projects = await handlers.get_projects(
+        tmp_path,
+        BUCKET_NAME=None,
+        sid="sid-artifact",
+    )
+
+    assert projects["ProjectA"]["files"] == ["source.trees.tsz"]
+    assert all(
+        "artifact" not in project_name
+        for project_name in projects
+    )
+
+
+@pytest.mark.anyio
 async def test_get_projects_local_mode_calls_gcs_without_uploads(monkeypatch):
     monkeypatch.setattr(handlers, "CURRENT_MODE", "local")
     monkeypatch.setattr(handlers, "list_project_files", lambda *args, **kwargs: {})

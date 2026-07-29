@@ -10,6 +10,8 @@ import logging
 import os
 import time
 
+from lorax.utils import is_csr_artifact_directory
+
 logger = logging.getLogger(__name__)
 
 _DEFAULT_GCS_PROJECTS_CACHE_TTL_SEC = 15.0
@@ -247,6 +249,12 @@ async def get_public_gcs_dict(
         if not isinstance(name, str):
             continue
         path_parts = name.split("/")
+        if any(
+            is_csr_artifact_directory(path_part)
+            for path_part in path_parts
+            if path_part
+        ):
+            continue
 
         # Must have at least a top-level directory (e.g., 'folder/')
         if len(path_parts) < 2:

@@ -33,17 +33,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Convert every genealogy in a .trees or .tsz TreeSequence into "
-            "compressed, indexed CSR shards for future Lorax loading."
+            "compressed, indexed CSR shards stored at <input>.artifact for "
+            "future Lorax loading."
         ),
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument("input_path", type=Path)
-    parser.add_argument(
-        "--output-dir",
-        type=Path,
-        default=None,
-        help="Root directory; the fingerprinted artifact is created beneath it",
-    )
     parser.add_argument(
         "--target-shard-mb",
         type=_positive_int,
@@ -82,7 +77,6 @@ def main(argv: list[str] | None = None) -> int:
     try:
         result = build_csr_artifact(
             args.input_path,
-            args.output_dir,
             target_shard_mb=args.target_shard_mb,
             compression=args.compression,
             force=args.force,

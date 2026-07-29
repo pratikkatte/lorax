@@ -221,10 +221,10 @@ def register_file_events(sio):
                     csr_artifact_metrics.increment("fallback.artifact_open_failed")
                     if "resolved_artifact" in locals() and resolved_artifact is not None:
                         artifact_resolver.mark_unhealthy(
-                            resolved_artifact.fingerprint
+                            resolved_artifact.artifact_directory
                         )
                         artifact_context_registry.discard(
-                            resolved_artifact.fingerprint
+                            resolved_artifact.artifact_directory
                         )
                     dev_print(
                         f"CSR artifact unavailable for {file_path}: {artifact_error}"

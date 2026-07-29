@@ -238,10 +238,10 @@ async def _render_artifact_session(
 
 async def _fallback_artifact_session(session) -> bool:
     """Switch a failed artifact session to legacy when the source is available."""
-    fingerprint = session.artifact_fingerprint
-    if fingerprint:
-        artifact_resolver.mark_unhealthy(fingerprint)
-        artifact_context_registry.discard(fingerprint)
+    artifact_path = session.artifact_path
+    if artifact_path:
+        artifact_resolver.mark_unhealthy(artifact_path)
+        artifact_context_registry.discard(artifact_path)
     if not session.file_path or not Path(session.file_path).is_file():
         return False
     session.dataset_backend = "legacy"

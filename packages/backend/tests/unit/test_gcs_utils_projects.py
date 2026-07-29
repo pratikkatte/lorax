@@ -46,6 +46,41 @@ async def test_get_public_gcs_dict_parses_projects(monkeypatch):
 
 
 @pytest.mark.anyio
+async def test_get_public_gcs_dict_hides_artifact_path_components(monkeypatch):
+    fetch_mock = AsyncMock(
+        return_value=[
+            {"name": "ProjectA/source.trees.tsz"},
+            {
+                "name": (
+                    "ProjectA/source.trees.tsz.artifact/manifest.json"
+                )
+            },
+            {
+                "name": (
+                    "ProjectA/.source.trees.tsz.artifact.inprogress/"
+                    "build-state.json"
+                )
+            },
+            {
+                "name": (
+                    "ProjectA/.source.trees.tsz.artifact.obsolete-test/"
+                    "manifest.json"
+                )
+            },
+        ]
+    )
+    monkeypatch.setattr(gcs_utils, "_fetch_public_bucket_items", fetch_mock)
+
+    projects = await gcs_utils.get_public_gcs_dict(
+        "bucket",
+        sid="sid-1",
+        projects={},
+    )
+
+    assert projects["ProjectA"]["files"] == ["source.trees.tsz"]
+
+
+@pytest.mark.anyio
 async def test_get_public_gcs_dict_excludes_uploads_when_disabled(monkeypatch):
     fetch_mock = AsyncMock(
         return_value=[

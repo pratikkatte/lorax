@@ -6,6 +6,7 @@ from lorax.artifacts.csr_builder import (
     CSR_ARTIFACT_V2_FORMAT,
     CSR_ARTIFACT_V2_SCHEMA_VERSION,
     CSRArtifactBuildError,
+    artifact_path_for_source,
     build_csr_artifact,
 )
 from lorax.artifacts.csr_reader import (
@@ -35,6 +36,7 @@ __all__ = [
     "CSRArtifactReader",
     "GenealogyCSR",
     "GenealogyMutations",
+    "artifact_path_for_source",
     "build_csr_artifact",
     "ArtifactContextRegistry",
     "ArtifactDatasetContext",

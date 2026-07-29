@@ -371,13 +371,11 @@ class TestLoadFileEvent:
         from lorax.sockets import register_socket_events
         from lorax.sockets.load_scheduler import LoadScheduler
 
-        artifact_root = temp_dir / "artifacts"
         build_csr_artifact(
             minimal_ts_file,
-            artifact_root,
             target_shard_mb=1,
         )
-        resolver = ArtifactResolver(artifact_root)
+        resolver = ArtifactResolver()
         registry = ArtifactContextRegistry(max_contexts=2, max_open_shards=2)
         session = await session_manager_memory.create_session()
         source_error = AssertionError("artifact request reopened the source")
@@ -530,13 +528,11 @@ class TestLoadFileEvent:
         from lorax.sockets import register_socket_events
         from lorax.sockets.load_scheduler import LoadScheduler
 
-        artifact_root = temp_dir / "artifacts"
         built = build_csr_artifact(
             minimal_ts_file,
-            artifact_root,
             target_shard_mb=1,
         )
-        resolver = ArtifactResolver(artifact_root)
+        resolver = ArtifactResolver()
         registry = ArtifactContextRegistry(max_contexts=2, max_open_shards=2)
         session = await session_manager_memory.create_session()
         legacy_result = {
@@ -659,7 +655,6 @@ class TestDetailsEvent:
 
         built = build_csr_artifact(
             minimal_ts_file,
-            temp_dir / "v2-artifacts",
             target_shard_mb=1,
             format_version=2,
         )

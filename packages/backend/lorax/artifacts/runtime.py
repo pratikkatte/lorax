@@ -10,7 +10,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from lorax.artifacts.csr_builder import source_locator_key
+from lorax.artifacts.csr_builder import (
+    CSR_ARTIFACT_FORMAT,
+    CSR_ARTIFACT_SCHEMA_VERSION,
+    CSR_ARTIFACT_V2_FORMAT,
+    CSR_ARTIFACT_V2_SCHEMA_VERSION,
+    artifact_path_for_source,
+)
 from lorax.artifacts.csr_reader import (
     CSRArtifactCorruptError,
     CSRArtifactError,
@@ -18,7 +24,6 @@ from lorax.artifacts.csr_reader import (
 )
 from lorax.artifacts.metrics import csr_artifact_metrics
 from lorax.constants import (
-    CSR_ARTIFACT_ROOT,
     CSR_CONTEXT_CACHE_SIZE,
     CSR_MAX_OPEN_SHARDS,
 )
@@ -58,44 +63,34 @@ class ArtifactDatasetContext:
 
 
 class ArtifactResolver:
-    """Resolve canonical source paths to validated local CSR artifacts."""
+    """Resolve a source path to its validated adjacent CSR artifact."""
 
-    def __init__(self, artifact_root: str | Path = CSR_ARTIFACT_ROOT):
-        self.artifact_root = Path(artifact_root).expanduser().resolve()
+    def __init__(self):
         self._lock = threading.RLock()
-        self._manifest_index: dict[str, ResolvedArtifact] | None = None
         self._unhealthy: set[str] = set()
 
-    @property
-    def locator_directory(self) -> Path:
-        return self.artifact_root / "locators"
-
-    def _allowed_artifact_path(self, value: str | Path) -> Path | None:
-        candidate = Path(value).expanduser().resolve()
-        try:
-            candidate.relative_to(self.artifact_root)
-        except ValueError:
-            return None
-        return candidate
-
     @staticmethod
-    def _resolved_from_payload(
+    def _resolved_from_manifest(
         source_path: Path,
+        artifact_directory: Path,
         payload: dict[str, Any],
     ) -> ResolvedArtifact | None:
-        artifact_directory = payload.get("artifact_directory")
         fingerprint = payload.get("fingerprint")
         artifact_format = payload.get("format")
         schema_version = payload.get("schema_version")
         if not all(
             value is not None
             for value in (
-                artifact_directory,
                 fingerprint,
                 artifact_format,
                 schema_version,
             )
         ):
+            return None
+        if (str(artifact_format), int(schema_version)) not in {
+            (CSR_ARTIFACT_V2_FORMAT, CSR_ARTIFACT_V2_SCHEMA_VERSION),
+            (CSR_ARTIFACT_FORMAT, CSR_ARTIFACT_SCHEMA_VERSION),
+        }:
             return None
         return ResolvedArtifact(
             source_path=str(source_path),
@@ -105,130 +100,59 @@ class ArtifactResolver:
             schema_version=int(schema_version),
         )
 
-    def _read_locator(self, source_path: Path) -> ResolvedArtifact | None:
-        locator_name = f"{source_locator_key(source_path)}.json"
-        locator = next(
-            (
-                directory / locator_name
-                for directory in (self.locator_directory, self.artifact_root / ".locators")
-                if (directory / locator_name).is_file()
-            ),
-            None,
-        )
-        if locator is None:
-            return None
-        try:
-            payload = json.loads(locator.read_text(encoding="utf-8"))
-        except Exception:
-            csr_artifact_metrics.increment("resolution.corrupt_locator")
-            return None
-        if str(Path(payload.get("source_path", "")).expanduser().resolve()) != str(
-            source_path
-        ):
-            return None
-        if source_path.exists():
-            stat = source_path.stat()
-            if (
-                int(payload.get("source_size_bytes", -1)) != stat.st_size
-                or int(payload.get("source_mtime_ns", -1)) != stat.st_mtime_ns
-            ):
-                csr_artifact_metrics.increment("resolution.stale")
-                return None
-        resolved = self._resolved_from_payload(source_path, payload)
-        if resolved is None:
-            return None
-        allowed = self._allowed_artifact_path(resolved.artifact_directory)
-        if allowed is None:
-            csr_artifact_metrics.increment("resolution.outside_root")
-            return None
-        return ResolvedArtifact(
-            source_path=resolved.source_path,
-            artifact_directory=str(allowed),
-            fingerprint=resolved.fingerprint,
-            artifact_format=resolved.artifact_format,
-            schema_version=resolved.schema_version,
-        )
-
-    def _scan_manifests(self) -> dict[str, ResolvedArtifact]:
-        index: dict[str, ResolvedArtifact] = {}
-        patterns = ("v3/*/manifest.json", "v2/*/manifest.json", "*/manifest.json")
-        seen: set[Path] = set()
-        for pattern in patterns:
-            for manifest_path in self.artifact_root.glob(pattern):
-                resolved_manifest = manifest_path.resolve()
-                if resolved_manifest in seen:
-                    continue
-                seen.add(resolved_manifest)
-                try:
-                    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
-                    source_path = Path(payload["source"]["path"]).expanduser().resolve()
-                    resolved = ResolvedArtifact(
-                        source_path=str(source_path),
-                        artifact_directory=str(manifest_path.parent.resolve()),
-                        fingerprint=str(payload["fingerprint"]),
-                        artifact_format=str(payload["format"]),
-                        schema_version=int(payload["schema_version"]),
-                    )
-                except Exception:
-                    continue
-                allowed = self._allowed_artifact_path(resolved.artifact_directory)
-                if allowed is None:
-                    continue
-                current = index.get(str(source_path))
-                if current is None or resolved.schema_version > current.schema_version:
-                    index[str(source_path)] = resolved
-        return index
-
     def resolve(self, source: str | Path) -> ResolvedArtifact | None:
         source_path = Path(source).expanduser().resolve()
+        artifact_path = artifact_path_for_source(source_path)
         with self._lock:
-            resolved = self._read_locator(source_path)
-            resolved_from_locator = resolved is not None
-            if resolved is None:
-                if self._manifest_index is None:
-                    self._manifest_index = self._scan_manifests()
-                resolved = self._manifest_index.get(str(source_path))
-            if resolved is None:
-                csr_artifact_metrics.increment("resolution.miss")
-                return None
-            if resolved.fingerprint in self._unhealthy:
+            artifact_key = str(artifact_path)
+            if artifact_key in self._unhealthy:
                 csr_artifact_metrics.increment("resolution.unhealthy")
                 return None
-            artifact_path = Path(resolved.artifact_directory)
-            if not (artifact_path / "manifest.json").is_file():
+            manifest_path = artifact_path / "manifest.json"
+            if not manifest_path.is_file():
                 csr_artifact_metrics.increment("resolution.missing")
                 return None
-            if source_path.exists() and not resolved_from_locator:
-                try:
-                    manifest = json.loads(
-                        (artifact_path / "manifest.json").read_text(encoding="utf-8")
-                    )
-                    source_metadata = manifest["source"]
-                    stat = source_path.stat()
-                    if (
-                        int(source_metadata["size_bytes"]) != stat.st_size
-                        or int(source_metadata["mtime_ns"]) != stat.st_mtime_ns
-                    ):
-                        csr_artifact_metrics.increment("resolution.stale")
-                        return None
-                except Exception:
-                    csr_artifact_metrics.increment("resolution.corrupt_manifest")
+            try:
+                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                resolved = self._resolved_from_manifest(
+                    source_path,
+                    artifact_path,
+                    manifest,
+                )
+                source_metadata = manifest["source"]
+                if str(source_metadata["sha256"]) != str(manifest["fingerprint"]):
+                    raise ValueError("Manifest source fingerprint is inconsistent")
+                stat = source_path.stat()
+                if (
+                    int(source_metadata["size_bytes"]) != stat.st_size
+                    or int(source_metadata["mtime_ns"]) != stat.st_mtime_ns
+                ):
+                    csr_artifact_metrics.increment("resolution.stale")
                     return None
+            except FileNotFoundError:
+                csr_artifact_metrics.increment("resolution.source_missing")
+                return None
+            except Exception:
+                csr_artifact_metrics.increment("resolution.corrupt_manifest")
+                return None
+            if resolved is None:
+                csr_artifact_metrics.increment("resolution.corrupt_manifest")
+                return None
             return resolved
 
-    def mark_unhealthy(self, fingerprint: str) -> None:
+    def mark_unhealthy(self, artifact_directory: str | Path) -> None:
+        artifact_key = str(Path(artifact_directory).expanduser().resolve())
         with self._lock:
-            self._unhealthy.add(str(fingerprint))
+            self._unhealthy.add(artifact_key)
         csr_artifact_metrics.increment("artifact.marked_unhealthy")
 
     def reset(self) -> None:
         with self._lock:
-            self._manifest_index = None
             self._unhealthy.clear()
 
 
 class ArtifactContextRegistry:
-    """Process-local bounded LRU of shared readers keyed by fingerprint."""
+    """Process-local bounded LRU of shared readers keyed by artifact path."""
 
     def __init__(
         self,
@@ -242,12 +166,17 @@ class ArtifactContextRegistry:
         self._contexts: OrderedDict[str, ArtifactDatasetContext] = OrderedDict()
 
     def open(self, resolved: ResolvedArtifact) -> ArtifactDatasetContext:
+        artifact_key = str(
+            Path(resolved.artifact_directory).expanduser().resolve()
+        )
         with self._lock:
-            cached = self._contexts.pop(resolved.fingerprint, None)
+            cached = self._contexts.pop(artifact_key, None)
             if cached is not None:
-                self._contexts[resolved.fingerprint] = cached
-                csr_artifact_metrics.increment("context.hit")
-                return cached
+                if cached.fingerprint == resolved.fingerprint:
+                    self._contexts[artifact_key] = cached
+                    csr_artifact_metrics.increment("context.hit")
+                    return cached
+                cached.close()
             csr_artifact_metrics.increment("context.miss")
             with csr_artifact_metrics.timer("context.open"):
                 reader = CSRArtifactReader.open(
@@ -263,9 +192,9 @@ class ArtifactContextRegistry:
                 config=reader.frontend_config(),
                 reader=reader,
             )
-            self._contexts[resolved.fingerprint] = context
+            self._contexts[artifact_key] = context
             while len(self._contexts) > self.max_contexts:
-                _fingerprint, evicted = self._contexts.popitem(last=False)
+                _artifact_path, evicted = self._contexts.popitem(last=False)
                 evicted.close()
                 csr_artifact_metrics.increment("context.eviction")
             return context
@@ -290,9 +219,12 @@ class ArtifactContextRegistry:
         )
         return self.open(resolved)
 
-    def discard(self, fingerprint: str) -> None:
+    def discard(self, artifact_directory: str | Path) -> None:
+        artifact_key = str(
+            Path(artifact_directory).expanduser().resolve()
+        )
         with self._lock:
-            context = self._contexts.pop(str(fingerprint), None)
+            context = self._contexts.pop(artifact_key, None)
         if context is not None:
             context.close()
 
@@ -300,7 +232,10 @@ class ArtifactContextRegistry:
         with self._lock:
             return {
                 "contexts": len(self._contexts),
-                "fingerprints": list(self._contexts),
+                "artifact_directories": list(self._contexts),
+                "fingerprints": [
+                    context.fingerprint for context in self._contexts.values()
+                ],
                 "max_contexts": self.max_contexts,
                 "max_open_shards": self.max_open_shards,
             }
