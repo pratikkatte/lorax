@@ -12,10 +12,13 @@ import hashlib
 import importlib.metadata
 import json
 import math
+import multiprocessing
 import os
 import shutil
+import sys
 import time
 import uuid
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 from collections import defaultdict
 from typing import Any, Callable, Iterable
@@ -34,10 +37,15 @@ CSR_ARTIFACT_V2_FORMAT = "lorax-csr-v2"
 CSR_ARTIFACT_SCHEMA_VERSION = 3
 CSR_ARTIFACT_FORMAT = "lorax-csr-v3"
 DEFAULT_TARGET_SHARD_MB = 48
+DEFAULT_TREES_PER_RANGE = 10_000
 SUPPORTED_COMPRESSIONS = {"zstd", "lz4", "none"}
 SIDECAR_BATCH_ROWS = 65_536
+RANGE_STATE_VERSION = 1
 
 ProgressCallback = Callable[[dict[str, Any]], None]
+
+_WORKER_TREE_SEQUENCE: tskit.TreeSequence | None = None
+_WORKER_SOURCE_PATH: str | None = None
 
 MUTATION_TYPE = pa.struct(
     [
@@ -511,6 +519,596 @@ def _write_shard(
     }
 
 
+def _range_directory(staging: Path, start: int, end: int) -> Path:
+    return staging / ".ranges" / f"{start:012d}-{end:012d}"
+
+
+def _range_manifest_path(range_directory: Path) -> Path:
+    return range_directory / "range.json"
+
+
+def _initialize_range_worker(source: str) -> None:
+    """Load the source in spawned workers and reuse the inherited POSIX copy."""
+    global _WORKER_SOURCE_PATH, _WORKER_TREE_SEQUENCE
+
+    canonical_source = str(Path(source).expanduser().resolve())
+    if (
+        _WORKER_TREE_SEQUENCE is None
+        or _WORKER_SOURCE_PATH != canonical_source
+    ):
+        _WORKER_TREE_SEQUENCE = _load_source(Path(canonical_source))
+        _WORKER_SOURCE_PATH = canonical_source
+
+
+def _process_peak_rss_bytes() -> int | None:
+    try:
+        import resource
+
+        peak = int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
+        return peak if sys.platform == "darwin" else peak * 1024
+    except (ImportError, OSError, ValueError):
+        return None
+
+
+def _build_tree_range(task: dict[str, Any]) -> dict[str, Any]:
+    """Build private shards for one contiguous tree-index range."""
+    if _WORKER_TREE_SEQUENCE is None:
+        _initialize_range_worker(str(task["source"]))
+    tree_sequence = _WORKER_TREE_SEQUENCE
+    if tree_sequence is None:
+        raise CSRArtifactBuildError("Range worker could not load the source")
+
+    start = int(task["start"])
+    end = int(task["end"])
+    if not 0 <= start < end <= int(tree_sequence.num_trees):
+        raise CSRArtifactBuildError(
+            f"Invalid worker tree range [{start}, {end})"
+        )
+    range_directory = Path(str(task["range_directory"]))
+    shutil.rmtree(range_directory, ignore_errors=True)
+    range_directory.mkdir(parents=True, exist_ok=True)
+    target_shard_bytes = int(task["target_shard_bytes"])
+    compression = str(task["compression"])
+    started = time.perf_counter()
+    pending: list[pa.RecordBatch] = []
+    pending_bytes = 0
+    shards: list[dict[str, Any]] = []
+    current_tree = tree_sequence.at_index(start)
+
+    def flush_pending() -> None:
+        nonlocal pending, pending_bytes
+        if not pending:
+            return
+        shards.append(
+            _write_shard(
+                range_directory,
+                len(shards),
+                pending,
+                compression,
+            )
+        )
+        pending = []
+        pending_bytes = 0
+
+    while int(current_tree.index) < end:
+        record = genealogy_record_batch(current_tree, tree_sequence)
+        record_bytes = max(1, int(record.nbytes))
+        if pending and pending_bytes + record_bytes > target_shard_bytes:
+            flush_pending()
+        pending.append(record)
+        pending_bytes += record_bytes
+        if int(current_tree.index) + 1 >= end:
+            break
+        if not current_tree.next():
+            raise CSRArtifactBuildError(
+                f"Tree iteration ended inside worker range [{start}, {end})"
+            )
+    flush_pending()
+    result = {
+        "range_state_version": RANGE_STATE_VERSION,
+        "fingerprint": str(task["fingerprint"]),
+        "start": start,
+        "end": end,
+        "compression": compression,
+        "target_shard_bytes": target_shard_bytes,
+        "shards": shards,
+        "elapsed_seconds": round(time.perf_counter() - started, 6),
+        "worker_pid": os.getpid(),
+        "worker_peak_rss_bytes": _process_peak_rss_bytes(),
+    }
+    _write_json_atomic(_range_manifest_path(range_directory), result)
+    return result
+
+
+def _validate_range_result(
+    result: dict[str, Any],
+    *,
+    start: int,
+    end: int,
+    fingerprint: str,
+    compression: str,
+    target_shard_bytes: int,
+) -> None:
+    if int(result.get("range_state_version", -1)) != RANGE_STATE_VERSION:
+        raise CSRArtifactBuildError(
+            f"Range [{start}, {end}) has an incompatible checkpoint"
+        )
+    if (
+        int(result.get("start", -1)) != start
+        or int(result.get("end", -1)) != end
+        or str(result.get("fingerprint", "")) != fingerprint
+        or str(result.get("compression", "")) != compression
+        or int(result.get("target_shard_bytes", -1))
+        != target_shard_bytes
+    ):
+        raise CSRArtifactBuildError(
+            f"Range [{start}, {end}) does not match this build"
+        )
+    expected_tree = start
+    shards = result.get("shards")
+    if not isinstance(shards, list) or not shards:
+        raise CSRArtifactBuildError(
+            f"Range [{start}, {end}) contains no shards"
+        )
+    for shard in shards:
+        if int(shard.get("first_tree", -1)) != expected_tree:
+            raise CSRArtifactBuildError(
+                f"Range [{start}, {end}) has non-contiguous shards"
+            )
+        expected_tree = int(shard.get("last_tree_exclusive", -1))
+    if expected_tree != end:
+        raise CSRArtifactBuildError(
+            f"Range [{start}, {end}) ends at tree {expected_tree}"
+        )
+
+
+def _read_completed_range(
+    range_directory: Path,
+    *,
+    start: int,
+    end: int,
+    fingerprint: str,
+    compression: str,
+    target_shard_bytes: int,
+) -> dict[str, Any] | None:
+    manifest_path = _range_manifest_path(range_directory)
+    if not manifest_path.is_file():
+        return None
+    try:
+        result = json.loads(manifest_path.read_text(encoding="utf-8"))
+        _validate_range_result(
+            result,
+            start=start,
+            end=end,
+            fingerprint=fingerprint,
+            compression=compression,
+            target_shard_bytes=target_shard_bytes,
+        )
+        for shard in result["shards"]:
+            path = range_directory / str(shard["name"])
+            if (
+                not path.is_file()
+                or path.stat().st_size != int(shard["size_bytes"])
+                or _checksum(path) != str(shard["sha256"])
+            ):
+                return None
+        return result
+    except (
+        CSRArtifactBuildError,
+        KeyError,
+        TypeError,
+        ValueError,
+        OSError,
+        json.JSONDecodeError,
+    ):
+        return None
+
+
+def _promote_completed_range(
+    result: dict[str, Any],
+    *,
+    range_directory: Path,
+    staging: Path,
+    state: dict[str, Any],
+    state_path: Path,
+) -> list[dict[str, Any]]:
+    start = int(result["start"])
+    end = int(result["end"])
+    if int(state["next_tree"]) != start:
+        raise CSRArtifactBuildError(
+            f"Cannot publish range [{start}, {end}) after tree "
+            f"{state['next_tree']}"
+        )
+    promoted: list[dict[str, Any]] = []
+    first_shard_id = len(state["shards"])
+    for offset, worker_shard in enumerate(result["shards"]):
+        shard_id = first_shard_id + offset
+        name = f"csr-{shard_id:06d}.arrow"
+        source_path = range_directory / str(worker_shard["name"])
+        destination = staging / name
+        expected_size = int(worker_shard["size_bytes"])
+        expected_checksum = str(worker_shard["sha256"])
+        if destination.exists():
+            if (
+                destination.stat().st_size != expected_size
+                or _checksum(destination) != expected_checksum
+            ):
+                raise CSRArtifactBuildError(
+                    f"Recovered shard {name} does not match range "
+                    f"[{start}, {end})"
+                )
+            source_path.unlink(missing_ok=True)
+        elif source_path.is_file():
+            if source_path.stat().st_size != expected_size:
+                raise CSRArtifactBuildError(
+                    f"Worker shard {source_path.name} has an unexpected size"
+                )
+            os.replace(source_path, destination)
+        else:
+            raise CSRArtifactBuildError(
+                f"Range [{start}, {end}) is missing shard {source_path.name}"
+            )
+        promoted.append(
+            {
+                **worker_shard,
+                "shard_id": shard_id,
+                "name": name,
+            }
+        )
+
+    state["shards"].extend(promoted)
+    state.setdefault("completed_ranges", []).append(
+        {
+            "start": start,
+            "end": end,
+            "shards": [shard["name"] for shard in promoted],
+            "elapsed_seconds": float(result.get("elapsed_seconds") or 0.0),
+            "worker_pid": int(result.get("worker_pid") or 0),
+            "worker_peak_rss_bytes": result.get("worker_peak_rss_bytes"),
+        }
+    )
+    state["next_tree"] = end
+    _write_json_atomic(state_path, state)
+    shutil.rmtree(range_directory, ignore_errors=True)
+    return promoted
+
+
+def _parallel_start_method(workers: int) -> str:
+    if workers <= 1:
+        return "inline"
+    available = multiprocessing.get_all_start_methods()
+    if os.name == "posix" and "fork" in available:
+        return "fork"
+    return "spawn"
+
+
+def _build_genealogy_shards(
+    *,
+    source_path: Path,
+    source_size: int,
+    fingerprint: str,
+    tree_sequence: tskit.TreeSequence,
+    staging: Path,
+    state: dict[str, Any],
+    state_path: Path,
+    target_shard_bytes: int,
+    compression: str,
+    workers: int,
+    trees_per_range: int,
+    progress: ProgressCallback | None,
+    started: float,
+) -> dict[str, Any]:
+    """Build genealogy shards with a serial disk-estimate pilot and ranges."""
+    global _WORKER_SOURCE_PATH, _WORKER_TREE_SEQUENCE
+
+    num_trees = int(tree_sequence.num_trees)
+    invocation_start_tree = int(state["next_tree"])
+    prior_completed_ranges = state.get("completed_ranges") or []
+    child_peak_rss_bytes = max(
+        (
+            int(item.get("worker_peak_rss_bytes") or 0)
+            for item in prior_completed_ranges
+        ),
+        default=0,
+    )
+    completed_ranges = 0
+    worker_seconds = sum(
+        float(item.get("elapsed_seconds") or 0.0)
+        for item in prior_completed_ranges
+    )
+    range_root = staging / ".ranges"
+    start_method = _parallel_start_method(workers)
+    state.setdefault("worker_counts_requested", [])
+    if workers not in state["worker_counts_requested"]:
+        state["worker_counts_requested"].append(workers)
+        state["worker_counts_requested"].sort()
+    state.setdefault("worker_counts_used", [])
+    state.setdefault("multiprocessing_start_methods_used", [])
+    _write_json_atomic(state_path, state)
+
+    def size_projection() -> tuple[int, int]:
+        completed = int(state["next_tree"])
+        total_size = sum(
+            int(item["size_bytes"]) for item in state["shards"]
+        )
+        projected = (
+            math.ceil(total_size / completed * num_trees)
+            if completed and num_trees
+            else total_size
+        )
+        return total_size, projected
+
+    def report_progress(phase: str, *, total_ranges: int) -> None:
+        if progress is None:
+            return
+        completed = int(state["next_tree"])
+        total_size, projected_size = size_projection()
+        elapsed = max(time.perf_counter() - started, 1e-9)
+        built_this_run = max(1, completed - invocation_start_tree)
+        trees_per_second = built_this_run / elapsed
+        remaining = max(0, num_trees - completed)
+        progress(
+            {
+                "event": "progress",
+                "phase": phase,
+                "completed_trees": completed,
+                "num_trees": num_trees,
+                "shards": len(state["shards"]),
+                "size_bytes": total_size,
+                "projected_size_bytes": projected_size,
+                "source_size_bytes": source_size,
+                "projected_output_source_ratio": (
+                    projected_size / source_size if source_size else None
+                ),
+                "trees_per_second": trees_per_second,
+                "eta_seconds": (
+                    remaining / trees_per_second if trees_per_second else None
+                ),
+                "active_workers": min(
+                    workers,
+                    max(0, total_ranges - completed_ranges),
+                ),
+                "completed_ranges": completed_ranges,
+                "total_ranges": total_ranges,
+            }
+        )
+
+    if not state["shards"] and int(state["next_tree"]) < num_trees:
+        pilot_start = int(state["next_tree"])
+        current_tree = tree_sequence.at_index(pilot_start)
+        pending: list[pa.RecordBatch] = []
+        pending_bytes = 0
+        while int(current_tree.index) < num_trees:
+            record = genealogy_record_batch(current_tree, tree_sequence)
+            record_bytes = max(1, int(record.nbytes))
+            if pending and pending_bytes + record_bytes > target_shard_bytes:
+                break
+            pending.append(record)
+            pending_bytes += record_bytes
+            if int(current_tree.index) + 1 >= num_trees:
+                break
+            if not current_tree.next():
+                break
+        shard = _write_shard(
+            staging,
+            len(state["shards"]),
+            pending,
+            compression,
+        )
+        state["shards"].append(shard)
+        state["next_tree"] = int(shard["last_tree_exclusive"])
+        _write_json_atomic(state_path, state)
+
+    if not bool(state.get("estimate_completed", False)):
+        _total_size, projected_size = size_projection()
+        available = shutil.disk_usage(staging.parent).free
+        if projected_size > available:
+            raise CSRArtifactBuildError(
+                "Projected CSR artifact size "
+                f"({projected_size} bytes) exceeds available disk space "
+                f"({available} bytes)"
+            )
+        state["estimate_completed"] = True
+        _write_json_atomic(state_path, state)
+        report_progress("disk-estimate", total_ranges=0)
+
+    range_start = int(state["next_tree"])
+    ranges: list[tuple[int, int]] = []
+    while range_start < num_trees:
+        range_end = min(num_trees, range_start + trees_per_range)
+        ranges.append((range_start, range_end))
+        range_start = range_end
+    ranges_by_start = {start: end for start, end in ranges}
+
+    for directory in range_root.glob("*") if range_root.exists() else ():
+        try:
+            _start_text, end_text = directory.name.split("-", 1)
+            if int(end_text) <= int(state["next_tree"]):
+                shutil.rmtree(directory, ignore_errors=True)
+        except (TypeError, ValueError):
+            shutil.rmtree(directory, ignore_errors=True)
+
+    completed_results: dict[int, dict[str, Any]] = {}
+    missing_ranges: list[tuple[int, int]] = []
+    for start, end in ranges:
+        directory = _range_directory(staging, start, end)
+        recovered = _read_completed_range(
+            directory,
+            start=start,
+            end=end,
+            fingerprint=fingerprint,
+            compression=compression,
+            target_shard_bytes=target_shard_bytes,
+        )
+        if recovered is None:
+            shutil.rmtree(directory, ignore_errors=True)
+            missing_ranges.append((start, end))
+        else:
+            completed_results[start] = recovered
+
+    if missing_ranges:
+        actual_workers = (
+            1 if workers == 1 else min(workers, len(missing_ranges))
+        )
+        if actual_workers not in state["worker_counts_used"]:
+            state["worker_counts_used"].append(actual_workers)
+            state["worker_counts_used"].sort()
+        if start_method not in state["multiprocessing_start_methods_used"]:
+            state["multiprocessing_start_methods_used"].append(start_method)
+            state["multiprocessing_start_methods_used"].sort()
+        _write_json_atomic(state_path, state)
+        if workers > 1 and start_method == "spawn" and progress is not None:
+            progress(
+                {
+                    "event": "warning",
+                    "phase": "genealogies",
+                    "active_workers": actual_workers,
+                    "message": (
+                        "Spawned workers load one complete TreeSequence per "
+                        "process; reduce --workers if memory is constrained."
+                    ),
+                }
+            )
+    elif not state["worker_counts_used"]:
+        state["worker_counts_used"].append(1)
+        state["multiprocessing_start_methods_used"].append("inline")
+        _write_json_atomic(state_path, state)
+
+    def promote_ready() -> None:
+        nonlocal child_peak_rss_bytes, completed_ranges, worker_seconds
+        while int(state["next_tree"]) in completed_results:
+            start = int(state["next_tree"])
+            result = completed_results.pop(start)
+            end = ranges_by_start[start]
+            _validate_range_result(
+                result,
+                start=start,
+                end=end,
+                fingerprint=fingerprint,
+                compression=compression,
+                target_shard_bytes=target_shard_bytes,
+            )
+            _promote_completed_range(
+                result,
+                range_directory=_range_directory(staging, start, end),
+                staging=staging,
+                state=state,
+                state_path=state_path,
+            )
+            completed_ranges += 1
+            worker_seconds += float(result.get("elapsed_seconds") or 0.0)
+            child_peak_rss_bytes = max(
+                child_peak_rss_bytes,
+                int(result.get("worker_peak_rss_bytes") or 0),
+            )
+            report_progress("genealogies", total_ranges=len(ranges))
+
+    promote_ready()
+    if not missing_ranges:
+        if range_root.is_dir() and not any(range_root.iterdir()):
+            range_root.rmdir()
+        return {
+            "genealogy_worker_seconds": worker_seconds,
+            "worker_peak_rss_bytes": child_peak_rss_bytes or None,
+            "worker_counts_requested": list(state["worker_counts_requested"]),
+            "worker_counts_used": list(state["worker_counts_used"]),
+            "multiprocessing_start_methods_used": list(
+                state["multiprocessing_start_methods_used"]
+            ),
+        }
+
+    _WORKER_TREE_SEQUENCE = tree_sequence
+    _WORKER_SOURCE_PATH = str(source_path)
+    try:
+        if workers == 1:
+            _initialize_range_worker(str(source_path))
+            for start, end in missing_ranges:
+                try:
+                    result = _build_tree_range(
+                        {
+                            "source": str(source_path),
+                            "fingerprint": fingerprint,
+                            "start": start,
+                            "end": end,
+                            "range_directory": str(
+                                _range_directory(staging, start, end)
+                            ),
+                            "target_shard_bytes": target_shard_bytes,
+                            "compression": compression,
+                        }
+                    )
+                except Exception as exc:
+                    raise CSRArtifactBuildError(
+                        f"Worker range [{start}, {end}) failed: {exc}"
+                    ) from exc
+                completed_results[start] = result
+                promote_ready()
+        else:
+            process_context = multiprocessing.get_context(start_method)
+            max_workers = min(workers, len(missing_ranges))
+            executor = ProcessPoolExecutor(
+                max_workers=max_workers,
+                mp_context=process_context,
+                initializer=_initialize_range_worker,
+                initargs=(str(source_path),),
+            )
+            future_ranges = {}
+            try:
+                for start, end in missing_ranges:
+                    future = executor.submit(
+                        _build_tree_range,
+                        {
+                            "source": str(source_path),
+                            "fingerprint": fingerprint,
+                            "start": start,
+                            "end": end,
+                            "range_directory": str(
+                                _range_directory(staging, start, end)
+                            ),
+                            "target_shard_bytes": target_shard_bytes,
+                            "compression": compression,
+                        },
+                    )
+                    future_ranges[future] = (start, end)
+                for future in as_completed(future_ranges):
+                    start, end = future_ranges[future]
+                    try:
+                        result = future.result()
+                    except Exception as exc:
+                        for pending in future_ranges:
+                            pending.cancel()
+                        raise CSRArtifactBuildError(
+                            f"Worker range [{start}, {end}) failed: {exc}"
+                        ) from exc
+                    completed_results[start] = result
+                    promote_ready()
+            except BaseException:
+                executor.shutdown(wait=True, cancel_futures=True)
+                raise
+            else:
+                executor.shutdown(wait=True)
+    finally:
+        _WORKER_TREE_SEQUENCE = None
+        _WORKER_SOURCE_PATH = None
+
+    promote_ready()
+    if int(state["next_tree"]) != num_trees:
+        raise CSRArtifactBuildError(
+            f"Built {state['next_tree']} of {num_trees} genealogies"
+        )
+    if range_root.is_dir() and not any(range_root.iterdir()):
+        range_root.rmdir()
+    return {
+        "genealogy_worker_seconds": worker_seconds,
+        "worker_peak_rss_bytes": child_peak_rss_bytes or None,
+        "worker_counts_requested": list(state["worker_counts_requested"]),
+        "worker_counts_used": list(state["worker_counts_used"]),
+        "multiprocessing_start_methods_used": list(
+            state["multiprocessing_start_methods_used"]
+        ),
+    }
+
+
 def _write_breakpoints(path: Path, tree_sequence: tskit.TreeSequence) -> None:
     breakpoints = np.fromiter(
         tree_sequence.breakpoints(),
@@ -768,12 +1366,60 @@ def _build_node_tree_ranges(
     return ranges
 
 
+def _write_node_tree_range_sidecars(
+    staging: Path,
+    tree_sequence: tskit.TreeSequence,
+    *,
+    compression: str,
+    indexes: dict[str, dict[str, Any]],
+    checkpoint: Callable[[str, dict[str, Any]], None],
+) -> None:
+    """Write the optional node-membership index for future augmentation reuse."""
+    required_indexes = {
+        "node_tree_ranges",
+        "node_tree_range_offsets",
+    }
+    if required_indexes.issubset(indexes):
+        return
+
+    node_tree_ranges = _build_node_tree_ranges(tree_sequence)
+    if "node_tree_ranges" not in indexes:
+        checkpoint(
+            "node_tree_ranges",
+            _write_arrow_table_atomic(
+                staging / "node-tree-ranges.arrow",
+                _table_from_rows(node_tree_ranges, NODE_TREE_RANGE_SCHEMA),
+                compression=compression,
+            ),
+        )
+    if "node_tree_range_offsets" not in indexes:
+        node_tree_offsets = np.zeros(
+            int(tree_sequence.num_nodes) + 1,
+            dtype=np.int64,
+        )
+        range_offset = 0
+        for node_id in range(int(tree_sequence.num_nodes)):
+            while (
+                range_offset < len(node_tree_ranges)
+                and int(node_tree_ranges[range_offset]["node_id"]) == node_id
+            ):
+                range_offset += 1
+            node_tree_offsets[node_id + 1] = range_offset
+        offsets_path = staging / "node-tree-range-offsets.npy"
+        _write_npy_atomic(offsets_path, node_tree_offsets)
+        checkpoint(
+            "node_tree_range_offsets",
+            _file_metadata(offsets_path, rows=len(node_tree_offsets)),
+        )
+
+
 def _write_v3_sidecars(
     staging: Path,
     tree_sequence: tskit.TreeSequence,
     source_path: Path,
     *,
     compression: str,
+    skip_node_tree_ranges: bool,
     state: dict[str, Any],
     state_path: Path,
 ) -> tuple[dict[str, dict[str, Any]], dict[str, bool]]:
@@ -784,7 +1430,7 @@ def _write_v3_sidecars(
         "mutations": True,
         "metadata": True,
         "sample_search": True,
-        "node_tree_ranges": True,
+        "node_tree_ranges": not skip_node_tree_ranges,
         "lineage": True,
         "topology_comparison": True,
     }
@@ -946,37 +1592,13 @@ def _write_v3_sidecars(
             METADATA_SAMPLE_SCHEMA,
         )
 
-    node_tree_ranges = (
-        _build_node_tree_ranges(tree_sequence)
-        if not {
-            "node_tree_ranges",
-            "node_tree_range_offsets",
-        }.issubset(indexes)
-        else []
-    )
-    write_arrow(
-        "node_tree_ranges",
-        "node-tree-ranges.arrow",
-        node_tree_ranges,
-        NODE_TREE_RANGE_SCHEMA,
-    )
-    if "node_tree_range_offsets" not in indexes:
-        node_tree_offsets = np.zeros(
-            int(tree_sequence.num_nodes) + 1,
-            dtype=np.int64,
-        )
-        range_offset = 0
-        for node_id in range(int(tree_sequence.num_nodes)):
-            while (
-                range_offset < len(node_tree_ranges)
-                and int(node_tree_ranges[range_offset]["node_id"]) == node_id
-            ):
-                range_offset += 1
-            node_tree_offsets[node_id + 1] = range_offset
-        write_npy(
-            "node_tree_range_offsets",
-            "node-tree-range-offsets.npy",
-            node_tree_offsets,
+    if not skip_node_tree_ranges:
+        _write_node_tree_range_sidecars(
+            staging,
+            tree_sequence,
+            compression=compression,
+            indexes=indexes,
+            checkpoint=checkpoint,
         )
 
     state["sidecars_complete"] = True
@@ -1024,6 +1646,30 @@ def _validate_resume_state(
         expected_next = int(shard["last_tree_exclusive"])
     if int(state.get("next_tree", -1)) != expected_next:
         raise CSRArtifactBuildError("Interrupted build checkpoint is inconsistent")
+    completed_ranges = state.get("completed_ranges") or []
+    if completed_ranges:
+        first_shard = state["shards"][0]
+        expected_range_start = int(first_shard["last_tree_exclusive"])
+        known_shards = {
+            str(shard["name"]) for shard in state.get("shards", [])
+        }
+        for completed_range in completed_ranges:
+            if int(completed_range.get("start", -1)) != expected_range_start:
+                raise CSRArtifactBuildError(
+                    "Interrupted build has non-contiguous completed ranges"
+                )
+            range_shards = {
+                str(name) for name in completed_range.get("shards", [])
+            }
+            if not range_shards or not range_shards.issubset(known_shards):
+                raise CSRArtifactBuildError(
+                    "Interrupted build has invalid completed range shards"
+                )
+            expected_range_start = int(completed_range.get("end", -1))
+        if expected_range_start != expected_next:
+            raise CSRArtifactBuildError(
+                "Interrupted build completed ranges do not reach next_tree"
+            )
     for key, metadata in (state.get("sidecar_indexes") or {}).items():
         path = staging / str(metadata.get("name", ""))
         if not path.is_file():
@@ -1060,6 +1706,7 @@ def _publish(staging: Path, destination: Path) -> None:
 
 def _ready_result(destination: Path, manifest: dict[str, Any]) -> dict[str, Any]:
     build_seconds = float(manifest.get("build_seconds") or 0.0)
+    build_metadata = manifest.get("build") or {}
     num_trees = int(manifest["dataset"]["num_trees"])
     return {
         "status": "ready",
@@ -1073,6 +1720,16 @@ def _ready_result(destination: Path, manifest: dict[str, Any]) -> dict[str, Any]
         "source_size_bytes": int(manifest["source"]["size_bytes"]),
         "output_source_ratio": manifest["artifact"]["output_source_ratio"],
         "build_seconds": build_seconds,
+        "genealogy_build_seconds": build_metadata.get(
+            "genealogy_build_seconds"
+        ),
+        "worker_counts_requested": build_metadata.get(
+            "worker_counts_requested",
+            [1],
+        ),
+        "worker_counts_used": build_metadata.get("worker_counts_used", [1]),
+        "builder_peak_rss_bytes": build_metadata.get("builder_peak_rss_bytes"),
+        "worker_peak_rss_bytes": build_metadata.get("worker_peak_rss_bytes"),
         "build_trees_per_second": (
             num_trees / build_seconds if build_seconds > 0 else None
         ),
@@ -1085,6 +1742,9 @@ def build_csr_artifact(
     *,
     target_shard_mb: int = DEFAULT_TARGET_SHARD_MB,
     compression: str = "zstd",
+    workers: int = 1,
+    trees_per_range: int = DEFAULT_TREES_PER_RANGE,
+    skip_node_tree_ranges: bool = False,
     force: bool = False,
     resume: bool = True,
     format_version: int = CSR_ARTIFACT_SCHEMA_VERSION,
@@ -1098,6 +1758,10 @@ def build_csr_artifact(
         raise ValueError("CSR preprocessing supports only .trees and .tsz files")
     if target_shard_mb < 1:
         raise ValueError("target_shard_mb must be at least 1")
+    if workers < 1:
+        raise ValueError("workers must be at least 1")
+    if trees_per_range < 1:
+        raise ValueError("trees_per_range must be at least 1")
     if format_version not in {
         CSR_ARTIFACT_V2_SCHEMA_VERSION,
         CSR_ARTIFACT_SCHEMA_VERSION,
@@ -1127,6 +1791,19 @@ def build_csr_artifact(
             and manifest.get("schema_version") == format_version
             and manifest.get("fingerprint") == fingerprint
         ):
+            if (
+                format_version == CSR_ARTIFACT_SCHEMA_VERSION
+                and not skip_node_tree_ranges
+                and not bool(
+                    (manifest.get("capabilities") or {}).get(
+                        "node_tree_ranges"
+                    )
+                )
+            ):
+                raise CSRArtifactBuildError(
+                    f"Existing artifact at {destination} lacks the node-tree "
+                    "range index; rebuild it with --force"
+                )
             refreshed_source = {
                 **manifest.get("source", {}),
                 "path": str(source_path),
@@ -1152,6 +1829,9 @@ def build_csr_artifact(
         "compression": compression,
         "target_shard_bytes": target_shard_bytes,
         "format_version": format_version,
+        "range_state_version": RANGE_STATE_VERSION,
+        "trees_per_range": trees_per_range,
+        "skip_node_tree_ranges": bool(skip_node_tree_ranges),
     }
     staging = destination.with_name(f".{destination.name}.inprogress")
     state_path = staging / "build-state.json"
@@ -1182,7 +1862,11 @@ def build_csr_artifact(
             "options": options,
             "next_tree": 0,
             "shards": [],
+            "completed_ranges": [],
             "estimate_completed": False,
+            "worker_counts_requested": [],
+            "worker_counts_used": [],
+            "multiprocessing_start_methods_used": [],
             "started_at_unix": time.time(),
         }
         _write_json_atomic(state_path, state)
@@ -1198,89 +1882,23 @@ def build_csr_artifact(
     if not breakpoints_path.exists():
         _write_breakpoints(breakpoints_path, tree_sequence)
 
-    pending: list[pa.RecordBatch] = []
-    pending_bytes = 0
-    first_estimate_reported = bool(state.get("estimate_completed", False))
-    current_tree = (
-        tree_sequence.at_index(next_tree) if next_tree < num_trees else None
+    genealogy_started = time.perf_counter()
+    genealogy_metrics = _build_genealogy_shards(
+        source_path=source_path,
+        source_size=source_stat.st_size,
+        fingerprint=fingerprint,
+        tree_sequence=tree_sequence,
+        staging=staging,
+        state=state,
+        state_path=state_path,
+        target_shard_bytes=target_shard_bytes,
+        compression=compression,
+        workers=workers,
+        trees_per_range=trees_per_range,
+        progress=progress,
+        started=started,
     )
-
-    def publish_pending() -> None:
-        nonlocal pending, pending_bytes, first_estimate_reported
-        if not pending:
-            return
-        shard = _write_shard(
-            staging,
-            len(state["shards"]),
-            pending,
-            compression,
-        )
-        state["shards"].append(shard)
-        state["next_tree"] = shard["last_tree_exclusive"]
-        _write_json_atomic(state_path, state)
-        completed = int(state["next_tree"])
-        total_size = sum(int(item["size_bytes"]) for item in state["shards"])
-        elapsed = max(time.perf_counter() - started, 1e-9)
-        built_this_run = max(1, completed - next_tree)
-        trees_per_second = built_this_run / elapsed
-        projected_size = (
-            math.ceil(total_size / completed * num_trees)
-            if completed and num_trees
-            else total_size
-        )
-        if not first_estimate_reported:
-            available = shutil.disk_usage(destination.parent).free
-            if projected_size > available:
-                raise CSRArtifactBuildError(
-                    "Projected CSR artifact size "
-                    f"({projected_size} bytes) exceeds available disk space "
-                    f"({available} bytes)"
-                )
-            first_estimate_reported = True
-            state["estimate_completed"] = True
-            _write_json_atomic(state_path, state)
-        if progress is not None:
-            remaining = max(0, num_trees - completed)
-            progress(
-                {
-                    "event": "progress",
-                    "completed_trees": completed,
-                    "num_trees": num_trees,
-                    "shards": len(state["shards"]),
-                    "size_bytes": total_size,
-                    "projected_size_bytes": projected_size,
-                    "source_size_bytes": source_stat.st_size,
-                    "projected_output_source_ratio": (
-                        projected_size / source_stat.st_size
-                        if source_stat.st_size
-                        else None
-                    ),
-                    "trees_per_second": trees_per_second,
-                    "eta_seconds": (
-                        remaining / trees_per_second if trees_per_second else None
-                    ),
-                }
-            )
-        pending = []
-        pending_bytes = 0
-
-    while current_tree is not None:
-        record = genealogy_record_batch(current_tree, tree_sequence)
-        record_bytes = max(1, int(record.nbytes))
-        if pending and pending_bytes + record_bytes > target_shard_bytes:
-            publish_pending()
-        pending.append(record)
-        pending_bytes += record_bytes
-        if int(current_tree.index) + 1 >= num_trees:
-            current_tree = None
-        elif not current_tree.next():
-            current_tree = None
-    publish_pending()
-
-    if int(state["next_tree"]) != num_trees:
-        raise CSRArtifactBuildError(
-            f"Built {state['next_tree']} of {num_trees} genealogies"
-        )
+    genealogy_build_seconds = time.perf_counter() - genealogy_started
 
     shard_index_path = staging / "shards.arrow"
     _write_shard_index(shard_index_path, state["shards"])
@@ -1308,6 +1926,7 @@ def build_csr_artifact(
             tree_sequence,
             source_path,
             compression=compression,
+            skip_node_tree_ranges=skip_node_tree_ranges,
             state=state,
             state_path=state_path,
         )
@@ -1355,6 +1974,27 @@ def build_csr_artifact(
         "build": {
             "compression": compression,
             "target_shard_bytes": target_shard_bytes,
+            "trees_per_range": trees_per_range,
+            "skip_node_tree_ranges": bool(skip_node_tree_ranges),
+            "worker_counts_requested": genealogy_metrics[
+                "worker_counts_requested"
+            ],
+            "worker_counts_used": genealogy_metrics["worker_counts_used"],
+            "multiprocessing_start_methods_used": genealogy_metrics[
+                "multiprocessing_start_methods_used"
+            ],
+            "genealogy_build_seconds": round(
+                genealogy_build_seconds,
+                3,
+            ),
+            "genealogy_worker_seconds": round(
+                float(genealogy_metrics["genealogy_worker_seconds"]),
+                3,
+            ),
+            "worker_peak_rss_bytes": genealogy_metrics[
+                "worker_peak_rss_bytes"
+            ],
+            "builder_peak_rss_bytes": _process_peak_rss_bytes(),
             "complete_unsparsified_genealogies": True,
             "precomputed_layout_x": True,
             "precomputed_layout_y": False,
@@ -1383,6 +2023,7 @@ __all__ = [
     "CSR_ARTIFACT_V2_SCHEMA_VERSION",
     "CSRArtifactBuildError",
     "DEFAULT_TARGET_SHARD_MB",
+    "DEFAULT_TREES_PER_RANGE",
     "GENEALOGY_SCHEMA",
     "MUTATION_TYPE",
     "SHARD_INDEX_SCHEMA",

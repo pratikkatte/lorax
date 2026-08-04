@@ -66,8 +66,8 @@ describe('useLoraxConfig worker fan-out', () => {
     await waitFor(() => expect(result.current.workerConfigReady).toBe(true));
 
     await act(async () => {
-      await result.current.worker.request('intervals', { start: 5, end: 25 });
-      await result.current.worker.request('local-data', { lo: 0, hi: 2 });
+      await result.current.intervalWorker.request('intervals', { start: 5, end: 25 });
+      await result.current.localDataWorker.request('local-data', { lo: 0, hi: 2 });
     });
 
     expect(intervalWorker.request).toHaveBeenCalledWith('intervals', { start: 5, end: 25 }, undefined);
@@ -142,12 +142,22 @@ describe('useLoraxConfig worker fan-out', () => {
     await waitFor(() => expect(result.current.workerConfigReady).toBe(true));
 
     await act(async () => {
-      await result.current.worker.request('intervals', { start: 5, end: 25 });
-      await result.current.worker.request('local-data', { lo: 0, hi: 2 });
+      await result.current.intervalWorker.request('intervals', { start: 5, end: 25 });
+      await result.current.localDataWorker.request('local-data', { lo: 0, hi: 2 });
     });
 
     expect(backend.queryIntervals).toHaveBeenCalledWith({ start: 5, end: 25 });
     expect(backend.queryLocalData).toHaveBeenCalledWith({ lo: 0, hi: 2 });
+    expect(intervalWorker.request).not.toHaveBeenCalledWith(
+      'intervals',
+      { start: 5, end: 25 },
+      undefined
+    );
+    expect(localDataWorker.request).not.toHaveBeenCalledWith(
+      'local-data',
+      { lo: 0, hi: 2 },
+      undefined
+    );
     expect(result.current.globalBpPerUnit).toBe(20);
   });
 
@@ -185,8 +195,8 @@ describe('useLoraxConfig worker fan-out', () => {
     await waitFor(() => expect(result.current.workerConfigReady).toBe(true));
 
     await act(async () => {
-      await result.current.worker.request('intervals', { start: 0, end: 25 });
-      await result.current.worker.request('local-data', { lo: 0, hi: 2 });
+      await result.current.intervalWorker.request('intervals', { start: 0, end: 25 });
+      await result.current.localDataWorker.request('local-data', { lo: 0, hi: 2 });
     });
 
     expect(backend.queryIntervals).toHaveBeenCalledWith({ start: 0, end: 25 });

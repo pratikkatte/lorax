@@ -38,9 +38,16 @@ class CSRArtifactCapabilityError(CSRArtifactError):
 
     def __init__(self, capability: str):
         self.capability = capability
-        super().__init__(
-            f"CSR artifact lacks {capability!r}; rebuild it as lorax-csr-v3"
-        )
+        if capability == "node_tree_ranges":
+            message = (
+                "CSR artifact lacks 'node_tree_ranges'; rebuild it without "
+                "--skip-node-tree-ranges"
+            )
+        else:
+            message = (
+                f"CSR artifact lacks {capability!r}; rebuild it as lorax-csr-v3"
+            )
+        super().__init__(message)
 
 
 V3_CAPABILITY_INDEXES = {
@@ -69,6 +76,7 @@ V3_CAPABILITY_INDEXES = {
     "lineage": {"breakpoints", "shards"},
     "topology_comparison": {"breakpoints", "shards"},
 }
+OPTIONAL_V3_CAPABILITIES = {"node_tree_ranges"}
 
 
 def _checksum(path: Path) -> str:
@@ -317,6 +325,7 @@ class CSRArtifactReader:
             missing_capabilities = sorted(
                 capability
                 for capability in V3_CAPABILITY_INDEXES
+                if capability not in OPTIONAL_V3_CAPABILITIES
                 if not self.capabilities.get(capability)
             )
             if missing_capabilities:
@@ -335,6 +344,18 @@ class CSRArtifactReader:
                     missing = sorted(required_indexes - available_indexes)
                     raise CSRArtifactCorruptError(
                         f"Capability {capability!r} is missing indexes: {missing}"
+                    )
+                if (
+                    capability in OPTIONAL_V3_CAPABILITIES
+                    and not self.capabilities.get(capability)
+                    and required_indexes.intersection(available_indexes)
+                ):
+                    unexpected = sorted(
+                        required_indexes.intersection(available_indexes)
+                    )
+                    raise CSRArtifactCorruptError(
+                        f"Disabled capability {capability!r} publishes indexes: "
+                        f"{unexpected}"
                     )
         if max_open_shards < 1:
             raise ValueError("max_open_shards must be at least 1")

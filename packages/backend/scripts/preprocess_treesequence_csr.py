@@ -17,6 +17,7 @@ if str(BACKEND_DIRECTORY) not in sys.path:
 with contextlib.redirect_stdout(sys.stderr):
     from lorax.artifacts.csr_builder import (  # noqa: E402
         DEFAULT_TARGET_SHARD_MB,
+        DEFAULT_TREES_PER_RANGE,
         build_csr_artifact,
     )
     from lorax.artifacts.csr_reader import CSRArtifactReader  # noqa: E402
@@ -51,6 +52,26 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default="zstd",
     )
     parser.add_argument(
+        "--workers",
+        type=_positive_int,
+        default=1,
+        help="Worker processes for contiguous genealogy ranges",
+    )
+    parser.add_argument(
+        "--trees-per-range",
+        type=_positive_int,
+        default=DEFAULT_TREES_PER_RANGE,
+        help="Genealogies assigned to each resumable worker range",
+    )
+    parser.add_argument(
+        "--skip-node-tree-ranges",
+        action="store_true",
+        help=(
+            "Skip the optional node-position/highlight index while retaining "
+            "all other v3 features"
+        ),
+    )
+    parser.add_argument(
         "--force",
         action="store_true",
         help="Rebuild and atomically replace an existing artifact",
@@ -79,6 +100,9 @@ def main(argv: list[str] | None = None) -> int:
             args.input_path,
             target_shard_mb=args.target_shard_mb,
             compression=args.compression,
+            workers=args.workers,
+            trees_per_range=args.trees_per_range,
+            skip_node_tree_ranges=args.skip_node_tree_ranges,
             force=args.force,
             resume=not args.no_resume,
             progress=report_progress,

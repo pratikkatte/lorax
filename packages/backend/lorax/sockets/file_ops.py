@@ -32,6 +32,7 @@ from lorax.artifacts.runtime import (
     is_artifact_session,
 )
 from lorax.cloud.gcs_utils import download_gcs_file
+from lorax.datasets import log_dataset_backend
 from lorax.handlers import handle_upload, handle_details
 from lorax.sockets.decorators import require_session
 from lorax.sockets.load_scheduler import (
@@ -248,6 +249,11 @@ def register_file_events(sio):
                 session.artifact_fingerprint = artifact_context.fingerprint
                 session.artifact_format = artifact_context.artifact_format
                 await session_manager.save_session(session)
+                log_dataset_backend(
+                    session.dataset_backend,
+                    str(file_path),
+                    artifact_path=artifact_context.artifact_directory,
+                )
                 config = artifact_context.reader.frontend_config(
                     filename=filename,
                     project=project,
@@ -335,6 +341,8 @@ def register_file_events(sio):
                     message="Failed to load file configuration.",
                     recoverable=True,
                 )
+
+            log_dataset_backend(session.dataset_backend, str(file_path))
 
             # Override initial_position if client provided genomic coordinates
             if genomiccoordstart is not None and genomiccoordend is not None:

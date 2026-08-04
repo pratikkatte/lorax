@@ -14,6 +14,29 @@ from lorax.artifacts.runtime import (
 from lorax.cache import get_file_context
 
 
+def log_dataset_backend(
+    backend: str,
+    source_path: str,
+    *,
+    artifact_path: str | None = None,
+    reason: str | None = None,
+) -> None:
+    """Print the selected dataset backend regardless of logging configuration."""
+    if backend.startswith("csr-v"):
+        label = f"CSR v{backend.removeprefix('csr-v')} artifact"
+    elif backend == "csv":
+        label = "CSV source"
+    else:
+        label = "TreeSequence source"
+
+    details = [f'source="{source_path}"']
+    if artifact_path:
+        details.append(f'artifact="{artifact_path}"')
+    if reason:
+        details.append(f'reason="{reason}"')
+    print(f"[Lorax] Dataset backend: {label} | {' | '.join(details)}", flush=True)
+
+
 @dataclass(frozen=True)
 class LegacyDatasetContext:
     file_path: str
@@ -65,5 +88,6 @@ __all__ = [
     "CSVDatasetContext",
     "LegacyDatasetContext",
     "dataset_backend",
+    "log_dataset_backend",
     "resolve_dataset_context",
 ]

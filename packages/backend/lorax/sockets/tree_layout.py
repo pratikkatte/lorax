@@ -27,7 +27,7 @@ from lorax.artifacts.runtime import (
     context_for_session,
     is_artifact_session,
 )
-from lorax.datasets import resolve_dataset_context
+from lorax.datasets import log_dataset_backend, resolve_dataset_context
 from lorax.handlers import handle_tree_graph_query, ensure_trees_cached
 from lorax.sockets.decorators import require_session
 from lorax.sockets.utils import is_csv_session_file
@@ -250,6 +250,11 @@ async def _fallback_artifact_session(session) -> bool:
     session.artifact_format = None
     await session_manager.save_session(session)
     csr_artifact_metrics.increment("fallback.shard_error")
+    log_dataset_backend(
+        "legacy",
+        session.file_path,
+        reason="artifact read failure",
+    )
     return True
 
 

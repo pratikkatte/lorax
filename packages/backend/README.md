@@ -38,6 +38,28 @@ python -m gunicorn -c packages/backend/gunicorn_config.py lorax.lorax_app:sio_ap
 WEB_CONCURRENCY=3 python -m gunicorn -c packages/backend/gunicorn_config.py lorax.lorax_app:sio_app
 ```
 
+### Use Preprocessed CSR Artifacts
+
+CSR artifacts are an opt-in, preprocessed representation of a `.trees` or
+`.trees.tsz` source file. When available, Lorax discovers an adjacent artifact
+directory named `<source-file>.artifact` and uses it for supported operations.
+
+Enable artifact-backed loading during local development:
+
+```bash
+LORAX_MODE=local LORAX_CSR_ARTIFACTS_ENABLED=1 \
+  lorax-backend serve --host 127.0.0.1 --port 8080 --reload
+```
+
+For example, the artifact for
+`~/.lorax/projects/1000Genomes/1kg_chr2.trees.tsz` is stored at
+`~/.lorax/projects/1000Genomes/1kg_chr2.trees.tsz.artifact/`.
+
+If `LORAX_CSR_ARTIFACTS_ENABLED` is unset, it defaults to `false` and Lorax
+uses the legacy tree-sequence loader. In that mode, messages such as
+`Using cached FileContext: ...` are expected and do not indicate that the
+artifact is being read.
+
 ### Load-File Backpressure
 
 `load_file` uses a bounded queue and worker slots to prevent CPU-heavy loads from

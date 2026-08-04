@@ -13,6 +13,7 @@ Usage:
 import argparse
 import asyncio
 import csv
+import json
 import logging
 import random
 import re
@@ -96,6 +97,15 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=42,
         help="Random seed for CSR comparison tree indices",
+    )
+    parser.add_argument(
+        "--csr-serial-artifact",
+        type=str,
+        default=None,
+        help=(
+            "Optional one-worker artifact with the same source fingerprint; "
+            "reports serial-versus-parallel build speedup"
+        ),
     )
     return parser.parse_args()
 
@@ -305,6 +315,25 @@ async def benchmark_csr_random_access(
         build_throughput = (
             reader.num_trees / build_seconds if build_seconds > 0 else None
         )
+        build_metadata = reader.manifest.get("build") or {}
+        genealogy_build_seconds = float(
+            build_metadata.get("genealogy_build_seconds") or 0.0
+        )
+        genealogy_build_throughput = (
+            reader.num_trees / genealogy_build_seconds
+            if genealogy_build_seconds > 0
+            else None
+        )
+        worker_counts = [
+            int(value)
+            for value in build_metadata.get("worker_counts_used", [])
+        ]
+        builder_peak_rss_bytes = int(
+            build_metadata.get("builder_peak_rss_bytes") or 0
+        )
+        worker_peak_rss_bytes = int(
+            build_metadata.get("worker_peak_rss_bytes") or 0
+        )
 
     current_p95 = float(np.percentile(current_times_ms, 95))
     artifact_p95 = float(np.percentile(artifact_times_ms, 95))
@@ -351,10 +380,32 @@ async def benchmark_csr_random_access(
             3,
         ),
         "csr_artifact_size_mb": round(artifact_size / (1024 * 1024), 4),
+        "artifact_total_build_sec": round(build_seconds, 3),
         "artifact_build_trees_per_sec": (
             round(build_throughput, 3)
             if build_throughput is not None
             else ""
+        ),
+        "artifact_genealogy_build_sec": round(
+            genealogy_build_seconds,
+            3,
+        ),
+        "artifact_genealogy_trees_per_sec": (
+            round(genealogy_build_throughput, 3)
+            if genealogy_build_throughput is not None
+            else ""
+        ),
+        "artifact_build_worker_counts": ",".join(
+            str(value) for value in worker_counts
+        ),
+        "artifact_build_max_workers": max(worker_counts, default=1),
+        "artifact_builder_peak_rss_mb": round(
+            builder_peak_rss_bytes / (1024 * 1024),
+            3,
+        ),
+        "artifact_worker_peak_rss_mb": round(
+            worker_peak_rss_bytes / (1024 * 1024),
+            3,
         ),
         "artifact_response_p50_kb": round(
             float(np.percentile(response_sizes, 50)) / 1024,
@@ -362,6 +413,62 @@ async def benchmark_csr_random_access(
         ),
         "artifact_reader_peak_rss_mb": round(
             peak_rss / (1024 * 1024),
+            3,
+        ),
+    }
+
+
+def compare_csr_builds(
+    serial_artifact: str,
+    parallel_artifact: str,
+) -> Dict[str, Any]:
+    """Compare build timing and memory recorded in two artifact manifests."""
+    serial = json.loads(
+        (Path(serial_artifact) / "manifest.json").read_text(encoding="utf-8")
+    )
+    parallel = json.loads(
+        (Path(parallel_artifact) / "manifest.json").read_text(encoding="utf-8")
+    )
+    if serial.get("fingerprint") != parallel.get("fingerprint"):
+        raise ValueError(
+            "Serial and parallel CSR artifacts have different source fingerprints"
+        )
+    serial_build = serial.get("build") or {}
+    parallel_build = parallel.get("build") or {}
+    serial_total = float(serial.get("build_seconds") or 0.0)
+    parallel_total = float(parallel.get("build_seconds") or 0.0)
+    serial_genealogy = float(
+        serial_build.get("genealogy_build_seconds") or 0.0
+    )
+    parallel_genealogy = float(
+        parallel_build.get("genealogy_build_seconds") or 0.0
+    )
+    mib = 1024 * 1024
+    return {
+        "csr_serial_total_build_sec": round(serial_total, 3),
+        "csr_parallel_total_build_sec": round(parallel_total, 3),
+        "csr_total_build_speedup": (
+            round(serial_total / parallel_total, 4)
+            if parallel_total > 0
+            else ""
+        ),
+        "csr_serial_genealogy_build_sec": round(serial_genealogy, 3),
+        "csr_parallel_genealogy_build_sec": round(parallel_genealogy, 3),
+        "csr_genealogy_build_speedup": (
+            round(serial_genealogy / parallel_genealogy, 4)
+            if parallel_genealogy > 0
+            else ""
+        ),
+        "csr_serial_builder_peak_rss_mb": round(
+            int(serial_build.get("builder_peak_rss_bytes") or 0) / mib,
+            3,
+        ),
+        "csr_parallel_builder_peak_rss_mb": round(
+            int(parallel_build.get("builder_peak_rss_bytes") or 0) / mib,
+            3,
+        ),
+        "csr_parallel_worker_peak_rss_mb": round(
+            int(parallel_build.get("worker_peak_rss_bytes") or 0) / mib,
             3,
         ),
     }
@@ -449,9 +556,25 @@ def write_csv(rows: List[Dict[str, Any]], output_path: Path) -> None:
         "artifact_p95_speedup",
         "artifact_reader_rss_delta_mb",
         "csr_artifact_size_mb",
+        "artifact_total_build_sec",
         "artifact_build_trees_per_sec",
+        "artifact_genealogy_build_sec",
+        "artifact_genealogy_trees_per_sec",
+        "artifact_build_worker_counts",
+        "artifact_build_max_workers",
+        "artifact_builder_peak_rss_mb",
+        "artifact_worker_peak_rss_mb",
         "artifact_response_p50_kb",
         "artifact_reader_peak_rss_mb",
+        "csr_serial_total_build_sec",
+        "csr_parallel_total_build_sec",
+        "csr_total_build_speedup",
+        "csr_serial_genealogy_build_sec",
+        "csr_parallel_genealogy_build_sec",
+        "csr_genealogy_build_speedup",
+        "csr_serial_builder_peak_rss_mb",
+        "csr_parallel_builder_peak_rss_mb",
+        "csr_parallel_worker_peak_rss_mb",
     ]
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w", newline="", encoding="utf-8") as f:
@@ -465,6 +588,8 @@ async def main_async(args: argparse.Namespace) -> None:
     files = collect_files(args)
     if args.csr_artifact and len(files) != 1:
         raise ValueError("--csr-artifact requires exactly one input TreeSequence")
+    if args.csr_serial_artifact and not args.csr_artifact:
+        raise ValueError("--csr-serial-artifact requires --csr-artifact")
     logger.info("Found %d TreeSequence file(s)", len(files))
 
     rows: List[Dict[str, Any]] = []
@@ -502,6 +627,13 @@ async def main_async(args: argparse.Namespace) -> None:
                 seed=args.csr_seed,
             )
             row.update(csr_metrics)
+            if args.csr_serial_artifact:
+                row.update(
+                    compare_csr_builds(
+                        args.csr_serial_artifact,
+                        args.csr_artifact,
+                    )
+                )
             logger.info(
                 "  csr current_p95=%.3fms artifact_p95=%.3fms speedup=%.2fx",
                 csr_metrics["current_csr_p95_ms"],

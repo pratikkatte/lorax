@@ -48,6 +48,33 @@ def _recombining_tree_sequence(path: Path) -> tskit.TreeSequence:
     return tree_sequence
 
 
+def _many_tree_sequence(
+    path: Path,
+    *,
+    num_trees: int = 48,
+    num_samples: int = 1_000,
+) -> tskit.TreeSequence:
+    tables = tskit.TableCollection(sequence_length=num_trees)
+    samples = [
+        tables.nodes.add_row(flags=tskit.NODE_IS_SAMPLE, time=0)
+        for _ in range(num_samples)
+    ]
+    for tree_index in range(num_trees):
+        root = tables.nodes.add_row(time=tree_index + 1)
+        for sample in samples:
+            tables.edges.add_row(
+                tree_index,
+                tree_index + 1,
+                root,
+                sample,
+            )
+    tables.sort()
+    tree_sequence = tables.tree_sequence()
+    tree_sequence.dump(path)
+    assert tree_sequence.num_trees == num_trees
+    return tree_sequence
+
+
 def _build(source: Path, **kwargs):
     from lorax.artifacts.csr_builder import build_csr_artifact
 
@@ -153,6 +180,113 @@ def test_builder_uses_exact_colocated_path_without_locators(tmp_path):
     assert expected.name != result["fingerprint"]
     assert not (tmp_path / "locators").exists()
     assert not (tmp_path / ".locators").exists()
+
+
+def test_multiprocess_ranges_match_single_worker_artifact(tmp_path):
+    import tszip
+
+    from lorax.artifacts import CSRArtifactReader, build_csr_artifact
+
+    serial_source = tmp_path / "serial-many.trees"
+    tree_sequence = _many_tree_sequence(serial_source)
+    parallel_source = tmp_path / "parallel-many.trees.tsz"
+    tszip.compress(tree_sequence, parallel_source)
+
+    serial = build_csr_artifact(
+        serial_source,
+        target_shard_mb=1,
+        workers=1,
+        trees_per_range=5,
+        skip_node_tree_ranges=True,
+    )
+    parallel = build_csr_artifact(
+        parallel_source,
+        target_shard_mb=1,
+        workers=4,
+        trees_per_range=5,
+        skip_node_tree_ranges=True,
+    )
+
+    assert serial["manifest"]["capabilities"]["node_tree_ranges"] is False
+    assert parallel["manifest"]["capabilities"]["node_tree_ranges"] is False
+    assert "node_tree_ranges" not in parallel["manifest"]["indexes"]
+    assert parallel["manifest"]["build"]["worker_counts_requested"] == [4]
+    assert 1 < max(parallel["manifest"]["build"]["worker_counts_used"]) <= 4
+    assert parallel["manifest"]["build"]["trees_per_range"] == 5
+    assert parallel["manifest"]["build"]["multiprocessing_start_methods_used"] == [
+        "fork" if os.name == "posix" else "spawn"
+    ]
+    assert parallel["manifest"]["build"]["genealogy_worker_seconds"] > 0
+    assert parallel["manifest"]["build"]["worker_peak_rss_bytes"] is not None
+    with (
+        CSRArtifactReader.open(serial["artifact_dir"]) as serial_reader,
+        CSRArtifactReader.open(parallel["artifact_dir"]) as parallel_reader,
+    ):
+        assert serial_reader.num_trees == parallel_reader.num_trees
+        for tree_index in range(serial_reader.num_trees):
+            observed = parallel_reader.tree_at_index(tree_index)
+            expected = serial_reader.tree_at_index(tree_index)
+            assert observed.tree_index == expected.tree_index
+            assert observed.interval_left == expected.interval_left
+            assert observed.interval_right == expected.interval_right
+            np.testing.assert_array_equal(observed.node_ids, expected.node_ids)
+            np.testing.assert_array_equal(observed.parent_ids, expected.parent_ids)
+            np.testing.assert_array_equal(
+                observed.child_offsets,
+                expected.child_offsets,
+            )
+            np.testing.assert_array_equal(
+                observed.child_node_ids,
+                expected.child_node_ids,
+            )
+            np.testing.assert_array_equal(observed.node_times, expected.node_times)
+            np.testing.assert_array_equal(observed.node_flags, expected.node_flags)
+            np.testing.assert_array_equal(observed.layout_x, expected.layout_x)
+            assert len(observed.mutations) == len(expected.mutations)
+
+        expected_tree = 0
+        for shard in parallel_reader._shards:
+            assert shard["first_tree"] == expected_tree
+            expected_tree = shard["last_tree_exclusive"]
+        assert expected_tree == parallel_reader.num_trees
+
+
+def test_spawn_workers_load_source_and_emit_memory_warning(
+    tmp_path,
+    monkeypatch,
+):
+    import multiprocessing
+    import tszip
+    import lorax.artifacts.csr_builder as builder
+
+    if "spawn" not in multiprocessing.get_all_start_methods():
+        pytest.skip("spawn multiprocessing is unavailable")
+    uncompressed = tmp_path / "spawn-many.trees"
+    tree_sequence = _many_tree_sequence(uncompressed)
+    source = tmp_path / "spawn-many.trees.tsz"
+    tszip.compress(tree_sequence, source)
+    events = []
+    monkeypatch.setattr(
+        builder,
+        "_parallel_start_method",
+        lambda _workers: "spawn",
+    )
+
+    result = builder.build_csr_artifact(
+        source,
+        target_shard_mb=1,
+        workers=8,
+        trees_per_range=5,
+        format_version=2,
+        progress=events.append,
+    )
+
+    assert result["manifest"]["build"]["multiprocessing_start_methods_used"] == [
+        "spawn"
+    ]
+    assert result["manifest"]["build"]["worker_counts_requested"] == [8]
+    assert any(event["event"] == "warning" for event in events)
+    assert result["num_trees"] == 48
 
 
 def test_position_lookup_boundaries_and_multi_read_order(tmp_path):
@@ -406,6 +540,150 @@ def test_interrupted_build_resumes_completed_shards(tmp_path, monkeypatch):
     assert not staging.exists()
 
 
+def test_interrupted_build_rejects_changed_node_tree_range_option(
+    tmp_path,
+    monkeypatch,
+):
+    import lorax.artifacts.csr_builder as builder
+
+    source = tmp_path / "resume-node-range-option.trees"
+    _recombining_tree_sequence(source)
+    original_sidecar_writer = builder._write_v3_sidecars
+
+    def interrupt_sidecars(*args, **kwargs):
+        raise RuntimeError("simulated sidecar interruption")
+
+    monkeypatch.setattr(builder, "_write_v3_sidecars", interrupt_sidecars)
+    with pytest.raises(RuntimeError, match="simulated sidecar interruption"):
+        builder.build_csr_artifact(source, target_shard_mb=1)
+
+    staging = tmp_path / ".resume-node-range-option.trees.artifact.inprogress"
+    state = json.loads((staging / "build-state.json").read_text())
+    assert state["options"]["skip_node_tree_ranges"] is False
+
+    monkeypatch.setattr(builder, "_write_v3_sidecars", original_sidecar_writer)
+    with pytest.raises(
+        builder.CSRArtifactBuildError,
+        match="Build options differ.*--force",
+    ):
+        builder.build_csr_artifact(
+            source,
+            target_shard_mb=1,
+            skip_node_tree_ranges=True,
+        )
+
+    result = builder.build_csr_artifact(
+        source,
+        target_shard_mb=1,
+        skip_node_tree_ranges=True,
+        force=True,
+    )
+    assert result["manifest"]["capabilities"]["node_tree_ranges"] is False
+
+
+def test_interrupted_range_build_resumes_with_different_worker_count(
+    tmp_path,
+    monkeypatch,
+):
+    import lorax.artifacts.csr_builder as builder
+
+    source = tmp_path / "resume-workers.trees"
+    tree_sequence = _many_tree_sequence(source)
+    original_build_range = builder._build_tree_range
+    calls = 0
+
+    def fail_second_range(task):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise RuntimeError("simulated range failure")
+        return original_build_range(task)
+
+    monkeypatch.setattr(builder, "_build_tree_range", fail_second_range)
+    with pytest.raises(RuntimeError, match="simulated range failure"):
+        builder.build_csr_artifact(
+            source,
+            target_shard_mb=1,
+            workers=1,
+            trees_per_range=5,
+            format_version=2,
+        )
+
+    staging = tmp_path / ".resume-workers.trees.artifact.inprogress"
+    state = json.loads((staging / "build-state.json").read_text())
+    assert 0 < state["next_tree"] < tree_sequence.num_trees
+    assert state["completed_ranges"]
+    assert state["worker_counts_used"] == [1]
+    committed_before_resume = state["next_tree"]
+    incomplete_range = builder._range_directory(
+        staging,
+        committed_before_resume,
+        min(committed_before_resume + 5, tree_sequence.num_trees),
+    )
+    incomplete_range.mkdir(parents=True)
+    (incomplete_range / "partial.arrow").write_bytes(b"incomplete")
+
+    monkeypatch.setattr(builder, "_build_tree_range", original_build_range)
+    result = builder.build_csr_artifact(
+        source,
+        target_shard_mb=1,
+        workers=2,
+        trees_per_range=5,
+        format_version=2,
+    )
+
+    assert result["num_trees"] == tree_sequence.num_trees
+    assert result["manifest"]["build"]["worker_counts_requested"] == [1, 2]
+    assert result["manifest"]["build"]["worker_counts_used"] == [1, 2]
+    assert committed_before_resume > 0
+    assert not staging.exists()
+
+
+def test_range_promotion_recovers_already_renamed_shard(tmp_path):
+    import lorax.artifacts.csr_builder as builder
+
+    source = tmp_path / "promotion-recovery.trees"
+    _recombining_tree_sequence(source)
+    staging = tmp_path / ".promotion-recovery.artifact.inprogress"
+    staging.mkdir()
+    range_directory = builder._range_directory(staging, 0, 2)
+    builder._initialize_range_worker(str(source))
+    result = builder._build_tree_range(
+        {
+            "source": str(source),
+            "fingerprint": builder.source_fingerprint(source),
+            "start": 0,
+            "end": 2,
+            "range_directory": str(range_directory),
+            "target_shard_bytes": 1,
+            "compression": "zstd",
+        }
+    )
+    assert len(result["shards"]) == 2
+    first_source = range_directory / result["shards"][0]["name"]
+    first_destination = staging / "csr-000000.arrow"
+    os.replace(first_source, first_destination)
+    state = {"next_tree": 0, "shards": []}
+    state_path = staging / "build-state.json"
+    state_path.write_text(json.dumps(state))
+
+    promoted = builder._promote_completed_range(
+        result,
+        range_directory=range_directory,
+        staging=staging,
+        state=state,
+        state_path=state_path,
+    )
+
+    assert [shard["name"] for shard in promoted] == [
+        "csr-000000.arrow",
+        "csr-000001.arrow",
+    ]
+    assert state["next_tree"] == 2
+    assert first_destination.is_file()
+    assert (staging / "csr-000001.arrow").is_file()
+
+
 def test_projected_size_checks_space_beside_source(tmp_path, monkeypatch):
     import lorax.artifacts.csr_builder as builder
 
@@ -424,12 +702,24 @@ def test_projected_size_checks_space_beside_source(tmp_path, monkeypatch):
             else pytest.fail("disk space checked on the wrong filesystem")
         ),
     )
+    monkeypatch.setattr(
+        builder,
+        "ProcessPoolExecutor",
+        lambda *args, **kwargs: pytest.fail(
+            "process pool started before the disk-space guard"
+        ),
+    )
 
     with pytest.raises(
         builder.CSRArtifactBuildError,
         match="exceeds available disk space",
     ):
-        builder.build_csr_artifact(source, target_shard_mb=1)
+        builder.build_csr_artifact(
+            source,
+            target_shard_mb=1,
+            workers=2,
+            trees_per_range=1,
+        )
 
     assert (tmp_path / ".no-space.trees.artifact.inprogress").is_dir()
 
@@ -495,6 +785,73 @@ def test_standalone_script_uses_colocated_output_and_verify(tmp_path):
     assert result["status"] == "ready"
     assert result["verification"]["ok"] is True
     assert Path(result["artifact_dir"]) == Path(f"{source}.artifact")
+
+
+def test_standalone_script_accepts_worker_range_options(tmp_path):
+    source = tmp_path / "script-workers.trees"
+    _recombining_tree_sequence(source)
+    script = (
+        Path(__file__).parents[2]
+        / "scripts"
+        / "preprocess_treesequence_csr.py"
+    )
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            str(source),
+            "--target-shard-mb",
+            "1",
+            "--workers",
+            "2",
+            "--trees-per-range",
+            "1",
+            "--skip-node-tree-ranges",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    result = json.loads(completed.stdout.strip().splitlines()[-1])
+    manifest = json.loads(
+        (Path(result["artifact_dir"]) / "manifest.json").read_text()
+    )
+    assert manifest["build"]["worker_counts_requested"] == [2]
+    assert manifest["build"]["worker_counts_used"] == [1]
+    assert manifest["build"]["trees_per_range"] == 1
+    assert manifest["build"]["skip_node_tree_ranges"] is True
+    assert manifest["capabilities"]["node_tree_ranges"] is False
+    assert "node_tree_ranges" not in manifest["indexes"]
+
+
+@pytest.mark.parametrize(
+    ("option", "value"),
+    [("--workers", "0"), ("--trees-per-range", "0")],
+)
+def test_standalone_script_rejects_nonpositive_parallel_options(
+    tmp_path,
+    option,
+    value,
+):
+    source = tmp_path / f"invalid-{option[2:]}.trees"
+    _recombining_tree_sequence(source)
+    script = (
+        Path(__file__).parents[2]
+        / "scripts"
+        / "preprocess_treesequence_csr.py"
+    )
+
+    completed = subprocess.run(
+        [sys.executable, str(script), str(source), option, value],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 2
+    assert "value must be at least 1" in completed.stderr
 
 
 def test_standalone_script_rejects_removed_output_dir_option(tmp_path):
@@ -656,6 +1013,93 @@ def test_v3_config_sidecars_and_feature_indexes_are_source_free(tmp_path):
         )
 
 
+def test_v3_without_node_tree_ranges_keeps_other_features_source_free(tmp_path):
+    from lorax.artifacts import (
+        CSRArtifactCapabilityError,
+        CSRArtifactReader,
+    )
+
+    source = tmp_path / "metadata-without-node-ranges.trees"
+    tree_sequence = _metadata_tree_sequence(source)
+    result = _build(source, skip_node_tree_ranges=True)
+    artifact = Path(result["artifact_dir"])
+    manifest = result["manifest"]
+    stored_config = json.loads((artifact / "config.json").read_text())
+
+    assert manifest["capabilities"]["node_tree_ranges"] is False
+    assert manifest["build"]["skip_node_tree_ranges"] is True
+    assert stored_config["artifact_capabilities"]["node_tree_ranges"] is False
+    for key, name in (
+        ("node_tree_ranges", "node-tree-ranges.arrow"),
+        ("node_tree_range_offsets", "node-tree-range-offsets.npy"),
+    ):
+        assert key not in manifest["indexes"]
+        assert not (artifact / name).exists()
+    for capability in (
+        "render",
+        "intervals",
+        "details",
+        "mutations",
+        "metadata",
+        "sample_search",
+        "lineage",
+        "topology_comparison",
+    ):
+        assert manifest["capabilities"][capability] is True
+
+    source.unlink()
+    with (
+        patch("tskit.load", side_effect=AssertionError("source reopened")),
+        patch("tszip.load", side_effect=AssertionError("source reopened")),
+        CSRArtifactReader.open(artifact) as reader,
+    ):
+        assert reader.verify()["ok"] is True
+        assert reader.tree_at_index(0).tree_index == 0
+        assert reader.intervals_in_range(0, 12, 1)["first_tree"] == 0
+        assert reader.node_details(0)["metadata"]["name"] == "alpha"
+        assert reader.mutations_for_node(0)[0]["derived_state"] == "G"
+        assert reader.metadata_samples("group", "A")["sample_node_ids"] == [0]
+        assert reader.search_samples("alp") == [{"node_id": 0, "name": "alpha"}]
+        config = reader.frontend_config()
+        assert config["artifact_capabilities"]["node_tree_ranges"] is False
+        assert config["num_trees"] == tree_sequence.num_trees
+
+        with pytest.raises(
+            CSRArtifactCapabilityError,
+            match="without --skip-node-tree-ranges",
+        ) as error:
+            reader.tree_ranges_for_node(0)
+        assert error.value.code == "CSR_REBUILD_REQUIRED"
+
+
+def test_existing_artifact_node_tree_range_compatibility(tmp_path):
+    from lorax.artifacts import CSRArtifactBuildError, build_csr_artifact
+
+    complete_source = tmp_path / "complete-v3.trees"
+    _recombining_tree_sequence(complete_source)
+    complete = _build(complete_source)
+    reused = build_csr_artifact(
+        complete_source,
+        target_shard_mb=1,
+        skip_node_tree_ranges=True,
+    )
+    assert reused["artifact_dir"] == complete["artifact_dir"]
+    assert reused["manifest"]["capabilities"]["node_tree_ranges"] is True
+
+    partial_source = tmp_path / "partial-v3.trees"
+    _recombining_tree_sequence(partial_source)
+    partial = _build(partial_source, skip_node_tree_ranges=True)
+    with pytest.raises(
+        CSRArtifactBuildError,
+        match="lacks the node-tree range index.*--force",
+    ):
+        _build(partial_source)
+
+    rebuilt = _build(partial_source, force=True)
+    assert rebuilt["artifact_dir"] == partial["artifact_dir"]
+    assert rebuilt["manifest"]["capabilities"]["node_tree_ranges"] is True
+
+
 def test_v2_remains_renderable_but_rejects_v3_capabilities(tmp_path):
     from lorax.artifacts import (
         CSRArtifactCapabilityError,
@@ -694,6 +1138,36 @@ def test_v3_manifest_cannot_claim_an_incomplete_feature_set(tmp_path):
 
     with pytest.raises(CSRArtifactCorruptError, match="metadata"):
         CSRArtifactReader.open(artifact)
+
+
+def test_v3_node_tree_range_capability_must_match_its_indexes(tmp_path):
+    from lorax.artifacts import CSRArtifactCorruptError, CSRArtifactReader
+
+    skipped_source = tmp_path / "missing-node-ranges.trees"
+    _recombining_tree_sequence(skipped_source)
+    skipped = _build(skipped_source, skip_node_tree_ranges=True)
+    skipped_manifest_path = Path(skipped["artifact_dir"]) / "manifest.json"
+    skipped_manifest = json.loads(skipped_manifest_path.read_text())
+    skipped_manifest["capabilities"]["node_tree_ranges"] = True
+    skipped_manifest_path.write_text(json.dumps(skipped_manifest))
+    with pytest.raises(
+        CSRArtifactCorruptError,
+        match="node_tree_ranges.*missing indexes",
+    ):
+        CSRArtifactReader.open(skipped["artifact_dir"])
+
+    complete_source = tmp_path / "unexpected-node-ranges.trees"
+    _recombining_tree_sequence(complete_source)
+    complete = _build(complete_source)
+    complete_manifest_path = Path(complete["artifact_dir"]) / "manifest.json"
+    complete_manifest = json.loads(complete_manifest_path.read_text())
+    complete_manifest["capabilities"]["node_tree_ranges"] = False
+    complete_manifest_path.write_text(json.dumps(complete_manifest))
+    with pytest.raises(
+        CSRArtifactCorruptError,
+        match="Disabled capability 'node_tree_ranges' publishes indexes",
+    ):
+        CSRArtifactReader.open(complete["artifact_dir"])
 
 
 @pytest.mark.parametrize("sparsification", [False, True])

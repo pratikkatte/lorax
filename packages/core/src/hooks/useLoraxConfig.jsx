@@ -70,8 +70,6 @@ function useLoraxConfig({
   const localDataWorkerSpec = workerOverride ? null : getLocalDataWorker;
   const intervalWorkerLocal = useWorker(intervalWorkerSpec);
   const localDataWorkerLocal = useWorker(localDataWorkerSpec);
-  const intervalWorker = workerOverride || intervalWorkerLocal;
-  const localDataWorker = workerOverride || localDataWorkerLocal;
   const [workerConfigReady, setWorkerConfigReady] = useState(false);
   const configRequestVersionRef = useRef(0);
 
@@ -165,6 +163,37 @@ function useLoraxConfig({
       }
     };
   }, [workerOverride, intervalWorkerLocal, localDataWorkerLocal, tsconfig, backend]);
+
+  // Dedicated worker adapters must use the same artifact-aware routing as the
+  // backward-compatible shared worker. The viewport pipeline prefers these
+  // adapters when they are present.
+  const intervalWorker = useMemo(() => {
+    const target = workerOverride || intervalWorkerLocal;
+    const remoteIntervals = tsconfig?.interval_source === 'backend';
+    return {
+      isReady: target.isReady,
+      request: (type, data, timeoutOrOpts) => {
+        if (remoteIntervals && type === 'intervals') {
+          return backend.queryIntervals(data);
+        }
+        return target.request(type, data, timeoutOrOpts);
+      }
+    };
+  }, [workerOverride, intervalWorkerLocal, tsconfig, backend]);
+
+  const localDataWorker = useMemo(() => {
+    const target = workerOverride || localDataWorkerLocal;
+    const remoteIntervals = tsconfig?.interval_source === 'backend';
+    return {
+      isReady: target.isReady,
+      request: (type, data, timeoutOrOpts) => {
+        if (remoteIntervals && type === 'local-data') {
+          return backend.queryLocalData(data);
+        }
+        return target.request(type, data, timeoutOrOpts);
+      }
+    };
+  }, [workerOverride, localDataWorkerLocal, tsconfig, backend]);
 
   /**
    * Process incoming config data from backend.
