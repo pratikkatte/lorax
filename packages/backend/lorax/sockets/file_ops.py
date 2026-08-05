@@ -31,6 +31,7 @@ from lorax.artifacts.runtime import (
     context_for_session,
     is_artifact_session,
 )
+from lorax.phlag import PHLAG_PROJECT_NAMES, resolve_phlag_source
 from lorax.cloud.gcs_utils import download_gcs_file
 from lorax.datasets import log_dataset_backend
 from lorax.handlers import handle_upload, handle_details
@@ -169,7 +170,19 @@ def register_file_events(sio):
                     )
 
                 gcs_allowed = True
-                if project == 'Uploads':
+                phlag_source = resolve_phlag_source(project, filename)
+                if phlag_source is not None:
+                    file_path = phlag_source
+                    blob_path = None
+                    gcs_allowed = False
+                elif project in PHLAG_PROJECT_NAMES:
+                    return _load_file_failure_payload(
+                        request_id=request_id,
+                        code="PHLAG_ARTIFACT_NOT_FOUND",
+                        message="The selected PHLaG CSR artifact is missing or stale.",
+                        recoverable=True,
+                    )
+                elif project == 'Uploads':
                     target_sid = share_sid if share_sid else lorax_sid
                     if CURRENT_MODE == "local":
                         # Local mode keeps uploads flat and does not pull uploads from GCS
@@ -185,7 +198,7 @@ def register_file_events(sio):
 
             artifact_context = None
             if (
-                CSR_ARTIFACTS_ENABLED
+                (CSR_ARTIFACTS_ENABLED or project in PHLAG_PROJECT_NAMES)
                 and not str(file_path).lower().endswith(".csv")
             ):
                 try:

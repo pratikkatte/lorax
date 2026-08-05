@@ -36,6 +36,36 @@ async def test_get_projects_skips_gcs_when_bucket_unset(monkeypatch, tmp_path):
 
 
 @pytest.mark.anyio
+async def test_get_projects_adds_local_phlag_artifact_project(monkeypatch, tmp_path):
+    monkeypatch.setattr(handlers, "CURRENT_MODE", "local")
+    monkeypatch.setattr(handlers, "get_uploads_dir", lambda _config: tmp_path)
+    monkeypatch.setattr(
+        handlers,
+        "phlag_projects",
+        lambda: {
+            "PHLaG": {
+                "folder": "/external/phlag",
+                "files": ["gene_trees-Stiller2024-chr1-sorted.nwk.gz"],
+                "description": "PHLaG CSR artifacts",
+                "artifact_backed": True,
+            }
+        },
+    )
+    monkeypatch.setattr(
+        handlers,
+        "get_public_gcs_dict",
+        AsyncMock(return_value={}),
+    )
+
+    projects = await handlers.get_projects(tmp_path, BUCKET_NAME=None, sid="sid-phlag")
+
+    assert projects["PHLaG"]["artifact_backed"] is True
+    assert projects["PHLaG"]["files"] == [
+        "gene_trees-Stiller2024-chr1-sorted.nwk.gz"
+    ]
+
+
+@pytest.mark.anyio
 async def test_get_projects_hides_colocated_artifact_directories(
     monkeypatch,
     tmp_path,

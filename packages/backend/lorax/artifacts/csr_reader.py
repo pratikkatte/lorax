@@ -390,6 +390,9 @@ class CSRArtifactReader:
         ]
         self.num_trees = int(self.manifest["dataset"]["num_trees"])
         self.sequence_length = float(self.manifest["dataset"]["sequence_length"])
+        self.sequence_start = float(
+            self.manifest["dataset"].get("sequence_start", self.breakpoints[0])
+        )
         self.global_min_time = float(
             self.manifest["dataset"].get("global_min_time", 0.0)
         )
@@ -474,8 +477,8 @@ class CSRArtifactReader:
             config = {
                 "genome_length": self.sequence_length,
                 "initial_position": [
-                    int(max(0.0, self.sequence_length * 0.45)),
-                    int(min(self.sequence_length, self.sequence_length * 0.55)),
+                    int(self.sequence_start + (self.sequence_length - self.sequence_start) * 0.45),
+                    int(self.sequence_start + (self.sequence_length - self.sequence_start) * 0.55),
                 ],
                 "times": {
                     "type": str(dataset.get("time_units", "unknown")),
@@ -726,6 +729,10 @@ class CSRArtifactReader:
         first_tree = int(
             np.searchsorted(self.breakpoints, start, side="right") - 1
         )
+        # Some artifact sources begin at their first observed genomic position
+        # rather than coordinate zero. A viewport that overlaps the leading
+        # no-data span should begin with tree zero, not the Python index -1.
+        first_tree = max(0, first_tree)
         last_tree_exclusive = int(
             np.searchsorted(self.breakpoints, end, side="left")
         )

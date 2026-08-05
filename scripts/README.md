@@ -1,5 +1,38 @@
 This directory contains helper scripts for preprocessing data for figures and data included in the paper.
 
+## PHLaG Newick CSR artifacts
+
+`build_phlag_newick_csr.py` streams the paired PHLaG `*.nwk.gz` and
+`positions-*.txt.gz` inputs into adjacent Lorax CSR-v2 artifact directories.
+It preserves Newick branch lengths and uses the supplied genomic positions as
+breakpoints. The last interval defaults to 10 Kbp.
+
+```bash
+./.venv/bin/python scripts/build_phlag_newick_csr.py --verify
+```
+
+Build or replace selected chromosomes:
+
+```bash
+./.venv/bin/python scripts/build_phlag_newick_csr.py \
+  --chromosome chr1 --chromosome chrZ --force --verify
+```
+
+Build the mammalian chromosome-3 dataset:
+
+```bash
+./.venv/bin/python scripts/build_phlag_newick_csr.py \
+  --dataset mammalian --force --verify
+```
+
+The local backend automatically exposes healthy artifacts from this dataset as
+the `PHLaG` project. For other artifact-backed sources, enable artifact loading
+explicitly:
+
+```bash
+LORAX_CSR_ARTIFACTS_ENABLED=1 lorax-backend serve --reload
+```
+
 ## CSV formatting
 
 `csv_formatting.py` generates per-chromosome CSVs from an input TSV/CSV.

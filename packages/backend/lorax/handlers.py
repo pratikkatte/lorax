@@ -4,6 +4,7 @@ import json
 import asyncio
 import re
 import logging
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -11,7 +12,8 @@ import psutil
 import pyarrow as pa
 import tskit
 
-from lorax.modes import CURRENT_MODE
+from lorax.modes import CURRENT_CONFIG, CURRENT_MODE, get_uploads_dir
+from lorax.phlag import phlag_projects
 from lorax.cloud.gcs_utils import get_public_gcs_dict
 from lorax.tree_graph import construct_trees_batch, construct_tree, TreeGraph
 from lorax.tree_graph.time_scale import (
@@ -167,6 +169,16 @@ async def get_projects(upload_dir, BUCKET_NAME, sid=None):
                 CURRENT_MODE,
                 exc,
             )
+
+    # This workspace's PHLaG inputs live outside ~/.lorax/projects. Expose
+    # only sources that have a healthy adjacent CSR artifact, and only for the
+    # real local project root (not arbitrary directories passed by tests or
+    # callers).
+    if (
+        CURRENT_MODE == "local"
+        and Path(upload_dir).resolve() == get_uploads_dir(CURRENT_CONFIG).resolve()
+    ):
+        projects.update(phlag_projects())
 
     return projects
 

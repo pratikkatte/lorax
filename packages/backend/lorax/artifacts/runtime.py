@@ -129,6 +129,15 @@ class ArtifactResolver:
                 ):
                     csr_artifact_metrics.increment("resolution.stale")
                     return None
+                for auxiliary in (manifest.get("inputs") or {}).values():
+                    auxiliary_path = Path(str(auxiliary["path"]))
+                    auxiliary_stat = auxiliary_path.stat()
+                    if (
+                        int(auxiliary["size_bytes"]) != auxiliary_stat.st_size
+                        or int(auxiliary["mtime_ns"]) != auxiliary_stat.st_mtime_ns
+                    ):
+                        csr_artifact_metrics.increment("resolution.stale")
+                        return None
             except FileNotFoundError:
                 csr_artifact_metrics.increment("resolution.source_missing")
                 return None
