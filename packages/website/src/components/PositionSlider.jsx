@@ -256,7 +256,7 @@ export default function PositionSlider({
 
   return (
     <div
-      className="flex items-center justify-center gap-2 px-4 py-2 bg-white border-b border-slate-200 relative"
+      className="position-slider bg-white border-b border-slate-200"
       data-tour="viewer-position"
     >
       {showCompareTopologyInfo && (
@@ -275,22 +275,137 @@ export default function PositionSlider({
           fullText
         />
       )}
-      {/* Lorax logo/home link */}
-      <a
-        href="/"
-        className="absolute left-4 flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-slate-50 transition-colors border border-transparent hover:border-slate-200"
-        title="Go to Lorax Home"
-      >
-        <img
-          src="/logo.png"
-          alt="Lorax Logo"
-          className="h-6 w-auto"
-        />
-        <span className="font-bold text-slate-800">Lorax</span>
-      </a>
+      <div className="position-slider__brand">
+        {/* Lorax logo/home link */}
+        <a
+          href="/"
+          className="position-slider__home flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-slate-50 transition-colors border border-transparent hover:border-slate-200"
+          title="Go to Lorax Home"
+        >
+          <img
+            src="/logo.png"
+            alt="Lorax Logo"
+            className="h-6 w-auto"
+          />
+          <span className="position-slider__logo-text font-bold text-slate-800">Lorax</span>
+        </a>
 
-      {/* View toggles - right corner */}
-      <div className="absolute right-4 flex items-center gap-3">
+        {/* Filename badge with file info dropdown */}
+        {filename && (
+          <div className="relative min-w-0" ref={fileInfoRef}>
+            <button
+              onClick={() => setShowFileInfo(!showFileInfo)}
+              data-tour="viewer-fileinfo"
+              className={`position-slider__file inline-flex max-w-full items-center truncate rounded-md px-2 py-1 text-xs font-medium transition-colors ${
+                showFileInfo
+                  ? 'bg-emerald-100 text-emerald-700'
+                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+              }`}
+              title="Show file info"
+            >
+              <span className="truncate">{filename}</span>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className={`h-3 w-3 ml-1 shrink-0 transition-transform ${showFileInfo ? 'rotate-180' : ''}`}
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+
+            {/* File info dropdown */}
+            {showFileInfo && (
+              <div
+                className="position-slider__file-info absolute top-full left-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg p-3 text-xs w-max min-w-72 max-h-[70vh] overflow-y-auto whitespace-normal z-50"
+                style={{ maxWidth: 'min(34rem, calc(100vw - 2rem))' }}
+              >
+                <h4 className="font-semibold text-slate-800 mb-2">File Info</h4>
+                <div className="space-y-1 text-slate-600">
+                  <p>
+                    <span className="text-slate-400">sequence length:</span>{' '}
+                    {genomeLength?.toLocaleString()} bp
+                  </p>
+                  <p>
+                    <span className="text-slate-400">Recombination Intervals:</span>{' '}
+                    {(tsconfig?.num_trees ?? tsconfig?.intervals?.length)?.toLocaleString() || '-'}
+                  </p>
+                  {tsconfig?.num_samples != null && (
+                    <p>
+                      <span className="text-slate-400">Samples:</span>{' '}
+                      {tsconfig.num_samples.toLocaleString()}
+                    </p>
+                  )}
+                  {tsconfig?.project && (
+                    <p>
+                      <span className="text-slate-400">Project:</span>{' '}
+                      {tsconfig.project}
+                    </p>
+                  )}
+                  {tableCounts && (
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 pt-2 mt-2 border-t border-slate-100">
+                      {Object.entries(tableCounts).map(([label, count]) => (
+                        <p key={label}>
+                          <span className="text-slate-400">{label}:</span>{' '}
+                          {count?.toLocaleString?.() ?? count}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+                  {provenance && (
+                    <div className="pt-2 mt-2 border-t border-slate-100">
+                      <div className="font-semibold text-slate-700 mb-1">Provenance</div>
+                      <p>
+                        <span className="text-slate-400">records:</span>{' '}
+                        {provenance.count?.toLocaleString?.() ?? provenanceRecords.length}
+                      </p>
+                      {latestProvenance && (
+                        <div className="mt-1 space-y-1">
+                          <p>
+                            <span className="text-slate-400">latest timestamp:</span>{' '}
+                            {latestProvenance.timestamp || '-'}
+                          </p>
+                          {(latestProvenance.software || latestProvenance.software_version) && (
+                            <p>
+                              <span className="text-slate-400">latest software:</span>{' '}
+                              {[latestProvenance.software, latestProvenance.software_version].filter(Boolean).join(' ')}
+                            </p>
+                          )}
+                        </div>
+                      )}
+                      {provenanceRecords.length > 0 && (
+                        <details className="mt-2" open>
+                          <summary className="cursor-pointer font-medium text-slate-600">
+                            Full provenance records
+                          </summary>
+                          <div className="mt-2 space-y-2">
+                            {provenanceRecords.map((record, index) => (
+                              <div key={record.id ?? index}>
+                                <div className="mb-1 font-medium text-slate-500">
+                                  Record {record.id ?? index}
+                                  {record.timestamp ? ` - ${record.timestamp}` : ''}
+                                </div>
+                                <pre className="max-h-48 overflow-auto rounded bg-slate-50 border border-slate-100 p-2 text-[11px] leading-snug text-slate-700 whitespace-pre-wrap break-words">
+                                  {formatJson(record.record)}
+                                </pre>
+                              </div>
+                            ))}
+                          </div>
+                        </details>
+                      )}
+                    </div>
+                  )}
+                  <FileInfoJsonBlock title="Top-level metadata" value={topLevelMetadata} />
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* View toggles */}
+      <div className="position-slider__toggles">
         <div
           data-tour="viewer-compare-topology"
           className="flex items-center gap-1.5"
@@ -299,6 +414,7 @@ export default function PositionSlider({
             type="button"
             role="switch"
             aria-checked={compareMode}
+            aria-label="Compare topology"
             onClick={() => {
               if (compareMode) {
                 setCompareMode?.(false);
@@ -310,7 +426,7 @@ export default function PositionSlider({
             title="Compare topology of local genealogies shown in the ortho view"
             className="flex items-center gap-2 cursor-pointer group"
           >
-            <span className="text-xs text-slate-500 group-hover:text-slate-600 tracking-wide select-none transition-colors">
+            <span className="position-slider__toggle-label position-slider__toggle-label--compare text-xs text-slate-500 group-hover:text-slate-600 tracking-wide select-none transition-colors">
               Compare topology
             </span>
             <span
@@ -337,11 +453,12 @@ export default function PositionSlider({
             type="button"
             role="switch"
             aria-checked={highlightDescendantsOnHover}
+            aria-label="Highlight descendants"
             onClick={() => setHighlightDescendantsOnHover?.(!highlightDescendantsOnHover)}
             title="Highlight descendant edges and tips when hovering or selecting an ancestral edge"
             className="flex items-center gap-2 cursor-pointer group"
           >
-            <span className="text-xs text-slate-500 group-hover:text-slate-600 tracking-wide select-none transition-colors">
+            <span className="position-slider__toggle-label position-slider__toggle-label--descendants text-xs text-slate-500 group-hover:text-slate-600 tracking-wide select-none transition-colors">
               Highlight descendants
             </span>
             <span
@@ -368,6 +485,7 @@ export default function PositionSlider({
             type="button"
             role="switch"
             aria-checked={lockModelMatrix}
+            aria-label="Lock view"
             onClick={() => {
               if (lockModelMatrix) {
                 setLockModelMatrix?.(false);
@@ -380,7 +498,7 @@ export default function PositionSlider({
             title="Disable model matrix recomputation on zoom; recompute on pan"
             className="flex items-center gap-2 cursor-pointer group"
           >
-            <span className="relative h-4 w-4 shrink-0 text-slate-500 group-hover:text-slate-600 transition-colors">
+            <span className="position-slider__lock-icon relative h-4 w-4 shrink-0 text-slate-500 group-hover:text-slate-600 transition-colors">
               {/* Locked icon */}
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -406,7 +524,7 @@ export default function PositionSlider({
                 <path d="M17 10h-5V8a2 2 0 114 0h2a4 4 0 10-8 0v2H7a2 2 0 00-2 2v7a2 2 0 002 2h10a2 2 0 002-2v-7a2 2 0 00-2-2z" />
               </svg>
             </span>
-            <span className="text-xs text-slate-500 group-hover:text-slate-600 tracking-wide select-none transition-colors">
+            <span className="position-slider__toggle-label position-slider__toggle-label--lock text-xs text-slate-500 group-hover:text-slate-600 tracking-wide select-none transition-colors">
               Lock view
             </span>
             <span
@@ -426,121 +544,9 @@ export default function PositionSlider({
         </div>
       </div>
 
-      {/* Filename badge with file info dropdown */}
-      {filename && (
-        <div className="relative mr-4" ref={fileInfoRef}>
-          <button
-            onClick={() => setShowFileInfo(!showFileInfo)}
-            data-tour="viewer-fileinfo"
-            className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium transition-colors ${
-              showFileInfo
-                ? 'bg-emerald-100 text-emerald-700'
-                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-            }`}
-            title="Show file info"
-          >
-            {filename}
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className={`h-3 w-3 ml-1 transition-transform ${showFileInfo ? 'rotate-180' : ''}`}
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
-          </button>
-
-          {/* File info dropdown */}
-          {showFileInfo && (
-            <div
-              className="absolute top-full left-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg p-3 text-xs w-max min-w-72 max-h-[70vh] overflow-y-auto whitespace-normal z-50"
-              style={{ maxWidth: 'min(34rem, calc(100vw - 2rem))' }}
-            >
-              <h4 className="font-semibold text-slate-800 mb-2">File Info</h4>
-              <div className="space-y-1 text-slate-600">
-                <p>
-                  <span className="text-slate-400">sequence length:</span>{' '}
-                  {genomeLength?.toLocaleString()} bp
-                </p>
-                <p>
-                  <span className="text-slate-400">Recombination Intervals:</span>{' '}
-                  {(tsconfig?.num_trees ?? tsconfig?.intervals?.length)?.toLocaleString() || '-'}
-                </p>
-                {tsconfig?.num_samples != null && (
-                  <p>
-                    <span className="text-slate-400">Samples:</span>{' '}
-                    {tsconfig.num_samples.toLocaleString()}
-                  </p>
-                )}
-                {tsconfig?.project && (
-                  <p>
-                    <span className="text-slate-400">Project:</span>{' '}
-                    {tsconfig.project}
-                  </p>
-                )}
-                {tableCounts && (
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 pt-2 mt-2 border-t border-slate-100">
-                    {Object.entries(tableCounts).map(([label, count]) => (
-                      <p key={label}>
-                        <span className="text-slate-400">{label}:</span>{' '}
-                        {count?.toLocaleString?.() ?? count}
-                      </p>
-                    ))}
-                  </div>
-                )}
-                {provenance && (
-                  <div className="pt-2 mt-2 border-t border-slate-100">
-                    <div className="font-semibold text-slate-700 mb-1">Provenance</div>
-                    <p>
-                      <span className="text-slate-400">records:</span>{' '}
-                      {provenance.count?.toLocaleString?.() ?? provenanceRecords.length}
-                    </p>
-                    {latestProvenance && (
-                      <div className="mt-1 space-y-1">
-                        <p>
-                          <span className="text-slate-400">latest timestamp:</span>{' '}
-                          {latestProvenance.timestamp || '-'}
-                        </p>
-                        {(latestProvenance.software || latestProvenance.software_version) && (
-                          <p>
-                            <span className="text-slate-400">latest software:</span>{' '}
-                            {[latestProvenance.software, latestProvenance.software_version].filter(Boolean).join(' ')}
-                          </p>
-                        )}
-                      </div>
-                    )}
-                    {provenanceRecords.length > 0 && (
-                      <details className="mt-2" open>
-                        <summary className="cursor-pointer font-medium text-slate-600">
-                          Full provenance records
-                        </summary>
-                        <div className="mt-2 space-y-2">
-                          {provenanceRecords.map((record, index) => (
-                            <div key={record.id ?? index}>
-                              <div className="mb-1 font-medium text-slate-500">
-                                Record {record.id ?? index}
-                                {record.timestamp ? ` - ${record.timestamp}` : ''}
-                              </div>
-                              <pre className="max-h-48 overflow-auto rounded bg-slate-50 border border-slate-100 p-2 text-[11px] leading-snug text-slate-700 whitespace-pre-wrap break-words">
-                                {formatJson(record.record)}
-                              </pre>
-                            </div>
-                          ))}
-                        </div>
-                      </details>
-                    )}
-                  </div>
-                )}
-                <FileInfoJsonBlock title="Top-level metadata" value={topLevelMetadata} />
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Pan left button */}
-      <button
+      <div className="position-slider__navigation">
+        {/* Pan left button */}
+        <button
         onClick={() => handlePan('L')}
         onMouseDown={() => startPan('L')}
         onMouseUp={stopPan}
@@ -548,20 +554,20 @@ export default function PositionSlider({
         onTouchStart={() => startPan('L')}
         onTouchEnd={stopPan}
         onTouchCancel={stopPan}
-        className="px-2 py-1 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded transition-colors"
+        className="shrink-0 px-2 py-1 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded transition-colors"
         title="Pan left"
-      >
-        &larr;
-      </button>
+        >
+          &larr;
+        </button>
 
       {/* Editable range inputs */}
-      <div className="flex items-center gap-1 px-2 py-1 bg-white border border-slate-200 rounded-md shadow-sm">
+      <div className="position-slider__range flex min-w-0 items-center gap-1 px-2 py-1 bg-white border border-slate-200 rounded-md shadow-sm">
         <input
           type="number"
           value={currentStart}
           onChange={handleStartChange}
           onKeyPress={handleKeyPress}
-          className="px-2 py-1 text-center text-sm font-mono border-none outline-none bg-transparent"
+          className="position-slider__range-input min-w-0 px-2 py-1 text-center text-sm font-mono border-none outline-none bg-transparent"
           style={{ width: getInputWidth(currentStart) }}
           min={0}
           max={genomeLength}
@@ -572,7 +578,7 @@ export default function PositionSlider({
           value={currentEnd}
           onChange={handleEndChange}
           onKeyPress={handleKeyPress}
-          className="px-2 py-1 text-center text-sm font-mono border-none outline-none bg-transparent"
+          className="position-slider__range-input min-w-0 px-2 py-1 text-center text-sm font-mono border-none outline-none bg-transparent"
           style={{ width: getInputWidth(currentEnd) }}
           min={0}
           max={genomeLength}
@@ -602,7 +608,7 @@ export default function PositionSlider({
         onTouchStart={() => startPan('R')}
         onTouchEnd={stopPan}
         onTouchCancel={stopPan}
-        className="px-2 py-1 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded transition-colors"
+        className="shrink-0 px-2 py-1 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded transition-colors"
         title="Pan right"
       >
         &rarr;
@@ -612,7 +618,7 @@ export default function PositionSlider({
       <button
         onClick={handleReset}
         data-tour="viewer-reset-view"
-        className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
+        className="shrink-0 p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
         title="Reset vertical view"
       >
         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -622,10 +628,11 @@ export default function PositionSlider({
 
       {/* Genome window size and length display */}
       {value && genomeLength && (
-        <span className="text-xs text-slate-400 ml-2">
+        <span className="position-slider__window-size whitespace-nowrap text-xs text-slate-400 ml-2">
           {formatBp(value[1] - value[0])} / {formatBp(genomeLength)}
         </span>
       )}
+      </div>
     </div>
   );
 }

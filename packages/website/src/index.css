@@ -26,6 +26,228 @@ html {
   scroll-behavior: smooth;
 }
 
+body {
+  min-width: 0;
+  overflow-x: hidden;
+}
+
+/*
+ * Viewer header
+ *
+ * The desktop controls used to be absolutely positioned at either edge of the
+ * header. That left the range selector unaware of the space occupied by the
+ * brand and toggles, so the three groups could overlap on narrower laptops.
+ * Keeping all three in the grid gives each group a real layout boundary.
+ */
+.position-slider {
+  display: grid;
+  grid-template-columns: minmax(12rem, 0.8fr) minmax(21rem, 1fr) auto;
+  grid-template-areas: "brand navigation toggles";
+  align-items: center;
+  gap: 0.5rem 1rem;
+  min-width: 0;
+  padding: 0.5rem 1rem;
+}
+
+.position-slider__brand {
+  grid-area: brand;
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.position-slider__home {
+  flex: 0 0 auto;
+}
+
+.position-slider__file {
+  min-width: 0;
+}
+
+.position-slider__navigation {
+  grid-area: navigation;
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.position-slider__range {
+  flex: 0 1 auto;
+}
+
+.position-slider__toggles {
+  grid-area: toggles;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  white-space: nowrap;
+}
+
+@media (max-width: 1280px) {
+  .position-slider {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "brand navigation"
+      "toggles toggles";
+  }
+
+  .position-slider__toggles {
+    justify-content: flex-end;
+    padding-top: 0.4rem;
+    border-top: 1px solid #f1f5f9;
+  }
+}
+
+@media (max-width: 760px) {
+  .position-slider {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "brand"
+      "navigation"
+      "toggles";
+    gap: 0.45rem;
+    padding: 0.5rem 0.75rem;
+  }
+
+  .position-slider__brand {
+    justify-content: space-between;
+  }
+
+  .position-slider__brand > .relative {
+    max-width: min(65vw, 22rem);
+  }
+
+  .position-slider__navigation {
+    width: 100%;
+  }
+
+  .position-slider__toggles {
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+
+  .position-slider__file-info {
+    right: 0;
+    left: auto;
+  }
+}
+
+@media (max-width: 520px) {
+  .position-slider__logo-text,
+  .position-slider__window-size {
+    display: none;
+  }
+
+  .position-slider__home {
+    padding-right: 0.25rem;
+    padding-left: 0.25rem;
+  }
+
+  .position-slider__toggles {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.25rem;
+  }
+
+  .position-slider__toggles > div {
+    min-width: 0;
+    justify-content: center;
+    gap: 0.25rem;
+  }
+
+  .position-slider__toggles > div > button {
+    gap: 0.25rem;
+  }
+
+  .position-slider__toggle-label {
+    font-size: 0;
+    letter-spacing: normal;
+  }
+
+  .position-slider__toggle-label::after {
+    font-size: 0.65rem;
+  }
+
+  .position-slider__toggle-label--compare::after {
+    content: "Compare";
+  }
+
+  .position-slider__toggle-label--descendants::after {
+    content: "Desc.";
+  }
+
+  .position-slider__toggle-label--lock::after {
+    content: "Lock";
+  }
+
+  .position-slider__range {
+    flex: 1 1 auto;
+  }
+
+  .position-slider__range-input {
+    width: clamp(4.75rem, 26vw, 7.5rem) !important;
+  }
+}
+
+@media (max-width: 380px) {
+  .position-slider {
+    padding-right: 0.5rem;
+    padding-left: 0.5rem;
+  }
+
+  .position-slider__navigation {
+    gap: 0.125rem;
+  }
+
+  .position-slider__range {
+    padding-right: 0.25rem;
+    padding-left: 0.25rem;
+  }
+
+  .position-slider__range-input {
+    width: clamp(4.25rem, 24vw, 5.75rem) !important;
+    padding-right: 0.25rem;
+    padding-left: 0.25rem;
+  }
+
+  .position-slider__toggles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    row-gap: 0.4rem;
+  }
+
+  .position-slider__toggles > div:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .position-slider__lock-icon {
+    display: none;
+  }
+}
+
+/* Panels stay reachable on phones instead of retaining a desktop minimum width. */
+@media (max-width: 640px) {
+  .viewer-side-panel {
+    right: 2.5rem;
+    width: calc(100vw - 2.5rem);
+    min-width: 0;
+    max-width: none;
+  }
+
+  .viewer-side-rail {
+    width: 2.5rem;
+  }
+
+  .viewer-side-rail .group > span:last-child {
+    right: calc(100% + 0.5rem);
+    left: auto;
+    margin-left: 0;
+  }
+}
+
 @utility custom-scrollbar {
   &::-webkit-scrollbar {
     width: 6px;

@@ -1067,7 +1067,7 @@ function FileView() {
   const setActiveTreeColors = colorByTree ? setTreeInfoColors : setTreeColors;
 
   return (
-    <div className="h-screen flex min-h-0 overflow-hidden bg-slate-50 relative">
+    <div className="viewer-shell h-screen flex min-h-0 overflow-hidden bg-slate-50 relative">
       {/* Main content column (PositionSlider + viewport) - full width, panels overlay */}
       <div className="flex-1 min-w-0 flex flex-col">
         {/* Position Slider - Header bar */}
@@ -1304,7 +1304,7 @@ function FileView() {
 
       {/* Info Panel - overlay when open */}
       {showInfo && (
-        <div className="absolute top-0 right-8 bottom-0 w-[25%] min-w-[320px] max-w-[480px] overflow-auto bg-white border-l border-slate-200 shadow-xl z-50">
+        <div className="viewer-side-panel absolute top-0 right-8 bottom-0 w-[25%] min-w-[320px] max-w-[480px] overflow-auto bg-white border-l border-slate-200 shadow-xl z-50">
           <Info
             setShowInfo={setShowInfo}
             activeTab={infoActiveTab}
@@ -1340,7 +1340,7 @@ function FileView() {
 
       {/* Settings Panel - overlay when open */}
       {showSettings && (
-        <div className="absolute top-0 right-8 bottom-0 w-[25%] min-w-[320px] max-w-[480px] overflow-auto bg-white border-l border-slate-200 shadow-xl z-50">
+        <div className="viewer-side-panel absolute top-0 right-8 bottom-0 w-[25%] min-w-[320px] max-w-[480px] overflow-auto bg-white border-l border-slate-200 shadow-xl z-50">
           <Settings
             setShowSettings={setShowSettings}
             polygonFillColor={polygonFillColor}
@@ -1366,7 +1366,7 @@ function FileView() {
       )}
 
       {/* Right: icon bar - always visible, side-by-side */}
-      <div className="flex-shrink-0 w-8 bg-slate-900 border-l border-slate-800 text-slate-400 z-[101] flex flex-col items-center py-4 shadow-2xl">
+      <div className="viewer-side-rail flex-shrink-0 w-8 bg-slate-900 border-l border-slate-800 text-slate-400 z-[101] flex flex-col items-center py-4 shadow-2xl">
         <div className="flex flex-col items-center space-y-4">
           {/* Info button */}
           <button
