@@ -10,10 +10,10 @@
     "build:website": "yarn workspace website build",
     "build:core": "yarn workspace @lorax/core build",
     "build:all": "yarn workspaces run build",
+    "build:pip": "./scripts/build_pip_package.sh",
     "test:e2e": "playwright test"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0"
   }
 }
-

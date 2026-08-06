@@ -35,18 +35,39 @@ def main() -> int:
     args = parser.parse_args()
 
     if not args.use_existing_frontend:
-        if not PLUGIN_ROOT.joinpath("package-lock.json").is_file():
+        if not PLUGIN_ROOT.is_dir():
             raise SystemExit(
-                "A sibling lorax-plugin checkout is required for a reproducible release build.\n"
+                "A sibling lorax-plugin checkout is required for a release build.\n"
                 f"Expected: {PLUGIN_ROOT}"
             )
-        run("npm", "ci")
-        run("npm", "ci", cwd=PLUGIN_ROOT)
+        workspace_node_modules = REPO_ROOT / "node_modules"
+        if workspace_node_modules.is_dir():
+            print(f"Using existing workspace dependencies: {workspace_node_modules}")
+        elif REPO_ROOT.joinpath("yarn.lock").is_file():
+            run("yarn", "install", "--frozen-lockfile")
+        elif REPO_ROOT.joinpath("package-lock.json").is_file():
+            run("npm", "ci")
+        else:
+            raise SystemExit(
+                "Lorax has no installed workspace dependencies or supported lockfile.\n"
+                f"Expected node_modules, yarn.lock, or package-lock.json in: {REPO_ROOT}"
+            )
+        plugin_node_modules = PLUGIN_ROOT / "node_modules"
+        if plugin_node_modules.is_dir():
+            print(f"Using existing plugin dependencies: {plugin_node_modules}")
+        elif PLUGIN_ROOT.joinpath("package-lock.json").is_file():
+            run("npm", "ci", cwd=PLUGIN_ROOT)
+        elif PLUGIN_ROOT.joinpath("yarn.lock").is_file():
+            run("yarn", "install", "--frozen-lockfile", cwd=PLUGIN_ROOT)
+        else:
+            raise SystemExit(
+                "lorax-plugin has no installed dependencies or supported lockfile.\n"
+                f"Expected node_modules, package-lock.json, or yarn.lock in: {PLUGIN_ROOT}"
+            )
         run(
-            "npm",
-            "--workspace",
+            "yarn",
+            "--cwd",
             "packages/website",
-            "run",
             "build",
             env={"VITE_API_BASE": "/api"},
         )

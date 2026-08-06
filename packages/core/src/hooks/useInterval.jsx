@@ -40,6 +40,7 @@ export function useInterval({
   const [intervalBounds, setIntervalBounds] = useState({ lo: 0, hi: 0 }); // Global index bounds
   const [intervalCount, setIntervalCount] = useState(0); // Pre-decimation count
   const [intervalsCoords, setIntervalsCoords] = useState(null); // Genomic coords used to fetch intervals
+  const [missingRegions, setMissingRegions] = useState([]);
 
   // For request cancellation
   const latestRequestIdRef = useRef(0);
@@ -92,6 +93,7 @@ export function useInterval({
 
         // visibleIntervals already decimated by worker
         setVisibleIntervals(result?.visibleIntervals || []);
+        setMissingRegions(result?.missing_regions || []);
 
         if (DEBUG_INTERVAL_PERF) {
           const elapsedMs = Number((now() - startedAt).toFixed(2));
@@ -124,6 +126,7 @@ export function useInterval({
     setVisibleIntervals([]);
     setIntervalBounds({ lo: 0, hi: 0 });
     setIntervalCount(0);
+    setMissingRegions([]);
   }, []);
 
   // Memoize return object to prevent unnecessary re-renders
@@ -132,7 +135,8 @@ export function useInterval({
     intervalBounds,        // { lo, hi } - global index bounds for useLocalData
     intervalCount,         // Pre-decimation count for treesInWindowCount
     intervalsCoords,       // Genomic coords for interval request
+    missingRegions,
     isReady: workerConfigReady,
     reset
-  }), [visibleIntervals, intervalBounds, intervalCount, intervalsCoords, workerConfigReady, reset]);
+  }), [visibleIntervals, intervalBounds, intervalCount, intervalsCoords, missingRegions, workerConfigReady, reset]);
 }

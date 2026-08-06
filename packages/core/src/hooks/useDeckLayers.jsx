@@ -5,6 +5,7 @@ const DEFAULT_EDGE_COLOR = [100, 100, 100, 255];
 import { GenomeInfoLayer } from '../layers/GenomeInfoLayer.jsx';
 import { TimeGridLayer } from '../layers/TimeGridLayer.jsx';
 import { TreeCompositeLayer } from '../layers/TreeCompositeLayer.jsx';
+import { NoDataLayer } from '../layers/NoDataLayer.jsx';
 
 /**
  * Hook for creating deck.gl layers for enabled views
@@ -23,6 +24,7 @@ export function useDeckLayers({
   enabledViews,
   globalBpPerUnit = null,
   visibleIntervals = [],
+  missingRegions = [],
   genomePositions = [],
   timePositions = [],
   renderData = null,
@@ -131,9 +133,9 @@ export function useDeckLayers({
     const vid = viewport.id;
     const lid = layer.id;
     return (
-      (vid === "ortho" && (lid.startsWith("main") || lid.startsWith("postorder"))) ||
+      (vid === "ortho" && (lid.startsWith("main") || lid.startsWith("postorder") || lid.startsWith("no-data"))) ||
       (vid === "genome-positions" && lid.startsWith("genome-positions")) ||
-      (vid === "genome-info" && lid.startsWith("genome-info")) ||
+      (vid === "genome-info" && (lid.startsWith("genome-info") || lid.startsWith("no-data"))) ||
       (vid === "tree-time" && lid.startsWith("tree-time"))
     );
   }, []);
@@ -163,6 +165,12 @@ export function useDeckLayers({
         globalBpPerUnit,
         viewId: 'genome-info',
       }));
+      result.push(new NoDataLayer({
+        id: 'no-data-genome-info',
+        data: missingRegions,
+        globalBpPerUnit,
+        viewId: 'genome-info',
+      }));
     }
 
     // Tree time layer
@@ -176,6 +184,14 @@ export function useDeckLayers({
 
     // Tree visualization layer (ortho view)
     if (enabledViews.includes('ortho')) {
+      result.push(new NoDataLayer({
+        id: 'no-data-ortho',
+        data: missingRegions,
+        globalBpPerUnit,
+        viewId: 'ortho',
+        y0: 0,
+        y1: 1,
+      }));
       const wantsPicking = Boolean(onTipHover || onTipClick || onEdgeHover || onEdgeClick || onMutationHover || onMutationClick);
 
       result.push(new TreeCompositeLayer({
@@ -202,7 +218,7 @@ export function useDeckLayers({
     }
 
     return result;
-  }, [enabledViews, globalBpPerUnit, visibleIntervals, genomePositions, timePositions, renderData, xzoom, hoveredEdgeIndex, resolvedEdgeColor, descendantEdgeColor, dispatchHover, dispatchClick, onTipHover, onTipClick, onEdgeHover, onEdgeClick, onMutationHover, onMutationClick]);
+  }, [enabledViews, globalBpPerUnit, visibleIntervals, missingRegions, genomePositions, timePositions, renderData, xzoom, hoveredEdgeIndex, resolvedEdgeColor, descendantEdgeColor, dispatchHover, dispatchClick, onTipHover, onTipClick, onEdgeHover, onEdgeClick, onMutationHover, onMutationClick]);
 
   return { layers, layerFilter, clearHover };
 }

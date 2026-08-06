@@ -74,6 +74,7 @@ def _query_local_data(reader, data: dict[str, Any]) -> dict[str, Any]:
     new_global_bp = float(data["new_globalBp"])
     options = data.get("displayOptions") or {}
     selection_strategy = options.get("selectionStrategy", "largestSpan")
+    has_missing_coverage = bool(reader.missing_regions_in_range(start, end))
 
     if hi <= lo + 1 or global_bp_per_unit <= 0 or new_global_bp <= 0:
         return {
@@ -82,8 +83,8 @@ def _query_local_data(reader, data: dict[str, Any]) -> dict[str, Any]:
             "showing_all_trees": False,
         }
 
-    breakpoints = np.asarray(reader.breakpoints[lo:hi], dtype=np.float64)
-    tree_count = len(breakpoints) - 1
+    coverage = np.asarray(reader.coverage_intervals[lo : max(lo, hi - 1)], dtype=np.float64)
+    tree_count = len(coverage)
     if tree_count <= 0:
         return {
             "local_bins": [],
@@ -95,22 +96,27 @@ def _query_local_data(reader, data: dict[str, Any]) -> dict[str, Any]:
     show_all = scale_factor < 1
     if show_all:
         slot_width = (end - start) / tree_count
-        tree_width = ((end - start) / global_bp_per_unit / tree_count) * 0.9
         selected = []
         for slot_index in range(tree_count):
             tree = _tree_bin(
                 lo + slot_index,
-                float(breakpoints[slot_index]),
-                float(breakpoints[slot_index + 1]),
+                float(coverage[slot_index, 0]),
+                float(coverage[slot_index, 1]),
                 start,
                 end,
             )
             slot_center = start + (slot_index + 0.5) * slot_width
+            tree_width = (
+                tree["span"] / global_bp_per_unit * 0.9
+                if has_missing_coverage
+                else ((end - start) / global_bp_per_unit / tree_count) * 0.9
+            )
+            tree_center = tree["midpoint"] if has_missing_coverage else slot_center
             selected.append(
                 {
                     **tree,
                     "modelMatrix": _matrix(
-                        slot_center / global_bp_per_unit - tree_width / 2.0,
+                        tree_center / global_bp_per_unit - tree_width / 2.0,
                         tree_width,
                     ),
                     "visible": True,
@@ -139,8 +145,8 @@ def _query_local_data(reader, data: dict[str, Any]) -> dict[str, Any]:
     for offset in range(tree_count):
         tree = _tree_bin(
             lo + offset,
-            float(breakpoints[offset]),
-            float(breakpoints[offset + 1]),
+            float(coverage[offset, 0]),
+            float(coverage[offset, 1]),
             start,
             end,
         )
@@ -175,16 +181,21 @@ def _query_local_data(reader, data: dict[str, Any]) -> dict[str, Any]:
             slot["tree"] = tree
 
     selected = []
-    tree_width = slot_width / global_bp_per_unit / 1.05
     for slot_index, slot in slots.items():
         slot_midpoint = start + slot_index * slot_width + slot_width / 2.0
         tree = slot["tree"]
+        tree_width = (
+            tree["span"] / global_bp_per_unit / 1.05
+            if has_missing_coverage
+            else slot_width / global_bp_per_unit / 1.05
+        )
+        tree_center = tree["midpoint"] if has_missing_coverage else slot_midpoint
         group_size = int(slot["count"])
         selected.append(
             {
                 **tree,
                 "modelMatrix": _matrix(
-                    slot_midpoint / global_bp_per_unit - tree_width / 2.0,
+                    tree_center / global_bp_per_unit - tree_width / 2.0,
                     tree_width,
                 ),
                 "visible": True,

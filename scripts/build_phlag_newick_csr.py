@@ -69,6 +69,8 @@ DEFAULT_MAMMALIAN_INPUT_DIRECTORY = (
 TREE_PATTERN = re.compile(
     r"^gene_trees-Stiller2024-(chr(?:[1-9]|1[0-9]|2[0-8]|Z))-sorted\.nwk\.gz$"
 )
+MAMMALIAN_ORDER_WINDOW_PATTERN = re.compile(r"(?:^|/)w(\d+)_")
+MAMMALIAN_WINDOW_BP = 10_000
 INTERNAL_NODE_BASE = 1_000_000
 DEFAULT_TARGET_SHARD_MB = 48
 
@@ -114,6 +116,37 @@ def load_positions(path: Path, final_window_bp: int) -> np.ndarray:
     if not values:
         raise ValueError(f"{path} has no genomic positions")
     return np.asarray([*values, values[-1] + final_window_bp], dtype=np.float64)
+
+
+def load_mammalian_coverage_intervals(
+    path: Path,
+    positions: np.ndarray,
+) -> np.ndarray:
+    """Return the actual 10 Kbp source window for each retained mammal tree."""
+    rows = path.read_text(encoding="utf-8").splitlines()
+    if len(rows) != len(positions) - 1:
+        raise ValueError(
+            f"{path} has {len(rows)} loci but positions has {len(positions) - 1} trees"
+        )
+    intervals = np.empty((len(rows), 2), dtype=np.float64)
+    previous_window = -1
+    for index, row in enumerate(rows):
+        match = MAMMALIAN_ORDER_WINDOW_PATTERN.search(row)
+        if match is None:
+            raise ValueError(f"{path}:{index + 1} does not contain a window identifier")
+        window = int(match.group(1))
+        if window <= previous_window:
+            raise ValueError(f"{path}:{index + 1} window identifiers are not increasing")
+        left = window * MAMMALIAN_WINDOW_BP
+        right = left + MAMMALIAN_WINDOW_BP
+        position = float(positions[index])
+        if not left <= position < right:
+            raise ValueError(
+                f"{path}:{index + 1} window w{window} does not contain position {position:g}"
+            )
+        intervals[index] = (left, right)
+        previous_window = window
+    return intervals
 
 
 def newick_rows(path: Path) -> Iterator[tuple[int, str]]:
@@ -239,6 +272,7 @@ def build_chromosome(
     limit: int | None,
     trees_path: Path | None = None,
     positions_path: Path | None = None,
+    coverage_intervals: np.ndarray | None = None,
     dataset_name: str = "avian",
 ) -> dict[str, object]:
     if trees_path is None or positions_path is None:
@@ -258,6 +292,12 @@ def build_chromosome(
     if limit is not None:
         breakpoints = breakpoints[: limit + 1]
     expected_trees = len(breakpoints) - 1
+    if coverage_intervals is None:
+        coverage_intervals = np.column_stack((breakpoints[:-1], breakpoints[1:]))
+    elif limit is not None:
+        coverage_intervals = coverage_intervals[:limit]
+    if coverage_intervals.shape != (expected_trees, 2):
+        raise ValueError("Coverage interval index does not match the number of trees")
     destination = artifact_path_for_source(trees_path)
     if destination.exists() and not force:
         raise FileExistsError(f"Artifact already exists: {destination} (use --force)")
@@ -318,6 +358,8 @@ def build_chromosome(
 
         breakpoints_path = staging / "breakpoints.npy"
         np.save(breakpoints_path, breakpoints, allow_pickle=False)
+        coverage_intervals_path = staging / "coverage_intervals.npy"
+        np.save(coverage_intervals_path, coverage_intervals, allow_pickle=False)
         shard_index_path = staging / "shards.arrow"
         write_shard_index(shard_index_path, shards)
         indexes = {
@@ -330,6 +372,11 @@ def build_chromosome(
                 "name": shard_index_path.name,
                 "size_bytes": shard_index_path.stat().st_size,
                 "sha256": _checksum(shard_index_path),
+            },
+            "coverage_intervals": {
+                "name": coverage_intervals_path.name,
+                "size_bytes": coverage_intervals_path.stat().st_size,
+                "sha256": _checksum(coverage_intervals_path),
             },
         }
         tree_stat = trees_path.stat()
@@ -390,6 +437,7 @@ def build_chromosome(
             "capabilities": {
                 "render": True,
                 "intervals": True,
+                "coverage_intervals": True,
                 "details": True,
                 "metadata": True,
                 "sample_search": True,
@@ -455,11 +503,16 @@ def main() -> int:
         requested = args.chromosome or available
         trees_override = input_directory / "alltrees.tree.gz"
         positions_override = input_directory / "pos"
+        coverage_intervals = load_mammalian_coverage_intervals(
+            input_directory / "order.txt",
+            load_positions(positions_override, args.final_window_bp),
+        )
     else:
         available = chromosomes_in(input_directory)
         requested = args.chromosome or available
         trees_override = None
         positions_override = None
+        coverage_intervals = None
     requested = sorted(dict.fromkeys(requested), key=chromosome_sort_key)
     unknown = sorted(set(requested) - set(available), key=chromosome_sort_key)
     if unknown:
@@ -477,6 +530,7 @@ def main() -> int:
             limit=args.limit,
             trees_path=trees_override,
             positions_path=positions_override,
+            coverage_intervals=coverage_intervals,
             dataset_name=args.dataset,
         )
         if args.verify:

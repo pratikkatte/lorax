@@ -484,6 +484,7 @@ const LoraxDeckGL = forwardRef(({
   // 6. Worker-based viewport -> local bins -> tree fetch -> render pipeline
   const {
     interval: { visibleIntervals },
+    missingRegions,
     local: { localBins, displayArray, showingAllTrees },
     tree: {
       treeData,
@@ -1453,6 +1454,7 @@ const LoraxDeckGL = forwardRef(({
     enabledViews,
     globalBpPerUnit,
     visibleIntervals,
+    missingRegions,
     genomePositions,
     timePositions,
     renderData,

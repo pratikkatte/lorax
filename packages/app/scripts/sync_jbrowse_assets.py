@@ -69,7 +69,7 @@ def build_plugin() -> Path:
     # NODE_ENV=production ensures replaceProcessEnv() bakes in isProd=true,
     # so useSocket() chooses /api/socket.io/ (the pip single-server path)
     # rather than the Vite dev-proxy path /socket.io/.
-    run(["npm", "run", "build"], cwd=PLUGIN_DIR, env={"NODE_ENV": "production"})
+    run(["yarn", "build"], cwd=PLUGIN_DIR, env={"NODE_ENV": "production"})
     bundle = PLUGIN_DIR / "dist" / "jbrowse-plugin-lorax.umd.development.js"
     if not bundle.exists():
         sys.exit(f"Plugin bundle not found after build: {bundle}")
