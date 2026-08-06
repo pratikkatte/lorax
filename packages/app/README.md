@@ -20,6 +20,11 @@ lorax # this opens lorax in a browser
 
 lorax --file # to directly load file on lorax (preferred for large files.)
 ```
+
+Preprocessed CSR artifacts adjacent to a tree-sequence file are enabled by
+default in the pip app. To disable them, launch with
+`LORAX_CSR_ARTIFACTS_ENABLED=0 lorax`.
+
 Input Formats
 Tree sequences: .trees and .trees.tsz files (compatible with tskit/tsinfer/tsdate, Relate, ARGweaver output)
 CSV: One row per recombination interval with columns for genomic position, Newick tree string, tree depth, and optional metadata. Ideal for custom inference pipelines or non-model organisms.
@@ -33,5 +38,4 @@ CSV: One row per recombination interval with columns for genomic position, Newic
 ## Links
 Web platform: https://lorax.ucsc.edu
 Source code: https://github.com/pratikkatte/lorax
-
 
