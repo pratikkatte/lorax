@@ -29,7 +29,8 @@ const INITIAL_VIEW_RESET_MAX_ATTEMPTS = 30;
 const isJBrowseFileViewEnabled = (project, presetFeature) => {
   const normalizedProject = String(project || '').toLowerCase();
   const normalizedPreset = String(presetFeature || '').toLowerCase();
-  return normalizedProject !== 'heliconius' && !normalizedPreset.startsWith('heliconius_');
+  return !['heliconius', 'phlag avian', 'phlag mammalian'].includes(normalizedProject) &&
+    !normalizedPreset.startsWith('heliconius_');
 };
 
 function appendMetadataRows(rows, metadata, prefix, limit = 4) {

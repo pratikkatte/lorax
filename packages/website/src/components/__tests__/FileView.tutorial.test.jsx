@@ -276,6 +276,20 @@ describe('FileView tutorial behavior', () => {
     expect(screen.queryByTestId('sidebar-jbrowse-icon')).not.toBeInTheDocument();
   });
 
+  it.each(['Phlag Avian', 'Phlag Mammalian'])('does not render the JBrowse sidebar button for %s files', async (project) => {
+    mockSearchParams = `project=${encodeURIComponent(project)}`;
+
+    render(<FileView />);
+
+    await waitFor(() => {
+      expect(tourOverlayMockState.lastProps?.steps?.length).toBeGreaterThan(0);
+    });
+
+    const stepIds = tourOverlayMockState.lastProps.steps.map((step) => step.id);
+    expect(stepIds).not.toContain('viewer-jbrowse-button');
+    expect(screen.queryByLabelText('Open in JBrowse')).not.toBeInTheDocument();
+  });
+
   it('links to JBrowse while preserving current genomic coordinates', async () => {
     window.localStorage.setItem('lorax_tour:viewer', 'done');
     render(<FileView />);

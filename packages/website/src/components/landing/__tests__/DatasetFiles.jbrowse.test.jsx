@@ -88,4 +88,21 @@ describe('DatasetFiles JBrowse actions', () => {
       file: 'erato-sara_chr2.csv'
     });
   });
+
+  it.each(['Phlag Avian', 'Phlag Mammalian'])('hides the JBrowse launch action for %s files', (project) => {
+    render(
+      <MemoryRouter>
+        <DatasetFiles
+          project={project}
+          files={['gene_trees-Stiller2024-chr1-sorted.nwk.gz']}
+          loadFile={vi.fn()}
+          loadingFile={null}
+          setLoadingFile={vi.fn()}
+        />
+      </MemoryRouter>
+    );
+
+    expect(screen.queryByRole('link', { name: /open .* in jbrowse/i })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('jbrowse-launch-icon')).not.toBeInTheDocument();
+  });
 });

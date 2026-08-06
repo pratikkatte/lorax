@@ -3,8 +3,11 @@ import { Link } from "react-router-dom";
 import { Logomark } from "@jbrowse/core/ui";
 import { buildJBrowseRoute } from "../../config/jbrowseConfig.js";
 
-const isJBrowseLandingEnabled = (project) =>
-    String(project || "").toLowerCase() !== "heliconius";
+const isJBrowseLandingEnabled = (project) => ![
+    "heliconius",
+    "phlag avian",
+    "phlag mammalian"
+].includes(String(project || "").toLowerCase());
 
 // Inline FilePill for simplicity if not needing separate file
 function FilePill({ project, filename, name, onOpen, loading }) {
