@@ -379,30 +379,6 @@ class CSRArtifactReader:
         )
         if len(self.breakpoints) != self.num_trees + 1:
             raise CSRArtifactCorruptError("Breakpoint index length is invalid")
-
-        coverage_meta = self.manifest.get("indexes", {}).get("coverage_intervals")
-        if coverage_meta is None:
-            # Artifacts created before coverage metadata used adjacent
-            # breakpoints as their implicit, contiguous coverage.
-            self.coverage_intervals = _readonly(
-                np.column_stack((self.breakpoints[:-1], self.breakpoints[1:]))
-            )
-            self.has_explicit_coverage = False
-        else:
-            coverage_name = str(coverage_meta["name"])
-            self._verify_object(coverage_name, coverage_meta, checksum=True)
-            coverage = self._store.load_numpy(coverage_name)
-            if coverage.shape != (self.num_trees, 2):
-                raise CSRArtifactCorruptError("Coverage interval index shape is invalid")
-            if not np.all(np.isfinite(coverage)) or np.any(coverage[:, 1] <= coverage[:, 0]):
-                raise CSRArtifactCorruptError("Coverage interval index contains invalid bounds")
-            if len(coverage) > 1 and np.any(coverage[1:, 0] < coverage[:-1, 1]):
-                raise CSRArtifactCorruptError("Coverage intervals overlap or are not ordered")
-            self.coverage_intervals = coverage
-            self._mapped_indexes["coverage_intervals"] = coverage
-            self.has_explicit_coverage = True
-        self._coverage_starts = self.coverage_intervals[:, 0]
-        self._coverage_ends = self.coverage_intervals[:, 1]
         expected_tree = 0
         for shard in self._shards:
             if int(shard["first_tree"]) != expected_tree:
@@ -539,8 +515,6 @@ class CSRArtifactReader:
         config["artifact_format"] = self.format
         config["artifact_fingerprint"] = str(self.manifest["fingerprint"])
         config["artifact_capabilities"] = dict(self.capabilities)
-        config["coverage_source"] = "backend" if self.has_explicit_coverage else None
-        config["has_coverage_gaps"] = bool(self.missing_regions_in_range(0, self.sequence_length))
         config["data_capabilities"] = {
             "mutations": bool((config.get("table_counts") or {}).get("mutations", 0))
         }
@@ -752,11 +726,7 @@ class CSRArtifactReader:
             raise ValueError(
                 f"Position {position} outside [0, {self.sequence_length})"
             )
-        if not self.has_explicit_coverage:
-            return int(np.searchsorted(self.breakpoints, position, side="right") - 1)
-        tree_index = int(np.searchsorted(self._coverage_starts, position, side="right") - 1)
-        if tree_index < 0 or position >= self._coverage_ends[tree_index]:
-            raise ValueError(f"No tree covers genomic position {position}")
+        tree_index = int(np.searchsorted(self.breakpoints, position, side="right") - 1)
         return tree_index
 
     def tree_indices_in_range(self, start: float, end: float) -> range:
@@ -774,35 +744,17 @@ class CSRArtifactReader:
                 "Genomic range must satisfy "
                 f"0 <= start < end <= {self.sequence_length}; got [{start}, {end})"
             )
-        if not self.has_explicit_coverage:
-            first_tree = max(0, int(np.searchsorted(self.breakpoints, start, side="right") - 1))
-            last_tree_exclusive = int(np.searchsorted(self.breakpoints, end, side="left"))
-            return range(first_tree, last_tree_exclusive)
-        first_tree = int(np.searchsorted(self._coverage_ends, start, side="right"))
-        last_tree_exclusive = int(np.searchsorted(self._coverage_starts, end, side="left"))
+        first_tree = int(
+            np.searchsorted(self.breakpoints, start, side="right") - 1
+        )
+        # Some artifact sources begin at their first observed genomic position
+        # rather than coordinate zero. A viewport that overlaps the leading
+        # no-data span should begin with tree zero, not the Python index -1.
+        first_tree = max(0, first_tree)
+        last_tree_exclusive = int(
+            np.searchsorted(self.breakpoints, end, side="left")
+        )
         return range(first_tree, last_tree_exclusive)
-
-    def missing_regions_in_range(self, start: float, end: float) -> list[list[float]]:
-        """Return uncovered portions of ``[start, end)`` as genomic intervals."""
-        start = float(start)
-        end = float(end)
-        if start < 0 or end > self.sequence_length or start >= end:
-            raise ValueError("Genomic range must satisfy 0 <= start < end <= sequence length")
-        if not self.has_explicit_coverage:
-            return []
-        missing: list[list[float]] = []
-        cursor = start
-        index = int(np.searchsorted(self._coverage_ends, start, side="right"))
-        while index < self.num_trees and self._coverage_starts[index] < end:
-            left = float(self._coverage_starts[index])
-            right = float(self._coverage_ends[index])
-            if cursor < left:
-                missing.append([cursor, min(left, end)])
-            cursor = max(cursor, right)
-            index += 1
-        if cursor < end:
-            missing.append([cursor, end])
-        return missing
 
     def trees_in_range(self, start: float, end: float) -> list[GenealogyCSR]:
         """Decode all genealogies whose genomic intervals overlap ``[start, end)``."""
@@ -811,8 +763,8 @@ class CSRArtifactReader:
     def interval_at_index(self, tree_index: int) -> tuple[float, float]:
         self._shard_for_tree(tree_index)
         return (
-            float(self._coverage_starts[int(tree_index)]),
-            float(self._coverage_ends[int(tree_index)]),
+            float(self.breakpoints[int(tree_index)]),
+            float(self.breakpoints[int(tree_index) + 1]),
         )
 
     def intervals_in_range(
@@ -828,24 +780,27 @@ class CSRArtifactReader:
         tree_range = self.tree_indices_in_range(start, end)
         first_tree = int(tree_range.start)
         last_tree_exclusive = int(tree_range.stop)
-        tree_count = max(0, last_tree_exclusive - first_tree)
-        if tree_count == 0:
-            visible = np.asarray([], dtype=np.float64)
-        elif tree_count + 1 <= max_intervals:
-            covered = self.coverage_intervals[first_tree:last_tree_exclusive]
-            visible = np.unique(np.concatenate((covered[:, 0], [covered[-1, 1]])))
+        breakpoint_start = first_tree
+        breakpoint_stop = min(self.num_trees + 1, last_tree_exclusive + 1)
+        count = breakpoint_stop - breakpoint_start
+        if count <= max_intervals:
+            visible = np.asarray(
+                self.breakpoints[breakpoint_start:breakpoint_stop],
+                dtype=np.float64,
+            )
         else:
-            step = max(1, int(np.ceil(tree_count / max_intervals)))
-            covered = self.coverage_intervals[first_tree:last_tree_exclusive:step]
-            visible = np.concatenate((covered[:, 0], [covered[-1, 1]]))
+            step = max(1, int(np.ceil(count / max_intervals)))
+            visible = np.asarray(
+                self.breakpoints[breakpoint_start:breakpoint_stop:step],
+                dtype=np.float64,
+            )
         return {
             "visibleIntervals": visible.tolist(),
-            "lo": first_tree,
-            "hi": min(self.num_trees + 1, last_tree_exclusive + 1),
-            "count": tree_count + 1 if tree_count else 0,
+            "lo": breakpoint_start,
+            "hi": breakpoint_stop,
+            "count": count,
             "first_tree": first_tree,
             "last_tree_exclusive": last_tree_exclusive,
-            "missing_regions": self.missing_regions_in_range(start, end),
         }
 
     @staticmethod

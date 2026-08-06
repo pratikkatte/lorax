@@ -41,7 +41,7 @@ def test_mammalian_phlag_project_resolves_alltrees_source(monkeypatch, tmp_path)
         {"name": "alltrees.tree.gz", "display_name": "Mammals — Chromosome 3"}
     ]
     assert (
-        phlag.resolve_phlag_source("PHLaG Mammalian", "alltrees.tree.gz")
+        phlag.resolve_phlag_source("Phlag Mammalian", "alltrees.tree.gz")
         == source.resolve()
     )
-    assert phlag.resolve_phlag_source("PHLaG Avian", "alltrees.tree.gz") is None
+    assert phlag.resolve_phlag_source("Phlag Avian", "alltrees.tree.gz") is None

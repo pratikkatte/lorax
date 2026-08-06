@@ -87,7 +87,6 @@ export function useTreeViewportPipeline({
 
   return useMemo(() => ({
     interval: intervalState,
-    missingRegions: intervalState.missingRegions,
     local: localDataState,
     tree: treeDataState,
     render: renderState,

@@ -1119,23 +1119,6 @@ def _write_breakpoints(path: Path, tree_sequence: tskit.TreeSequence) -> None:
         np.save(output, breakpoints, allow_pickle=False)
 
 
-def _write_coverage_intervals(path: Path, tree_sequence: tskit.TreeSequence) -> None:
-    """Write the observed genomic span for every genealogy.
-
-    This is deliberately a separate optional index from ``breakpoints``. Most
-    tree sequences are contiguous, but sources such as sampled gene-tree
-    windows can have real no-data spans between observed trees.
-    """
-    breakpoints = np.fromiter(
-        tree_sequence.breakpoints(),
-        dtype=np.float64,
-        count=int(tree_sequence.num_trees) + 1,
-    )
-    intervals = np.column_stack((breakpoints[:-1], breakpoints[1:]))
-    with path.open("wb") as output:
-        np.save(output, intervals, allow_pickle=False)
-
-
 def _write_shard_index(path: Path, shards: list[dict[str, Any]]) -> None:
     table = pa.Table.from_pylist(shards, schema=SHARD_INDEX_SCHEMA)
     partial = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
@@ -1898,9 +1881,6 @@ def build_csr_artifact(
     breakpoints_path = staging / "breakpoints.npy"
     if not breakpoints_path.exists():
         _write_breakpoints(breakpoints_path, tree_sequence)
-    coverage_intervals_path = staging / "coverage_intervals.npy"
-    if not coverage_intervals_path.exists():
-        _write_coverage_intervals(coverage_intervals_path, tree_sequence)
 
     genealogy_started = time.perf_counter()
     genealogy_metrics = _build_genealogy_shards(
@@ -1933,16 +1913,10 @@ def build_csr_artifact(
             "size_bytes": shard_index_path.stat().st_size,
             "sha256": _checksum(shard_index_path),
         },
-        "coverage_intervals": {
-            "name": coverage_intervals_path.name,
-            "size_bytes": coverage_intervals_path.stat().st_size,
-            "sha256": _checksum(coverage_intervals_path),
-        },
     }
     capabilities = {
         "render": True,
         "intervals": True,
-        "coverage_intervals": True,
         "lineage": True,
         "topology_comparison": True,
     }

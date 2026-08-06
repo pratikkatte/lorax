@@ -10,8 +10,8 @@ from typing import Any
 from lorax.artifacts.runtime import artifact_resolver
 
 
-PHLAG_PROJECT_NAME = "PHLaG Avian"
-PHLAG_MAMMALIAN_PROJECT_NAME = "PHLaG Mammalian"
+PHLAG_PROJECT_NAME = "Phlag Avian"
+PHLAG_MAMMALIAN_PROJECT_NAME = "Phlag Mammalian"
 PHLAG_PROJECT_NAMES = {PHLAG_PROJECT_NAME, PHLAG_MAMMALIAN_PROJECT_NAME}
 _CHROMOSOME_PATTERN = re.compile(
     r"^gene_trees-Stiller2024-(chr(?:[1-9]|1[0-9]|2[0-8]|Z))-sorted\.nwk\.gz$"

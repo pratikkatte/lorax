@@ -43,10 +43,10 @@ async def test_get_projects_adds_local_phlag_artifact_project(monkeypatch, tmp_p
         handlers,
         "phlag_projects",
         lambda: {
-            "PHLaG Avian": {
+            "Phlag Avian": {
                 "folder": "/external/phlag",
                 "files": [{"name": "gene_trees-Stiller2024-chr1-sorted.nwk.gz", "display_name": "Chromosome 1"}],
-                "description": "PHLaG CSR artifacts",
+                "description": "Phlag CSR artifacts",
                 "artifact_backed": True,
             }
         },

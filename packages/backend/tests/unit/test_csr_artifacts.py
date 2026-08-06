@@ -1,5 +1,4 @@
 import json
-import hashlib
 import os
 import io
 import shutil
@@ -101,7 +100,6 @@ def test_builder_and_reader_match_tskit_and_lorax_layout(tmp_path):
     assert (artifact / "breakpoints.npy").is_file()
     assert (artifact / "shards.arrow").is_file()
     assert result["num_trees"] == tree_sequence.num_trees
-    assert (artifact / "coverage_intervals.npy").is_file()
 
     edges = tree_sequence.tables.edges
     nodes = tree_sequence.tables.nodes
@@ -165,31 +163,6 @@ def test_builder_and_reader_match_tskit_and_lorax_layout(tmp_path):
         assert first.mutations.derived_states == ("G", "T")
         assert first.mutations.inherited_states == ("A", "G")
         assert len(reader.tree_at_index(1).mutations) == 0
-
-
-def test_reader_excludes_explicit_coverage_gaps(tmp_path):
-    from lorax.artifacts.csr_reader import CSRArtifactReader
-
-    source = tmp_path / "recombining.trees"
-    _recombining_tree_sequence(source)
-    artifact = Path(_build(source)["artifact_dir"])
-    coverage_path = artifact / "coverage_intervals.npy"
-    coverage = np.asarray([[0.0, 8.0], [12.0, 20.0]], dtype=np.float64)
-    np.save(coverage_path, coverage, allow_pickle=False)
-    manifest_path = artifact / "manifest.json"
-    manifest = json.loads(manifest_path.read_text())
-    manifest["indexes"]["coverage_intervals"]["size_bytes"] = coverage_path.stat().st_size
-    manifest["indexes"]["coverage_intervals"]["sha256"] = hashlib.sha256(
-        coverage_path.read_bytes()
-    ).hexdigest()
-    manifest_path.write_text(json.dumps(manifest))
-
-    with CSRArtifactReader.open(artifact) as reader:
-        assert reader.tree_indices_in_range(8, 12) == range(1, 1)
-        assert reader.missing_regions_in_range(6, 14) == [[8.0, 12.0]]
-        assert reader.intervals_in_range(8, 12)["missing_regions"] == [[8.0, 12.0]]
-        with pytest.raises(ValueError, match="No tree covers"):
-            reader.tree_at_position(9)
 
 
 def test_builder_uses_exact_colocated_path_without_locators(tmp_path):
