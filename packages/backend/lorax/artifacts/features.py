@@ -9,12 +9,15 @@ from lorax.artifacts.csr_reader import CSRArtifactReader
 
 
 def artifact_details(reader: CSRArtifactReader, data: dict) -> dict:
-    reader.require_capability("details")
+    is_phlag_newick = bool(reader.v2_sample_names())
+    if not is_phlag_newick:
+        reader.require_capability("details")
     result = {}
     tree_index = data.get("treeIndex")
     if tree_index is not None:
         genealogy = reader.tree_at_index(int(tree_index))
-        result["tree"] = {
+        tip_count = int(sum(genealogy.is_tip(int(node_id)) for node_id in genealogy.node_ids))
+        tree = {
             "interval": [genealogy.interval_left, genealogy.interval_right],
             "num_roots": len(genealogy.roots()),
             "num_nodes": len(genealogy.node_ids),
@@ -44,10 +47,39 @@ def artifact_details(reader: CSRArtifactReader, data: dict) -> dict:
                 )
             ],
         }
+        if is_phlag_newick:
+            tree.update({
+                "num_tips": tip_count,
+                "num_internal_nodes": len(genealogy.node_ids) - tip_count,
+                "mutation_count": 0,
+            })
+        result["tree"] = tree
 
     node_value = data.get("node")
     if node_value is not None:
         node_id = int(node_value)
+        if is_phlag_newick:
+            if tree_index is None:
+                raise ValueError("treeIndex is required for PHLaG Newick node details")
+            genealogy = reader.tree_at_index(int(tree_index))
+            if not genealogy.has_node(node_id):
+                raise KeyError(f"Node {node_id} is not in tree {tree_index}")
+            sample_names = reader.v2_sample_names()
+            is_tip = genealogy.is_tip(node_id)
+            metadata = {}
+            if is_tip and 0 <= node_id < len(sample_names):
+                metadata["sample"] = sample_names[node_id]
+            result["node"] = {
+                "id": node_id,
+                "time": genealogy.node_time(node_id),
+                "population": -1,
+                "individual": -1,
+                "metadata": metadata,
+                "node_type": "tip" if is_tip else "internal",
+            }
+            if data.get("comprehensive", False):
+                result["mutations"] = []
+            return result
         node = reader.node_details(node_id)
         result["node"] = {
             key: node[key]
@@ -149,6 +181,25 @@ def artifact_metadata_array(
     reader: CSRArtifactReader,
     key: str,
 ) -> dict:
+    sample_names = reader.v2_sample_names()
+    if sample_names:
+        if key != "sample":
+            raise CSRArtifactCapabilityError("metadata key " + str(key))
+        values = sample_names
+        sample_node_ids = list(range(len(values)))
+        unique_values = values
+        indices = np.arange(len(values), dtype=np.uint32)
+        table = pa.table({"idx": pa.array(indices, type=pa.uint32())})
+        sink = pa.BufferOutputStream()
+        with pa.ipc.new_stream(sink, table.schema) as writer:
+            writer.write_table(table)
+        return {
+            "key": key,
+            "unique_values": unique_values,
+            "sample_node_ids": sample_node_ids,
+            "arrow_buffer": sink.getvalue().to_pybytes(),
+        }
+
     reader.require_capability("metadata")
     sample_rows = sorted(
         reader._sidecar_table("sample_names").to_pylist(),

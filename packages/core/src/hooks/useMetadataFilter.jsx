@@ -27,8 +27,10 @@ const formatMetadataLabel = (key, tsconfig) => {
   return label;
 };
 
-const getDefaultMetadataKey = (metadataKeys = []) => (
-  metadataKeys.includes('sample') ? 'sample' : metadataKeys[0]
+const getDefaultMetadataKey = (metadataKeys = [], defaultColorBy = null) => (
+  defaultColorBy && metadataKeys.includes(defaultColorBy)
+    ? defaultColorBy
+    : (metadataKeys.includes('sample') ? 'sample' : metadataKeys[0])
 );
 
 // Module-level constant for disabled state - frozen to prevent accidental mutations
@@ -84,6 +86,19 @@ function useMetadataFilter({ enabled = false, config = {} }) {
   const [compareMode, setCompareMode] = useState(false);
 
   const pendingSelectedKeyRef = useRef(null);
+  const datasetKey = tsconfig?.artifact_fingerprint || tsconfig?.file_path || tsconfig?.filename || null;
+
+  // A new file must not inherit an unavailable metadata key from the previous
+  // viewer dataset. This also permits the dataset-provided default to apply.
+  useEffect(() => {
+    setSelectedColorBy(null);
+    setEnabledValuesState(new Set());
+    setHasManualSelection(false);
+    setSearchTags([]);
+    setSearchTerm("");
+    setHighlightedMetadataValue(null);
+    pendingSelectedKeyRef.current = null;
+  }, [datasetKey]);
 
   // Compute coloryby dropdown options from metadataKeys
   const coloryby = useMemo(() => {
@@ -150,9 +165,9 @@ function useMetadataFilter({ enabled = false, config = {} }) {
       if (pendingSelectedKeyRef.current) {
         return;
       }
-      setSelectedColorBy(getDefaultMetadataKey(metadataKeys));
+      setSelectedColorBy(getDefaultMetadataKey(metadataKeys, tsconfig?.default_color_by));
     }
-  }, [enabled, metadataKeys, selectedColorBy]);
+  }, [enabled, metadataKeys, selectedColorBy, tsconfig?.default_color_by]);
 
   useEffect(() => {
     if (!enabled) return;

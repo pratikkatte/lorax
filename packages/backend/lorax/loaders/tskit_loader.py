@@ -172,7 +172,8 @@ def get_config_tskit(ts, file_path, root_dir, *, include_intervals=True):
             'metadata_schema': metadata_schema,
             'top_level_metadata': top_level_metadata,
             'provenance': provenance,
-            'table_counts': table_counts
+            'table_counts': table_counts,
+            'data_capabilities': {'mutations': bool(ts.num_mutations > 0)},
         }
         return config
     except Exception as e:

@@ -32,7 +32,8 @@ const Info = ({
   onPresetAction,
   onPresetMutationHighlight,
   onBeforePresetApply,
-  isFetchingDetails = false
+  isFetchingDetails = false,
+  hasMutations = true,
 }) => {
   const [activeTabInternal, setActiveTabInternal] = useState('details');
   const [showMetadataTooltip, setShowMetadataTooltip] = useState(false);
@@ -62,7 +63,8 @@ const Info = ({
     genomicValues: genomicCoords,
     queryMutationsWindow,
     searchMutations: searchMutationsQuery,
-    isConnected
+    isConnected,
+    enabled: hasMutations,
   });
 
   return (
@@ -92,7 +94,7 @@ const Info = ({
           >
             Details
           </button>
-          <button
+          {hasMutations && <button
             className={`flex-1 px-4 py-2 rounded-md text-sm font-semibold transition-all duration-200
               ${activeTab === 'mutations'
                 ? "bg-white text-emerald-700 shadow-sm ring-1 ring-slate-200"
@@ -102,7 +104,7 @@ const Info = ({
             data-tour="viewer-info-mutations-tab"
           >
             Mutations
-          </button>
+          </button>}
           <div className="relative flex-1">
             <button
               className={`w-full px-4 pr-8 py-2 rounded-md text-sm font-semibold transition-all duration-200
@@ -162,7 +164,7 @@ const Info = ({
             isFetchingDetails={isFetchingDetails}
           />
         )}
-        {activeTab === 'mutations' && (
+        {hasMutations && activeTab === 'mutations' && (
           <InfoMutations
             mutations={mutationsHook.mutations}
             totalCount={mutationsHook.totalCount}

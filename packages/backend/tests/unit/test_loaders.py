@@ -52,6 +52,7 @@ class TestTskitLoader:
         # Verify genome_length matches sequence_length
         if "genome_length" in config:
             assert config["genome_length"] == minimal_ts.sequence_length
+        assert config["data_capabilities"]["mutations"] is (minimal_ts.num_mutations > 0)
 
     def test_config_includes_metadata_keys(self, minimal_ts, temp_dir):
         """Test that config includes metadata key information."""
@@ -136,6 +137,7 @@ class TestCSVLoader:
         try:
             config = compute_config(df, str(csv_file), str(temp_dir))
             assert config is not None
+            assert config["data_capabilities"]["mutations"] is False
         except (ValueError, KeyError):
             # CSV loader may have specific requirements
             pytest.skip("CSV loader requires specific format")

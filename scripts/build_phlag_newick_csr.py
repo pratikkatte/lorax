@@ -376,6 +376,9 @@ def build_chromosome(
                 "global_min_time": 0.0,
                 "global_max_time": max_branch_height,
             },
+            "sample_names": [
+                name for name, _node_id in sorted(sample_ids.items(), key=lambda item: item[1])
+            ],
             "build": {
                 "compression": compression,
                 "target_shard_bytes": target_bytes,
@@ -387,6 +390,10 @@ def build_chromosome(
             "capabilities": {
                 "render": True,
                 "intervals": True,
+                "details": True,
+                "metadata": True,
+                "sample_search": True,
+                "mutations": False,
                 "lineage": False,
                 "topology_comparison": False,
             },

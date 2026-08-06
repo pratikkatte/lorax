@@ -1065,6 +1065,13 @@ function FileView() {
     : highlightedMutationTreeIndex;
   const activeTreeColors = colorByTree ? treeInfoColors : treeColors;
   const setActiveTreeColors = colorByTree ? setTreeInfoColors : setTreeColors;
+  const hasMutations = tsconfig?.data_capabilities?.mutations === true;
+
+  useEffect(() => {
+    if (!hasMutations && infoActiveTab === 'mutations') {
+      setInfoActiveTab('details');
+    }
+  }, [hasMutations, infoActiveTab]);
 
   return (
     <div className="viewer-shell h-screen flex min-h-0 overflow-hidden bg-slate-50 relative">
@@ -1334,6 +1341,7 @@ function FileView() {
             onPresetMutationHighlight={handlePresetMutationHighlight}
             onBeforePresetApply={handleBeforePresetApply}
             isFetchingDetails={isFetchingDetails}
+            hasMutations={hasMutations}
           />
         </div>
       )}

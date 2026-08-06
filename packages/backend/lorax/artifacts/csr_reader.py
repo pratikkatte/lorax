@@ -515,11 +515,36 @@ class CSRArtifactReader:
         config["artifact_format"] = self.format
         config["artifact_fingerprint"] = str(self.manifest["fingerprint"])
         config["artifact_capabilities"] = dict(self.capabilities)
+        config["data_capabilities"] = {
+            "mutations": bool((config.get("table_counts") or {}).get("mutations", 0))
+        }
+        # PHLaG Newick artifacts retain stable tip labels in the manifest rather
+        # than v3 sidecars. Expose them through the standard sample contract.
+        sample_names = self.v2_sample_names()
+        if sample_names:
+            config["num_samples"] = len(sample_names)
+            config["sample_names"] = {
+                name: {"sample_name": name} for name in sample_names
+            }
+            config["metadata_schema"] = {
+                "metadata_keys": ["sample"],
+                "metadata_keys_by_source": {
+                    "individual": [], "node": ["sample"], "population": []
+                },
+            }
+            config["default_color_by"] = "sample"
+            config["data_capabilities"] = {"mutations": False}
         if filename is not None:
             config["filename"] = str(filename)
         if project is not None:
             config["project"] = str(project)
         return config
+
+    def v2_sample_names(self) -> list[str]:
+        """Return PHLaG Newick tip labels in stable node-ID order."""
+        if self.schema_version != CSR_ARTIFACT_V2_SCHEMA_VERSION:
+            return []
+        return [str(name) for name in (self.manifest.get("sample_names") or [])]
 
     def _index_metadata(self, key: str) -> dict[str, Any]:
         metadata = self.manifest.get("indexes", {}).get(key)
@@ -926,6 +951,14 @@ class CSRArtifactReader:
         ]
 
     def search_samples(self, query: str) -> list[dict[str, Any]]:
+        v2_names = self.v2_sample_names()
+        if v2_names:
+            normalized = str(query).casefold()
+            return [
+                {"node_id": node_id, "name": name}
+                for node_id, name in enumerate(v2_names)
+                if normalized in name.casefold()
+            ]
         self.require_capability("sample_search")
         normalized = str(query).casefold()
         return [

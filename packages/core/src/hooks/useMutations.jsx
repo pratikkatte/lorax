@@ -41,12 +41,14 @@ const DEFAULT_SEARCH_RANGE = 5000; // bp
  * @param {Function} options.queryMutationsWindow - Function to fetch mutations in window
  * @param {Function} options.searchMutations - Function to search mutations by position
  * @param {boolean} options.isConnected - Whether socket is connected
+ * @param {boolean} options.enabled - Whether this dataset exposes mutations
  */
 export function useMutations({
   genomicValues,
   queryMutationsWindow,
   searchMutations,
-  isConnected
+  isConnected,
+  enabled = true,
 }) {
   // Mutation data state
   const [mutations, setMutations] = useState([]);
@@ -73,7 +75,7 @@ export function useMutations({
    * Fetch mutations for the current genomic window
    */
   const fetchMutationsForWindow = useCallback(async (start, end, offsetVal = 0, append = false) => {
-    if (!queryMutationsWindow || !isConnected) return;
+    if (!enabled || !queryMutationsWindow || !isConnected) return;
 
     // Skip if same window and offset
     const windowKey = `${start}-${end}-${offsetVal}`;
@@ -113,13 +115,13 @@ export function useMutations({
         setIsLoading(false);
       }
     }
-  }, [queryMutationsWindow, isConnected]);
+  }, [enabled, queryMutationsWindow, isConnected]);
 
   /**
    * Search mutations around a position
    */
   const searchMutationsByPosition = useCallback(async (position, range, offsetVal = 0, append = false) => {
-    if (!searchMutations || !isConnected || position === null) return;
+    if (!enabled || !searchMutations || !isConnected || position === null) return;
 
     const requestId = Date.now();
     currentRequestRef.current = requestId;
@@ -152,7 +154,7 @@ export function useMutations({
         setIsLoading(false);
       }
     }
-  }, [searchMutations, isConnected]);
+  }, [enabled, searchMutations, isConnected]);
 
   /**
    * Debounced fetch for viewport changes
@@ -173,6 +175,13 @@ export function useMutations({
    * Effect to fetch mutations when genomic window changes
    */
   useEffect(() => {
+    if (!enabled) {
+      debouncedFetch.cancel();
+      setMutations([]);
+      setTotalCount(0);
+      setHasMore(false);
+      return;
+    }
     if (!genomicValues || !Array.isArray(genomicValues) || genomicValues.length < 2) {
       return;
     }
@@ -192,7 +201,7 @@ export function useMutations({
     return () => {
       debouncedFetch.cancel();
     };
-  }, [genomicValues, debouncedFetch, isSearchMode]);
+  }, [enabled, genomicValues, debouncedFetch, isSearchMode]);
 
   /**
    * Load more mutations (pagination)

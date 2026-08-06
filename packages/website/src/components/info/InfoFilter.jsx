@@ -130,6 +130,17 @@ export default function InfoFilter({
   const isCsvFile = Boolean(
     String(tsconfig?.filename || '').toLowerCase().endsWith('.csv') || tsconfig?.tree_info
   );
+  const isArtifact = Boolean(
+    tsconfig?.artifact_format || tsconfig?.artifact_fingerprint
+  );
+  const lineageUnavailableMessage =
+    'Lineage paths are unavailable for CSR artifacts while this feature is in beta.';
+
+  useEffect(() => {
+    if (isArtifact && displayLineagePaths) {
+      setDisplayLineagePaths?.(false);
+    }
+  }, [displayLineagePaths, isArtifact, setDisplayLineagePaths]);
 
   const matchedFeatures = useMemo(() => {
     const project = tsconfig?.project;
@@ -416,21 +427,28 @@ export default function InfoFilter({
           <div className="flex items-center gap-2">
             <span className="text-xs text-gray-500">Display Lineages</span>
             <InfoTooltipButton label="Display Lineages" tooltipId="display-lineages-tooltip">
-              Draws lineage paths for selected metadata values so shared ancestry is easier to compare across visible trees.
+              {isArtifact
+                ? lineageUnavailableMessage
+                : 'Draws lineage paths for selected metadata values so shared ancestry is easier to compare across visible trees.'}
             </InfoTooltipButton>
-            <button
-              type="button"
-              className={`w-4 h-4 rounded-full border-2 transition-colors ${displayLineagePaths
-                ? 'bg-gray-700 border-gray-700'
-                : 'bg-white border-gray-400'
-              }`}
-              onClick={() => {
-                if (setDisplayLineagePaths) {
-                  setDisplayLineagePaths(prev => !prev);
-                }
-              }}
-              title="Display Lineage Paths"
-            />
+            <span title={isArtifact ? lineageUnavailableMessage : undefined}>
+              <button
+                type="button"
+                disabled={isArtifact}
+                aria-label="Toggle Display Lineages"
+                className={`w-4 h-4 rounded-full border-2 transition-colors ${isArtifact
+                  ? 'cursor-not-allowed border-gray-200 bg-gray-100'
+                  : displayLineagePaths
+                    ? 'bg-gray-700 border-gray-700'
+                    : 'bg-white border-gray-400'
+                }`}
+                onClick={() => {
+                  if (setDisplayLineagePaths) {
+                    setDisplayLineagePaths(prev => !prev);
+                  }
+                }}
+              />
+            </span>
           </div>
         </div>
       </div>

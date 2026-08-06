@@ -81,6 +81,9 @@ export default function InfoMetadata({
           <DetailRow label="Interval" value={treeDetails.interval?.join(', ')} />
           <DetailRow label="Number of Roots" value={treeDetails.num_roots} />
           <DetailRow label="Number of Nodes" value={treeDetails.num_nodes} />
+          {treeDetails.num_tips != null && <DetailRow label="Number of Tips" value={treeDetails.num_tips} />}
+          {treeDetails.num_internal_nodes != null && <DetailRow label="Internal Nodes" value={treeDetails.num_internal_nodes} />}
+          {treeDetails.mutation_count != null && <DetailRow label="Mutations" value={treeDetails.mutation_count} />}
           {treeDetails.mutations && treeDetails.mutations.length > 0 && (
             <>
               <div className="my-2 border-t border-gray-100"></div>
@@ -126,6 +129,9 @@ export default function InfoMetadata({
           )}
           {nodeDetails.metadata?.name && (
             <DetailRow label="Name" value={nodeDetails.metadata.name} />
+          )}
+          {nodeDetails.metadata?.sample && (
+            <DetailRow label="Sample ID" value={nodeDetails.metadata.sample} />
           )}
         </DetailCard>
       )}

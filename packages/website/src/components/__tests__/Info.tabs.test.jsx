@@ -60,4 +60,10 @@ describe('Info tabs', () => {
       'Search, filter, highlight, and color samples or trees using sample annotations',
     );
   });
+
+  it('omits mutation controls for mutation-free datasets', () => {
+    render(<Info setShowInfo={vi.fn()} hasMutations={false} />);
+
+    expect(screen.queryByRole('button', { name: /^Mutations$/ })).not.toBeInTheDocument();
+  });
 });

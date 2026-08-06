@@ -247,6 +247,7 @@ def build_csv_config(
                 "population": [],
             },
         },
+        "data_capabilities": {"mutations": False},
     }
 
     if tree_info_map:
