@@ -176,12 +176,13 @@ def register_file_events(sio):
                     blob_path = None
                     gcs_allowed = False
                 elif project in PHLAG_PROJECT_NAMES:
-                    return _load_file_failure_payload(
-                        request_id=request_id,
-                        code="PHLAG_ARTIFACT_NOT_FOUND",
-                        message="The selected PHLaG CSR artifact is missing or stale.",
-                        recoverable=True,
-                    )
+                    # Production PHLaG sources live in GCS; resolve the
+                    # adjacent artifact there before falling back to a
+                    # source download. Local checkouts still use the path
+                    # above when a healthy local artifact is available.
+                    file_path = UPLOAD_DIR / project / filename
+                    blob_path = f"{project}/{filename}"
+                    gcs_allowed = bool(BUCKET_NAME)
                 elif project == 'Uploads':
                     target_sid = share_sid if share_sid else lorax_sid
                     if CURRENT_MODE == "local":
@@ -206,6 +207,17 @@ def register_file_events(sio):
                         artifact_resolver.resolve,
                         file_path,
                     )
+                    if (
+                        resolved_artifact is None
+                        and BUCKET_NAME
+                        and gcs_allowed
+                        and blob_path
+                    ):
+                        resolved_artifact = await asyncio.to_thread(
+                            artifact_resolver.resolve_gcs,
+                            BUCKET_NAME,
+                            blob_path,
+                        )
                     if resolved_artifact is not None:
                         artifact_context = await asyncio.to_thread(
                             artifact_context_registry.open,
@@ -251,10 +263,18 @@ def register_file_events(sio):
                         },
                     )
 
+            if artifact_context is None and project in PHLAG_PROJECT_NAMES:
+                return _load_file_failure_payload(
+                    request_id=request_id,
+                    code="PHLAG_ARTIFACT_NOT_FOUND",
+                    message="The selected PHLaG CSR artifact is missing or stale.",
+                    recoverable=True,
+                )
+
             if artifact_context is not None:
                 await tree_graph_cache.clear_session(lorax_sid)
                 await csv_tree_graph_cache.clear_session(lorax_sid)
-                session.file_path = str(file_path)
+                session.file_path = resolved_artifact.source_path
                 session.dataset_backend = (
                     f"csr-v{artifact_context.schema_version}"
                 )

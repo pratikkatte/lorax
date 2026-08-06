@@ -1,5 +1,7 @@
 import json
 import os
+import io
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -180,6 +182,86 @@ def test_builder_uses_exact_colocated_path_without_locators(tmp_path):
     assert expected.name != result["fingerprint"]
     assert not (tmp_path / "locators").exists()
     assert not (tmp_path / ".locators").exists()
+
+
+def test_gcs_artifact_opens_without_local_source_or_artifact(tmp_path, monkeypatch):
+    from lorax.artifacts.runtime import ArtifactContextRegistry, ArtifactResolver
+
+    source = tmp_path / "remote-only.trees"
+    _recombining_tree_sequence(source)
+    built = _build(source)
+    artifact = Path(built["artifact_dir"])
+    source_blob = "Example/remote-only.trees"
+    artifact_prefix = f"{source_blob}.artifact"
+    objects = {source_blob: source.read_bytes()}
+    for path in artifact.iterdir():
+        if path.is_file():
+            objects[f"{artifact_prefix}/{path.name}"] = path.read_bytes()
+
+    opened_objects = []
+    downloaded_objects = []
+
+    class FakeBlob:
+        def __init__(self, name):
+            self.name = name
+            self.size = None
+
+        def reload(self):
+            if self.name not in objects:
+                raise FileNotFoundError(self.name)
+            self.size = len(objects[self.name])
+
+        def download_as_bytes(self):
+            if self.name not in objects:
+                raise FileNotFoundError(self.name)
+            downloaded_objects.append(self.name)
+            return objects[self.name]
+
+        def open(self, mode, **kwargs):
+            assert mode == "rb"
+            assert kwargs["chunk_size"] == 4 * 1024 * 1024
+            if self.name not in objects:
+                raise FileNotFoundError(self.name)
+            opened_objects.append(self.name)
+            return io.BytesIO(objects[self.name])
+
+    class FakeBucket:
+        def blob(self, name):
+            return FakeBlob(name)
+
+    class FakeClient:
+        def bucket(self, name):
+            assert name == "test-artifacts"
+            return FakeBucket()
+
+    monkeypatch.setattr(
+        "lorax.cloud.gcs_utils.get_anonymous_gcs_client",
+        lambda: FakeClient(),
+    )
+    shutil.rmtree(artifact)
+    source.unlink()
+
+    resolved = ArtifactResolver().resolve_gcs("test-artifacts", source_blob)
+    assert resolved is not None
+    assert resolved.artifact_directory == (
+        "gs://test-artifacts/Example/remote-only.trees.artifact"
+    )
+
+    registry = ArtifactContextRegistry(max_contexts=1, max_open_shards=1)
+    context = registry.open(resolved)
+    shard_name = context.reader._shards[0]["name"]
+    shard_object = f"{artifact_prefix}/{shard_name}"
+    assert shard_object not in downloaded_objects
+    assert context.reader.tree_at_index(0).tree_index == 0
+    assert shard_object in opened_objects
+    assert shard_object not in downloaded_objects
+    registry.close()
+
+    objects.pop(source_blob)
+    artifact_only = ArtifactResolver().resolve_gcs(
+        "test-artifacts", source_blob
+    )
+    assert artifact_only is not None
 
 
 def test_multiprocess_ranges_match_single_worker_artifact(tmp_path):

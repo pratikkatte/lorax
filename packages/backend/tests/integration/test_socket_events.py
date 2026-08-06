@@ -23,7 +23,7 @@ import asyncio
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch, AsyncMock
+from unittest.mock import patch, AsyncMock, Mock
 
 # Check if numba is available (required for full sockets module initialization)
 try:
@@ -271,6 +271,75 @@ class TestLoadFileEvent:
         emitted = socket_harness.get_emitted("load-file-result")
         assert len(emitted) == 1
         assert emitted[0]["data"]["code"] == "FILE_NOT_FOUND"
+
+    @pytest.mark.asyncio
+    async def test_load_file_uses_gcs_artifact_before_source_download(
+        self,
+        socket_harness,
+        mock_sio,
+        session_manager_memory,
+        minimal_ts_file,
+        temp_dir,
+    ):
+        from lorax.artifacts import build_csr_artifact
+        from lorax.artifacts.runtime import (
+            ArtifactContextRegistry,
+            ArtifactResolver,
+            ResolvedArtifact,
+        )
+        from lorax.sockets import register_socket_events
+        from lorax.sockets.load_scheduler import LoadScheduler
+
+        build_csr_artifact(minimal_ts_file, target_shard_mb=1)
+        local_resolved = ArtifactResolver().resolve(minimal_ts_file)
+        assert local_resolved is not None
+        remote_resolved = ResolvedArtifact(
+            source_path="gs://test-bucket/Example/remote.trees",
+            artifact_directory=local_resolved.artifact_directory,
+            fingerprint=local_resolved.fingerprint,
+            artifact_format=local_resolved.artifact_format,
+            schema_version=local_resolved.schema_version,
+        )
+        resolver = Mock(spec=ArtifactResolver)
+        resolver.resolve.return_value = None
+        resolver.resolve_gcs.return_value = remote_resolved
+        registry = ArtifactContextRegistry(max_contexts=1, max_open_shards=1)
+        source_download = AsyncMock(
+            side_effect=AssertionError("GCS artifact load downloaded the source")
+        )
+        session = await session_manager_memory.create_session()
+
+        with (
+            patch("lorax.sockets.file_ops.CSR_ARTIFACTS_ENABLED", True),
+            patch("lorax.sockets.file_ops.artifact_resolver", resolver),
+            patch("lorax.sockets.file_ops.artifact_context_registry", registry),
+            patch("lorax.sockets.file_ops.session_manager", session_manager_memory),
+            patch("lorax.sockets.connection.session_manager", session_manager_memory),
+            patch("lorax.sockets.file_ops.UPLOAD_DIR", temp_dir),
+            patch("lorax.sockets.file_ops.BUCKET_NAME", "test-bucket"),
+            patch("lorax.sockets.file_ops.download_gcs_file", source_download),
+            patch("lorax.sockets.file_ops.load_scheduler", LoadScheduler()),
+        ):
+            register_socket_events(mock_sio)
+            result = await socket_harness._event_handlers["load_file"](
+                "socket-gcs-artifact",
+                {
+                    "lorax_sid": session.sid,
+                    "project": "Example",
+                    "file": "remote.trees",
+                },
+            )
+
+        assert result["ok"] is True
+        assert result["config"]["artifact_fingerprint"] == local_resolved.fingerprint
+        resolver.resolve_gcs.assert_called_once_with(
+            "test-bucket", "Example/remote.trees"
+        )
+        source_download.assert_not_awaited()
+        saved = await session_manager_memory.get_session(session.sid)
+        assert saved.file_path == "gs://test-bucket/Example/remote.trees"
+        assert saved.dataset_backend.startswith("csr-v")
+        registry.close()
 
     @pytest.mark.asyncio
     async def test_load_file_internal_exception_returns_terminal_failure(

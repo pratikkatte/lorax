@@ -16,6 +16,14 @@ logger = logging.getLogger(__name__)
 
 _DEFAULT_GCS_PROJECTS_CACHE_TTL_SEC = 15.0
 _DEFAULT_GCS_PROJECTS_TIMEOUT_SEC = 5.0
+_PROJECT_FILE_SUFFIXES = (
+    ".trees",
+    ".trees.tsz",
+    ".tsz",
+    ".csv",
+    ".tree.gz",
+    ".nwk.gz",
+)
 _GCS_PROJECTS_CACHE: dict[tuple[str, str], dict[str, Any]] = {}
 _GCS_PROJECTS_CACHE_LOCKS: dict[tuple[str, str], asyncio.Lock] = {}
 
@@ -49,6 +57,10 @@ def _projects_cache_key(bucket_name: str, prefix: str) -> tuple[str, str]:
     return (bucket_name, prefix or "")
 
 
+def _is_project_source_file(path: str) -> bool:
+    return path.lower().endswith(_PROJECT_FILE_SUFFIXES)
+
+
 def _get_projects_cache_lock(cache_key: tuple[str, str]) -> asyncio.Lock:
     cache_lock = _GCS_PROJECTS_CACHE_LOCKS.get(cache_key)
     if cache_lock is None:
@@ -75,16 +87,154 @@ def _get_fresh_cached_items(cache_key: tuple[str, str]) -> list[dict[str, Any]] 
 
 async def _fetch_public_bucket_items(bucket_name: str, prefix: str = "") -> list[dict[str, Any]]:
     api_url = f"https://storage.googleapis.com/storage/v1/b/{bucket_name}/o"
-    params = {"prefix": prefix or "", "fields": "items(name)"}
     timeout = aiohttp.ClientTimeout(total=_get_projects_timeout_sec())
+    all_items: list[dict[str, Any]] = []
+    page_token: str | None = None
     async with aiohttp.ClientSession(timeout=timeout) as session:
-        async with session.get(api_url, params=params) as resp:
-            resp.raise_for_status()
-            payload = await resp.json()
-    if not isinstance(payload, dict):
-        return []
-    items = payload.get("items", [])
-    return items if isinstance(items, list) else []
+        while True:
+            params = {
+                "prefix": prefix or "",
+                "fields": "items(name),nextPageToken",
+            }
+            if page_token:
+                params["pageToken"] = page_token
+            async with session.get(api_url, params=params) as resp:
+                resp.raise_for_status()
+                payload = await resp.json()
+            if not isinstance(payload, dict):
+                break
+            items = payload.get("items", [])
+            if isinstance(items, list):
+                all_items.extend(
+                    item for item in items if isinstance(item, dict)
+                )
+            page_token = payload.get("nextPageToken")
+            if not isinstance(page_token, str) or not page_token:
+                break
+    return all_items
+
+
+async def _fetch_public_project_items(bucket_name: str) -> list[dict[str, Any]]:
+    """List project-level objects without enumerating artifact shard contents."""
+    api_url = f"https://storage.googleapis.com/storage/v1/b/{bucket_name}/o"
+    timeout = aiohttp.ClientTimeout(total=_get_projects_timeout_sec())
+    items: list[dict[str, Any]] = []
+
+    async def list_level(session, prefix: str) -> tuple[list[dict[str, Any]], list[str]]:
+        level_items: list[dict[str, Any]] = []
+        prefixes: list[str] = []
+        page_token: str | None = None
+        while True:
+            params = {
+                "prefix": prefix,
+                "delimiter": "/",
+                "fields": "items(name),prefixes,nextPageToken",
+            }
+            if page_token:
+                params["pageToken"] = page_token
+            async with session.get(api_url, params=params) as resp:
+                resp.raise_for_status()
+                payload = await resp.json()
+            if not isinstance(payload, dict):
+                break
+            page_items = payload.get("items", [])
+            if isinstance(page_items, list):
+                level_items.extend(
+                    item for item in page_items if isinstance(item, dict)
+                )
+            page_prefixes = payload.get("prefixes", [])
+            if isinstance(page_prefixes, list):
+                prefixes.extend(
+                    value for value in page_prefixes if isinstance(value, str)
+                )
+            page_token = payload.get("nextPageToken")
+            if not isinstance(page_token, str) or not page_token:
+                break
+        return level_items, prefixes
+
+    async def walk_project(session, prefix: str) -> None:
+        direct_items, child_prefixes = await list_level(session, prefix)
+        items.extend(direct_items)
+        for child_prefix in child_prefixes:
+            child_name = child_prefix.rstrip("/").rsplit("/", 1)[-1]
+            if is_csr_artifact_directory(child_name):
+                # Artifact contents are streamed later by the artifact reader.
+                continue
+            await walk_project(session, child_prefix)
+
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        _, project_prefixes = await list_level(session, "")
+        for project_prefix in project_prefixes:
+            # Preserve the project even when its source files are not present
+            # locally (for example, a project backed only by remote artifacts).
+            items.append({"name": project_prefix})
+            await walk_project(session, project_prefix)
+    return items
+
+
+def _fetch_authenticated_bucket_items_sync(
+    bucket_name: str,
+    prefix: str = "",
+) -> list[dict[str, Any]]:
+    client = get_gcs_client()
+    return [
+        {"name": blob.name}
+        for blob in client.list_blobs(bucket_name, prefix=prefix or "")
+    ]
+
+
+def _fetch_authenticated_project_items_sync(bucket_name: str) -> list[dict[str, Any]]:
+    """Authenticated equivalent of _fetch_public_project_items."""
+    client = get_gcs_client()
+    root_iterator = client.list_blobs(bucket_name, delimiter="/")
+    list(root_iterator)
+    items: list[dict[str, Any]] = []
+
+    def walk(prefix: str) -> None:
+        iterator = client.list_blobs(
+            bucket_name,
+            prefix=prefix,
+            delimiter="/",
+        )
+        items.extend({"name": blob.name} for blob in iterator)
+        for child_prefix in sorted(iterator.prefixes):
+            child_name = child_prefix.rstrip("/").rsplit("/", 1)[-1]
+            if not is_csr_artifact_directory(child_name):
+                walk(child_prefix)
+
+    for project_prefix in sorted(root_iterator.prefixes):
+        # Preserve remote-only projects in the library. The marker is handled
+        # by get_public_gcs_dict and does not become a visible file.
+        items.append({"name": project_prefix})
+        walk(project_prefix)
+    return items
+
+
+async def _fetch_bucket_items(
+    bucket_name: str,
+    prefix: str = "",
+) -> list[dict[str, Any]]:
+    try:
+        if prefix:
+            return await _fetch_public_bucket_items(bucket_name, prefix)
+        return await _fetch_public_project_items(bucket_name)
+    except aiohttp.ClientResponseError as exc:
+        if exc.status not in {401, 403}:
+            raise
+        logger.info(
+            "Public GCS listing denied for bucket=%s; using application credentials",
+            bucket_name,
+        )
+        if prefix:
+            return await asyncio.to_thread(
+                _fetch_authenticated_bucket_items_sync,
+                bucket_name,
+                prefix,
+            )
+        return await asyncio.to_thread(
+            _fetch_authenticated_project_items_sync,
+            bucket_name,
+        )
 
 
 async def _get_public_bucket_items(bucket_name: str, prefix: str = "") -> list[dict[str, Any]]:
@@ -102,7 +252,7 @@ async def _get_public_bucket_items(bucket_name: str, prefix: str = "") -> list[d
         stale_entry = _GCS_PROJECTS_CACHE.get(cache_key) or {}
         stale_items = stale_entry.get("items")
         try:
-            items = await _fetch_public_bucket_items(bucket_name, prefix)
+            items = await _fetch_bucket_items(bucket_name, prefix)
         except Exception as exc:
             if isinstance(stale_items, list):
                 logger.warning(
@@ -122,6 +272,11 @@ async def _get_public_bucket_items(bucket_name: str, prefix: str = "") -> list[d
 
 def get_gcs_client():
     return storage.Client()
+
+
+def get_anonymous_gcs_client():
+    """Return a client that reads public objects without local credentials."""
+    return storage.Client.create_anonymous_client()
 
 
 async def _download_gcs_file_direct(bucket_name: str, blob_path: str, local_path: str):
@@ -248,7 +403,32 @@ async def get_public_gcs_dict(
         name = item.get("name")
         if not isinstance(name, str):
             continue
-        path_parts = name.split("/")
+        path_parts = [part for part in name.split("/") if part]
+        if not path_parts:
+            continue
+
+        name_first = path_parts[0]
+
+        published_artifact_index = next(
+            (
+                index
+                for index, path_part in enumerate(path_parts)
+                if path_part.endswith(".artifact")
+            ),
+            None,
+        )
+        if (
+            published_artifact_index is not None
+            and len(path_parts) == published_artifact_index + 2
+            and path_parts[-1] == "manifest.json"
+        ):
+            # Surface a published artifact even when the original source object
+            # is intentionally absent. Loading this logical file resolves the
+            # adjacent artifact prefix before any source download is attempted.
+            path_parts = path_parts[: published_artifact_index + 1]
+            path_parts[published_artifact_index] = path_parts[
+                published_artifact_index
+            ].removesuffix(".artifact")
         if any(
             is_csr_artifact_directory(path_part)
             for path_part in path_parts
@@ -259,7 +439,6 @@ async def get_public_gcs_dict(
         # Must have at least a top-level directory (e.g., 'folder/')
         if len(path_parts) < 2:
             continue
-        name_first = path_parts[0]
         second_part = path_parts[1]
 
         # Handle Uploads filtering
@@ -275,12 +454,16 @@ async def get_public_gcs_dict(
         if name_first not in projects:
             projects[name_first] = {'folder': name_first,'files': [], 'description': ''}
 
-        if name_first != 'Uploads' and second_part:
-            if second_part not in projects[name_first]['files']:
-                projects[name_first]['files'].append(second_part)
+        if name_first != 'Uploads':
+            relative_name = "/".join(path_parts[1:])
+            if (
+                _is_project_source_file(relative_name)
+                and relative_name not in projects[name_first]['files']
+            ):
+                projects[name_first]['files'].append(relative_name)
         elif name_first == 'Uploads':
-            filename = path_parts[2]
-            if filename not in projects[name_first]['files']:
+            filename = "/".join(path_parts[2:])
+            if _is_project_source_file(filename) and filename not in projects[name_first]['files']:
                 projects[name_first]['files'].append(filename)
     return projects
     

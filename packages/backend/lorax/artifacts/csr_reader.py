@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import bisect
-import hashlib
 import json
 import threading
 from collections import OrderedDict, defaultdict
@@ -15,6 +14,7 @@ import numpy as np
 import pyarrow as pa
 
 from lorax.artifacts.metrics import csr_artifact_metrics
+from lorax.artifacts.storage import open_artifact_store
 from lorax.artifacts.csr_builder import (
     CSR_ARTIFACT_FORMAT,
     CSR_ARTIFACT_SCHEMA_VERSION,
@@ -77,23 +77,6 @@ V3_CAPABILITY_INDEXES = {
     "topology_comparison": {"breakpoints", "shards"},
 }
 OPTIONAL_V3_CAPABILITIES = {"node_tree_ranges"}
-
-
-def _checksum(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as source:
-        while chunk := source.read(8 * 1024 * 1024):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
-def _verify_file(path: Path, metadata: dict[str, Any]) -> None:
-    if not path.is_file():
-        raise CSRArtifactCorruptError(f"Missing artifact file: {path.name}")
-    if path.stat().st_size != int(metadata["size_bytes"]):
-        raise CSRArtifactCorruptError(f"Size mismatch for {path.name}")
-    if _checksum(path) != metadata["sha256"]:
-        raise CSRArtifactCorruptError(f"Checksum mismatch for {path.name}")
 
 
 def _readonly(array: np.ndarray) -> np.ndarray:
@@ -292,11 +275,10 @@ class CSRArtifactReader:
     """Random-access reader that never opens the source TreeSequence."""
 
     def __init__(self, artifact_directory: str | Path, *, max_open_shards: int = 8):
-        self.artifact_directory = Path(artifact_directory).expanduser().resolve()
-        manifest_path = self.artifact_directory / "manifest.json"
-        if not manifest_path.is_file():
-            raise FileNotFoundError(manifest_path)
-        self.manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        self._store = open_artifact_store(artifact_directory)
+        self.artifact_directory = self._store.location
+        manifest_bytes = self._store.read_bytes("manifest.json")
+        self.manifest = json.loads(manifest_bytes.decode("utf-8"))
         version_key = (
             self.manifest.get("format"),
             int(self.manifest.get("schema_version", -1)),
@@ -372,17 +354,13 @@ class CSRArtifactReader:
 
         breakpoints_meta = self.manifest["indexes"]["breakpoints"]
         shard_index_meta = self.manifest["indexes"]["shards"]
-        breakpoints_path = self.artifact_directory / breakpoints_meta["name"]
-        shard_index_path = self.artifact_directory / shard_index_meta["name"]
-        _verify_file(breakpoints_path, breakpoints_meta)
-        _verify_file(shard_index_path, shard_index_meta)
+        breakpoints_name = str(breakpoints_meta["name"])
+        shard_index_name = str(shard_index_meta["name"])
+        self._verify_object(breakpoints_name, breakpoints_meta, checksum=True)
+        self._verify_object(shard_index_name, shard_index_meta, checksum=True)
 
-        self.breakpoints = np.load(
-            breakpoints_path,
-            mmap_mode="r",
-            allow_pickle=False,
-        )
-        with pa.memory_map(str(shard_index_path), "r") as source:
+        self.breakpoints = self._store.load_numpy(breakpoints_name)
+        with self._store.open_arrow(shard_index_name) as source:
             shard_table = pa.ipc.open_file(source).read_all()
         self._shards = shard_table.to_pylist()
         self._shard_first_trees = [
@@ -411,17 +389,37 @@ class CSRArtifactReader:
 
         config_meta = self.manifest.get("indexes", {}).get("config")
         if config_meta is not None:
-            config_path = self.artifact_directory / config_meta["name"]
-            _verify_file(config_path, config_meta)
-            self._stored_config = json.loads(config_path.read_text(encoding="utf-8"))
+            config_name = str(config_meta["name"])
+            self._verify_object(config_name, config_meta, checksum=True)
+            self._stored_config = json.loads(
+                self._store.read_bytes(config_name).decode("utf-8")
+            )
         else:
             self._stored_config = None
 
         for key, metadata in self.manifest.get("indexes", {}).items():
             if key in {"breakpoints", "shards", "config"}:
                 continue
-            path = self.artifact_directory / metadata["name"]
-            _verify_file(path, metadata)
+            self._verify_object(
+                str(metadata["name"]),
+                metadata,
+                # Checking every remote sidecar's hash would eagerly download
+                # the full artifact. GCS metadata size is checked at open; the
+                # explicit verify() operation still performs full checksums.
+                checksum=not self._store.remote,
+            )
+
+    def _verify_object(
+        self,
+        name: str,
+        metadata: dict[str, Any],
+        *,
+        checksum: bool,
+    ) -> None:
+        try:
+            self._store.verify(name, metadata, checksum=checksum)
+        except (FileNotFoundError, ValueError) as exc:
+            raise CSRArtifactCorruptError(str(exc)) from exc
 
     @classmethod
     def open(
@@ -535,8 +533,7 @@ class CSRArtifactReader:
             if cached is not None:
                 return cached
             metadata = self._index_metadata(key)
-            path = self.artifact_directory / metadata["name"]
-            array = np.load(path, mmap_mode="r", allow_pickle=False)
+            array = self._store.load_numpy(str(metadata["name"]))
             self._mapped_indexes[key] = array
             return array
 
@@ -546,8 +543,7 @@ class CSRArtifactReader:
             if cached is not None:
                 return cached
             metadata = self._index_metadata(key)
-            path = self.artifact_directory / metadata["name"]
-            source = pa.memory_map(str(path), "r")
+            source = self._store.open_arrow(str(metadata["name"]))
             try:
                 reader = pa.ipc.open_file(source)
             except Exception:
@@ -668,12 +664,9 @@ class CSRArtifactReader:
             csr_artifact_metrics.increment("shard_cache.hit")
             return cached[1]
         csr_artifact_metrics.increment("shard_cache.miss")
-        path = self.artifact_directory / shard["name"]
-        if not path.is_file():
-            raise CSRArtifactCorruptError(f"Missing shard {shard['name']}")
-        if path.stat().st_size != int(shard["size_bytes"]):
-            raise CSRArtifactCorruptError(f"Size mismatch for {shard['name']}")
-        source = pa.memory_map(str(path), "r")
+        shard_name = str(shard["name"])
+        self._verify_object(shard_name, shard, checksum=False)
+        source = self._store.open_arrow(shard_name)
         try:
             reader = pa.ipc.open_file(source)
             if reader.num_record_batches != int(shard["batch_count"]):
@@ -1046,14 +1039,15 @@ class CSRArtifactReader:
     def verify(self) -> dict[str, Any]:
         verified_bytes = 0
         for metadata in self.manifest["indexes"].values():
-            path = self.artifact_directory / metadata["name"]
-            _verify_file(path, metadata)
+            self._verify_object(
+                str(metadata["name"]), metadata, checksum=True
+            )
             verified_bytes += int(metadata["size_bytes"])
         for shard in self._shards:
-            path = self.artifact_directory / shard["name"]
-            _verify_file(path, shard)
+            shard_name = str(shard["name"])
+            self._verify_object(shard_name, shard, checksum=True)
             verified_bytes += int(shard["size_bytes"])
-            with pa.memory_map(str(path), "r") as source:
+            with self._store.open_arrow(shard_name) as source:
                 reader = pa.ipc.open_file(source)
                 if reader.num_record_batches != int(shard["batch_count"]):
                     raise CSRArtifactCorruptError(

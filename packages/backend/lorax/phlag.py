@@ -17,18 +17,38 @@ _CHROMOSOME_PATTERN = re.compile(
     r"^gene_trees-Stiller2024-(chr(?:[1-9]|1[0-9]|2[0-8]|Z))-sorted\.nwk\.gz$"
 )
 _MAMMALIAN_PATTERN = re.compile(r"^alltrees\.tree\.gz$")
+
+
+def _workspace_root() -> Path | None:
+    """Find a checkout root containing the optional local PHLaG data.
+
+    The source checkout has ``phlag/data`` alongside ``packages``, but the
+    production image contains only ``packages/backend``.  Do not assume a
+    fixed number of parent directories: that made importing this module fail
+    in the container before the application could start.
+    """
+
+    module_path = Path(__file__).resolve()
+    for parent in module_path.parents:
+        if (parent / "phlag" / "data").is_dir():
+            return parent
+    return None
+
+
+_WORKSPACE_ROOT = _workspace_root()
 _WORKSPACE_DEFAULT = (
-    Path(__file__).resolve().parents[4]
+    _WORKSPACE_ROOT
     / "phlag"
     / "data"
     / "bo1929-phlag-avian-analysis-454f29a"
     / "sorted_genetrees"
+    if _WORKSPACE_ROOT is not None
+    else Path("/__lorax_phlag_data_unavailable__")
 )
 _MAMMALIAN_WORKSPACE_DEFAULT = (
-    Path(__file__).resolve().parents[4]
-    / "phlag"
-    / "data"
-    / "bo1929-phlag-mammalian-analysis-a011ac3"
+    _WORKSPACE_ROOT / "phlag" / "data" / "bo1929-phlag-mammalian-analysis-a011ac3"
+    if _WORKSPACE_ROOT is not None
+    else Path("/__lorax_phlag_data_unavailable__")
 )
 
 

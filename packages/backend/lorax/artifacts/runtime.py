@@ -23,6 +23,11 @@ from lorax.artifacts.csr_reader import (
     CSRArtifactReader,
 )
 from lorax.artifacts.metrics import csr_artifact_metrics
+from lorax.artifacts.storage import (
+    gcs_artifact_location,
+    normalize_artifact_location,
+    open_artifact_store,
+)
 from lorax.constants import (
     CSR_CONTEXT_CACHE_SIZE,
     CSR_MAX_OPEN_SHARDS,
@@ -71,8 +76,8 @@ class ArtifactResolver:
 
     @staticmethod
     def _resolved_from_manifest(
-        source_path: Path,
-        artifact_directory: Path,
+        source_path: str | Path,
+        artifact_directory: str | Path,
         payload: dict[str, Any],
     ) -> ResolvedArtifact | None:
         fingerprint = payload.get("fingerprint")
@@ -94,7 +99,7 @@ class ArtifactResolver:
             return None
         return ResolvedArtifact(
             source_path=str(source_path),
-            artifact_directory=str(artifact_directory),
+            artifact_directory=normalize_artifact_location(artifact_directory),
             fingerprint=str(fingerprint),
             artifact_format=str(artifact_format),
             schema_version=int(schema_version),
@@ -149,8 +154,67 @@ class ArtifactResolver:
                 return None
             return resolved
 
+    def resolve_gcs(
+        self,
+        bucket_name: str,
+        source_blob_path: str,
+    ) -> ResolvedArtifact | None:
+        """Resolve an adjacent CSR artifact directly from a GCS prefix."""
+        artifact_location = gcs_artifact_location(bucket_name, source_blob_path)
+        with self._lock:
+            if artifact_location in self._unhealthy:
+                csr_artifact_metrics.increment("resolution.unhealthy")
+                return None
+        try:
+            store = open_artifact_store(artifact_location)
+            manifest = json.loads(
+                store.read_bytes("manifest.json").decode("utf-8")
+            )
+            resolved = self._resolved_from_manifest(
+                f"gs://{bucket_name}/{source_blob_path}",
+                artifact_location,
+                manifest,
+            )
+            if resolved is None:
+                csr_artifact_metrics.increment("resolution.corrupt_manifest")
+                return None
+            source_metadata = manifest["source"]
+            if str(source_metadata["sha256"]) != str(manifest["fingerprint"]):
+                raise ValueError("Manifest source fingerprint is inconsistent")
+
+            source_parent, separator, source_name = source_blob_path.rpartition("/")
+            source_store = open_artifact_store(
+                f"gs://{bucket_name}/{source_parent}"
+                if separator
+                else f"gs://{bucket_name}"
+            )
+            try:
+                source_size = source_store.size(source_name)
+            except FileNotFoundError:
+                # Artifact-only buckets are supported. The logical source path
+                # still identifies the dataset presented to the frontend.
+                source_size = None
+            if (
+                source_size is not None
+                and source_size != int(source_metadata["size_bytes"])
+            ):
+                csr_artifact_metrics.increment("resolution.stale")
+                return None
+            return resolved
+        except FileNotFoundError:
+            csr_artifact_metrics.increment("resolution.missing")
+            return None
+        except Exception as exc:
+            csr_artifact_metrics.increment("resolution.corrupt_manifest")
+            logger.warning(
+                "Unable to resolve GCS artifact %s: %s",
+                artifact_location,
+                exc,
+            )
+            return None
+
     def mark_unhealthy(self, artifact_directory: str | Path) -> None:
-        artifact_key = str(Path(artifact_directory).expanduser().resolve())
+        artifact_key = normalize_artifact_location(artifact_directory)
         with self._lock:
             self._unhealthy.add(artifact_key)
         csr_artifact_metrics.increment("artifact.marked_unhealthy")
@@ -175,9 +239,7 @@ class ArtifactContextRegistry:
         self._contexts: OrderedDict[str, ArtifactDatasetContext] = OrderedDict()
 
     def open(self, resolved: ResolvedArtifact) -> ArtifactDatasetContext:
-        artifact_key = str(
-            Path(resolved.artifact_directory).expanduser().resolve()
-        )
+        artifact_key = normalize_artifact_location(resolved.artifact_directory)
         with self._lock:
             cached = self._contexts.pop(artifact_key, None)
             if cached is not None:
@@ -214,14 +276,15 @@ class ArtifactContextRegistry:
         *,
         expected_fingerprint: str | None = None,
     ) -> ArtifactDatasetContext:
-        manifest_path = Path(artifact_directory) / "manifest.json"
-        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+        artifact_location = normalize_artifact_location(artifact_directory)
+        store = open_artifact_store(artifact_location)
+        payload = json.loads(store.read_bytes("manifest.json").decode("utf-8"))
         fingerprint = str(payload["fingerprint"])
         if expected_fingerprint is not None and fingerprint != expected_fingerprint:
             raise CSRArtifactCorruptError("Artifact fingerprint does not match session")
         resolved = ResolvedArtifact(
             source_path=str(payload.get("source", {}).get("path", "")),
-            artifact_directory=str(Path(artifact_directory).expanduser().resolve()),
+            artifact_directory=artifact_location,
             fingerprint=fingerprint,
             artifact_format=str(payload["format"]),
             schema_version=int(payload["schema_version"]),
@@ -229,9 +292,7 @@ class ArtifactContextRegistry:
         return self.open(resolved)
 
     def discard(self, artifact_directory: str | Path) -> None:
-        artifact_key = str(
-            Path(artifact_directory).expanduser().resolve()
-        )
+        artifact_key = normalize_artifact_location(artifact_directory)
         with self._lock:
             context = self._contexts.pop(artifact_key, None)
         if context is not None:
