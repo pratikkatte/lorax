@@ -43,9 +43,9 @@ async def test_get_projects_adds_local_phlag_artifact_project(monkeypatch, tmp_p
         handlers,
         "phlag_projects",
         lambda: {
-            "PHLaG": {
+            "PHLaG Avian": {
                 "folder": "/external/phlag",
-                "files": ["gene_trees-Stiller2024-chr1-sorted.nwk.gz"],
+                "files": [{"name": "gene_trees-Stiller2024-chr1-sorted.nwk.gz", "display_name": "Chromosome 1"}],
                 "description": "PHLaG CSR artifacts",
                 "artifact_backed": True,
             }
@@ -59,9 +59,9 @@ async def test_get_projects_adds_local_phlag_artifact_project(monkeypatch, tmp_p
 
     projects = await handlers.get_projects(tmp_path, BUCKET_NAME=None, sid="sid-phlag")
 
-    assert projects["PHLaG"]["artifact_backed"] is True
-    assert projects["PHLaG"]["files"] == [
-        "gene_trees-Stiller2024-chr1-sorted.nwk.gz"
+    assert projects["PHLaG Avian"]["artifact_backed"] is True
+    assert projects["PHLaG Avian"]["files"] == [
+        {"name": "gene_trees-Stiller2024-chr1-sorted.nwk.gz", "display_name": "Chromosome 1"}
     ]
 
 

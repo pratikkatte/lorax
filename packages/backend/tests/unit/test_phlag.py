@@ -20,10 +20,12 @@ def test_phlag_lists_only_newick_sources_with_healthy_artifacts(monkeypatch, tmp
     project = phlag.phlag_project()
 
     assert project is not None
-    assert project["files"] == [healthy.name]
-    assert phlag.resolve_phlag_source("PHLaG", healthy.name) == healthy.resolve()
-    assert phlag.resolve_phlag_source("PHLaG", stale.name) is None
-    assert phlag.resolve_phlag_source("PHLaG", "../notes.txt") is None
+    assert project["files"] == [
+        {"name": healthy.name, "display_name": "Chromosome 2"}
+    ]
+    assert phlag.resolve_phlag_source("PHLaG Avian", healthy.name) == healthy.resolve()
+    assert phlag.resolve_phlag_source("PHLaG Avian", stale.name) is None
+    assert phlag.resolve_phlag_source("PHLaG Avian", "../notes.txt") is None
 
 
 def test_mammalian_phlag_project_resolves_alltrees_source(monkeypatch, tmp_path):
@@ -35,9 +37,11 @@ def test_mammalian_phlag_project_resolves_alltrees_source(monkeypatch, tmp_path)
     project = phlag.mammalian_project()
 
     assert project is not None
-    assert project["files"] == ["alltrees.tree.gz"]
+    assert project["files"] == [
+        {"name": "alltrees.tree.gz", "display_name": "Mammals — Chromosome 3"}
+    ]
     assert (
         phlag.resolve_phlag_source("PHLaG Mammalian", "alltrees.tree.gz")
         == source.resolve()
     )
-    assert phlag.resolve_phlag_source("PHLaG", "alltrees.tree.gz") is None
+    assert phlag.resolve_phlag_source("PHLaG Avian", "alltrees.tree.gz") is None

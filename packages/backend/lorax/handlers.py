@@ -13,7 +13,7 @@ import pyarrow as pa
 import tskit
 
 from lorax.modes import CURRENT_CONFIG, CURRENT_MODE, get_uploads_dir
-from lorax.phlag import phlag_projects
+from lorax.phlag import decorate_phlag_projects, phlag_projects
 from lorax.cloud.gcs_utils import get_public_gcs_dict
 from lorax.tree_graph import construct_trees_batch, construct_tree, TreeGraph
 from lorax.tree_graph.time_scale import (
@@ -169,6 +169,10 @@ async def get_projects(upload_dir, BUCKET_NAME, sid=None):
                 CURRENT_MODE,
                 exc,
             )
+
+    # The PHLaG data uses stable storage filenames, but the landing page should
+    # show study-friendly names whether the listing came from disk or GCS.
+    decorate_phlag_projects(projects)
 
     # This workspace's PHLaG inputs live outside ~/.lorax/projects. Expose
     # only sources that have a healthy adjacent CSR artifact, and only for the

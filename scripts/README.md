@@ -26,7 +26,7 @@ Build the mammalian chromosome-3 dataset:
 ```
 
 The local backend automatically exposes healthy artifacts from this dataset as
-the `PHLaG` project. For other artifact-backed sources, enable artifact loading
+the `PHLaG Avian` project. For other artifact-backed sources, enable artifact loading
 explicitly:
 
 ```bash

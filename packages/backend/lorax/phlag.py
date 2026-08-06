@@ -10,13 +10,46 @@ from typing import Any
 from lorax.artifacts.runtime import artifact_resolver
 
 
-PHLAG_PROJECT_NAME = "PHLaG"
+PHLAG_PROJECT_NAME = "PHLaG Avian"
 PHLAG_MAMMALIAN_PROJECT_NAME = "PHLaG Mammalian"
 PHLAG_PROJECT_NAMES = {PHLAG_PROJECT_NAME, PHLAG_MAMMALIAN_PROJECT_NAME}
 _CHROMOSOME_PATTERN = re.compile(
     r"^gene_trees-Stiller2024-(chr(?:[1-9]|1[0-9]|2[0-8]|Z))-sorted\.nwk\.gz$"
 )
 _MAMMALIAN_PATTERN = re.compile(r"^alltrees\.tree\.gz$")
+
+
+def phlag_file_entry(project: str, filename: str) -> dict[str, str]:
+    """Return a UI label while retaining the storage filename as ``name``."""
+    if project == PHLAG_PROJECT_NAME:
+        match = _CHROMOSOME_PATTERN.match(filename)
+        if match is not None:
+            return {
+                "name": filename,
+                "display_name": f"Chromosome {match.group(1).removeprefix('chr')}",
+            }
+    elif project == PHLAG_MAMMALIAN_PROJECT_NAME and _MAMMALIAN_PATTERN.match(filename):
+        return {"name": filename, "display_name": "Mammals — Chromosome 3"}
+    return {"name": filename, "display_name": filename}
+
+
+def decorate_phlag_projects(projects: dict[str, dict[str, Any]]) -> None:
+    """Add readable PHLaG labels to projects listed from local disk or GCS."""
+    for project_name in PHLAG_PROJECT_NAMES:
+        project = projects.get(project_name)
+        if project is None:
+            continue
+        files = project.get("files", [])
+        if isinstance(files, list):
+            project["files"] = [
+                (
+                    phlag_file_entry(project_name, filename)
+                    if isinstance(filename, str)
+                    else filename
+                )
+                for filename in files
+                if isinstance(filename, (str, dict))
+            ]
 
 
 def _workspace_root() -> Path | None:
@@ -110,7 +143,7 @@ def phlag_project() -> dict[str, Any] | None:
         return None
     return {
         "folder": str(phlag_data_directory()),
-        "files": [source.name for source in sources],
+        "files": [phlag_file_entry(PHLAG_PROJECT_NAME, source.name) for source in sources],
         "description": (
             "PHLaG avian gene trees — preprocessed CSR artifacts with genomic "
             "positions and Newick branch lengths"
@@ -125,7 +158,10 @@ def mammalian_project() -> dict[str, Any] | None:
         return None
     return {
         "folder": str(mammalian_data_directory()),
-        "files": [source.name for source in sources],
+        "files": [
+            phlag_file_entry(PHLAG_MAMMALIAN_PROJECT_NAME, source.name)
+            for source in sources
+        ],
         "description": (
             "PHLaG mammalian chromosome 3 gene trees — preprocessed CSR "
             "artifact with human genomic positions and Newick branch lengths"
@@ -169,10 +205,12 @@ __all__ = [
     "PHLAG_MAMMALIAN_PROJECT_NAME",
     "PHLAG_PROJECT_NAMES",
     "artifact_backed_sources",
+    "decorate_phlag_projects",
     "mammalian_artifact_backed_sources",
     "mammalian_data_directory",
     "mammalian_project",
     "phlag_data_directory",
+    "phlag_file_entry",
     "phlag_project",
     "phlag_projects",
     "resolve_phlag_source",

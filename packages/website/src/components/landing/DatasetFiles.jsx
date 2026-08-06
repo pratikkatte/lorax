@@ -7,9 +7,9 @@ const isJBrowseLandingEnabled = (project) =>
     String(project || "").toLowerCase() !== "heliconius";
 
 // Inline FilePill for simplicity if not needing separate file
-function FilePill({ project, name, onOpen, loading }) {
+function FilePill({ project, filename, name, onOpen, loading }) {
     const canOpenJBrowse = isJBrowseLandingEnabled(project);
-    const jbrowseTo = canOpenJBrowse ? buildJBrowseRoute({ project, file: name }) : null;
+    const jbrowseTo = canOpenJBrowse ? buildJBrowseRoute({ project, file: filename }) : null;
     const fileHoverPadding = canOpenJBrowse
         ? "group-hover/file:pr-24 group-focus-within/file:pr-24"
         : "group-hover/file:pr-14 group-focus-within/file:pr-14";
@@ -71,9 +71,11 @@ export default function DatasetFiles({ project, files = [], loadFile, loadingFil
 
     const visible = useMemo(() => {
         const sorted = [...files]
-            .map(f => (typeof f === "string" ? f : f?.name ?? "unnamed"))
-            .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-        return q ? sorted.filter(n => n.toLowerCase().includes(q.toLowerCase())) : sorted;
+            .map(f => typeof f === "string"
+                ? { name: f, displayName: f }
+                : { name: f?.name ?? "unnamed", displayName: f?.display_name ?? f?.name ?? "unnamed" })
+            .sort((a, b) => a.displayName.localeCompare(b.displayName, undefined, { numeric: true }));
+        return q ? sorted.filter(({ displayName }) => displayName.toLowerCase().includes(q.toLowerCase())) : sorted;
     }, [files, q]);
 
     return (
@@ -89,11 +91,12 @@ export default function DatasetFiles({ project, files = [], loadFile, loadingFil
 
             {visible.length ? (
                 <ul className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                    {visible.map((name) => (
+                    {visible.map(({ name, displayName }) => (
                         <li key={name}>
                             <FilePill
                                 project={project}
-                                name={name}
+                                filename={name}
+                                name={displayName}
                                 loading={loadingFile === name}
                                 onOpen={() => {
                                     setLoadingFile(name);

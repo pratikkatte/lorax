@@ -160,7 +160,7 @@ export default function LandingPage({
                             const id = p;
                             const isOpen = expandedId === id;
                             const files = Array.isArray(project_details?.files) ? project_details.files : [];
-                            const name = p;
+                            const name = project_details?.display_name ?? p;
                             const description = project_details?.description ?? "No description available.";
 
                             if (files.length === 0) return null;
