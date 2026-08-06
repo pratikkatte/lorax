@@ -15,11 +15,16 @@ Lorax is a web-native platform for real-time, interactive visualization and expl
 ## Quick start (pip)
 
 ```bash
-pip install lorax-arg
+conda create -n lorax-runtime python=3.11 pip -c conda-forge
+conda activate lorax-runtime
+python -m pip install lorax-arg
 lorax # this opens lorax in a browser
 
 lorax --file # to directly load file on lorax (preferred for large files.)
 ```
+
+Use a dedicated environment instead of Conda `base` so NumPy, Numba, tskit,
+and PyArrow are resolved as one compatible stack.
 
 Preprocessed CSR artifacts adjacent to a tree-sequence file are enabled by
 default in the pip app. To disable them, launch with
@@ -38,4 +43,3 @@ CSV: One row per recombination interval with columns for genomic position, Newic
 ## Links
 Web platform: https://lorax.ucsc.edu
 Source code: https://github.com/pratikkatte/lorax
-

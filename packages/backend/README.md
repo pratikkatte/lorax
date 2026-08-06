@@ -148,11 +148,11 @@ lorax --version
 ## Development
 
 ```bash
-# Install with dev dependencies
-pip install -e ".[dev]"
+# Run from the repository root and install with dev dependencies
+python -m pip install -e ".[dev]"
 
 # Run tests
-pytest
+python -m pytest packages/backend/tests
 ```
 
 ## Project Structure
@@ -162,9 +162,8 @@ packages/backend/
 ├── pyproject.toml          # Package configuration
 ├── gunicorn_config.py      # Gunicorn configuration
 ├── README.md               # This file
-├── requirements.txt        # Full dependency list
+├── requirements.txt        # Minimal legacy runtime list; root pyproject is canonical
 └── lorax/                  # Main package
-    ├── __init__.py
     ├── cli.py              # CLI commands
     ├── lorax_app.py        # FastAPI + Socket.IO app
     ├── routes.py           # HTTP routes

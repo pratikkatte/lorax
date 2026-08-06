@@ -1,0 +1,112 @@
+name: Build, test, and publish Python wheel
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ["v*.*.*"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      package_version: ${{ steps.version.outputs.package_version }}
+      release_kind: ${{ steps.version.outputs.release_kind }}
+    steps:
+      - name: Check out Lorax
+        uses: actions/checkout@v4
+        with:
+          path: lorax
+          fetch-depth: 0
+      - name: Check out the JBrowse plugin
+        uses: actions/checkout@v4
+        with:
+          repository: pratikkatte/lorax-plugin
+          path: lorax-plugin
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: |
+            lorax/package-lock.json
+            lorax-plugin/package-lock.json
+      - name: Install build tools
+        working-directory: lorax
+        run: python -m pip install "build>=1.2,<2" "twine>=6,<7"
+      - name: Select beta or final package version
+        id: version
+        working-directory: lorax
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF_TYPE" == "branch" && "$GITHUB_REF_NAME" == "main" ]]; then
+            package_version="$(python scripts/release_version.py beta --serial "$GITHUB_RUN_NUMBER")"
+            release_kind="beta"
+          elif [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            package_version="$(python scripts/release_version.py final --tag "$GITHUB_REF_NAME")"
+            release_kind="final"
+          else
+            package_version="$(python scripts/release_version.py show)"
+            release_kind="pull-request"
+          fi
+          echo "package_version=$package_version" >> "$GITHUB_OUTPUT"
+          echo "release_kind=$release_kind" >> "$GITHUB_OUTPUT"
+          echo "Building Lorax $package_version ($release_kind)"
+      - name: Require final release tags to point to main
+        if: steps.version.outputs.release_kind == 'final'
+        working-directory: lorax
+        run: git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+      - name: Build and validate release artifacts
+        working-directory: lorax
+        run: python scripts/build_release.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lorax-${{ steps.version.outputs.package_version }}
+          path: lorax/dist/*
+
+  install-test:
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: lorax
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: lorax-${{ needs.build.outputs.package_version }}
+          path: lorax/dist
+      - name: Install wheel in a clean Python environment
+        working-directory: lorax
+        run: python -m pip install dist/*.whl
+      - name: Check dependency consistency
+        working-directory: lorax
+        run: python -m pip check
+      - name: Exercise imports, Numba compilation, and packaged UI
+        working-directory: lorax
+        run: python scripts/smoke_installed_wheel.py
+
+  publish:
+    if: needs.build.outputs.release_kind == 'final'
+    needs: [build, install-test]
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/lorax-arg/${{ needs.build.outputs.package_version }}/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: lorax-${{ needs.build.outputs.package_version }}
+          path: dist
+      - name: Publish final release to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1

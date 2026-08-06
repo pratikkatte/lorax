@@ -6,7 +6,7 @@ Thanks for your interest in contributing to Lorax! This guide covers how to set 
 
 ### Prerequisites
 
-- Python 3.10+
+- Python 3.10–3.13
 - Node.js 20.19+ or 22.12+ (Node 22 recommended)
 - npm
 - Git
@@ -20,11 +20,8 @@ cd lorax
 # Install frontend dependencies
 npm ci
 
-# Install backend (editable mode with dev extras)
-python -m pip install -e "packages/backend[dev]"
-
-# Install the app package (editable mode)
-python -m pip install -e packages/app
+# Install the complete Python project in editable mode with dev extras
+python -m pip install -e ".[dev]"
 ```
 
 ### Running in Development Mode
@@ -95,9 +92,8 @@ lorax/
 ### Backend Unit Tests (pytest)
 
 ```bash
-cd packages/backend
-pip install -e ".[dev]"
-pytest
+python -m pip install -e ".[dev]"
+python -m pytest packages/backend/tests
 ```
 
 ### Frontend Unit Tests (Vitest)
@@ -157,6 +153,23 @@ find packages/app -type d -name __pycache__ -prune -exec rm -rf {} +
 
 ### Production Build (Bundled UI)
 
+Create and activate the reproducible build environment:
+
+```bash
+conda env create -f environment-build.yml
+conda activate lorax-build
+```
+
+The supported release path is:
+
+```bash
+python scripts/build_release.py
+```
+
+This requires the `lorax-plugin` repository as a sibling checkout. It builds
+the frontend assets, package artifacts, validates metadata, and checks the
+wheel contents. The lower-level commands below remain useful while developing.
+
 ```bash
 npm ci
 VITE_API_BASE=/api npm --workspace packages/website run build
@@ -175,14 +188,46 @@ lorax build
 ### Production Install Verification
 
 ```bash
-python -m pip install --force-reinstall dist/lorax_arg-*.whl
-lorax
+conda create -n lorax-wheel-test python=3.11 pip -c conda-forge
+conda activate lorax-wheel-test
+python -m pip install dist/lorax_arg-*.whl
+python -m pip check
+python scripts/smoke_installed_wheel.py
 ```
 
 ### Publish to PyPI
 
-1. Update `version` in the root `pyproject.toml`.
-2. Build fresh artifacts:
+The root `pyproject.toml` always contains the next final version, for example
+`0.1.9`. Release automation derives prerelease versions without committing them:
+
+- A push to `main` builds and tests a unique beta such as `0.1.9b123`. The beta
+  remains a downloadable GitHub Actions artifact and is not uploaded to PyPI.
+- A matching tag such as `v0.1.9` builds `0.1.9`, runs clean-wheel installation
+  tests on Python 3.10–3.13, and publishes to PyPI only if all tests pass.
+- A release tag must point to a commit contained in `main`, and its version must
+  exactly match the version in `pyproject.toml`.
+
+Python package indexes normalize prerelease spelling, so use `0.1.9b123` rather
+than `0.1.9-beta`. Reusing a single beta version would also fail because package
+index versions are immutable.
+
+Before the first automated release, configure PyPI Trusted Publishing for:
+
+- Repository: `pratikkatte/lorax`
+- Workflow: `wheel.yml`
+- GitHub environment: `pypi`
+
+Protect the `pypi` GitHub environment with required reviewers if you want a
+manual approval checkpoint after the tag tests pass and before upload.
+
+To release the final version after the beta artifact has been tested:
+
+```bash
+git tag v0.1.9
+git push origin v0.1.9
+```
+
+For manual artifact inspection, build fresh artifacts locally:
 
 ```bash
 rm -rf build dist *.egg-info
@@ -192,17 +237,6 @@ python packages/app/scripts/sync_ui_assets.py
 python -m pip install -U build twine
 python -m build .
 ```
-
-3. Upload to TestPyPI (recommended), then PyPI:
-
-```bash
-python -m twine upload --repository testpypi dist/*
-# Verify: pip install -i https://test.pypi.org/simple lorax-arg
-
-python -m twine upload dist/*
-```
-
-> You need PyPI credentials (or a token) configured in `~/.pypirc` or via `TWINE_USERNAME`/`TWINE_PASSWORD`.
 
 ---
 

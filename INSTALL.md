@@ -4,10 +4,12 @@ This document covers all the ways to install and run Lorax.
 
 ## Quick Install (pip)
 
-The simplest way to get started:
+The simplest safe installation uses a dedicated environment:
 
 ```bash
-pip install lorax-arg
+conda create -n lorax-runtime python=3.11 pip -c conda-forge
+conda activate lorax-runtime
+python -m pip install lorax-arg
 lorax
 ```
 
@@ -104,13 +106,53 @@ lorax --file path/to/your.trees
 
 ---
 
+## Clean Conda Environment for Release Builds
+
+Do not build or install Lorax in Conda's `base` environment. A Lorax wheel is
+pure Python, so a wheel built with Python 3.11 can be installed on every tested
+Python version (3.10 through 3.13). Runtime compatibility is determined by the
+dependency ranges in the root `pyproject.toml`, not by packages already present
+in the build environment.
+
+Create the dedicated build environment once:
+
+```bash
+conda env create -f environment-build.yml
+conda activate lorax-build
+```
+
+For a full release build, clone `lorax-plugin` beside this repository. The
+release command installs locked Node dependencies, builds both frontends,
+creates the wheel and source archive, runs Twine metadata checks, and verifies
+that the wheel contains its UI:
+
+```bash
+cd /path/to/parent
+git clone https://github.com/pratikkatte/lorax.git
+git clone https://github.com/pratikkatte/lorax-plugin.git
+cd lorax
+python scripts/build_release.py
+```
+
+If the generated frontend under `packages/app/lorax_app/static` is already
+current, it can be reused:
+
+```bash
+python scripts/build_release.py --use-existing-frontend
+```
+
+Before publishing, the CI wheel matrix must pass on Python 3.10, 3.11, 3.12,
+and 3.13. It installs the wheel into a clean environment, runs `pip check`, and
+forces the first Numba compilation—the path that catches NumPy binary-stack
+problems.
+
 ## Building from Source (pip)
 
 For development or when you need to run from source without Docker.
 
 ### Prerequisites
 
-- Python 3.10+
+- Python 3.10–3.13
 - Node.js 20.19+ or 22.12+ (Node 22 recommended)
 - npm
 
@@ -125,9 +167,8 @@ cd lorax
 npm ci
 VITE_API_BASE=/api npm --workspace packages/website run build
 
-# Install Python packages
-python -m pip install -e packages/backend
-python -m pip install -e packages/app
+# Install the complete Python project from the canonical root metadata
+python -m pip install -e .
 
 # Run Lorax
 lorax --port 3000
@@ -147,12 +188,21 @@ python -m pip install build
 python -m build .
 ```
 
-The resulting wheel can be installed on any machine with Python 3.10+:
+The resulting wheel can be installed on machines with Python 3.10–3.13:
 
 ```bash
+conda create -n lorax-runtime python=3.11 pip -c conda-forge
+conda activate lorax-runtime
 python -m pip install dist/lorax_arg-*.whl
+python -m pip check
+python scripts/smoke_installed_wheel.py
 lorax
 ```
+
+Use a dedicated runtime environment on each server. Installing Lorax into a
+shared environment can still conflict with unrelated software that has its own
+NumPy, Pandas, Protobuf, or web-stack constraints. In particular, do not use
+the Conda `base` environment for Lorax.
 
 ---
 
@@ -193,7 +243,7 @@ Controls in-memory session and tree-graph cache lifetimes.
 ### Gunicorn (multi-worker)
 
 ```bash
-pip install -e "packages/backend[prod]"
+python -m pip install -e ".[prod]"
 python -m gunicorn -c packages/backend/gunicorn_config.py lorax.lorax_app:sio_app
 ```
 

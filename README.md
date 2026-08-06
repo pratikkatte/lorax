@@ -4,7 +4,7 @@
 
 [![PyPI version](https://img.shields.io/pypi/v/lorax-arg)](https://pypi.org/project/lorax-arg/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](https://pypi.org/project/lorax-arg/)
+[![Python 3.10–3.13](https://img.shields.io/badge/python-3.10--3.13-blue)](https://pypi.org/project/lorax-arg/)
 
 > **Web platform:** [lorax.ucsc.edu](https://lorax.ucsc.edu/) | **Pip package:** [lorax-arg](https://pypi.org/project/lorax-arg/)
 
@@ -23,9 +23,14 @@
 ### Install with pip (recommended)
 
 ```bash
-pip install lorax-arg
+conda create -n lorax-runtime python=3.11 pip -c conda-forge
+conda activate lorax-runtime
+python -m pip install lorax-arg
 lorax
 ```
+
+Use a dedicated environment rather than Conda `base`; Lorax includes a compiled
+scientific Python stack whose versions must be resolved together.
 
 This opens Lorax in your browser. To load a file directly (preferred for large files):
 

@@ -9,15 +9,15 @@ RUN apt-get update && \
 
 WORKDIR /app
 
-# Install backend dependencies (use requirements.txt; packaging lives at repo root)
-COPY packages/backend/requirements.txt /app/backend/requirements.txt
-RUN pip install --no-cache-dir -r /app/backend/requirements.txt
-
-# Backend source (run directly from source)
-COPY packages/backend /app/backend
-ENV PYTHONPATH=/app/backend
+# Install from the same metadata used to publish the wheel. This avoids the
+# former backend requirements file pulling unrelated ML/NLP dependencies into
+# the image.
+COPY pyproject.toml /app/pyproject.toml
+COPY packages/app /app/packages/app
+COPY packages/backend /app/packages/backend
+RUN pip install --no-cache-dir ".[prod]"
 
 EXPOSE 8080
 
 # Production default: gunicorn + uvicorn workers. Set WEB_CONCURRENCY to override worker count.
-CMD ["python", "-m", "gunicorn", "-c", "/app/backend/gunicorn_config.py", "lorax.lorax_app:sio_app"]
+CMD ["python", "-m", "gunicorn", "-c", "/app/packages/backend/gunicorn_config.py", "lorax.lorax_app:sio_app"]

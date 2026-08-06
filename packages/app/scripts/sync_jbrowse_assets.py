@@ -92,6 +92,11 @@ def download_jbrowse(dest: Path) -> None:
         config = tmp_path / "config.json"
         if config.exists():
             config.unlink()
+        # The upstream web archive includes development fixtures that add tens
+        # of megabytes but are never used by Lorax at runtime.
+        test_data = tmp_path / "test_data"
+        if test_data.exists():
+            shutil.rmtree(test_data)
         shutil.copytree(tmp_path, dest)
 
 

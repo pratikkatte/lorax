@@ -1,4 +1,5 @@
 lorax/data/
+.DS_Store
 packages/app/lorax_app/static/
 packages/backend/notebooks/
 packages/plugin/

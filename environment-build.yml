@@ -1,0 +1,16 @@
+name: lorax-build
+
+channels:
+  - conda-forge
+
+dependencies:
+  # Build on the middle supported Python version. The resulting wheel is
+  # py3-none-any and is tested separately on every supported Python version.
+  - python=3.11
+  - nodejs=22
+  - pip
+  - pip:
+      - build>=1.2,<2
+      - setuptools>=77,<81
+      - twine>=6,<7
+      - wheel>=0.45,<1
