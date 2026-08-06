@@ -107,6 +107,11 @@ def _compare_artifact_trees(context, tree_indices, time_scale):
 
 
 def _artifact_sample_name_map(reader):
+    v2_names = reader.v2_sample_names()
+    if v2_names:
+        return {
+            name.casefold(): node_id for node_id, name in enumerate(v2_names)
+        }
     reader.require_capability("sample_search")
     return {
         str(row["display_name"]).casefold(): int(row["node_id"])
@@ -137,20 +142,26 @@ def _artifact_positions(
     positions = []
     lineages = {}
     wanted = {int(node_id) for node_id in node_ids}
-    ranges_by_node = {
-        node_id: context.reader.tree_ranges_for_node(node_id)
-        for node_id in wanted
-    }
     requested_indices = [int(index) for index in tree_indices]
-    relevant_indices = [
-        tree_index
-        for tree_index in requested_indices
-        if any(
-            start <= tree_index < stop
-            for ranges in ranges_by_node.values()
-            for start, stop in ranges
-        )
-    ]
+    if context.reader.has_capability("node_tree_ranges"):
+        ranges_by_node = {
+            node_id: context.reader.tree_ranges_for_node(node_id)
+            for node_id in wanted
+        }
+        relevant_indices = [
+            tree_index
+            for tree_index in requested_indices
+            if any(
+                start <= tree_index < stop
+                for ranges in ranges_by_node.values()
+                for start, stop in ranges
+            )
+        ]
+    else:
+        # Node-tree ranges are an optional performance index. Without it,
+        # inspect the requested visible trees and retain only trees containing
+        # the selected node IDs below.
+        relevant_indices = requested_indices
     genealogies = context.reader.trees_at_indices(relevant_indices)
     for genealogy in genealogies:
         for node_id in wanted:

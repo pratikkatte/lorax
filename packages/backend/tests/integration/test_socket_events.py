@@ -611,11 +611,11 @@ class TestLoadFileEvent:
         node_search = socket_harness.get_emitted("search-nodes-result")
         assert node_search[-1]["data"]["highlights"][0][0]["node_id"] == 0
         highlight = socket_harness.get_emitted("highlight-positions-result")
-        assert highlight[-1]["data"]["code"] == "CSR_REBUILD_REQUIRED"
+        assert highlight[-1]["data"]["positions"]
         multi_highlight = socket_harness.get_emitted(
             "search-metadata-multi-result"
         )
-        assert multi_highlight[-1]["data"]["code"] == "CSR_REBUILD_REQUIRED"
+        assert multi_highlight[-1]["data"]["positions_by_value"]["0"]
         assert ancestry["query_node"] == 0
         mutations = socket_harness.get_emitted("mutations-window-result")
         assert isinstance(mutations[-1]["data"]["buffer"], bytes)
