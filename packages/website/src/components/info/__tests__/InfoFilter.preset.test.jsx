@@ -142,19 +142,18 @@ describe('InfoFilter metadata dropdown', () => {
     );
   });
 
-  it('disables lineage display for CSR artifacts and explains why', async () => {
+  it('keeps lineage display available for CSR artifacts', async () => {
     const { user } = renderWithLorax({
       loraxOverrides: {
         tsconfig: { artifact_format: 'lorax-csr-v3' }
       }
     });
 
-    expect(screen.getByRole('button', { name: 'Toggle Display Lineages' })).toBeDisabled();
+    const lineageToggle = screen.getByRole('button', { name: 'Toggle Display Lineages' });
+    expect(lineageToggle).toBeEnabled();
 
-    await user.hover(screen.getByLabelText('Explain Display Lineages'));
-    expect(screen.getByRole('tooltip')).toHaveTextContent(
-      /unavailable for CSR artifacts while this feature is in beta/i
-    );
+    await user.click(lineageToggle);
+    expect(lineageToggle).toHaveClass('bg-gray-700');
   });
 
   it('renders source groups while keeping bare metadata keys as option values', async () => {
