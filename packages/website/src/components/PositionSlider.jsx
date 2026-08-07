@@ -116,6 +116,8 @@ export default function PositionSlider({
   const fileInfoRef = useRef(null);
   const valueRef = useRef(value);
   const panIntervalRef = useRef(null);
+  const panStartedRef = useRef(false);
+  const urlSyncTimeoutRef = useRef(null);
   const tableCounts = tsconfig?.table_counts;
   const topLevelMetadata = tsconfig?.top_level_metadata;
   const provenance = tsconfig?.provenance;
@@ -129,16 +131,38 @@ export default function PositionSlider({
     valueRef.current = value;
   }, [value]);
 
-  // Update URL params when value changes
+  // Update URL params when value changes. Deck interactions can emit a new
+  // range every animation frame; Safari rate-limits history.replaceState, so
+  // wait for the interaction to settle before writing the URL.
   useEffect(() => {
-    if (value && project) {
-      if (typeof window === 'undefined') return;
-      const updatedParams = new URLSearchParams(window.location.search);
-      updatedParams.set('project', project);
-      updatedParams.set('genomiccoordstart', value[0]);
-      updatedParams.set('genomiccoordend', value[1]);
-      setSearchParams(updatedParams, { replace: true });
+    if (!value || !project || typeof window === 'undefined') return undefined;
+
+    const updatedParams = new URLSearchParams(window.location.search);
+    const start = String(value[0]);
+    const end = String(value[1]);
+    if (
+      updatedParams.get('project') === project &&
+      updatedParams.get('genomiccoordstart') === start &&
+      updatedParams.get('genomiccoordend') === end
+    ) {
+      return undefined;
     }
+
+    updatedParams.set('project', project);
+    updatedParams.set('genomiccoordstart', start);
+    updatedParams.set('genomiccoordend', end);
+
+    urlSyncTimeoutRef.current = window.setTimeout(() => {
+      setSearchParams(updatedParams, { replace: true });
+      urlSyncTimeoutRef.current = null;
+    }, 150);
+
+    return () => {
+      if (urlSyncTimeoutRef.current !== null) {
+        window.clearTimeout(urlSyncTimeoutRef.current);
+        urlSyncTimeoutRef.current = null;
+      }
+    };
   }, [value, project, setSearchParams]);
 
   // Close file info dropdown on click outside
@@ -196,7 +220,9 @@ export default function PositionSlider({
       if (!currentValue || !genomeLength) return null;
 
       const range = currentValue[1] - currentValue[0];
-      const panAmount = Math.floor(range * 0.01); // Pan 20% of current view
+      // Keep the controls useful after zooming into a window narrower than
+      // 100 bp, where flooring one percent would otherwise produce zero.
+      const panAmount = Math.max(1, Math.floor(range * 0.01));
 
       let newStart, newEnd;
       if (direction === 'L') {
@@ -217,6 +243,10 @@ export default function PositionSlider({
       const currentValue = valueRef.current;
       const nextRange = getPannedRange(currentValue, direction);
       if (!nextRange) return;
+
+      // Update immediately so rapid presses and hold-to-pan do not wait for
+      // React to receive the updated value prop before calculating the next step.
+      valueRef.current = nextRange;
       if (lockModelMatrix) setLockModelMatrix(false);
       onChange?.(nextRange);
     },
@@ -226,6 +256,7 @@ export default function PositionSlider({
   const startPan = useCallback(
     (direction) => {
       if (panIntervalRef.current) return;
+      panStartedRef.current = true;
       handlePan(direction);
       panIntervalRef.current = setInterval(() => {
         handlePan(direction);
@@ -547,7 +578,16 @@ export default function PositionSlider({
       <div className="position-slider__navigation">
         {/* Pan left button */}
         <button
-        onClick={() => handlePan('L')}
+        // Pointer presses start panning before the click is fired. Avoid
+        // applying that same physical press a second time in the click handler.
+        onClick={(event) => {
+          if (event.detail === 0 || !panStartedRef.current) handlePan('L');
+          panStartedRef.current = false;
+        }}
+        onPointerDown={() => startPan('L')}
+        onPointerUp={stopPan}
+        onPointerLeave={stopPan}
+        onPointerCancel={stopPan}
         onMouseDown={() => startPan('L')}
         onMouseUp={stopPan}
         onMouseLeave={stopPan}
@@ -601,7 +641,14 @@ export default function PositionSlider({
 
       {/* Pan right button */}
       <button
-        onClick={() => handlePan('R')}
+        onClick={(event) => {
+          if (event.detail === 0 || !panStartedRef.current) handlePan('R');
+          panStartedRef.current = false;
+        }}
+        onPointerDown={() => startPan('R')}
+        onPointerUp={stopPan}
+        onPointerLeave={stopPan}
+        onPointerCancel={stopPan}
         onMouseDown={() => startPan('R')}
         onMouseUp={stopPan}
         onMouseLeave={stopPan}

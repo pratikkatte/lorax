@@ -203,7 +203,7 @@ export default function LandingPage({
                                     >
                                         <div className="bg-slate-50/50 p-4 border-t border-slate-100/80 mx-1 mb-1 rounded-b-xl">
                                             <div className="max-h-60 overflow-y-auto pr-2 custom-scrollbar">
-                                                <DatasetFiles project={project_details.folder} files={files} loadFile={upload.loadFile} loadingFile={upload.loadingFile} setLoadingFile={upload.setLoadingFile} />
+                                                <DatasetFiles project={p} files={files} loadFile={upload.loadFile} loadingFile={upload.loadingFile} setLoadingFile={upload.setLoadingFile} />
                                             </div>
                                         </div>
                                     </div>

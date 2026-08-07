@@ -184,4 +184,29 @@ describe('PositionSlider lock view toggle', () => {
       onChange.mock.invocationCallOrder[0]
     );
   });
+
+  it('pans a narrow coordinate window by at least one base pair per press', async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+
+    render(
+      <MemoryRouter>
+        <PositionSlider
+          filename="test.trees"
+          genomeLength={1000}
+          value={[100, 150]}
+          onChange={onChange}
+          onResetY={vi.fn()}
+          project={null}
+          tsconfig={{}}
+        />
+      </MemoryRouter>
+    );
+
+    await user.click(screen.getByTitle('Pan left'));
+    await user.click(screen.getByTitle('Pan left'));
+
+    expect(onChange).toHaveBeenNthCalledWith(1, [99, 149]);
+    expect(onChange).toHaveBeenNthCalledWith(2, [98, 148]);
+  });
 });
