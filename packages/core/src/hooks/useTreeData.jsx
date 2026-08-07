@@ -320,6 +320,7 @@ export function useTreeData({
   timeScale = 'linear',
   tsconfig = null,
   genomicCoords = null,
+  freezeLayout = false,
   enabled = true,
 }) {
 
@@ -354,6 +355,18 @@ export function useTreeData({
     targetTreeIndex: null,
     targetLocalBBox: null
   });
+  const freezeLayoutRef = useRef(freezeLayout);
+
+  useEffect(() => {
+    freezeLayoutRef.current = freezeLayout;
+    if (freezeLayout) {
+      // Let current data remain visible, but prevent any old fetch from
+      // replacing it while the camera is zooming.
+      requestGenerationRef.current += 1;
+      requestIdRef.current += 1;
+      pendingSyncRef.current = false;
+    }
+  }, [freezeLayout]);
 
   // Derive stable file identity from tsconfig
   const tsconfigId = tsconfig?.artifact_fingerprint
@@ -417,7 +430,7 @@ export function useTreeData({
   }, []);
 
   const processSnapshot = useCallback(async (snapshot) => {
-    if (!snapshot) return;
+    if (!snapshot || freezeLayoutRef.current) return;
 
     const {
       displayArray: snapshotDisplayArray,
@@ -547,7 +560,7 @@ export function useTreeData({
       });
 
       // Ignore stale response if a newer request was sent or cache generation changed.
-      if (currentRequestId !== requestIdRef.current || generation !== requestGenerationRef.current) {
+      if (freezeLayoutRef.current || currentRequestId !== requestIdRef.current || generation !== requestGenerationRef.current) {
         return;
       }
 
@@ -625,7 +638,7 @@ export function useTreeData({
       previousDisplayArrayRef.current = snapshotDisplayArray.slice();
     } catch (err) {
       // Ignore errors from stale requests
-      if (currentRequestId !== requestIdRef.current || generation !== requestGenerationRef.current) {
+      if (freezeLayoutRef.current || currentRequestId !== requestIdRef.current || generation !== requestGenerationRef.current) {
         return;
       }
       const hasNewerSnapshot = pendingSyncRef.current || version !== latestSnapshotVersionRef.current;
@@ -659,6 +672,7 @@ export function useTreeData({
 
   // Fetch immediately when displayArray changes (no debounce), coalescing to latest snapshot.
   useEffect(() => {
+    if (freezeLayout) return;
     const version = ++latestSnapshotVersionRef.current;
     latestSnapshotRef.current = {
       displayArray,
@@ -683,7 +697,8 @@ export function useTreeData({
     resolvedTimeScale,
     genomicCoords,
     tsconfig,
-    runSyncQueue
+    runSyncQueue,
+    freezeLayout
   ]);
 
   return useMemo(() => ({

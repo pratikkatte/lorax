@@ -40,6 +40,43 @@ function renderUseDeckViews() {
 }
 
 describe('useDeckViews time-axis wheel panning', () => {
+  it('uses the zoom axis changed by the event when React still has the previous axis', () => {
+    const { result } = renderUseDeckViews();
+
+    // Safari trackpad pinch is exposed as ctrl+wheel. The controller changes X
+    // before React has committed its zoomAxis state, so this hook must not
+    // discard the X update just because its prop is still Y.
+    act(() => {
+      result.current.handleViewStateChange({
+        viewId: 'ortho',
+        oldViewState: { zoom: [5, 8], target: [0, 0] },
+        viewState: { zoom: [6, 8], target: [0.25, 0] }
+      });
+    });
+
+    expect(result.current.viewState.ortho.zoom).toEqual([6, 8]);
+    expect(result.current.viewState.ortho.target).toEqual([0.25, 0]);
+    expect(result.current.viewState['genome-positions'].zoom[0]).toBe(6);
+    expect(result.current.viewState['genome-info'].zoom[0]).toBe(6);
+  });
+
+  it('accepts a native horizontal pan even when the previous zoom axis was Y', () => {
+    const { result } = renderUseDeckViews();
+
+    act(() => {
+      result.current.handleViewStateChange({
+        viewId: 'ortho',
+        oldViewState: { zoom: [5, 8], target: [0, 0] },
+        viewState: { zoom: [5, 8], target: [0.25, 0] }
+      });
+    });
+
+    expect(result.current.viewState.ortho.zoom).toEqual([5, 8]);
+    expect(result.current.viewState.ortho.target).toEqual([0.25, 0]);
+    expect(result.current.viewState['genome-positions'].target[0]).toBe(0.25);
+    expect(result.current.viewState['genome-info'].target[0]).toBe(0.25);
+  });
+
   it('pans ortho and tree-time Y targets from wheel delta while preserving X and zoom state', () => {
     const { result } = renderUseDeckViews();
 

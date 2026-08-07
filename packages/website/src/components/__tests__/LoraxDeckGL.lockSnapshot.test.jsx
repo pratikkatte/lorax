@@ -63,6 +63,16 @@ vi.mock('@deck.gl/react', async () => {
           >
             view-change
           </button>
+          <button
+            type="button"
+            onClick={() => onViewStateChange?.({
+              viewState: { zoom: [6, 8], target: [0, 0] },
+              viewId: 'ortho',
+              oldViewState: { zoom: [5, 8], target: [0, 0] }
+            })}
+          >
+            zoom-in
+          </button>
           <button type="button" onClick={() => onAfterRender?.()}>
             after-render
           </button>
@@ -264,6 +274,22 @@ describe('LoraxDeckGL lock-view snapshot query payload', () => {
     expect(mockUseTreeData).toHaveBeenCalled();
     const latestArgs = mockUseTreeData.mock.calls.at(-1)?.[0];
     expect(latestArgs.lockView).toBeNull();
+  });
+
+  it('holds tree-layout work during an X-axis zoom gesture, then commits once it settles', () => {
+    render(<LoraxDeckGL viewConfig={{ ortho: { enabled: true } }} />);
+
+    expect(mockUseLocalData.mock.calls.at(-1)?.[0].freezeLayout).toBe(false);
+    fireEvent.click(screen.getAllByRole('button', { name: 'zoom-in' }).at(-1));
+    expect(mockUseLocalData.mock.calls.at(-1)?.[0].freezeLayout).toBe(true);
+    expect(mockUseTreeData.mock.calls.at(-1)?.[0].freezeLayout).toBe(true);
+
+    act(() => {
+      vi.advanceTimersByTime(180);
+    });
+
+    expect(mockUseLocalData.mock.calls.at(-1)?.[0].freezeLayout).toBe(false);
+    expect(mockUseTreeData.mock.calls.at(-1)?.[0].freezeLayout).toBe(false);
   });
 
   it('updates lockView payload at most once per animation frame for repeated view updates', async () => {

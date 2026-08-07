@@ -27,6 +27,7 @@ export function useTreeViewportPipeline({
   populationFilter = null,
   defaultTipColor = null,
   isInteracting = false,
+  freezeLayout = false,
   treeEnabled = true,
   renderTrees = true,
   renderWorkerOverride = null,
@@ -38,7 +39,8 @@ export function useTreeViewportPipeline({
     worker: resolvedIntervalWorker,
     workerConfigReady,
     genomicCoords,
-    isInteracting
+    isInteracting,
+    freezeLayout
   });
 
   const localDataState = useLocalData({
@@ -50,6 +52,7 @@ export function useTreeViewportPipeline({
     viewState,
     tsconfig,
     displayOptions: { selectionStrategy: 'largestSpan', lockModelMatrix },
+    freezeLayout,
     enabled: treeEnabled,
   });
 
@@ -71,6 +74,7 @@ export function useTreeViewportPipeline({
     timeScale,
     tsconfig,
     genomicCoords,
+    freezeLayout,
     enabled: renderTrees,
   });
 

@@ -219,7 +219,10 @@ export function useDeckViews({
       if (viewId === 'ortho') {
         viewOptions.controller = {
           type: MyOrthographicController,
-          scrollZoom: { smooth: true, zoomAxis },
+          // Trackpads already generate a continuous stream of wheel events.
+          // Starting a 250ms transition for every event makes Safari repeatedly
+          // restart an in-flight zoom animation.
+          scrollZoom: { smooth: false },
           dragPan: true,
         };
       } else {
@@ -230,7 +233,7 @@ export function useDeckViews({
     });
 
     return viewInstances;
-  }, [viewConfig, enabledViews, zoomAxis]);
+  }, [viewConfig, enabledViews]);
 
   /**
    * Handle view state changes with synchronization logic
@@ -243,14 +246,29 @@ export function useDeckViews({
       let zoom = [...(oldViewState?.zoom || [0, 0])];
       let target = [...(oldViewState?.target || [0, 0])];
 
-      // Handle zoom based on axis
+      const oldZoom = oldViewState.zoom || [0, 0];
+      const nextZoom = newViewState.zoom || oldZoom;
+      const zoomChangedX = nextZoom[0] !== oldZoom[0];
+      const zoomChangedY = nextZoom[1] !== oldZoom[1];
+      // Derive the axis from the event result. The React state below remains
+      // useful for legacy paths, but can lag the current Safari ctrl+wheel
+      // event by a render.
+      const eventZoomAxis = zoomChangedX && !zoomChangedY
+        ? 'X'
+        : zoomChangedY && !zoomChangedX
+          ? 'Y'
+          : zoomChangedX || zoomChangedY
+            ? zoomAxis
+            : 'all';
+
+      // Handle zoom based on the axis changed by this event.
       if (panDirection === null) {
-        if (zoomAxis === 'Y') {
+        if (eventZoomAxis === 'Y') {
           zoom[1] = newViewState.zoom[1];
           target[1] = newViewState.target[1];
           zoom[0] = oldViewState.zoom[0];
           target[0] = oldViewState.target[0];
-        } else if (zoomAxis === 'X') {
+        } else if (eventZoomAxis === 'X') {
           const liveDeltaX = getWheelPanDeltaX();
           const liveDeltaY = getWheelPanDeltaY();
           const absDeltaX = Math.abs(liveDeltaX || 0);

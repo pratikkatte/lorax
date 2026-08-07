@@ -34,7 +34,8 @@ export function useInterval({
   debounceMs = 16,
   maxIntervals = 2000,
   previewMaxIntervals = 400,
-  isInteracting = false
+  isInteracting = false,
+  freezeLayout = false
 }) {
   const [visibleIntervals, setVisibleIntervals] = useState([]);
   const [intervalBounds, setIntervalBounds] = useState({ lo: 0, hi: 0 }); // Global index bounds
@@ -44,6 +45,16 @@ export function useInterval({
   // For request cancellation
   const latestRequestIdRef = useRef(0);
   const debounceTimerRef = useRef(null);
+  const freezeLayoutRef = useRef(freezeLayout);
+
+  useEffect(() => {
+    freezeLayoutRef.current = freezeLayout;
+    if (freezeLayout) {
+      // Invalidate an in-flight interval response without clearing the
+      // currently rendered interval data.
+      latestRequestIdRef.current += 1;
+    }
+  }, [freezeLayout]);
 
   const effectiveMaxIntervals = useMemo(() => {
     if (!isInteracting) return maxIntervals;
@@ -54,6 +65,7 @@ export function useInterval({
 
   // Main effect: incremental fetching with debounce
   useEffect(() => {
+    if (freezeLayout) return;
     if (!workerConfigReady || !genomicCoords || !worker) return;
 
     // Clear pending debounce timer
@@ -76,7 +88,7 @@ export function useInterval({
         });
 
         // Check if this request is still current
-        if (requestId !== latestRequestIdRef.current) return;
+        if (freezeLayoutRef.current || requestId !== latestRequestIdRef.current) return;
 
         const lo = result?.lo ?? 0;
         const hi = result?.hi ?? 0;
@@ -117,7 +129,7 @@ export function useInterval({
         clearTimeout(debounceTimerRef.current);
       }
     };
-  }, [workerConfigReady, genomicCoords, worker, debounceMs, effectiveMaxIntervals, isInteracting]);
+  }, [workerConfigReady, genomicCoords, worker, debounceMs, effectiveMaxIntervals, isInteracting, freezeLayout]);
 
   // Reset method - call when underlying data changes
   const reset = useCallback(() => {

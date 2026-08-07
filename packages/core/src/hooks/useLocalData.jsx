@@ -60,6 +60,7 @@ export function useLocalData({
   viewState,
   tsconfig,
   enabled = true,
+  freezeLayout = false,
   displayOptions = {},
 }) {
   const [localBins, setLocalBins] = useState(null);
@@ -78,10 +79,21 @@ export function useLocalData({
   const queuedRequestRef = useRef(null);
   const queueRunnerActiveRef = useRef(false);
   const lastAppliedRequestKeyRef = useRef(null);
+  const freezeLayoutRef = useRef(freezeLayout);
 
   // Serialize displayOptions to avoid object reference comparison issues
   const displayOptionsKey = JSON.stringify(displayOptions);
   const lockModelMatrix = !!displayOptions?.lockModelMatrix;
+
+  useEffect(() => {
+    freezeLayoutRef.current = freezeLayout;
+    if (freezeLayout) {
+      // Keep the currently rendered positions and invalidate any response that
+      // was calculated from an earlier zoom frame.
+      requestGenerationRef.current += 1;
+      queuedRequestRef.current = null;
+    }
+  }, [freezeLayout]);
 
   // Compute scale factors from viewState
   const globalBpPerUnit = useMemo(() => {
@@ -233,7 +245,7 @@ export function useLocalData({
             queuedRequestRef.current && queuedRequestRef.current.key !== key
           );
 
-          if (!generationChanged && !hasNewerPending) {
+          if (!freezeLayoutRef.current && !generationChanged && !hasNewerPending) {
             setLocalBins(deserializeBins(result.local_bins));
             setDisplayArray((prev) => {
               const newArr = result.displayArray || [];
@@ -295,6 +307,7 @@ export function useLocalData({
   }, [tsconfig?.file_path, tsconfig?.genome_length]);
 
   useEffect(() => {
+    if (freezeLayout) return;
     if (!worker) return;
     if (!workerConfigReady || !genomicCoords || !globalBpPerUnit) return;
     if (intervalBounds.hi <= intervalBounds.lo) return;
@@ -334,7 +347,7 @@ export function useLocalData({
       intervalCount,
       generationAtEnqueue: requestGenerationRef.current
     });
-  }, [workerConfigReady, genomicCoords, worker, globalBpPerUnit, intervalBounds, displayOptionsKey, tsconfig, shouldSkipForLockedInteraction, computeNewGlobalBp, enqueueRequest]);
+  }, [workerConfigReady, genomicCoords, worker, globalBpPerUnit, intervalBounds, displayOptionsKey, tsconfig, shouldSkipForLockedInteraction, computeNewGlobalBp, enqueueRequest, freezeLayout]);
 
   const reset = useCallback(() => {
     requestGenerationRef.current += 1;

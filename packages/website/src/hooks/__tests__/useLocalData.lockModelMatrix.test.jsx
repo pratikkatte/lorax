@@ -1,6 +1,6 @@
 /* @vitest-environment jsdom */
 
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { useLocalData } from '@lorax/core/src/hooks/useLocalData.jsx';
 
@@ -212,5 +212,43 @@ describe('useLocalData lockModelMatrix', () => {
     });
     await new Promise((resolve) => setTimeout(resolve, 25));
     expect(worker.request).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps rendered tree positions stable while a zoom layout freeze is active', async () => {
+    let resolveStaleRequest;
+    const worker = {
+      request: vi.fn()
+        .mockImplementationOnce(() => new Promise((resolve) => {
+          resolveStaleRequest = resolve;
+        }))
+        .mockResolvedValueOnce({
+          local_bins: [{ key: 2, global_index: 2 }],
+          displayArray: [2],
+          showing_all_trees: false
+        })
+    };
+    const baseProps = createBaseProps(worker);
+    const { result, rerender } = renderHook((props) => useLocalData(props), {
+      initialProps: baseProps
+    });
+
+    await waitFor(() => expect(worker.request).toHaveBeenCalledTimes(1));
+
+    rerender({ ...baseProps, freezeLayout: true });
+    await act(async () => {
+      resolveStaleRequest({
+        local_bins: [{ key: 1, global_index: 1 }],
+        displayArray: [1],
+        showing_all_trees: false
+      });
+    });
+
+    expect(result.current.localBins).toBeNull();
+    expect(result.current.displayArray).toEqual([]);
+
+    rerender({ ...baseProps, freezeLayout: false });
+    await waitFor(() => expect(worker.request).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(result.current.displayArray).toEqual([2]));
+    expect(Array.from(result.current.localBins.keys())).toEqual([2]);
   });
 });

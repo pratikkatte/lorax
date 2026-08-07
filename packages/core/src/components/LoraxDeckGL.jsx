@@ -119,9 +119,35 @@ function getOrthoLocalXY(deckRef, info, event) {
 const LOCK_VIEW_SNAPSHOT_DEBOUNCE_MS = 150;
 /** Keep interaction mode active briefly after deck reports interaction end. */
 const INTERACTION_SETTLE_MS = 120;
+/** Wait for the final trackpad zoom event before rebuilding tree layout. */
+const ZOOM_LAYOUT_SETTLE_MS = 180;
 const DESCENDANT_HIGHLIGHT_COLOR = [94, 177, 155, 255];
 const DESCENDANT_EDGE_ALPHA = 220;
 const DESCENDANT_HIGHLIGHT_RADIUS = 4;
+
+function genomicCoordsEqual(a, b) {
+  return Array.isArray(a)
+    && Array.isArray(b)
+    && a.length === 2
+    && b.length === 2
+    && a[0] === b[0]
+    && a[1] === b[1];
+}
+
+function viewStatesEqual(a, b) {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  const aKeys = Object.keys(a);
+  const bKeys = Object.keys(b);
+  if (aKeys.length !== bKeys.length) return false;
+  return aKeys.every((viewId) => {
+    const aView = a[viewId];
+    const bView = b[viewId];
+    if (!aView || !bView) return aView === bView;
+    return genomicCoordsEqual(aView.zoom, bView.zoom)
+      && genomicCoordsEqual(aView.target, bView.target);
+  });
+}
 const ANCESTRAL_NODE_HIGHLIGHT_RADIUS = 3;
 const SELECTED_ANCESTRAL_NODE_HIGHLIGHT_RADIUS = 4;
 const DEFAULT_LINEAGE_COLOR = [255, 200, 0, 255];
@@ -318,11 +344,16 @@ const LoraxDeckGL = forwardRef(({
 
   const [lockViewPayload, setLockViewPayload] = useState(null);
   const [isInteracting, setIsInteracting] = useState(false);
+  const [freezeTreeLayout, setFreezeTreeLayout] = useState(false);
   const [hoveredAncestralEdge, setHoveredAncestralEdge] = useState(null);
   const [hoveredEdgeForDescendants, setHoveredEdgeForDescendants] = useState(null);
   const [hoveredMatchingEdge, setHoveredMatchingEdge] = useState(null);
   const [selectedAncestralEdge, setSelectedAncestralEdge] = useState(null);
   const interactionSettleTimerRef = useRef(null);
+  const zoomLayoutSettleTimerRef = useRef(null);
+  const freezeTreeLayoutRef = useRef(false);
+  const latestViewStateRef = useRef(null);
+  const latestGenomicCoordsRef = useRef(null);
   const suppressNextPolygonClickRef = useRef(false);
 
   // 1. Merge and validate config
@@ -425,6 +456,13 @@ const LoraxDeckGL = forwardRef(({
     }
   }, [highlightDescendantsOnHover]);
 
+  useEffect(() => () => {
+    if (zoomLayoutSettleTimerRef.current != null) {
+      clearTimeout(zoomLayoutSettleTimerRef.current);
+      zoomLayoutSettleTimerRef.current = null;
+    }
+  }, []);
+
   // 4. Views and view state management (with genomic coordinates)
   const {
     views,
@@ -457,6 +495,74 @@ const LoraxDeckGL = forwardRef(({
   const activeGenomicCoords = externalGenomicCoordsRequired
     ? externalGenomicCoords
     : (externalGenomicCoords || genomicCoords);
+  latestViewStateRef.current = viewState;
+  latestGenomicCoordsRef.current = activeGenomicCoords;
+
+  // The camera must continue to update every input frame. Tree layout uses
+  // these committed snapshots instead, so model matrices cannot jump while an
+  // X-axis zoom-in gesture is active.
+  const [layoutViewState, setLayoutViewState] = useState(viewState);
+  const [layoutGenomicCoords, setLayoutGenomicCoords] = useState(activeGenomicCoords);
+
+  const commitLatestTreeLayoutSnapshot = useCallback(() => {
+    // Commit these in the same React update as ending the freeze. Otherwise a
+    // stale pre-gesture snapshot can briefly enter the worker pipeline.
+    setLayoutViewState((previous) => (
+      viewStatesEqual(previous, latestViewStateRef.current)
+        ? previous
+        : latestViewStateRef.current
+    ));
+    setLayoutGenomicCoords((previous) => (
+      genomicCoordsEqual(previous, latestGenomicCoordsRef.current)
+        ? previous
+        : latestGenomicCoordsRef.current
+    ));
+    freezeTreeLayoutRef.current = false;
+    setFreezeTreeLayout(false);
+  }, []);
+
+  const endZoomLayoutFreeze = useCallback(() => {
+    if (zoomLayoutSettleTimerRef.current != null) {
+      clearTimeout(zoomLayoutSettleTimerRef.current);
+      zoomLayoutSettleTimerRef.current = null;
+    }
+    commitLatestTreeLayoutSnapshot();
+  }, [commitLatestTreeLayoutSnapshot]);
+
+  const keepTreeLayoutFrozenUntilZoomSettles = useCallback(() => {
+    freezeTreeLayoutRef.current = true;
+    setFreezeTreeLayout(true);
+    if (zoomLayoutSettleTimerRef.current != null) {
+      clearTimeout(zoomLayoutSettleTimerRef.current);
+    }
+    zoomLayoutSettleTimerRef.current = setTimeout(() => {
+      zoomLayoutSettleTimerRef.current = null;
+      commitLatestTreeLayoutSnapshot();
+    }, ZOOM_LAYOUT_SETTLE_MS);
+  }, [commitLatestTreeLayoutSnapshot]);
+
+  useEffect(() => {
+    if (!freezeTreeLayout) {
+      setLayoutViewState((previous) => (
+        viewStatesEqual(previous, viewState) ? previous : viewState
+      ));
+    }
+  }, [viewState, freezeTreeLayout]);
+
+  useEffect(() => {
+    if (!freezeTreeLayout) {
+      setLayoutGenomicCoords((previous) => (
+        genomicCoordsEqual(previous, activeGenomicCoords) ? previous : activeGenomicCoords
+      ));
+    }
+  }, [activeGenomicCoords, freezeTreeLayout]);
+
+  const setGenomicCoordsWithLayoutSync = useCallback((coords) => {
+    // Presets, sliders, mutation navigation, and API calls are intentional
+    // navigation commands. They must win over a delayed trackpad settle.
+    endZoomLayoutFreeze();
+    return setGenomicCoords(coords);
+  }, [endZoomLayoutFreeze, setGenomicCoords]);
 
   const externalSyncKeyRef = useRef(null);
 
@@ -469,9 +575,9 @@ const LoraxDeckGL = forwardRef(({
     const key = `${start}:${end}:${globalBpPerUnit}:${deckWidth}`;
     if (externalSyncKeyRef.current === key) return;
     // Keep Lorax viewState aligned to external coords and pixel-width changes.
-    setGenomicCoords(externalGenomicCoords);
+    setGenomicCoordsWithLayoutSync(externalGenomicCoords);
     externalSyncKeyRef.current = key;
-  }, [externalGenomicCoordsSync, externalGenomicCoords, globalBpPerUnit, decksize?.width, coordsReady, setGenomicCoords]);
+  }, [externalGenomicCoordsSync, externalGenomicCoords, globalBpPerUnit, decksize?.width, coordsReady, setGenomicCoordsWithLayoutSync]);
 
   // 5. Notify parent when genomicCoords changes
   useEffect(() => {
@@ -500,8 +606,8 @@ const LoraxDeckGL = forwardRef(({
     localDataWorker,
     worker,
     workerConfigReady,
-    genomicCoords: activeGenomicCoords,
-    viewState,
+    genomicCoords: layoutGenomicCoords,
+    viewState: layoutViewState,
     tsconfig,
     queryTreeLayout,
     isConnected,
@@ -513,6 +619,7 @@ const LoraxDeckGL = forwardRef(({
     populationFilter,
     defaultTipColor,
     isInteracting,
+    freezeLayout: freezeTreeLayout,
     includeTipData,
     includeEdgeData,
     treeEnabled,
@@ -1549,10 +1656,27 @@ const LoraxDeckGL = forwardRef(({
       }
     }
 
+    if (params?.viewId === 'ortho') {
+      const nextZoom = params.viewState?.zoom;
+      const previousZoom = params.oldViewState?.zoom;
+      const nextXZoom = Array.isArray(nextZoom) ? nextZoom[0] : nextZoom;
+      const previousXZoom = Array.isArray(previousZoom) ? previousZoom[0] : previousZoom;
+      const xZoomChanged = Number.isFinite(nextXZoom)
+        && Number.isFinite(previousXZoom)
+        && nextXZoom !== previousXZoom;
+      const xZoomingIn = xZoomChanged && nextXZoom > previousXZoom;
+
+      // Freeze only a zoom-in session. Once it starts, keep it frozen through
+      // small reversals or simultaneous panning until the gesture settles.
+      if (xZoomingIn || (freezeTreeLayoutRef.current && xZoomChanged)) {
+        keepTreeLayoutFrozenUntilZoomSettles();
+      }
+    }
+
     internalHandleViewStateChange(params);
     debouncedScheduleLockSnapshotCapture();
     externalOnViewStateChange?.(params);
-  }, [enableLockMaxZoomGuard, lockModelMatrix, orthoViewportPx, localBins, internalHandleViewStateChange, externalOnViewStateChange, debouncedScheduleLockSnapshotCapture, updateInteractionState, onMaxZoomReached]);
+  }, [enableLockMaxZoomGuard, lockModelMatrix, orthoViewportPx, localBins, internalHandleViewStateChange, externalOnViewStateChange, debouncedScheduleLockSnapshotCapture, updateInteractionState, onMaxZoomReached, keepTreeLayoutFrozenUntilZoomSettles]);
 
   const handleTimeAxisWheelCapture = useCallback((event) => {
     if (!enableTimeAxisWheelPan) return;
@@ -1755,7 +1879,7 @@ const LoraxDeckGL = forwardRef(({
     yzoom,
     // Genomic coordinates
     genomicCoords,
-    setGenomicCoords,
+    setGenomicCoords: setGenomicCoordsWithLayoutSync,
     coordsReady,
     // Local data for tree visualization
     localBins,
@@ -1790,7 +1914,7 @@ const LoraxDeckGL = forwardRef(({
     },
     getSVGString,
     getPNGBlob
-  }), [viewState, views, viewReset, xzoom, yzoom, genomicCoords, setGenomicCoords, coordsReady, localBins, displayArray, showingAllTrees, treesInWindowCount, treeData, treeDataLoading, treeDataBackgroundRefresh, treeDataFetchReason, treeDataError, polygons, hoveredPolygon, setHoveredPolygon, polygonsReady, getSVGString, getPNGBlob]);
+  }), [viewState, views, viewReset, xzoom, yzoom, genomicCoords, setGenomicCoordsWithLayoutSync, coordsReady, localBins, displayArray, showingAllTrees, treesInWindowCount, treeData, treeDataLoading, treeDataBackgroundRefresh, treeDataFetchReason, treeDataError, polygons, hoveredPolygon, setHoveredPolygon, polygonsReady, getSVGString, getPNGBlob]);
 
   return (
     <div
