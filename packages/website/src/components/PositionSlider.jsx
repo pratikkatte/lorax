@@ -15,14 +15,6 @@ const formatBp = (bp) => {
   return `${bp} bp`;
 };
 
-/**
- * Calculate input width based on digit count using ch units
- */
-const getInputWidth = (value) => {
-  const digits = String(value).length;
-  return `${Math.max(digits + 6, 10)}ch`; // +6 for padding and spinner arrows, min 10 chars
-};
-
 const isEmptyObject = (value) => (
   value &&
   typeof value === 'object' &&
@@ -608,7 +600,6 @@ export default function PositionSlider({
           onChange={handleStartChange}
           onKeyPress={handleKeyPress}
           className="position-slider__range-input min-w-0 px-2 py-1 text-center text-sm font-mono border-none outline-none bg-transparent"
-          style={{ width: getInputWidth(currentStart) }}
           min={0}
           max={genomeLength}
         />
@@ -619,7 +610,6 @@ export default function PositionSlider({
           onChange={handleEndChange}
           onKeyPress={handleKeyPress}
           className="position-slider__range-input min-w-0 px-2 py-1 text-center text-sm font-mono border-none outline-none bg-transparent"
-          style={{ width: getInputWidth(currentEnd) }}
           min={0}
           max={genomeLength}
         />

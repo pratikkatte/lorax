@@ -41,7 +41,9 @@ body {
  */
 .position-slider {
   display: grid;
-  grid-template-columns: minmax(12rem, 0.8fr) minmax(21rem, 1fr) auto;
+  /* Keep the brand at its content width so the genomic range receives all
+   * remaining space before the view toggles. */
+  grid-template-columns: auto minmax(34rem, 1fr) auto;
   grid-template-areas: "brand navigation toggles";
   align-items: center;
   gap: 0.5rem 1rem;
@@ -75,7 +77,14 @@ body {
 }
 
 .position-slider__range {
-  flex: 0 1 auto;
+  /* Let the editable coordinates use all space between the navigation buttons. */
+  flex: 1 1 auto;
+}
+
+.position-slider__range-input {
+  /* Both genomic coordinates stay equally legible as the header grows or shrinks. */
+  flex: 1 1 0;
+  width: 100%;
 }
 
 .position-slider__toggles {
@@ -87,7 +96,7 @@ body {
   white-space: nowrap;
 }
 
-@media (max-width: 1280px) {
+@media (max-width: 1500px) {
   .position-slider {
     grid-template-columns: minmax(0, 1fr) auto;
     grid-template-areas:
