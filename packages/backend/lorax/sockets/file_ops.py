@@ -176,7 +176,7 @@ def register_file_events(sio):
                     blob_path = None
                     gcs_allowed = False
                 elif project in PHLAG_PROJECT_NAMES:
-                    # Production PHLaG sources live in GCS; resolve the
+                    # Production Phlag sources live in GCS; resolve the
                     # adjacent artifact there before falling back to a
                     # source download. Local checkouts still use the path
                     # above when a healthy local artifact is available.
@@ -267,7 +267,7 @@ def register_file_events(sio):
                 return _load_file_failure_payload(
                     request_id=request_id,
                     code="PHLAG_ARTIFACT_NOT_FOUND",
-                    message="The selected PHLaG CSR artifact is missing or stale.",
+                    message="The selected Phlag CSR artifact is missing or stale.",
                     recoverable=True,
                 )
 

@@ -59,9 +59,58 @@ async def test_get_projects_adds_local_phlag_artifact_project(monkeypatch, tmp_p
 
     projects = await handlers.get_projects(tmp_path, BUCKET_NAME=None, sid="sid-phlag")
 
-    assert projects["PHLaG Avian"]["artifact_backed"] is True
-    assert projects["PHLaG Avian"]["files"] == [
+    assert projects["Phlag Avian"]["artifact_backed"] is True
+    assert projects["Phlag Avian"]["files"] == [
         {"name": "gene_trees-Stiller2024-chr1-sorted.nwk.gz", "display_name": "Chromosome 1"}
+    ]
+
+
+@pytest.mark.anyio
+async def test_get_projects_adds_1000_genomes_metadata(monkeypatch, tmp_path):
+    project_dir = tmp_path / "1000Genomes"
+    project_dir.mkdir()
+    (project_dir / "1kg_chr2.trees.tsz").write_text("source")
+    monkeypatch.setattr(handlers, "CURRENT_MODE", "local")
+    monkeypatch.setattr(
+        handlers,
+        "get_public_gcs_dict",
+        AsyncMock(return_value={}),
+    )
+
+    projects = await handlers.get_projects(tmp_path, BUCKET_NAME=None, sid="sid-1kg")
+
+    assert projects["1000Genomes"]["display_name"] == "1000 Genomes"
+    assert projects["1000Genomes"]["description"] == (
+        "Inferred whole-genome histories from 1000 Genome project."
+    )
+    assert projects["1000Genomes"]["references"] == [
+        {"label": "Dataset on Zenodo", "url": "https://zenodo.org/records/3051855"}
+    ]
+
+
+@pytest.mark.anyio
+async def test_get_projects_adds_heliconius_metadata(monkeypatch, tmp_path):
+    project_dir = tmp_path / "Heliconius"
+    project_dir.mkdir()
+    (project_dir / "erato-sara_chr2.csv").write_text("source")
+    monkeypatch.setattr(handlers, "CURRENT_MODE", "local")
+    monkeypatch.setattr(
+        handlers,
+        "get_public_gcs_dict",
+        AsyncMock(return_value={}),
+    )
+
+    projects = await handlers.get_projects(tmp_path, BUCKET_NAME=None, sid="sid-heliconius")
+
+    assert projects["Heliconius"]["display_name"] == "Heliconius"
+    assert projects["Heliconius"]["description"] == (
+        "Genomic architecture and introgression shape a butterfly radiation."
+    )
+    assert projects["Heliconius"]["references"] == [
+        {
+            "label": "Dataset on Dryad",
+            "url": "https://datadryad.org/dataset/doi:10.5061/dryad.b7bj832",
+        }
     ]
 
 

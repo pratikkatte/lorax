@@ -518,7 +518,7 @@ class CSRArtifactReader:
         config["data_capabilities"] = {
             "mutations": bool((config.get("table_counts") or {}).get("mutations", 0))
         }
-        # PHLaG Newick artifacts retain stable tip labels in the manifest rather
+        # Phlag Newick artifacts retain stable tip labels in the manifest rather
         # than v3 sidecars. Expose them through the standard sample contract.
         sample_names = self.v2_sample_names()
         if sample_names:
@@ -541,7 +541,7 @@ class CSRArtifactReader:
         return config
 
     def v2_sample_names(self) -> list[str]:
-        """Return PHLaG Newick tip labels in stable node-ID order."""
+        """Return Phlag Newick tip labels in stable node-ID order."""
         if self.schema_version != CSR_ARTIFACT_V2_SCHEMA_VERSION:
             return []
         return [str(name) for name in (self.manifest.get("sample_names") or [])]

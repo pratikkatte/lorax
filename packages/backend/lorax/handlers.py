@@ -43,6 +43,48 @@ logger = logging.getLogger(__name__)
 
 _TREE_GRAPH_LOAD_TASKS = {}
 _TREE_GRAPH_LOAD_TASKS_LOCK = asyncio.Lock()
+_THOUSAND_GENOMES_PROJECT_NAMES = {"1000genomes", "1000 genomes"}
+_HELICONIUS_PROJECT_NAMES = {"heliconius"}
+
+
+def decorate_1000_genomes_project(projects: dict[str, dict]) -> None:
+    """Add provenance metadata to a 1000 Genomes project listing."""
+    for project_name, project in projects.items():
+        if project_name.casefold() not in _THOUSAND_GENOMES_PROJECT_NAMES:
+            continue
+        project.update(
+            {
+                "display_name": "1000 Genomes",
+                "description": "Inferred whole-genome histories from 1000 Genome project.",
+                "references": [
+                    {
+                        "label": "Dataset on Zenodo",
+                        "url": "https://zenodo.org/records/3051855",
+                    }
+                ],
+            }
+        )
+
+
+def decorate_heliconius_project(projects: dict[str, dict]) -> None:
+    """Add provenance metadata to a Heliconius project listing."""
+    for project_name, project in projects.items():
+        if project_name.casefold() not in _HELICONIUS_PROJECT_NAMES:
+            continue
+        project.update(
+            {
+                "display_name": "Heliconius",
+                "description": (
+                    "Genomic architecture and introgression shape a butterfly radiation."
+                ),
+                "references": [
+                    {
+                        "label": "Dataset on Dryad",
+                        "url": "https://datadryad.org/dataset/doi:10.5061/dryad.b7bj832",
+                    }
+                ],
+            }
+        )
 
 
 def _get_tip_shift_project_prefixes() -> list[str]:
@@ -170,11 +212,7 @@ async def get_projects(upload_dir, BUCKET_NAME, sid=None):
                 exc,
             )
 
-    # The PHLaG data uses stable storage filenames, but the landing page should
-    # show study-friendly names whether the listing came from disk or GCS.
-    decorate_phlag_projects(projects)
-
-    # This workspace's PHLaG inputs live outside ~/.lorax/projects. Expose
+    # This workspace's Phlag inputs live outside ~/.lorax/projects. Expose
     # only sources that have a healthy adjacent CSR artifact, and only for the
     # real local project root (not arbitrary directories passed by tests or
     # callers).
@@ -183,6 +221,13 @@ async def get_projects(upload_dir, BUCKET_NAME, sid=None):
         and Path(upload_dir).resolve() == get_uploads_dir(CURRENT_CONFIG).resolve()
     ):
         projects.update(phlag_projects())
+
+    # The Phlag data uses stable storage filenames, but the landing page should
+    # show study-friendly names and provenance whether the listing came from
+    # disk, GCS, or the adjacent local Phlag workspace.
+    decorate_phlag_projects(projects)
+    decorate_1000_genomes_project(projects)
+    decorate_heliconius_project(projects)
 
     return projects
 

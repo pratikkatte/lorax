@@ -60,7 +60,7 @@ def artifact_details(reader: CSRArtifactReader, data: dict) -> dict:
         node_id = int(node_value)
         if is_phlag_newick:
             if tree_index is None:
-                raise ValueError("treeIndex is required for PHLaG Newick node details")
+                raise ValueError("treeIndex is required for Phlag Newick node details")
             genealogy = reader.tree_at_index(int(tree_index))
             if not genealogy.has_node(node_id):
                 raise KeyError(f"Node {node_id} is not in tree {tree_index}")

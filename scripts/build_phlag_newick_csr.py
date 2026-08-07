@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build Lorax CSR-v2 artifacts directly from PHLaG Newick gzip files.
+"""Build Lorax CSR-v2 artifacts directly from Phlag Newick gzip files.
 
 The artifact is placed adjacent to each source as ``<newick.gz>.artifact``.
 Genomic positions come from the matching ``positions-*.txt.gz`` file.  For N
@@ -92,7 +92,7 @@ def source_paths(directory: Path, chromosome: str) -> tuple[Path, Path]:
     positions = directory / f"positions-gene_trees-Stiller2024-{chromosome}-sorted.txt.gz"
     missing = [str(path) for path in (trees, positions) if not path.is_file()]
     if missing:
-        raise FileNotFoundError("Missing PHLaG source file(s): " + ", ".join(missing))
+        raise FileNotFoundError("Missing Phlag source file(s): " + ", ".join(missing))
     return trees, positions
 
 
@@ -247,7 +247,7 @@ def build_chromosome(
     positions_path = positions_path.resolve()
     if not trees_path.is_file() or not positions_path.is_file():
         raise FileNotFoundError(
-            "Missing PHLaG source file(s): "
+            "Missing Phlag source file(s): "
             + ", ".join(
                 str(path)
                 for path in (trees_path, positions_path)
@@ -425,7 +425,7 @@ def parse_args() -> argparse.Namespace:
         "--dataset",
         choices=("avian", "mammalian"),
         default="avian",
-        help="PHLaG release layout to process",
+        help="Phlag release layout to process",
     )
     parser.add_argument("--input-dir", type=Path)
     parser.add_argument("--chromosome", action="append", help="Repeat to select chromosomes")

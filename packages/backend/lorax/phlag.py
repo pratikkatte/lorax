@@ -1,4 +1,4 @@
-"""Local PHLaG project discovery for adjacent Newick CSR artifacts."""
+"""Local Phlag project discovery for adjacent Newick CSR artifacts."""
 
 from __future__ import annotations
 
@@ -13,10 +13,65 @@ from lorax.artifacts.runtime import artifact_resolver
 PHLAG_PROJECT_NAME = "Phlag Avian"
 PHLAG_MAMMALIAN_PROJECT_NAME = "Phlag Mammalian"
 PHLAG_PROJECT_NAMES = {PHLAG_PROJECT_NAME, PHLAG_MAMMALIAN_PROJECT_NAME}
+_PHLAG_PROJECT_ALIASES = {
+    "phlag avian": PHLAG_PROJECT_NAME,
+    "phlag mammalian": PHLAG_MAMMALIAN_PROJECT_NAME,
+}
 _CHROMOSOME_PATTERN = re.compile(
     r"^gene_trees-Stiller2024-(chr(?:[1-9]|1[0-9]|2[0-8]|Z))-sorted\.nwk\.gz$"
 )
 _MAMMALIAN_PATTERN = re.compile(r"^alltrees\.tree\.gz$")
+
+
+def _project_metadata(project_name: str) -> dict[str, Any]:
+    """Return display and provenance metadata for a Phlag project."""
+    if project_name == PHLAG_PROJECT_NAME:
+        return {
+            "display_name": "Phlag Avian — Stiller et al. (2024)",
+            "description": "Avian gene trees from Stiller et al. (2024).",
+            "references": [
+                {
+                    "label": "Dataset on Zenodo",
+                    "url": "https://zenodo.org/records/19713363",
+                },
+                {
+                    "label": "Stiller et al. (2024)",
+                    "url": "https://www.nature.com/articles/s41586-024-07323-1",
+                },
+                {
+                    "label": "Phlag",
+                    "url": "https://academic.oup.com/bioinformatics/article/42/Supplement_1/btag273/8726330",
+                },
+            ],
+        }
+    if project_name == PHLAG_MAMMALIAN_PROJECT_NAME:
+        return {
+            "display_name": "Phlag Mammalian",
+            "description": (
+                "Phlag-inferred mammalian chromosome 3 gene trees from the Zoonomia "
+                "alignment data."
+            ),
+            "references": [
+                {
+                    "label": "Dataset on Zenodo",
+                    "url": "https://zenodo.org/records/19713368",
+                },
+                {
+                    "label": "Source alignment study",
+                    "url": "https://www.science.org/doi/10.1126/science.abl8189",
+                },
+                {
+                    "label": "Phlag",
+                    "url": "https://academic.oup.com/bioinformatics/article/42/Supplement_1/btag273/8726330",
+                },
+            ],
+        }
+    return {}
+
+
+def _canonical_project_name(project_name: str) -> str | None:
+    """Match Phlag project-name spellings without regard to capitalization."""
+    return _PHLAG_PROJECT_ALIASES.get(project_name.casefold())
 
 
 def phlag_file_entry(project: str, filename: str) -> dict[str, str]:
@@ -34,11 +89,12 @@ def phlag_file_entry(project: str, filename: str) -> dict[str, str]:
 
 
 def decorate_phlag_projects(projects: dict[str, dict[str, Any]]) -> None:
-    """Add readable PHLaG labels to projects listed from local disk or GCS."""
-    for project_name in PHLAG_PROJECT_NAMES:
-        project = projects.get(project_name)
-        if project is None:
+    """Add readable Phlag labels to projects listed from local disk or GCS."""
+    for listed_name, project in list(projects.items()):
+        project_name = _canonical_project_name(listed_name)
+        if project_name is None:
             continue
+        project.update(_project_metadata(project_name))
         files = project.get("files", [])
         if isinstance(files, list):
             project["files"] = [
@@ -50,10 +106,13 @@ def decorate_phlag_projects(projects: dict[str, dict[str, Any]]) -> None:
                 for filename in files
                 if isinstance(filename, (str, dict))
             ]
+        if listed_name != project_name:
+            projects[project_name] = project
+            del projects[listed_name]
 
 
 def _workspace_root() -> Path | None:
-    """Find a checkout root containing the optional local PHLaG data.
+    """Find a checkout root containing the optional local Phlag data.
 
     The source checkout has ``phlag/data`` alongside ``packages``, but the
     production image contains only ``packages/backend``.  Do not assume a
@@ -142,12 +201,9 @@ def phlag_project() -> dict[str, Any] | None:
     if not sources:
         return None
     return {
+        **_project_metadata(PHLAG_PROJECT_NAME),
         "folder": str(phlag_data_directory()),
         "files": [phlag_file_entry(PHLAG_PROJECT_NAME, source.name) for source in sources],
-        "description": (
-            "PHLaG avian gene trees — preprocessed CSR artifacts with genomic "
-            "positions and Newick branch lengths"
-        ),
         "artifact_backed": True,
     }
 
@@ -157,15 +213,12 @@ def mammalian_project() -> dict[str, Any] | None:
     if not sources:
         return None
     return {
+        **_project_metadata(PHLAG_MAMMALIAN_PROJECT_NAME),
         "folder": str(mammalian_data_directory()),
         "files": [
             phlag_file_entry(PHLAG_MAMMALIAN_PROJECT_NAME, source.name)
             for source in sources
         ],
-        "description": (
-            "PHLaG mammalian chromosome 3 gene trees — preprocessed CSR "
-            "artifact with human genomic positions and Newick branch lengths"
-        ),
         "artifact_backed": True,
     }
 
@@ -184,10 +237,11 @@ def phlag_projects() -> dict[str, dict[str, Any]]:
 def resolve_phlag_source(project: str, filename: str) -> Path | None:
     if Path(filename).name != filename:
         return None
-    if project == PHLAG_PROJECT_NAME:
+    project_name = _canonical_project_name(project)
+    if project_name == PHLAG_PROJECT_NAME:
         directory = phlag_data_directory()
         pattern = _CHROMOSOME_PATTERN
-    elif project == PHLAG_MAMMALIAN_PROJECT_NAME:
+    elif project_name == PHLAG_MAMMALIAN_PROJECT_NAME:
         directory = mammalian_data_directory()
         pattern = _MAMMALIAN_PATTERN
     else:

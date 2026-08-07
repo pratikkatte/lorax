@@ -13,6 +13,36 @@ function Badge({ children, pill }) {
     );
 }
 
+function ProjectReferences({ references }) {
+    const validReferences = Array.isArray(references)
+        ? references.filter((reference) => (
+            reference
+            && typeof reference === "object"
+            && typeof reference.label === "string"
+            && typeof reference.url === "string"
+        ))
+        : [];
+
+    if (validReferences.length === 0) return null;
+
+    return (
+        <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-xs text-slate-500">
+            <span className="font-medium text-slate-600">Sources:</span>
+            {validReferences.map(({ label, url }) => (
+                <a
+                    key={url}
+                    href={url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-medium text-emerald-700 underline decoration-emerald-300 underline-offset-2 hover:text-emerald-800"
+                >
+                    {label}
+                </a>
+            ))}
+        </div>
+    );
+}
+
 export default function LandingPage({
     upload,
 }) {
@@ -162,6 +192,7 @@ export default function LandingPage({
                             const files = Array.isArray(project_details?.files) ? project_details.files : [];
                             const name = project_details?.display_name ?? p;
                             const description = project_details?.description ?? "No description available.";
+                            const references = project_details?.references;
 
                             if (files.length === 0) return null;
 
@@ -202,6 +233,7 @@ export default function LandingPage({
                                             }`}
                                     >
                                         <div className="bg-slate-50/50 p-4 border-t border-slate-100/80 mx-1 mb-1 rounded-b-xl">
+                                            <ProjectReferences references={references} />
                                             <div className="max-h-60 overflow-y-auto pr-2 custom-scrollbar">
                                                 <DatasetFiles project={p} files={files} loadFile={upload.loadFile} loadingFile={upload.loadingFile} setLoadingFile={upload.setLoadingFile} />
                                             </div>
