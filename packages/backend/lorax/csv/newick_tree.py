@@ -7,7 +7,8 @@ instead of tskit tables.
 Coordinate system:
 - y (time): anchored time in [0,1] where tips are always 1.0 and the root is
   1 - (tree_height / global_max_height)
-- x (layout): tips get sequential x, internal nodes get (min+max)/2 of children
+- x (layout): child clades are stably ordered by ascending terminal-tip count;
+  tips get sequential x and internal nodes get (min+max)/2 of children
 """
 
 from __future__ import annotations
@@ -19,6 +20,8 @@ import numpy as np
 
 # ete3 is used for Newick parsing
 from ete3 import Tree
+
+from lorax.tree_graph.tree_graph import _ladderize_children_and_compute_x
 
 
 def prune_outgroup_sample(tree: Tree, outgroup: str = "etal") -> None:
@@ -106,7 +109,8 @@ def parse_newick_to_tree(
     Uses ete3 to parse the Newick string, then computes layout coordinates
     using the same algorithm as tree_graph.py:
     - y: cumulative distance from root, normalized by max_branch_length
-    - x: post-order layout where tips get sequential x, internals get (min+max)/2
+    - x: stable ladderized post-order layout where tips get sequential x and
+      internals get (min+max)/2
 
     Args:
         newick_str: Newick format tree string
@@ -206,18 +210,24 @@ def parse_newick_to_tree(
     if shift_tips_to_one:
         y = shift_tree_tips_to_one(y, is_tip)
 
-    # Compute x (layout): tips get sequential x, internals = (min+max)/2
-    x = np.zeros(num_nodes, dtype=np.float32)
-    tip_counter = 0
-
-    for node in tree.traverse("postorder"):
-        idx = node_index[node]
-        if node.is_leaf():
-            x[idx] = tip_counter
-            tip_counter += 1
-        else:
-            child_xs = [x[node_index[child]] for child in node.children]
-            x[idx] = (min(child_xs) + max(child_xs)) / 2.0
+    # Compute x from a compact local CSR topology. This preserves the node IDs
+    # assigned above while applying the same stable ladderization contract used
+    # for TreeSequence and artifact-backed datasets.
+    children_indptr = np.zeros(num_nodes + 1, dtype=np.int32)
+    children_local: List[int] = []
+    for idx, node in enumerate(nodes):
+        children_local.extend(node_index[child] for child in node.children)
+        children_indptr[idx + 1] = len(children_local)
+    children_data = np.asarray(children_local, dtype=np.int32)
+    roots = np.asarray([node_index[tree]], dtype=np.int32)
+    _ordered_children, x, _tip_counts, tip_counter = (
+        _ladderize_children_and_compute_x(
+            children_indptr,
+            children_data,
+            roots,
+            num_nodes,
+        )
+    )
 
     # Normalize x to [0,1]
     if tip_counter > 1:

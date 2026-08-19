@@ -90,6 +90,7 @@ def _build(source: Path, **kwargs):
 def test_builder_and_reader_match_tskit_and_lorax_layout(tmp_path):
     from lorax.artifacts.csr_reader import CSRArtifactReader
     from lorax.tree_graph import construct_tree
+    from lorax.tree_graph.tree_graph import LADDERIZED_LAYOUT_ORDER
 
     source = tmp_path / "recombining.trees"
     tree_sequence = _recombining_tree_sequence(source)
@@ -100,11 +101,14 @@ def test_builder_and_reader_match_tskit_and_lorax_layout(tmp_path):
     assert (artifact / "breakpoints.npy").is_file()
     assert (artifact / "shards.arrow").is_file()
     assert result["num_trees"] == tree_sequence.num_trees
+    assert result["manifest"]["build"]["layout_order"] == LADDERIZED_LAYOUT_ORDER
 
     edges = tree_sequence.tables.edges
     nodes = tree_sequence.tables.nodes
     breakpoints = list(tree_sequence.breakpoints())
     with CSRArtifactReader.open(artifact) as reader:
+        assert reader.layout_order == LADDERIZED_LAYOUT_ORDER
+        assert reader._normalize_layout is False
         assert reader.verify()["ok"] is True
         for expected_tree in tree_sequence.trees():
             genealogy = reader.tree_at_index(expected_tree.index)
@@ -163,6 +167,37 @@ def test_builder_and_reader_match_tskit_and_lorax_layout(tmp_path):
         assert first.mutations.derived_states == ("G", "T")
         assert first.mutations.inherited_states == ("A", "G")
         assert len(reader.tree_at_index(1).mutations) == 0
+
+
+def test_reader_normalizes_artifacts_without_layout_marker(tmp_path):
+    from lorax.artifacts.csr_reader import CSRArtifactReader
+
+    source = tmp_path / "legacy-layout.trees"
+    _recombining_tree_sequence(source)
+    result = _build(source)
+    artifact = Path(result["artifact_dir"])
+    manifest_path = artifact / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["build"].pop("layout_order")
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with CSRArtifactReader.open(artifact) as reader:
+        assert reader.layout_order is None
+        assert reader._normalize_layout is True
+        genealogy = reader.tree_at_index(0)
+        for node_id in genealogy.node_ids:
+            child_counts = [
+                _terminal_tip_count(genealogy, int(child))
+                for child in genealogy.children(int(node_id))
+            ]
+            assert child_counts == sorted(child_counts)
+
+
+def _terminal_tip_count(genealogy, node_id):
+    children = genealogy.children(node_id)
+    if len(children) == 0:
+        return 1
+    return sum(_terminal_tip_count(genealogy, int(child)) for child in children)
 
 
 def test_builder_uses_exact_colocated_path_without_locators(tmp_path):

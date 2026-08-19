@@ -32,6 +32,10 @@ LOW_COVERAGE_NO_INSIDE_SPARSIFY_MULTIPLIER = 0.35
 # Minimum tree count to enable parallel processing (avoids executor overhead for small batches)
 PARALLEL_TREE_THRESHOLD = 2
 
+# Persisted in CSR artifact manifests so readers can distinguish layouts that
+# already use the current ordering contract from older, source-ordered layouts.
+LADDERIZED_LAYOUT_ORDER = "ladderized-tip-count-ascending-v1"
+
 
 def _empty_mutation_table():
     return pa.table({
@@ -230,29 +234,40 @@ def _resolve_adaptive_inside_cell_size(
         )
     return inside_cell_size
 
-@njit(cache=True)
-def _compute_x_postorder(children_indptr, children_data, roots, num_nodes):
-    """
-    Numba-compiled post-order traversal for computing x (layout) coordinates.
 
-    Tips get sequential x values (0, 1, 2, ...), internal nodes get (min + max) / 2 of children.
+@njit(cache=True)
+def _ladderize_children_and_compute_x(
+    children_indptr,
+    children_data,
+    roots,
+    num_nodes,
+):
+    """
+    Stably ladderize a CSR tree/forest and compute x layout coordinates.
+
+    Each internal node's children are ordered by ascending descendant-tip count.
+    Equal-sized clades retain their input order. Tips are then visited from the
+    first child to the last and receive sequential x values (0, 1, 2, ...).
+    Internal nodes get (min + max) / 2 of their children.
 
     Args: 
         children_indptr: CSR indptr array
-        children_data: CSR data array (flattened children)
+        children_data: CSR data array (flattened children in source order)
         roots: Array of root node IDs
         num_nodes: Total number of nodes
 
     Returns:
-        (x, tip_counter): x coordinates array and number of tips
+        (ordered_children, x, descendant_tip_counts, tip_counter)
     """
+    ordered_children = children_data.copy()
+    descendant_tip_counts = np.zeros(num_nodes, dtype=np.int32)
     x = np.full(num_nodes, -1.0, dtype=np.float32)
-    tip_counter = 0
 
     # Pre-allocated stack arrays (avoid Python list)
     stack_nodes = np.empty(num_nodes, dtype=np.int32)
     stack_visited = np.empty(num_nodes, dtype=np.uint8)  # 0=False, 1=True
 
+    # First post-order pass: count terminal tips beneath every active node.
     for i in range(len(roots)):
         root = roots[i]
         stack_ptr = 0
@@ -282,21 +297,84 @@ def _compute_x_postorder(children_indptr, children_data, roots, num_nodes):
                     stack_visited[stack_ptr] = 0
                     stack_ptr += 1
             else:
-                # Post-order processing
                 if num_children == 0:
-                    x[node] = tip_counter
-                    tip_counter += 1
+                    descendant_tip_counts[node] = 1
                 else:
-                    # Compute (min + max) / 2 of children (matches jstree.js)
-                    min_x = x[children_data[start]]
-                    max_x = x[children_data[start]]
-                    for j in range(start + 1, end):
-                        child_x = x[children_data[j]]
-                        if child_x < min_x:
-                            min_x = child_x
-                        if child_x > max_x:
-                            max_x = child_x
-                    x[node] = (min_x + max_x) / 2.0
+                    total = 0
+                    for j in range(start, end):
+                        total += descendant_tip_counts[children_data[j]]
+                    descendant_tip_counts[node] = total
+
+    # Stable mergesort preserves source order for equal-sized child clades.
+    for node in range(num_nodes):
+        start = children_indptr[node]
+        end = children_indptr[node + 1]
+        if end - start > 1:
+            child_counts = descendant_tip_counts[
+                ordered_children[start:end]
+            ]
+            order = np.argsort(child_counts, kind="mergesort")
+            original_children = ordered_children[start:end].copy()
+            for j in range(end - start):
+                ordered_children[start + j] = original_children[order[j]]
+
+    # Second post-order pass: visit the newly ordered children first-to-last.
+    # Because the traversal uses a LIFO stack, children are pushed in reverse.
+    tip_counter = 0
+    for i in range(len(roots)):
+        root = roots[i]
+        stack_ptr = 0
+
+        stack_nodes[stack_ptr] = root
+        stack_visited[stack_ptr] = 0
+        stack_ptr += 1
+
+        while stack_ptr > 0:
+            stack_ptr -= 1
+            node = stack_nodes[stack_ptr]
+            visited = stack_visited[stack_ptr]
+
+            start = children_indptr[node]
+            end = children_indptr[node + 1]
+            num_children = end - start
+
+            if visited == 0 and num_children > 0:
+                stack_nodes[stack_ptr] = node
+                stack_visited[stack_ptr] = 1
+                stack_ptr += 1
+
+                for j in range(end - 1, start - 1, -1):
+                    stack_nodes[stack_ptr] = ordered_children[j]
+                    stack_visited[stack_ptr] = 0
+                    stack_ptr += 1
+            elif num_children == 0:
+                x[node] = tip_counter
+                tip_counter += 1
+            else:
+                min_x = x[ordered_children[start]]
+                max_x = min_x
+                for j in range(start + 1, end):
+                    child_x = x[ordered_children[j]]
+                    if child_x < min_x:
+                        min_x = child_x
+                    if child_x > max_x:
+                        max_x = child_x
+                x[node] = (min_x + max_x) / 2.0
+
+    return ordered_children, x, descendant_tip_counts, tip_counter
+
+
+@njit(cache=True)
+def _compute_x_postorder(children_indptr, children_data, roots, num_nodes):
+    """Backward-compatible wrapper returning only x coordinates and tip count."""
+    _ordered_children, x, _tip_counts, tip_counter = (
+        _ladderize_children_and_compute_x(
+            children_indptr,
+            children_data,
+            roots,
+            num_nodes,
+        )
+    )
 
     return x, tip_counter
 
@@ -310,7 +388,8 @@ class TreeGraph:
         parent: int32 array where parent[node_id] = parent_id (-1 for root)
         time: float32 array of raw node times
         children_indptr: int32 CSR row pointers (length = num_nodes + 1)
-        children_data: int32 flattened children array
+        children_data: int32 flattened children array, stably ladderized by
+            ascending descendant-tip count within each parent
         x: float32 layout position [0,1] (tips spread, internal=(min+max)/2 of children)
         y: float32 normalized time [0,1] (min_time=0, max_time=1)
         in_tree: bool array indicating which nodes are in this tree
@@ -452,7 +531,14 @@ def construct_tree(
 
     # === X coordinate: Numba-optimized post-order traversal ===
     roots = np.where(in_tree & (parent == -1))[0].astype(np.int32)
-    x, tip_counter = _compute_x_postorder(children_indptr, children_data, roots, num_nodes)
+    children_data, x, _tip_counts, tip_counter = (
+        _ladderize_children_and_compute_x(
+            children_indptr,
+            children_data,
+            roots,
+            num_nodes,
+        )
+    )
 
     # Normalize x to [0, 1]
     if tip_counter > 1:

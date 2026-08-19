@@ -29,7 +29,10 @@ import tskit
 import tszip
 
 from lorax.loaders.tskit_loader import get_config_tskit
-from lorax.tree_graph.tree_graph import _compute_x_postorder
+from lorax.tree_graph.tree_graph import (
+    LADDERIZED_LAYOUT_ORDER,
+    _ladderize_children_and_compute_x,
+)
 from lorax.utils import ensure_json_dict, make_json_serializable
 
 CSR_ARTIFACT_V2_SCHEMA_VERSION = 2
@@ -408,15 +411,17 @@ def _compact_topology(
     np.cumsum(child_counts, out=child_offsets[1:])
     order = np.argsort(parent_local, kind="stable")
     ordered_child_local = child_local[order]
-    child_node_ids = node_ids[ordered_child_local].astype(np.int32, copy=True)
 
     roots_local = np.flatnonzero(parent_ids == tskit.NULL).astype(np.int32)
-    layout_x, tip_count = _compute_x_postorder(
-        child_offsets,
-        ordered_child_local,
-        roots_local,
-        num_nodes,
+    ordered_child_local, layout_x, _tip_counts, tip_count = (
+        _ladderize_children_and_compute_x(
+            child_offsets,
+            ordered_child_local,
+            roots_local,
+            num_nodes,
+        )
     )
+    child_node_ids = node_ids[ordered_child_local].astype(np.int32, copy=True)
     if tip_count > 1:
         layout_x /= np.float32(tip_count - 1)
     return node_ids, parent_ids, child_offsets, child_node_ids, layout_x
@@ -1829,6 +1834,7 @@ def build_csr_artifact(
         "compression": compression,
         "target_shard_bytes": target_shard_bytes,
         "format_version": format_version,
+        "layout_order": LADDERIZED_LAYOUT_ORDER,
         "range_state_version": RANGE_STATE_VERSION,
         "trees_per_range": trees_per_range,
         "skip_node_tree_ranges": bool(skip_node_tree_ranges),
@@ -1998,6 +2004,7 @@ def build_csr_artifact(
             "complete_unsparsified_genealogies": True,
             "precomputed_layout_x": True,
             "precomputed_layout_y": False,
+            "layout_order": LADDERIZED_LAYOUT_ORDER,
         },
         "capabilities": capabilities,
         "indexes": indexes,

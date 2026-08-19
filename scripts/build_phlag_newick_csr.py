@@ -50,6 +50,10 @@ with contextlib.redirect_stdout(sys.stderr):
         artifact_path_for_source,
         source_fingerprint,
     )
+    from lorax.tree_graph.tree_graph import (  # noqa: E402
+        LADDERIZED_LAYOUT_ORDER,
+        _ladderize_children_and_compute_x,
+    )
 
 
 REPOSITORY_DIRECTORY = Path(__file__).resolve().parents[1]
@@ -166,17 +170,6 @@ def newick_record_batch(
             root_distance[node] = root_distance[node.up] + branch_length
     tree_height = max(root_distance.values(), default=0.0)
 
-    x_by_node: dict[object, float] = {}
-    tip_count = 0
-    for node in nodes:
-        if node.is_leaf():
-            x_by_node[node] = float(tip_count)
-            tip_count += 1
-        else:
-            child_x = [x_by_node[child] for child in node.children]
-            x_by_node[node] = (min(child_x) + max(child_x)) / 2.0
-    denominator = max(1, tip_count - 1)
-
     ordered = sorted(nodes, key=assigned.__getitem__)
     node_ids = np.asarray([assigned[node] for node in ordered], dtype=np.int32)
     parent_ids = np.asarray(
@@ -186,19 +179,28 @@ def newick_record_batch(
         [tree_height - root_distance[node] for node in ordered], dtype=np.float64
     )
     node_flags = np.asarray([1 if node.is_leaf() else 0 for node in ordered], dtype=np.uint32)
-    layout_x = np.asarray([x_by_node[node] / denominator for node in ordered], dtype=np.float32)
 
     local_by_id = {int(node_id): offset for offset, node_id in enumerate(node_ids)}
-    children: list[list[int]] = [[] for _ in ordered]
-    for node_id, parent_id in zip(node_ids, parent_ids):
-        if int(parent_id) != -1:
-            children[local_by_id[int(parent_id)]].append(int(node_id))
     child_offsets = np.zeros(len(ordered) + 1, dtype=np.int32)
-    child_node_ids_list: list[int] = []
-    for offset, child_ids in enumerate(children):
-        child_node_ids_list.extend(child_ids)
-        child_offsets[offset + 1] = len(child_node_ids_list)
-    child_node_ids = np.asarray(child_node_ids_list, dtype=np.int32)
+    child_local_list: list[int] = []
+    for offset, node in enumerate(ordered):
+        child_local_list.extend(
+            local_by_id[int(assigned[child])] for child in node.children
+        )
+        child_offsets[offset + 1] = len(child_local_list)
+    child_local = np.asarray(child_local_list, dtype=np.int32)
+    roots_local = np.flatnonzero(parent_ids == -1).astype(np.int32)
+    child_local, layout_x, _tip_counts, tip_count = (
+        _ladderize_children_and_compute_x(
+            child_offsets,
+            child_local,
+            roots_local,
+            len(ordered),
+        )
+    )
+    child_node_ids = node_ids[child_local].astype(np.int32, copy=True)
+    if tip_count > 1:
+        layout_x /= np.float32(tip_count - 1)
 
     arrays = [
         pa.array([tree_index], type=pa.int64()),
@@ -384,6 +386,7 @@ def build_chromosome(
                 "target_shard_bytes": target_bytes,
                 "complete_unsparsified_genealogies": True,
                 "precomputed_layout_x": True,
+                "layout_order": LADDERIZED_LAYOUT_ORDER,
                 "vertical_coordinate": "tree_height_minus_cumulative_root_branch_length",
                 "final_window_bp": final_window_bp,
             },

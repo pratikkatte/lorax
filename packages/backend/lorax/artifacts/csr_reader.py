@@ -6,7 +6,7 @@ import bisect
 import json
 import threading
 from collections import OrderedDict, defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -20,6 +20,10 @@ from lorax.artifacts.csr_builder import (
     CSR_ARTIFACT_SCHEMA_VERSION,
     CSR_ARTIFACT_V2_FORMAT,
     CSR_ARTIFACT_V2_SCHEMA_VERSION,
+)
+from lorax.tree_graph.tree_graph import (
+    LADDERIZED_LAYOUT_ORDER,
+    _ladderize_children_and_compute_x,
 )
 
 
@@ -226,7 +230,11 @@ def _decode_mutations(batch: pa.RecordBatch) -> GenealogyMutations:
     )
 
 
-def _decode_genealogy(batch: pa.RecordBatch) -> GenealogyCSR:
+def _decode_genealogy(
+    batch: pa.RecordBatch,
+    *,
+    normalize_layout: bool = False,
+) -> GenealogyCSR:
     if batch.num_rows != 1:
         raise CSRArtifactCorruptError("A genealogy record batch must contain one row")
 
@@ -268,6 +276,39 @@ def _decode_genealogy(batch: pa.RecordBatch) -> GenealogyCSR:
         raise CSRArtifactCorruptError("CSR child offsets are inconsistent")
     if num_nodes and np.any(np.diff(genealogy.node_ids) <= 0):
         raise CSRArtifactCorruptError("Genealogy node IDs are not sorted and unique")
+    if normalize_layout and num_nodes:
+        child_local = np.searchsorted(
+            genealogy.node_ids,
+            genealogy.child_node_ids,
+        ).astype(np.int32)
+        if (
+            np.any(child_local >= num_nodes)
+            or np.any(
+                genealogy.node_ids[child_local]
+                != genealogy.child_node_ids
+            )
+        ):
+            raise CSRArtifactCorruptError(
+                "CSR children contain a node outside the genealogy"
+            )
+        roots_local = np.flatnonzero(genealogy.parent_ids == -1).astype(np.int32)
+        child_local, layout_x, _tip_counts, tip_count = (
+            _ladderize_children_and_compute_x(
+                genealogy.child_offsets,
+                child_local,
+                roots_local,
+                num_nodes,
+            )
+        )
+        if tip_count > 1:
+            layout_x /= np.float32(tip_count - 1)
+        genealogy = replace(
+            genealogy,
+            child_node_ids=_readonly(
+                genealogy.node_ids[child_local].astype(np.int32, copy=True)
+            ),
+            layout_x=_readonly(np.asarray(layout_x, dtype=np.float32)),
+        )
     return genealogy
 
 
@@ -293,6 +334,13 @@ class CSRArtifactReader:
             )
         self.schema_version = version_key[1]
         self.format = version_key[0]
+        build_metadata = self.manifest.get("build") or {}
+        self.layout_order = (
+            build_metadata.get("layout_order")
+            if isinstance(build_metadata, dict)
+            else None
+        )
+        self._normalize_layout = self.layout_order != LADDERIZED_LAYOUT_ORDER
         self.capabilities = dict(self.manifest.get("capabilities") or {})
         if self.schema_version == CSR_ARTIFACT_V2_SCHEMA_VERSION:
             self.capabilities = {
@@ -1059,7 +1107,10 @@ class CSRArtifactReader:
                     genealogy = decoded.get(tree_index)
                     if genealogy is None:
                         batch = reader.get_batch(tree_index - first_tree)
-                        genealogy = _decode_genealogy(batch)
+                        genealogy = _decode_genealogy(
+                            batch,
+                            normalize_layout=self._normalize_layout,
+                        )
                         if genealogy.tree_index != tree_index:
                             raise CSRArtifactCorruptError(
                                 f"Shard returned tree {genealogy.tree_index}, "
