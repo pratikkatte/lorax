@@ -11,6 +11,9 @@ interface SettingsProps {
   setDefaultTipColor: (color: RgbaColor) => void;
   timeScale: TimeScale;
   setTimeScale: (scale: TimeScale) => void;
+  normalizeTreeHeights: boolean;
+  setNormalizeTreeHeights: (normalize: boolean) => void;
+  heightNormalizationAvailable: boolean;
   compareInsertionColor: RgbaColor;
   setCompareInsertionColor: (color: RgbaColor) => void;
   compareDeletionColor: RgbaColor;
@@ -54,6 +57,9 @@ const Settings: React.FC<SettingsProps> = ({
   setDefaultTipColor,
   timeScale,
   setTimeScale,
+  normalizeTreeHeights,
+  setNormalizeTreeHeights,
+  heightNormalizationAvailable,
   compareInsertionColor,
   setCompareInsertionColor,
   compareDeletionColor,
@@ -103,6 +109,42 @@ const Settings: React.FC<SettingsProps> = ({
               }}
               className="shrink-0 w-6 h-6 cursor-pointer rounded-full border border-slate-300 p-0.5 bg-white shadow-inner [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:rounded-full [&::-moz-color-swatch]:rounded-full [&::-moz-color-swatch]:border-0"
             />
+          </div>
+        </div>
+        <div className={`bg-white rounded-lg overflow-hidden border shadow-sm ${
+          heightNormalizationAvailable ? 'border-slate-200' : 'border-slate-200 opacity-65'
+        }`}>
+          <div className="border-l-4 border-slate-400 flex items-center justify-between gap-4 pl-3 pr-4 py-3">
+            <div>
+              <h3 className="text-sm font-semibold text-slate-700 tracking-tight">Height Normalization</h3>
+              <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                {heightNormalizationAvailable
+                  ? 'Scale each gene tree to its own maximum height.'
+                  : 'Available for Phlag datasets.'}
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-label="Height normalization"
+              aria-checked={normalizeTreeHeights}
+              disabled={!heightNormalizationAvailable}
+              onClick={() => setNormalizeTreeHeights(!normalizeTreeHeights)}
+              className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 ${
+                normalizeTreeHeights && heightNormalizationAvailable
+                  ? 'border-emerald-600 bg-emerald-600'
+                  : 'border-slate-300 bg-slate-200'
+              } ${heightNormalizationAvailable ? 'cursor-pointer' : 'cursor-not-allowed'}`}
+            >
+              <span
+                aria-hidden="true"
+                className={`pointer-events-none inline-block h-5 w-5 translate-y-px rounded-full bg-white shadow transition-transform ${
+                  normalizeTreeHeights && heightNormalizationAvailable
+                    ? 'translate-x-5'
+                    : 'translate-x-px'
+                }`}
+              />
+            </button>
           </div>
         </div>
         <div className="bg-white rounded-lg overflow-hidden border border-slate-200 shadow-sm">

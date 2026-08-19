@@ -22,7 +22,9 @@ from lorax.cache import get_file_context
 from lorax.sockets.decorators import require_session
 from lorax.sockets.utils import is_csv_session_file
 from lorax.tree_graph.time_scale import (
+    max_finite_time,
     newick_node_position,
+    normalized_tree_heights_to_y,
     normalize_time_scale,
     tree_graph_edge_coordinates,
     times_to_y,
@@ -55,7 +57,12 @@ def _find_node_index(graph, node_id: int):
         return None
 
 
-def _compare_artifact_trees(context, tree_indices, time_scale):
+def _compare_artifact_trees(
+    context,
+    tree_indices,
+    time_scale,
+    normalize_tree_heights=False,
+):
     indices = [
         int(index)
         for index in tree_indices
@@ -68,6 +75,7 @@ def _compare_artifact_trees(context, tree_indices, time_scale):
             global_min_time=context.reader.global_min_time,
             global_max_time=context.reader.global_max_time,
             time_scale=time_scale,
+            normalize_tree_heights=normalize_tree_heights,
         )
         for genealogy in genealogies
     ]
@@ -75,6 +83,8 @@ def _compare_artifact_trees(context, tree_indices, time_scale):
     for previous, following in zip(graphs, graphs[1:]):
         previous_edges = previous.edges()
         following_edges = following.edges()
+        previous_max_height = max_finite_time(previous.time)
+        following_max_height = max_finite_time(following.time)
         comparisons.append(
             {
                 "prev_idx": previous.tree_index,
@@ -87,6 +97,8 @@ def _compare_artifact_trees(context, tree_indices, time_scale):
                         context.reader.global_min_time,
                         context.reader.global_max_time,
                         time_scale,
+                        normalize_tree_height=normalize_tree_heights,
+                        tree_max_height=following_max_height,
                     )
                     for parent, child in sorted(following_edges - previous_edges)
                 ],
@@ -98,6 +110,8 @@ def _compare_artifact_trees(context, tree_indices, time_scale):
                         context.reader.global_min_time,
                         context.reader.global_max_time,
                         time_scale,
+                        normalize_tree_height=normalize_tree_heights,
+                        tree_max_height=previous_max_height,
                     )
                     for parent, child in sorted(previous_edges - following_edges)
                 ],
@@ -138,6 +152,7 @@ def _artifact_positions(
     time_scale,
     *,
     show_lineages=False,
+    normalize_tree_heights=False,
 ):
     positions = []
     lineages = {}
@@ -164,6 +179,7 @@ def _artifact_positions(
         relevant_indices = requested_indices
     genealogies = context.reader.trees_at_indices(relevant_indices)
     for genealogy in genealogies:
+        genealogy_max_height = max_finite_time(genealogy.node_times)
         for node_id in wanted:
             if not genealogy.has_node(node_id):
                 continue
@@ -173,14 +189,20 @@ def _artifact_positions(
                     "node_id": node_id,
                     "tree_idx": genealogy.tree_index,
                     "x": float(genealogy.layout_x[offset]),
-                    "y": float(
-                        times_to_y(
+                    "y": float((
+                        normalized_tree_heights_to_y(
+                            [genealogy.node_times[offset]],
+                            genealogy_max_height,
+                            time_scale,
+                        )
+                        if normalize_tree_heights
+                        else times_to_y(
                             [genealogy.node_times[offset]],
                             context.reader.global_min_time,
                             context.reader.global_max_time,
                             time_scale,
-                        )[0]
-                    ),
+                        )
+                    )[0]),
                 }
             )
             if show_lineages:
@@ -511,6 +533,11 @@ def register_node_search_events(sio):
             if is_artifact_session(session):
                 try:
                     context = await asyncio.to_thread(context_for_session, session)
+                    normalize_tree_heights = (
+                        context.reader.height_normalization_enabled(
+                            data.get("normalizeTreeHeights")
+                        )
+                    )
                     node_ids = await asyncio.to_thread(
                         _artifact_matching_nodes,
                         context.reader,
@@ -523,6 +550,7 @@ def register_node_search_events(sio):
                         node_ids,
                         tree_indices,
                         time_scale,
+                        normalize_tree_heights=normalize_tree_heights,
                     )
                     result = {"positions": positions}
                 except CSRArtifactCapabilityError as exc:
@@ -708,6 +736,11 @@ def register_node_search_events(sio):
             if is_artifact_session(session):
                 try:
                     context = await asyncio.to_thread(context_for_session, session)
+                    normalize_tree_heights = (
+                        context.reader.height_normalization_enabled(
+                            data.get("normalizeTreeHeights")
+                        )
+                    )
                     positions_by_value = {}
                     lineages = {}
                     total_count = 0
@@ -725,6 +758,7 @@ def register_node_search_events(sio):
                             tree_indices,
                             time_scale,
                             show_lineages=show_lineages,
+                            normalize_tree_heights=normalize_tree_heights,
                         )
                         positions_by_value[value] = positions
                         total_count += len(positions)
@@ -793,11 +827,17 @@ def register_node_search_events(sio):
 
             if is_artifact_session(session):
                 context = await asyncio.to_thread(context_for_session, session)
+                normalize_tree_heights = (
+                    context.reader.height_normalization_enabled(
+                        data.get("normalizeTreeHeights")
+                    )
+                )
                 result = await asyncio.to_thread(
                     _compare_artifact_trees,
                     context,
                     tree_indices,
                     time_scale,
+                    normalize_tree_heights,
                 )
             else:
                 result = await get_compare_trees_diff(

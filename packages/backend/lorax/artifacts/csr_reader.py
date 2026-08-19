@@ -506,6 +506,18 @@ class CSRArtifactReader:
     def has_capability(self, capability: str) -> bool:
         return bool(self.capabilities.get(capability, False))
 
+    @property
+    def supports_height_normalization(self) -> bool:
+        """Whether this artifact is one of the Phlag branch-height datasets."""
+        dataset_name = str(
+            (self.manifest.get("dataset") or {}).get("phlag_dataset") or ""
+        ).casefold()
+        return dataset_name in {"avian", "mammalian"}
+
+    def height_normalization_enabled(self, requested: object) -> bool:
+        """Enable the display transform only for explicit requests on Phlag data."""
+        return requested is True and self.supports_height_normalization
+
     def require_capability(self, capability: str) -> None:
         if not self.has_capability(capability):
             raise CSRArtifactCapabilityError(capability)
@@ -566,6 +578,11 @@ class CSRArtifactReader:
         config["data_capabilities"] = {
             "mutations": bool((config.get("table_counts") or {}).get("mutations", 0))
         }
+        display_capabilities = dict(config.get("display_capabilities") or {})
+        display_capabilities["height_normalization"] = (
+            self.supports_height_normalization
+        )
+        config["display_capabilities"] = display_capabilities
         # Phlag Newick artifacts retain stable tip labels in the manifest rather
         # than v3 sidecars. Expose them through the standard sample contract.
         sample_names = self.v2_sample_names()

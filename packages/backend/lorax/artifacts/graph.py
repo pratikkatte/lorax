@@ -8,7 +8,11 @@ from typing import Protocol, runtime_checkable
 import numpy as np
 
 from lorax.artifacts.csr_reader import GenealogyCSR
-from lorax.tree_graph.time_scale import times_to_y
+from lorax.tree_graph.time_scale import (
+    max_finite_time,
+    normalized_tree_heights_to_y,
+    times_to_y,
+)
 
 
 @runtime_checkable
@@ -34,6 +38,7 @@ class CompactGenealogyGraph:
     time: np.ndarray
     x: np.ndarray
     y: np.ndarray
+    normalize_tree_heights: bool = False
 
     @classmethod
     def from_genealogy(
@@ -43,17 +48,27 @@ class CompactGenealogyGraph:
         global_min_time: float,
         global_max_time: float,
         time_scale: str = "linear",
+        normalize_tree_heights: bool = False,
     ) -> "CompactGenealogyGraph":
-        return cls(
-            genealogy=genealogy,
-            time=np.asarray(genealogy.node_times, dtype=np.float64),
-            x=np.asarray(genealogy.layout_x, dtype=np.float32),
-            y=times_to_y(
+        if normalize_tree_heights:
+            y = normalized_tree_heights_to_y(
+                genealogy.node_times,
+                max_finite_time(genealogy.node_times),
+                time_scale,
+            )
+        else:
+            y = times_to_y(
                 genealogy.node_times,
                 global_min_time,
                 global_max_time,
                 time_scale,
-            ).astype(np.float32),
+            )
+        return cls(
+            genealogy=genealogy,
+            time=np.asarray(genealogy.node_times, dtype=np.float64),
+            x=np.asarray(genealogy.layout_x, dtype=np.float32),
+            y=np.asarray(y, dtype=np.float32),
+            normalize_tree_heights=bool(normalize_tree_heights),
         )
 
     @property

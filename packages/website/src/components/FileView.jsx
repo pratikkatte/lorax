@@ -178,6 +178,11 @@ function FileView() {
   // Default tip color [r, g, b, a] when metadata coloring is unavailable
   const [defaultTipColor, setDefaultTipColor] = useState([150, 150, 150, 200]);
   const [timeScale, setTimeScale] = useState('linear');
+  const [normalizeTreeHeights, setNormalizeTreeHeights] = useState(false);
+  const heightNormalizationAvailable =
+    tsconfig?.display_capabilities?.height_normalization === true;
+  const normalizedTreeHeightsEnabled =
+    heightNormalizationAvailable && normalizeTreeHeights;
   // Controls whether model matrix recomputes on zoom interactions.
   const [lockModelMatrix, setLockModelMatrix] = useState(false);
   // Tracks whether lock view was auto-enabled from showingAllTrees behavior.
@@ -489,7 +494,10 @@ function FileView() {
     const rows = [
       { k: 'Tree', v: tip.tree_idx },
       { k: 'Node ID', v: tip.node_id },
-      { k: 'Node time', v: formatTooltipTime(tip.node_time) },
+      {
+        k: normalizedTreeHeightsEnabled ? 'Normalized height' : 'Node time',
+        v: formatTooltipTime(tip.node_time)
+      },
       ...(tip.name ? [{ k: 'Name', v: tip.name }] : []),
       ...(selectedColorBy ? [{ k: selectedColorBy, v: selectedValue ?? '-' }] : [])
     ];
@@ -521,7 +529,7 @@ function FileView() {
     }
 
     return rows;
-  }, [selectedColorBy]);
+  }, [normalizedTreeHeightsEnabled, selectedColorBy]);
 
   const updateTipTooltipWithDetails = useCallback((hoverKey, tip, selectedValue, details) => {
     setHoverTooltip((current) => {
@@ -607,6 +615,7 @@ function FileView() {
   useEffect(() => {
     // Only load if we have required params and config isn't loaded for this file
     if (file && project && isConnected && loraxSid && !tsconfig?.filename) {
+      setNormalizeTreeHeights(false);
       setLoading(true);
       setError(null);
       setStatusMessage({ status: 'loading', message: 'Loading file...' });
@@ -1053,10 +1062,11 @@ function FileView() {
   }, [queryDetails, applyDetailsResponse, resetDetails]);
 
   const timelineLabel = useMemo(() => {
+    if (normalizedTreeHeightsEnabled) return 'normalized tree height';
     const currentFilename = String(tsconfig?.filename || filename || file || '').toLowerCase();
     const isCsvFile = currentFilename.endsWith('.csv') || Boolean(tsconfig?.tree_info);
     return isCsvFile ? 'branch length' : tsconfig?.times?.type;
-  }, [file, filename, tsconfig?.filename, tsconfig?.times?.type, tsconfig?.tree_info]);
+  }, [file, filename, normalizedTreeHeightsEnabled, tsconfig?.filename, tsconfig?.times?.type, tsconfig?.tree_info]);
 
   const effectiveHighlightedMutationNode = hoveredMutationHighlight?.node_id != null
     ? String(hoveredMutationHighlight.node_id)
@@ -1174,6 +1184,7 @@ function FileView() {
               edgeColor={edgeColor}
               defaultTipColor={defaultTipColor}
               timeScale={timeScale}
+              normalizeTreeHeights={normalizedTreeHeightsEnabled}
               lockModelMatrix={lockModelMatrix}
               enableLockMaxZoomGuard={ENABLE_MAX_ZOOM_GUARD}
               enableTimeAxisWheelPan
@@ -1231,9 +1242,15 @@ function FileView() {
                   rows: [
                     { k: 'Tree', v: edge.tree_idx },
                     { k: 'Parent', v: edge.parent_id },
-                    { k: 'Parent time', v: formatTooltipTime(edge.parent_time) },
+                    {
+                      k: normalizedTreeHeightsEnabled ? 'Parent normalized height' : 'Parent time',
+                      v: formatTooltipTime(edge.parent_time)
+                    },
                     { k: 'Child', v: edge.child_id },
-                    { k: 'Child time', v: formatTooltipTime(edge.child_time) }
+                    {
+                      k: normalizedTreeHeightsEnabled ? 'Child normalized height' : 'Child time',
+                      v: formatTooltipTime(edge.child_time)
+                    }
                   ]
                 }, info, event);
               }}
@@ -1258,8 +1275,14 @@ function FileView() {
                     { k: 'Site ID', v: mutation.site_id ?? '-' },
                     { k: 'Position', v: Number.isFinite(Number(mutation.position_bp)) ? Math.round(Number(mutation.position_bp)) : '-' },
                     { k: 'Node ID', v: mutation.node_id ?? '-' },
-                    { k: 'Node time', v: formatTooltipTime(mutation.node_time) },
-                    { k: 'Mutation time', v: formatTooltipTime(mutation.mutation_time) },
+                    {
+                      k: normalizedTreeHeightsEnabled ? 'Node normalized height' : 'Node time',
+                      v: formatTooltipTime(mutation.node_time)
+                    },
+                    {
+                      k: normalizedTreeHeightsEnabled ? 'Mutation normalized height' : 'Mutation time',
+                      v: formatTooltipTime(mutation.mutation_time)
+                    },
                     { k: 'Change', v: stateChange }
                   ]
                 }, info, event);
@@ -1370,6 +1393,9 @@ function FileView() {
             setDefaultTipColor={setDefaultTipColor}
             timeScale={timeScale}
             setTimeScale={setTimeScale}
+            normalizeTreeHeights={normalizedTreeHeightsEnabled}
+            setNormalizeTreeHeights={setNormalizeTreeHeights}
+            heightNormalizationAvailable={heightNormalizationAvailable}
           />
         </div>
       )}

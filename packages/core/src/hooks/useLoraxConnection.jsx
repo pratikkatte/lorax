@@ -269,6 +269,7 @@ export function useLoraxConnection({
    * @param {number[]} options.actualDisplayArray - All visible tree indices for backend cache eviction
    * @param {Object|null} options.lockView - Optional lock-view bbox metadata
    * @param {string} options.timeScale - Time scale for emitted y coordinates ("linear" or "log")
+   * @param {boolean} options.normalizeTreeHeights - Normalize each supported tree to its own maximum height
    * @returns {Promise<{buffer, global_min_time, global_max_time, tree_indices}>}
    */
   const queryTreeLayout = useCallback((displayArray, options = {}) => {
@@ -283,6 +284,7 @@ export function useLoraxConnection({
         : displayArray;
       const lockView = options?.lockView ?? null;
       const timeScale = options?.timeScale === 'log' ? 'log' : 'linear';
+      const normalizeTreeHeights = options?.normalizeTreeHeights === true;
 
       // Generate unique request ID for this request
       const requestId = ++requestIdRef.current;
@@ -291,6 +293,7 @@ export function useLoraxConnection({
         displayArray,
         actualDisplayArray,  // All visible trees for backend cache eviction
         timeScale,
+        normalizeTreeHeights,
         lorax_sid: sidRef.current,
         request_id: requestId
       };
@@ -474,6 +477,7 @@ export function useLoraxConnection({
    * @param {number[]} treeIndices - Tree indices to compute positions for
    * @param {Object} options - Query options
    * @param {string} options.timeScale - Time scale for emitted y coordinates ("linear" or "log")
+   * @param {boolean} options.normalizeTreeHeights - Normalize supported tree heights
    * @returns {Promise<{positions: [{node_id, tree_idx, x, y}]}>}
    */
   const queryHighlightPositions = useCallback((metadataKey, metadataValue, treeIndices, options = {}) => {
@@ -511,7 +515,8 @@ export function useLoraxConnection({
         metadata_key: metadataKey,
         metadata_value: String(metadataValue),
         tree_indices: treeIndices,
-        timeScale: options?.timeScale === 'log' ? 'log' : 'linear'
+        timeScale: options?.timeScale === 'log' ? 'log' : 'linear',
+        normalizeTreeHeights: options?.normalizeTreeHeights === true
       });
     });
   }, [emit, once, off, socketRef, sidRef]);
@@ -525,6 +530,7 @@ export function useLoraxConnection({
    * @param {boolean} showLineages - Whether to compute lineage paths (default false)
    * @param {Object} options - Query options
    * @param {string} options.timeScale - Time scale for emitted y coordinates ("linear" or "log")
+   * @param {boolean} options.normalizeTreeHeights - Normalize supported tree heights
    * @returns {Promise<{positions_by_value: Object, lineages: Object, total_count: number}>}
    */
   const queryMultiValueSearch = useCallback((metadataKey, metadataValues, treeIndices, showLineages = false, options = {}) => {
@@ -572,7 +578,8 @@ export function useLoraxConnection({
         metadata_values: metadataValues.map(String),
         tree_indices: treeIndices,
         show_lineages: showLineages,
-        timeScale: options?.timeScale === 'log' ? 'log' : 'linear'
+        timeScale: options?.timeScale === 'log' ? 'log' : 'linear',
+        normalizeTreeHeights: options?.normalizeTreeHeights === true
       });
     });
   }, [emit, once, off, socketRef, sidRef]);
@@ -583,13 +590,15 @@ export function useLoraxConnection({
    * @param {number[]} treeIndices - Tree indices to send
    * @param {Object} options - Emit options
    * @param {string} options.timeScale - Time scale for emitted y coordinates ("linear" or "log")
+   * @param {boolean} options.normalizeTreeHeights - Normalize supported tree heights
    */
   const emitCompareTrees = useCallback((treeIndices, options = {}) => {
     if (!socketRef.current) return;
     emit("compare_trees_event", {
       lorax_sid: sidRef.current,
       tree_indices: Array.isArray(treeIndices) ? treeIndices : [],
-      timeScale: options?.timeScale === 'log' ? 'log' : 'linear'
+      timeScale: options?.timeScale === 'log' ? 'log' : 'linear',
+      normalizeTreeHeights: options?.normalizeTreeHeights === true
     });
   }, [emit, socketRef, sidRef]);
 

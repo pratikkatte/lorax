@@ -9,7 +9,12 @@ import numpy as np
 import pyarrow as pa
 
 from lorax.artifacts.csr_reader import GenealogyCSR
-from lorax.tree_graph.time_scale import normalize_time_scale, times_to_y
+from lorax.tree_graph.time_scale import (
+    max_finite_time,
+    normalized_tree_heights_to_y,
+    normalize_time_scale,
+    times_to_y,
+)
 from lorax.tree_graph.tree_graph import (
     LOW_COVERAGE_NO_INSIDE_SPARSIFY_MULTIPLIER,
     _build_parent_local,
@@ -39,16 +44,23 @@ def _process_genealogy(
     sparsify_cell_size_multiplier: float | None,
     adaptive_sparsify_bbox: dict | None,
     adaptive_target_tree_idx: int | None,
+    normalize_tree_heights: bool,
 ) -> tuple[dict[str, np.ndarray], dict[str, object]]:
     node_ids = np.asarray(genealogy.node_ids, dtype=np.int32)
     parent_ids = np.asarray(genealogy.parent_ids, dtype=np.int32)
     x = np.asarray(genealogy.layout_x, dtype=np.float32)
-    y = times_to_y(
-        np.asarray(genealogy.node_times, dtype=np.float64),
-        min_time,
-        max_time,
-        time_scale,
-    ).astype(np.float32)
+    genealogy_max_height = max_finite_time(genealogy.node_times)
+
+    def map_times(values) -> np.ndarray:
+        if normalize_tree_heights:
+            return normalized_tree_heights_to_y(
+                values,
+                genealogy_max_height,
+                time_scale,
+            ).astype(np.float32)
+        return times_to_y(values, min_time, max_time, time_scale).astype(np.float32)
+
+    y = map_times(np.asarray(genealogy.node_times, dtype=np.float64))
     child_counts = np.diff(genealogy.child_offsets)
     is_tip = (child_counts == 0).astype(np.bool_)
     original_unary_mask = (child_counts == 1) & (parent_ids != -1)
@@ -166,21 +178,11 @@ def _process_genealogy(
             mutations.node_ids,
         )
         mutation_x = genealogy.layout_x[mutation_node_offsets].astype(np.float32)
-        mutation_y = times_to_y(
-            mutations.times,
-            min_time,
-            max_time,
-            time_scale,
-        ).astype(np.float32)
+        mutation_y = map_times(mutations.times)
         nan_mask = np.isnan(mutations.times)
         if np.any(nan_mask):
             nan_offsets = mutation_node_offsets[nan_mask]
-            node_y = times_to_y(
-                genealogy.node_times[nan_offsets],
-                min_time,
-                max_time,
-                time_scale,
-            )
+            node_y = map_times(genealogy.node_times[nan_offsets])
             parent_ids_for_nan = genealogy.parent_ids[nan_offsets]
             parent_y = np.zeros(len(nan_offsets), dtype=np.float32)
             valid_parent = parent_ids_for_nan >= 0
@@ -189,11 +191,8 @@ def _process_genealogy(
                     genealogy.node_ids,
                     parent_ids_for_nan[valid_parent],
                 )
-                parent_y[valid_parent] = times_to_y(
-                    genealogy.node_times[parent_offsets],
-                    min_time,
-                    max_time,
-                    time_scale,
+                parent_y[valid_parent] = map_times(
+                    genealogy.node_times[parent_offsets]
                 )
             mutation_y[nan_mask] = (node_y + parent_y) / 2.0
 
@@ -300,6 +299,7 @@ def serialize_csr_genealogies(
     sparsify_cell_size_multiplier: float | None = None,
     adaptive_sparsify_bbox: dict | None = None,
     adaptive_target_tree_idx: int | None = None,
+    normalize_tree_heights: bool = False,
 ) -> dict:
     """Serialize CSR genealogies without allocating source-global node arrays."""
     genealogies = list(genealogies)
@@ -314,6 +314,7 @@ def serialize_csr_genealogies(
             sparsify_cell_size_multiplier=sparsify_cell_size_multiplier,
             adaptive_sparsify_bbox=adaptive_sparsify_bbox,
             adaptive_target_tree_idx=adaptive_target_tree_idx,
+            normalize_tree_heights=normalize_tree_heights,
         )
         for genealogy in genealogies
     ]
@@ -413,8 +414,9 @@ def serialize_csr_genealogies(
     buffer = struct.pack("<I", len(node_bytes)) + node_bytes + mutation_bytes
     return {
         "buffer": buffer,
-        "global_min_time": float(global_min_time),
-        "global_max_time": float(global_max_time),
+        "global_min_time": 0.0 if normalize_tree_heights else float(global_min_time),
+        "global_max_time": 1.0 if normalize_tree_heights else float(global_max_time),
+        "normalize_tree_heights": bool(normalize_tree_heights),
         "tree_indices": [genealogy.tree_index for genealogy in genealogies],
         "tree_intervals": [
             [genealogy.interval_left, genealogy.interval_right]

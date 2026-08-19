@@ -192,6 +192,7 @@ async def _render_artifact_session(
     adaptive_sparsify_bbox,
     adaptive_target_tree_idx,
     time_scale,
+    normalize_tree_heights,
 ):
     context = context or await asyncio.to_thread(context_for_session, session)
     if context is None:
@@ -210,6 +211,7 @@ async def _render_artifact_session(
                 sparsify_cell_size_multiplier=sparsify_cell_size_multiplier,
                 adaptive_sparsify_bbox=adaptive_sparsify_bbox,
                 adaptive_target_tree_idx=adaptive_target_tree_idx,
+                normalize_tree_heights=normalize_tree_heights,
             ), genealogies
 
     (result, genealogies) = await asyncio.to_thread(render)
@@ -226,6 +228,7 @@ async def _render_artifact_session(
                 global_min_time=context.reader.global_min_time,
                 global_max_time=context.reader.global_max_time,
                 time_scale=time_scale,
+                normalize_tree_heights=normalize_tree_heights,
             ),
         )
     if actual_display_array is not None:
@@ -301,6 +304,7 @@ def register_tree_layout_events(sio):
 
             request_id = data.get("request_id")
             time_scale = normalize_time_scale(data.get("timeScale"))
+            normalize_tree_heights_requested = data.get("normalizeTreeHeights") is True
             raw_lock_view = data.get("lockView")
             lock_view_info = _parse_lock_view_payload(raw_lock_view)
 
@@ -318,7 +322,7 @@ def register_tree_layout_events(sio):
 
             logger.debug(
                 "[process_postorder_layout] session=%s request_id=%s display_count=%s "
-                "lock_enabled=%s target_tree_idx=%s adaptive=%s multiplier=%s bbox=%s sparsification=%s time_scale=%s",
+                "lock_enabled=%s target_tree_idx=%s adaptive=%s multiplier=%s bbox=%s sparsification=%s time_scale=%s normalize_tree_heights=%s",
                 lorax_sid,
                 request_id,
                 len(display_array),
@@ -329,12 +333,18 @@ def register_tree_layout_events(sio):
                 target_sparsify_bbox,
                 "sparse" if sparsification else "full",
                 time_scale,
+                normalize_tree_heights_requested,
             )
 
             result = None
             if is_artifact_session(session):
                 try:
                     dataset_context = await resolve_dataset_context(session)
+                    normalize_tree_heights = (
+                        dataset_context.reader.height_normalization_enabled(
+                            normalize_tree_heights_requested
+                        )
+                    )
                     result = await _render_artifact_session(
                         session,
                         context=dataset_context,
@@ -345,6 +355,7 @@ def register_tree_layout_events(sio):
                         adaptive_sparsify_bbox=target_sparsify_bbox,
                         adaptive_target_tree_idx=target_tree_idx,
                         time_scale=time_scale,
+                        normalize_tree_heights=normalize_tree_heights,
                     )
                 except CSRArtifactCapabilityError as exc:
                     return {
@@ -390,6 +401,9 @@ def register_tree_layout_events(sio):
                     "global_max_time": result["global_max_time"],
                     "tree_indices": result["tree_indices"],
                     "tree_intervals": result.get("tree_intervals"),
+                    "normalizeTreeHeights": bool(
+                        result.get("normalize_tree_heights", False)
+                    ),
                     "request_id": request_id
                 }
         except Exception as e:
@@ -404,7 +418,9 @@ def register_tree_layout_events(sio):
 
         data: {
             lorax_sid: str,
-            tree_indices: [int]  # Tree indices to cache
+            tree_indices: [int],  # Tree indices to cache
+            timeScale: str,
+            normalizeTreeHeights: bool
         }
 
         Returns: {
@@ -427,9 +443,15 @@ def register_tree_layout_events(sio):
             tree_indices = data.get("tree_indices", [])
             if not tree_indices:
                 return {"cached_count": 0, "total_cached": 0}
+            time_scale = normalize_time_scale(data.get("timeScale"))
 
             if is_artifact_session(session):
                 context = await asyncio.to_thread(context_for_session, session)
+                normalize_tree_heights = (
+                    context.reader.height_normalization_enabled(
+                        data.get("normalizeTreeHeights")
+                    )
+                )
                 genealogies = await asyncio.to_thread(
                     context.reader.trees_at_indices,
                     tree_indices,
@@ -448,6 +470,8 @@ def register_tree_layout_events(sio):
                             genealogy,
                             global_min_time=context.reader.global_min_time,
                             global_max_time=context.reader.global_max_time,
+                            time_scale=time_scale,
+                            normalize_tree_heights=normalize_tree_heights,
                         ),
                     )
                 await tree_graph_cache.evict_not_visible(

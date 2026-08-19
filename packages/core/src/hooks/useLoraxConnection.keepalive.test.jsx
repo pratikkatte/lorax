@@ -214,11 +214,15 @@ describe("useLoraxConnection diagnostics keepalive", () => {
     );
 
     await act(async () => {
-      await result.current.queryTreeLayout([2], { timeScale: "log" });
+      await result.current.queryTreeLayout([2], {
+        timeScale: "log",
+        normalizeTreeHeights: true
+      });
     });
 
     const [, payload] = socketEmit.mock.calls[0];
     expect(payload.timeScale).toBe("log");
+    expect(payload.normalizeTreeHeights).toBe(true);
   });
 
   it("emitCompareTrees forwards log time scale", () => {
@@ -241,13 +245,17 @@ describe("useLoraxConnection diagnostics keepalive", () => {
     );
 
     act(() => {
-      result.current.emitCompareTrees([1, 2], { timeScale: "log" });
+      result.current.emitCompareTrees([1, 2], {
+        timeScale: "log",
+        normalizeTreeHeights: true
+      });
     });
 
     expect(socketEmit).toHaveBeenCalledWith("compare_trees_event", {
       lorax_sid: "sid-1",
       tree_indices: [1, 2],
-      timeScale: "log"
+      timeScale: "log",
+      normalizeTreeHeights: true
     });
   });
 });

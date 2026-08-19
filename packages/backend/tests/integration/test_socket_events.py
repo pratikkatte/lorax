@@ -924,6 +924,7 @@ class TestProcessPostorderLayout:
                 {
                     "lorax_sid": session.sid,
                     "displayArray": [0],
+                    "normalizeTreeHeights": True,
                     "request_id": "test-123"
                 }
             )
@@ -932,6 +933,7 @@ class TestProcessPostorderLayout:
                 assert "buffer" in result
                 assert isinstance(result["buffer"], bytes)
                 assert "request_id" in result
+                assert result["normalizeTreeHeights"] is False
 
     @pytest.mark.asyncio
     async def test_postorder_infers_sparsification_from_display_count(

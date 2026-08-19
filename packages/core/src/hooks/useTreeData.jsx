@@ -18,6 +18,7 @@ function treeDataContentEquivalent(a, b) {
   if (!a || !b) return false;
   if (a.node_id?.length !== b.node_id?.length) return false;
   if (!arraysEqual(a.tree_indices, b.tree_indices)) return false;
+  if (a.coordinate_transform !== b.coordinate_transform) return false;
   if (a.node_id?.length > 0 && (a.node_id[0] !== b.node_id[0] || a.node_id[a.node_id.length - 1] !== b.node_id[b.node_id.length - 1])) {
     return false;
   }
@@ -308,6 +309,7 @@ function buildTreeDataFromCache(cache, displayArray) {
  * @param {boolean} params.isConnected - Socket connection status
  * @param {Object|null} params.lockView - Optional lock-view bbox payload
  * @param {string} params.timeScale - Time scale for emitted y coordinates ("linear" or "log")
+ * @param {boolean} params.normalizeTreeHeights - Whether supported trees use per-tree height normalization
  * @param {Object} params.tsconfig - Tree sequence config (for cache invalidation on file change)
  * @param {number[]} params.genomicCoords - Viewport bounds [startBp, endBp] for cache eviction
  * @returns {Object} { treeData, isLoading, isBackgroundRefresh, fetchReason, error, clearCache }
@@ -318,6 +320,7 @@ export function useTreeData({
   isConnected,
   lockView = null,
   timeScale = 'linear',
+  normalizeTreeHeights = false,
   tsconfig = null,
   genomicCoords = null,
   freezeLayout = false,
@@ -346,8 +349,12 @@ export function useTreeData({
   const timeBoundsRef = useRef(null);
 
   // Cache key for invalidation. Keep cached trees across displayArray size
-  // changes; backend layout detail is stable for the same file/time scale.
-  const cacheKeyRef = useRef({ tsconfigId: null, timeScale: 'linear' });
+  // changes; layout detail is stable for the same file and coordinate transform.
+  const cacheKeyRef = useRef({
+    tsconfigId: null,
+    timeScale: 'linear',
+    normalizeTreeHeights: false,
+  });
 
   // Previous display array, used to classify lock-view heartbeat refreshes.
   const previousDisplayArrayRef = useRef([]);
@@ -404,16 +411,21 @@ export function useTreeData({
   // Invalidate cache when file identity or time scale changes.
   useEffect(() => {
     if (cacheKeyRef.current.tsconfigId !== tsconfigId ||
-        cacheKeyRef.current.timeScale !== resolvedTimeScale) {
+        cacheKeyRef.current.timeScale !== resolvedTimeScale ||
+        cacheKeyRef.current.normalizeTreeHeights !== normalizeTreeHeights) {
       requestGenerationRef.current += 1;
       treeDataCacheRef.current.clear();
       intervalByTreeRef.current.clear();
       timeBoundsRef.current = null;
-      cacheKeyRef.current = { tsconfigId, timeScale: resolvedTimeScale };
+      cacheKeyRef.current = {
+        tsconfigId,
+        timeScale: resolvedTimeScale,
+        normalizeTreeHeights,
+      };
       previousDisplayArrayRef.current = [];
       lastLockRefreshRef.current = { targetTreeIndex: null, targetLocalBBox: null };
     }
-  }, [tsconfigId, resolvedTimeScale]);
+  }, [tsconfigId, resolvedTimeScale, normalizeTreeHeights]);
 
   // Manual cache clear callback
   const clearCache = useCallback(() => {
@@ -439,6 +451,7 @@ export function useTreeData({
       normalizedLockView: snapshotLockView,
       lockTargetIndex: snapshotLockTargetIndex,
       timeScale: snapshotTimeScale,
+      normalizeTreeHeights: snapshotNormalizeTreeHeights,
       genomicCoords: snapshotGenomicCoords,
       tsconfig: snapshotTsconfig,
       version,
@@ -556,7 +569,8 @@ export function useTreeData({
       const response = await snapshotQueryTreeLayout(indicesToFetch, {
         actualDisplayArray: snapshotDisplayArray,
         lockView: lockViewForRequest,
-        timeScale: snapshotTimeScale
+        timeScale: snapshotTimeScale,
+        normalizeTreeHeights: snapshotNormalizeTreeHeights,
       });
 
       // Ignore stale response if a newer request was sent or cache generation changed.
@@ -619,7 +633,10 @@ export function useTreeData({
       if (!timeBoundsRef.current) {
         timeBoundsRef.current = {
           global_min_time: response.global_min_time,
-          global_max_time: response.global_max_time
+          global_max_time: response.global_max_time,
+          coordinate_transform: `${snapshotTimeScale}:${
+            response.normalizeTreeHeights === true ? 'normalized' : 'raw'
+          }`,
         };
       }
 
@@ -681,6 +698,7 @@ export function useTreeData({
       normalizedLockView,
       lockTargetIndex,
       timeScale: resolvedTimeScale,
+      normalizeTreeHeights,
       genomicCoords,
       tsconfig,
       version,
@@ -695,6 +713,7 @@ export function useTreeData({
     normalizedLockView,
     lockTargetIndex,
     resolvedTimeScale,
+    normalizeTreeHeights,
     genomicCoords,
     tsconfig,
     runSyncQueue,

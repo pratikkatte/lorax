@@ -431,15 +431,27 @@ describe('LoraxDeckGL canonical local-coordinate mapping', () => {
       await vi.advanceTimersByTimeAsync(200);
     });
 
-    expect(loraxState.emitCompareTrees).toHaveBeenLastCalledWith([0, 1], { timeScale: 'linear' });
+    expect(loraxState.emitCompareTrees).toHaveBeenLastCalledWith([0, 1], {
+      timeScale: 'linear',
+      normalizeTreeHeights: false
+    });
 
-    rerender(<LoraxDeckGL viewConfig={{ ortho: { enabled: true } }} timeScale="log" />);
+    rerender(
+      <LoraxDeckGL
+        viewConfig={{ ortho: { enabled: true } }}
+        timeScale="log"
+        normalizeTreeHeights
+      />
+    );
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(200);
     });
 
-    expect(loraxState.emitCompareTrees).toHaveBeenLastCalledWith([0, 1], { timeScale: 'log' });
+    expect(loraxState.emitCompareTrees).toHaveBeenLastCalledWith([0, 1], {
+      timeScale: 'log',
+      normalizeTreeHeights: true
+    });
   });
 
   it('maps lineage paths from node x/y using canonical local transform', async () => {

@@ -265,6 +265,7 @@ function buildDescendantOverlay({ rootNodeId, descendantLookup, tipData, color }
  * @param {number} props.pickingRadius - Picking radius in pixels (default: 10)
  * @param {Object} props.glOptions - WebGL context options
  * @param {string} props.timeScale - Time coordinate scale: "linear" or "log"
+ * @param {boolean} props.normalizeTreeHeights - Normalize supported trees to their own maximum height
  * @param {React.Ref} ref - Forward ref to access deck instance and viewState
  */
 const LoraxDeckGL = forwardRef(({
@@ -324,6 +325,7 @@ const LoraxDeckGL = forwardRef(({
   // Default tip color [r, g, b, a] when metadata coloring is unavailable
   defaultTipColor = null,
   timeScale = 'linear',
+  normalizeTreeHeights = false,
   // Disable modelMatrix recomputation on zoom; allow pan-driven recomputation
   lockModelMatrix = false,
   // Optional lock-view debug overlay (off by default)
@@ -614,6 +616,7 @@ const LoraxDeckGL = forwardRef(({
     lockModelMatrix,
     lockViewPayload,
     timeScale,
+    normalizeTreeHeights,
     metadataArrays,
     metadataColors,
     populationFilter,
@@ -685,13 +688,17 @@ const LoraxDeckGL = forwardRef(({
   const enrichMutationHoverPayload = useCallback((mutation) => {
     if (!mutation) return null;
     const node = getNodePosition(mutation.tree_idx, mutation.node_id);
-    const mutationTime = Number(mutation.mutation_time);
+    const rawMutationTime = Number(mutation.mutation_time);
+    const markerY = Number(mutation.marker_time);
+    const mutationTime = normalizeTreeHeights && Number.isFinite(markerY)
+      ? yToTime(markerY, 0, 1, timeScale)
+      : rawMutationTime;
     return {
       ...mutation,
       mutation_time: Number.isFinite(mutationTime) ? mutationTime : null,
       node_time: Number.isFinite(node?.time) ? node.time : null
     };
-  }, [getNodePosition]);
+  }, [getNodePosition, normalizeTreeHeights, timeScale]);
 
   const handleTipHover = useCallback((tip, info, event) => {
     onTipHover?.(enrichTipHoverPayload(tip), info, event);
@@ -888,7 +895,10 @@ const LoraxDeckGL = forwardRef(({
       // Track this request to avoid race conditions
       const requestId = ++highlightRequestRef.current;
 
-      queryHighlightPositions(selectedColorBy, highlightedMetadataValue, visibleTreeIndices, { timeScale })
+      queryHighlightPositions(selectedColorBy, highlightedMetadataValue, visibleTreeIndices, {
+        timeScale,
+        normalizeTreeHeights,
+      })
         .then(result => {
           // Ignore stale responses
           if (requestId !== highlightRequestRef.current) return;
@@ -906,7 +916,7 @@ const LoraxDeckGL = forwardRef(({
         clearTimeout(highlightDebounceRef.current);
       }
     };
-  }, [highlightedMetadataValue, selectedColorBy, visibleTreeIndices, queryHighlightPositions, isConnected, timeScale]);
+  }, [highlightedMetadataValue, selectedColorBy, visibleTreeIndices, queryHighlightPositions, isConnected, timeScale, normalizeTreeHeights]);
 
   // Compute highlight data with world coordinates by applying model matrices
   const computedHighlightData = useMemo(() => {
@@ -974,7 +984,10 @@ const LoraxDeckGL = forwardRef(({
       // Track this request to avoid race conditions
       const requestId = ++multiHighlightRequestRef.current;
 
-      queryMultiValueSearch(selectedColorBy, searchTags, displayArray, displayLineagePaths, { timeScale })
+      queryMultiValueSearch(selectedColorBy, searchTags, displayArray, displayLineagePaths, {
+        timeScale,
+        normalizeTreeHeights,
+      })
         .then(result => {
           // Ignore stale responses
           if (requestId !== multiHighlightRequestRef.current) return;
@@ -992,7 +1005,7 @@ const LoraxDeckGL = forwardRef(({
         clearTimeout(multiHighlightDebounceRef.current);
       }
     };
-  }, [searchTags, selectedColorBy, visibleTreeIndices, queryMultiValueSearch, isConnected, displayLineagePaths, timeScale]);
+  }, [searchTags, selectedColorBy, visibleTreeIndices, queryMultiValueSearch, isConnected, displayLineagePaths, timeScale, normalizeTreeHeights]);
 
   // Emit visible tree indices when compare mode is enabled (debounced)
   useEffect(() => {
@@ -1007,14 +1020,14 @@ const LoraxDeckGL = forwardRef(({
       return;
     }
     compareDebounceRef.current = setTimeout(() => {
-      emitCompareTrees(displayArray, { timeScale });
+      emitCompareTrees(displayArray, { timeScale, normalizeTreeHeights });
     }, 150);
     return () => {
       if (compareDebounceRef.current) {
         clearTimeout(compareDebounceRef.current);
       }
     };
-  }, [compareMode, visibleTreeIndices, displayArray, emitCompareTrees, isConnected, timeScale]);
+  }, [compareMode, visibleTreeIndices, displayArray, emitCompareTrees, isConnected, timeScale, normalizeTreeHeights]);
 
   // Compute multi-highlight data with world coordinates and per-value colors
   const computedMultiHighlightData = useMemo(() => {

@@ -365,7 +365,7 @@ def register_file_events(sio):
             )
 
             # Config is already computed and cached in FileContext
-            config = ctx.config if ctx else None
+            config = dict(ctx.config) if ctx else None
 
             if config is None:
                 return _load_file_failure_payload(
@@ -374,6 +374,10 @@ def register_file_events(sio):
                     message="Failed to load file configuration.",
                     recoverable=True,
                 )
+
+            display_capabilities = dict(config.get("display_capabilities") or {})
+            display_capabilities["height_normalization"] = False
+            config["display_capabilities"] = display_capabilities
 
             log_dataset_backend(session.dataset_backend, str(file_path))
 

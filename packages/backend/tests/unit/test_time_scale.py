@@ -1,6 +1,7 @@
 import numpy as np
 
 from lorax.tree_graph.time_scale import (
+    normalized_tree_heights_to_y,
     newick_edge_coordinates,
     normalize_time_scale,
     time_to_y,
@@ -27,6 +28,35 @@ def test_invalid_time_scale_falls_back_to_linear():
 def test_degenerate_time_range_is_stable():
     y = times_to_y(np.array([1.0, 2.0]), 5.0, 5.0, "log")
     assert np.allclose(y, [1.0, 1.0])
+
+
+def test_height_normalization_divides_by_each_tree_maximum_before_scaling():
+    short_tree = normalized_tree_heights_to_y(
+        np.array([0.0, 5.0, 10.0]), 10.0, "linear"
+    )
+    tall_tree = normalized_tree_heights_to_y(
+        np.array([0.0, 10.0, 20.0]), 20.0, "linear"
+    )
+
+    assert np.allclose(short_tree, [1.0, 0.5, 0.0])
+    assert np.allclose(tall_tree, short_tree)
+
+
+def test_height_normalization_applies_log_after_normalizing():
+    expected = times_to_y(np.array([0.0, 0.5, 1.0]), 0.0, 1.0, "log")
+    observed = normalized_tree_heights_to_y(
+        np.array([0.0, 5.0, 10.0]), 10.0, "log"
+    )
+
+    assert np.allclose(observed, expected)
+
+
+def test_height_normalization_handles_zero_height_tree():
+    observed = normalized_tree_heights_to_y(
+        np.array([0.0, 0.0]), 0.0, "linear"
+    )
+
+    assert np.allclose(observed, [1.0, 1.0])
 
 
 def test_tree_graph_edge_coordinates_use_shared_time_scale():

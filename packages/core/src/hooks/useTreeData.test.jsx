@@ -62,10 +62,11 @@ function parsedForTreeIndices(indices) {
 function createProps(overrides = {}) {
   return {
     displayArray: [1],
-    queryTreeLayout: vi.fn(async (indices) => ({
+    queryTreeLayout: vi.fn(async (indices, options = {}) => ({
       buffer: indices,
       global_min_time: 0,
-      global_max_time: 1
+      global_max_time: 1,
+      normalizeTreeHeights: options.normalizeTreeHeights === true,
     })),
     isConnected: true,
     timeScale: 'linear',
@@ -121,6 +122,26 @@ describe('useTreeData cache invalidation', () => {
     expect(baseProps.queryTreeLayout.mock.calls[1][0]).toEqual([1]);
     expect(baseProps.queryTreeLayout.mock.calls[1][1]).toMatchObject({
       timeScale: 'log'
+    });
+  });
+
+  it('clears cached trees and forwards the option when height normalization changes', async () => {
+    const baseProps = createProps();
+    const { rerender } = renderHook((props) => useTreeData(props), {
+      initialProps: baseProps
+    });
+
+    await waitFor(() => expect(baseProps.queryTreeLayout).toHaveBeenCalledTimes(1));
+
+    rerender({
+      ...baseProps,
+      normalizeTreeHeights: true
+    });
+
+    await waitFor(() => expect(baseProps.queryTreeLayout).toHaveBeenCalledTimes(2));
+    expect(baseProps.queryTreeLayout.mock.calls[1][0]).toEqual([1]);
+    expect(baseProps.queryTreeLayout.mock.calls[1][1]).toMatchObject({
+      normalizeTreeHeights: true
     });
   });
 

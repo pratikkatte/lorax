@@ -1099,10 +1099,13 @@ def test_v3_config_sidecars_and_feature_indexes_are_source_free(tmp_path):
         patch("tszip.load", side_effect=AssertionError("source reopened")),
         CSRArtifactReader.open(artifact) as reader,
     ):
+        assert reader.supports_height_normalization is False
+        assert reader.height_normalization_enabled(True) is False
         config = reader.frontend_config(filename="selected.trees", project="P")
         assert config["intervals"] is None
         assert config["interval_source"] == "backend"
         assert config["num_trees"] == tree_sequence.num_trees
+        assert config["display_capabilities"]["height_normalization"] is False
         assert config["filename"] == "selected.trees"
         assert reader.node_details(0)["metadata"]["name"] == "alpha"
         assert reader.individual_details(0)["nodes"] == [0]
@@ -1325,6 +1328,80 @@ def test_csr_frontend_serializer_matches_legacy_contract(
     assert artifact_result["global_min_time"] == min_time
     assert artifact_result["global_max_time"] == max_time
     assert artifact_result["tree_indices"] == indices
+
+
+@pytest.mark.parametrize("time_scale", ["linear", "log"])
+def test_csr_frontend_serializer_normalizes_each_genealogy_height(time_scale):
+    from lorax.artifacts.csr_reader import GenealogyCSR, GenealogyMutations
+    from lorax.artifacts.render import serialize_csr_genealogies
+
+    def genealogy(tree_index, times):
+        mutations = GenealogyMutations(
+            ids=np.array([tree_index], dtype=np.int32),
+            site_ids=np.array([tree_index], dtype=np.int32),
+            node_ids=np.array([1], dtype=np.int32),
+            parent_ids=np.array([-1], dtype=np.int32),
+            positions=np.array([tree_index + 0.5], dtype=np.float64),
+            times=np.array([times[1]], dtype=np.float64),
+            ancestral_states=("A",),
+            derived_states=("G",),
+            inherited_states=("A",),
+        )
+        return GenealogyCSR(
+            tree_index=tree_index,
+            interval_left=float(tree_index),
+            interval_right=float(tree_index + 1),
+            node_ids=np.array([0, 1, 2], dtype=np.int32),
+            parent_ids=np.array([1, 2, -1], dtype=np.int32),
+            child_offsets=np.array([0, 0, 1, 2], dtype=np.int32),
+            child_node_ids=np.array([0, 1], dtype=np.int32),
+            node_times=np.asarray(times, dtype=np.float64),
+            node_flags=np.array([1, 0, 0], dtype=np.uint32),
+            layout_x=np.array([0.5, 0.5, 0.5], dtype=np.float32),
+            mutations=mutations,
+        )
+
+    result = serialize_csr_genealogies(
+        [genealogy(0, [0.0, 5.0, 10.0]), genealogy(1, [0.0, 10.0, 20.0])],
+        global_min_time=0.0,
+        global_max_time=20.0,
+        time_scale=time_scale,
+        normalize_tree_heights=True,
+    )
+
+    nodes, mutations = _split_frontend_buffer(result["buffer"])
+    y = np.asarray(nodes.column("y").to_numpy(), dtype=np.float32)
+    mutation_y = np.asarray(mutations.column("mut_y").to_numpy(), dtype=np.float32)
+    np.testing.assert_allclose(y[:3], y[3:])
+    np.testing.assert_allclose(mutation_y, [y[1], y[4]])
+    assert y[0] == pytest.approx(1.0)
+    assert y[2] == pytest.approx(0.0)
+    assert result["global_min_time"] == 0.0
+    assert result["global_max_time"] == 1.0
+    assert result["normalize_tree_heights"] is True
+
+
+@pytest.mark.parametrize("phlag_dataset", ["avian", "mammalian"])
+def test_phlag_manifest_advertises_height_normalization(tmp_path, phlag_dataset):
+    from lorax.artifacts import CSRArtifactReader
+
+    source = tmp_path / "phlag-like.trees"
+    _recombining_tree_sequence(source)
+    result = _build(source)
+    manifest_path = Path(result["artifact_dir"]) / "manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["dataset"]["phlag_dataset"] = phlag_dataset
+    manifest_path.write_text(json.dumps(manifest))
+
+    with CSRArtifactReader.open(result["artifact_dir"]) as reader:
+        assert reader.supports_height_normalization is True
+        assert reader.height_normalization_enabled(True) is True
+        assert reader.height_normalization_enabled(False) is False
+        assert reader.height_normalization_enabled(1) is False
+        assert (
+            reader.frontend_config()["display_capabilities"]["height_normalization"]
+            is True
+        )
 
 
 def test_resolver_and_context_registry_open_adjacent_artifact(tmp_path):

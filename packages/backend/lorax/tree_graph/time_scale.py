@@ -43,6 +43,30 @@ def times_to_y(times, min_time: float, max_time: float, time_scale: str | None =
     return (1.0 - normalized).astype(np.float32)
 
 
+def max_finite_time(time_values) -> float:
+    """Return the largest finite value in a tree, or zero for empty/invalid data."""
+    values = np.asarray(time_values, dtype=np.float64)
+    finite = values[np.isfinite(values)]
+    if finite.size == 0:
+        return 0.0
+    maximum = float(np.max(finite))
+    return maximum if maximum > 0.0 else 0.0
+
+
+def normalized_tree_heights_to_y(
+    height_values,
+    tree_max_height: float,
+    time_scale: str | None = None,
+) -> np.ndarray:
+    """Map per-tree branch heights to y after dividing by the tree maximum."""
+    values = np.asarray(height_values, dtype=np.float64)
+    maximum = float(tree_max_height)
+    if not np.isfinite(maximum) or maximum <= 0.0:
+        return np.ones(values.shape, dtype=np.float32)
+    normalized_heights = np.clip(values / maximum, 0.0, 1.0)
+    return times_to_y(normalized_heights, 0.0, 1.0, time_scale)
+
+
 def normalized_y_to_scaled_y(y_values, min_time: float, max_time: float, time_scale: str | None = None) -> np.ndarray:
     """Convert existing linear normalized y coordinates to the requested scale."""
     values = np.asarray(y_values, dtype=np.float64)
@@ -53,7 +77,16 @@ def normalized_y_to_scaled_y(y_values, min_time: float, max_time: float, time_sc
     return times_to_y(times, min_time, max_time, time_scale)
 
 
-def tree_graph_node_position(graph, node_id: int, min_time: float, max_time: float, time_scale: str | None = None) -> dict:
+def tree_graph_node_position(
+    graph,
+    node_id: int,
+    min_time: float,
+    max_time: float,
+    time_scale: str | None = None,
+    *,
+    normalize_tree_height: bool = False,
+    tree_max_height: float | None = None,
+) -> dict:
     """Return emitted local coordinates for a TreeGraph node."""
     node_id = int(node_id)
     if hasattr(graph, "node_x") and hasattr(graph, "node_time"):
@@ -62,10 +95,20 @@ def tree_graph_node_position(graph, node_id: int, min_time: float, max_time: flo
     else:
         x = float(graph.x[node_id])
         time_value = float(graph.time[node_id])
+    if normalize_tree_height:
+        if tree_max_height is None:
+            tree_max_height = max_finite_time(getattr(graph, "time", []))
+        y = normalized_tree_heights_to_y(
+            [time_value],
+            tree_max_height,
+            time_scale,
+        )[0]
+    else:
+        y = time_to_y(time_value, min_time, max_time, time_scale)
     return {
         "node_id": node_id,
         "x": float(x),
-        "y": time_to_y(time_value, min_time, max_time, time_scale),
+        "y": float(y),
     }
 
 
@@ -76,10 +119,29 @@ def tree_graph_edge_coordinates(
     min_time: float,
     max_time: float,
     time_scale: str | None = None,
+    *,
+    normalize_tree_height: bool = False,
+    tree_max_height: float | None = None,
 ) -> dict:
     """Return emitted local coordinates for a TreeGraph edge."""
-    parent_pos = tree_graph_node_position(graph, parent, min_time, max_time, time_scale)
-    child_pos = tree_graph_node_position(graph, child, min_time, max_time, time_scale)
+    parent_pos = tree_graph_node_position(
+        graph,
+        parent,
+        min_time,
+        max_time,
+        time_scale,
+        normalize_tree_height=normalize_tree_height,
+        tree_max_height=tree_max_height,
+    )
+    child_pos = tree_graph_node_position(
+        graph,
+        child,
+        min_time,
+        max_time,
+        time_scale,
+        normalize_tree_height=normalize_tree_height,
+        tree_max_height=tree_max_height,
+    )
     return {
         "parent": int(parent),
         "child": int(child),
