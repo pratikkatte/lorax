@@ -224,23 +224,29 @@ def test_phlag_record_builder_persists_ladderized_children_and_layout():
     from lorax.artifacts.csr_reader import _decode_genealogy
     from scripts.build_phlag_newick_csr import newick_record_batch
 
+    sample_ids = {}
     batch, _height, _node_count, _edge_count = newick_record_batch(
         "((B:1,C:1,D:1):1,A:1);",
         tree_index=0,
         interval_left=0,
         interval_right=1,
-        sample_ids={},
+        sample_ids=sample_ids,
     )
     genealogy = _decode_genealogy(batch, normalize_layout=False)
-    root = int(genealogy.roots()[0])
-    root_children = genealogy.children(root)
 
-    assert len(root_children) == 2
-    assert genealogy.is_tip(int(root_children[0])) is True
-    assert genealogy.is_tip(int(root_children[1])) is False
-    assert genealogy.node_x(int(root_children[0])) < genealogy.node_x(
-        int(root_children[1])
-    )
+    def terminal_tip_count(node_id):
+        children = genealogy.children(node_id).tolist()
+        if not children:
+            return 1
+        return sum(terminal_tip_count(int(child)) for child in children)
+
+    for node_id in genealogy.node_ids:
+        children = [int(child) for child in genealogy.children(int(node_id))]
+        child_tip_counts = [terminal_tip_count(child) for child in children]
+        assert child_tip_counts == sorted(child_tip_counts)
+    assert sample_ids == {"B": 0, "C": 1, "D": 2, "A": 3}
+    assert genealogy.layout_x.min() >= 0.0
+    assert genealogy.layout_x.max() <= 1.0
 
 
 def test_phlag_builder_records_ladderized_layout_marker(tmp_path):
@@ -272,4 +278,7 @@ def test_phlag_builder_records_ladderized_layout_marker(tmp_path):
     )
 
     assert result["num_trees"] == 1
+    assert manifest["builder_version"] == "phlag-newick-csr-v2"
     assert manifest["build"]["layout_order"] == LADDERIZED_LAYOUT_ORDER
+    assert manifest["build"]["rooting_method"] == "minvar"
+    assert manifest["build"]["source_rooting"] == "arbitrary"

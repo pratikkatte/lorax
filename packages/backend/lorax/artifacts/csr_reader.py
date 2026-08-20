@@ -514,6 +514,21 @@ class CSRArtifactReader:
         ).casefold()
         return dataset_name in {"avian", "mammalian"}
 
+    @property
+    def is_minvar_rooted(self) -> bool:
+        """Whether preprocessing stored PHLaG trees with MinVar roots."""
+        dataset_name = str(
+            (self.manifest.get("dataset") or {}).get("phlag_dataset") or ""
+        ).casefold()
+        rooting_method = str(
+            (self.manifest.get("build") or {}).get("rooting_method") or ""
+        ).casefold()
+        return (
+            self.schema_version == CSR_ARTIFACT_V2_SCHEMA_VERSION
+            and dataset_name in {"avian", "mammalian"}
+            and rooting_method == "minvar"
+        )
+
     def height_normalization_enabled(self, requested: object) -> bool:
         """Enable the display transform only for explicit requests on Phlag data."""
         return requested is True and self.supports_height_normalization
@@ -583,6 +598,15 @@ class CSRArtifactReader:
             self.supports_height_normalization
         )
         config["display_capabilities"] = display_capabilities
+        if self.is_minvar_rooted:
+            config["tree_rooting"] = {
+                "method": "minvar",
+                "label": "MinVar rooted",
+                "automatic": True,
+                "stage": "preprocessing",
+            }
+        else:
+            config.pop("tree_rooting", None)
         # Phlag Newick artifacts retain stable tip labels in the manifest rather
         # than v3 sidecars. Expose them through the standard sample contract.
         sample_names = self.v2_sample_names()

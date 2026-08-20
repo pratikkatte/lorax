@@ -84,6 +84,49 @@ describe('PositionSlider lock view toggle', () => {
     );
   });
 
+  it('shows the automatic MinVar badge only when advertised by the dataset', () => {
+    const { rerender } = render(
+      <MemoryRouter>
+        <PositionSlider
+          filename="phlag.nwk.gz"
+          genomeLength={1000}
+          value={[0, 100]}
+          onChange={vi.fn()}
+          onResetY={vi.fn()}
+          project="Phlag Avian"
+          tsconfig={{
+            tree_rooting: {
+              method: 'minvar',
+              label: 'MinVar rooted',
+              automatic: true,
+              stage: 'preprocessing',
+            },
+          }}
+        />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByRole('status', { name: 'MinVar rooted' })).toHaveAttribute(
+      'title',
+      expect.stringMatching(/rooted during preprocessing/i)
+    );
+
+    rerender(
+      <MemoryRouter>
+        <PositionSlider
+          filename="ordinary.trees"
+          genomeLength={1000}
+          value={[0, 100]}
+          onChange={vi.fn()}
+          onResetY={vi.fn()}
+          project="Other"
+          tsconfig={{}}
+        />
+      </MemoryRouter>
+    );
+    expect(screen.queryByRole('status', { name: 'MinVar rooted' })).not.toBeInTheDocument();
+  });
+
   it('renders descendants switch with tooltip and toggles on click', async () => {
     const user = userEvent.setup();
     const setHighlightDescendantsOnHover = vi.fn();

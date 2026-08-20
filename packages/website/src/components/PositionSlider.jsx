@@ -115,6 +115,10 @@ export default function PositionSlider({
   const provenance = tsconfig?.provenance;
   const provenanceRecords = Array.isArray(provenance?.records) ? provenance.records : [];
   const latestProvenance = provenance?.latest;
+  const minVarRooting = (
+    tsconfig?.tree_rooting?.method === 'minvar' &&
+    tsconfig?.tree_rooting?.automatic === true
+  ) ? tsconfig.tree_rooting : null;
   const currentStart = hasChanges ? start : (value?.[0] ?? 0);
   const currentEnd = hasChanges ? end : (value?.[1] ?? genomeLength ?? 0);
 
@@ -424,6 +428,16 @@ export default function PositionSlider({
               </div>
             )}
           </div>
+        )}
+        {minVarRooting && (
+          <span
+            role="status"
+            aria-label="MinVar rooted"
+            title="This artifact was MinVar rooted during preprocessing by minimizing variance in root-to-tip branch-length distances."
+            className="inline-flex shrink-0 items-center rounded-full border border-teal-200 bg-teal-50 px-2 py-1 text-[11px] font-semibold text-teal-700"
+          >
+            {minVarRooting.label || 'MinVar rooted'}
+          </span>
         )}
       </div>
 
