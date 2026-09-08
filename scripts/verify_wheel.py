@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import email
+import re
 import zipfile
 from pathlib import Path
 
@@ -14,6 +15,15 @@ REQUIRED_FILES = (
     "lorax_app/__init__.py",
     "lorax_app/static/index.html",
 )
+
+
+def referenced_static_files(index_html: bytes) -> set[str]:
+    """Return package-relative local assets referenced by the SPA entry page."""
+    text = index_html.decode("utf-8")
+    return {
+        f"lorax_app/static/{path}"
+        for path in re.findall(r'''(?:src|href)=["']/([^"'#?]+)''', text)
+    }
 
 
 def main() -> int:
@@ -26,6 +36,14 @@ def main() -> int:
         missing = [path for path in REQUIRED_FILES if path not in names]
         if missing:
             raise SystemExit(f"Wheel is missing required files: {', '.join(missing)}")
+
+        index_html = archive.read("lorax_app/static/index.html")
+        missing_assets = sorted(referenced_static_files(index_html) - names)
+        if missing_assets:
+            raise SystemExit(
+                "Wheel index.html references missing static files: "
+                + ", ".join(missing_assets)
+            )
 
         metadata_paths = [name for name in names if name.endswith(".dist-info/METADATA")]
         if len(metadata_paths) != 1:
