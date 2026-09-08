@@ -6,11 +6,13 @@ Genomic positions come from the matching ``positions-*.txt.gz`` file.  For N
 trees they provide the first N breakpoints; the final breakpoint is the last
 position plus ``--final-window-bp`` (10,000 bp by default).
 
-Lorax's CSR schema calls its vertical coordinate ``node_times``.  For these
-Newick artifacts the stored values are branch heights, not times: for a node,
-``tree_height - cumulative_distance_from_root``.  Parent-child differences
-therefore exactly preserve the input Newick branch lengths, including for
-non-ultrametric trees.
+Each source tree is exactly MinVar rooted during artifact creation; Lorax never
+reroots it while serving a display request.  The source Newick remains
+unchanged.  Lorax's CSR schema calls its vertical coordinate ``node_times``.
+For these artifacts the stored values are branch heights, not times: for a
+node, ``tree_height - cumulative_distance_from_minvar_root``.  Parent-child
+differences therefore exactly preserve the input Newick branch lengths,
+including for non-ultrametric trees.
 """
 
 from __future__ import annotations
@@ -49,6 +51,14 @@ with contextlib.redirect_stdout(sys.stderr):
         _write_shard,
         artifact_path_for_source,
         source_fingerprint,
+    )
+    from lorax.artifacts.csr_reader import (  # noqa: E402
+        GenealogyCSR,
+        _decode_genealogy,
+    )
+    from lorax.artifacts.minvar import (  # noqa: E402
+        MinVarRootingError,
+        reroot_minvar,
     )
     from lorax.tree_graph.tree_graph import (  # noqa: E402
         LADDERIZED_LAYOUT_ORDER,
@@ -133,7 +143,25 @@ def _list_array(values: np.ndarray, value_type: pa.DataType) -> pa.Array:
     return pa.array([values], type=pa.list_(value_type))
 
 
-def newick_record_batch(
+def _genealogy_record_batch(genealogy: GenealogyCSR) -> pa.RecordBatch:
+    """Encode a mutation-free PHLaG genealogy as one CSR-v2 record batch."""
+    arrays = [
+        pa.array([genealogy.tree_index], type=pa.int64()),
+        pa.array([genealogy.interval_left], type=pa.float64()),
+        pa.array([genealogy.interval_right], type=pa.float64()),
+        _list_array(genealogy.node_ids, pa.int32()),
+        _list_array(genealogy.parent_ids, pa.int32()),
+        _list_array(genealogy.child_offsets, pa.int32()),
+        _list_array(genealogy.child_node_ids, pa.int32()),
+        _list_array(genealogy.node_times, pa.float64()),
+        _list_array(genealogy.node_flags, pa.uint32()),
+        _list_array(genealogy.layout_x, pa.float32()),
+        pa.array([[]], type=pa.list_(MUTATION_TYPE)),
+    ]
+    return pa.RecordBatch.from_arrays(arrays, schema=GENEALOGY_SCHEMA)
+
+
+def _newick_source_record_batch(
     newick: str,
     tree_index: int,
     interval_left: float,
@@ -202,7 +230,7 @@ def newick_record_batch(
     if tip_count > 1:
         layout_x /= np.float32(tip_count - 1)
 
-    arrays = [
+    source_arrays = [
         pa.array([tree_index], type=pa.int64()),
         pa.array([interval_left], type=pa.float64()),
         pa.array([interval_right], type=pa.float64()),
@@ -215,11 +243,38 @@ def newick_record_batch(
         _list_array(layout_x, pa.float32()),
         pa.array([[]], type=pa.list_(MUTATION_TYPE)),
     ]
+    source_record = pa.RecordBatch.from_arrays(source_arrays, schema=GENEALOGY_SCHEMA)
+    return source_record, tree_height, len(nodes), len(nodes) - 1
+
+
+def newick_record_batch(
+    newick: str,
+    tree_index: int,
+    interval_left: float,
+    interval_right: float,
+    sample_ids: dict[str, int],
+) -> tuple[pa.RecordBatch, float, int, int]:
+    """Parse and MinVar root one Newick tree for permanent artifact storage."""
+    source_record, _source_height, _source_nodes, _source_edges = (
+        _newick_source_record_batch(
+            newick,
+            tree_index,
+            interval_left,
+            interval_right,
+            sample_ids,
+        )
+    )
+    try:
+        rooted = reroot_minvar(_decode_genealogy(source_record))
+    except MinVarRootingError as error:
+        raise ValueError(f"Tree {tree_index} cannot be MinVar rooted: {error}") from error
+    record = _genealogy_record_batch(rooted)
+    rooted_height = float(np.max(rooted.node_times, initial=0.0))
     return (
-        pa.RecordBatch.from_arrays(arrays, schema=GENEALOGY_SCHEMA),
-        tree_height,
-        len(nodes),
-        len(nodes) - 1,
+        record,
+        rooted_height,
+        len(rooted.node_ids),
+        int(np.count_nonzero(rooted.parent_ids != -1)),
     )
 
 
@@ -341,7 +396,7 @@ def build_chromosome(
         manifest = {
             "schema_version": CSR_ARTIFACT_V2_SCHEMA_VERSION,
             "format": CSR_ARTIFACT_V2_FORMAT,
-            "builder_version": "phlag-newick-csr-v1",
+            "builder_version": "phlag-newick-csr-v2",
             "created_at_unix": int(time.time()),
             "build_seconds": round(time.perf_counter() - started, 3),
             "fingerprint": fingerprint,
@@ -387,7 +442,11 @@ def build_chromosome(
                 "complete_unsparsified_genealogies": True,
                 "precomputed_layout_x": True,
                 "layout_order": LADDERIZED_LAYOUT_ORDER,
-                "vertical_coordinate": "tree_height_minus_cumulative_root_branch_length",
+                "rooting_method": "minvar",
+                "source_rooting": "arbitrary",
+                "vertical_coordinate": (
+                    "tree_height_minus_cumulative_minvar_root_branch_length"
+                ),
                 "final_window_bp": final_window_bp,
             },
             "capabilities": {

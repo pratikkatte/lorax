@@ -1,8 +1,8 @@
 This directory contains helper scripts for preprocessing data for figures and data included in the paper.
 
-## PHLaG Newick CSR artifacts
+## Phlag Newick CSR artifacts
 
-`build_phlag_newick_csr.py` streams the paired PHLaG `*.nwk.gz` and
+`build_phlag_newick_csr.py` streams the paired Phlag `*.nwk.gz` and
 `positions-*.txt.gz` inputs into adjacent Lorax CSR-v2 artifact directories.
 It preserves Newick branch lengths and uses the supplied genomic positions as
 breakpoints. The last interval defaults to 10 Kbp.
@@ -26,7 +26,7 @@ Build the mammalian chromosome-3 dataset:
 ```
 
 The local backend automatically exposes healthy artifacts from this dataset as
-the `PHLaG Avian` project. For other artifact-backed sources, enable artifact loading
+the `Phlag Avian` project. For other artifact-backed sources, enable artifact loading
 explicitly:
 
 ```bash
