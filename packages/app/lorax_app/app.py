@@ -42,7 +42,11 @@ def _get_static_dir() -> Path:
 def _serve_file(path: Path) -> FileResponse:
     if not path.exists() or not path.is_file():
         raise HTTPException(status_code=404, detail="Not found")
-    return FileResponse(path)
+    # The SPA entry page points to content-hashed assets. It must be
+    # revalidated after an upgrade; otherwise a browser can retain an older
+    # index.html and request JavaScript chunks that no longer exist.
+    headers = {"Cache-Control": "no-cache"} if path.name == "index.html" else None
+    return FileResponse(path, headers=headers)
 
 
 def _looks_like_static_asset(path: str) -> bool:

@@ -39,6 +39,20 @@ def test_lorax_missing_vite_asset_returns_404_instead_of_html(tmp_path):
     assert response.headers["content-type"].startswith("application/json")
 
 
+def test_lorax_entry_page_is_revalidated_after_an_upgrade(tmp_path):
+    static_dir = tmp_path / "static"
+    static_dir.mkdir()
+    (static_dir / "index.html").write_text("<html></html>", encoding="utf-8")
+
+    app = create_fastapi_app(static_dir=static_dir)
+    client = TestClient(app)
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-cache"
+
+
 def test_jbrowse_config_serves_custom_local_assembly(tmp_path):
     static_dir = tmp_path / "static"
     jbrowse_dir = static_dir / "jbrowse"

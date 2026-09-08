@@ -143,6 +143,10 @@ steps:
         if [ "$(cat /workspace/website_changed)" = "true" ] && { [ "$BRANCH_NAME" = "main" ] || [ "$_FORCE_DEPLOY_WEBSITE" = "true" ]; }; then
           echo "Deploying website to Cloud Storage..."
           gsutil -m rsync -r -d packages/website/dist/ gs://$_WEBSITE_BUCKET/
+          # The HTML entrypoint selects the current content-hashed assets. It
+          # must be revalidated on every visit so releases do not remain
+          # invisible behind a stale index.html cache.
+          gsutil setmeta -h "Cache-Control:no-cache, max-age=0, must-revalidate" gs://$_WEBSITE_BUCKET/index.html
           echo "Website deployed successfully"
         else
           echo "Skipping website deployment (unchanged or not on main)"
