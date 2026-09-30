@@ -78,12 +78,14 @@ export function useDeckLayers({
     const sourceLayerId = info?.sourceLayer?.id || '';
     if (sourceLayerId.includes('tips-pickable')) {
       setHoveredEdgeIndex(null);
+      onEdgeHover?.(null, info, event);
       onMutationHover?.(null, info, event);
       onTipHover?.(info?.object || null, info, event);
       return;
     }
     if (sourceLayerId.includes('edges')) {
       setHoveredEdgeIndex(info?.index ?? null);
+      onTipHover?.(null, info, event);
       onMutationHover?.(null, info, event);
       const edge = (renderData?.edgeData && info?.index != null && info.index >= 0)
         ? renderData.edgeData[info.index]
