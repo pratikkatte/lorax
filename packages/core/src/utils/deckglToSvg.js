@@ -195,7 +195,7 @@ function extractLineData(layers) {
               layerId: layer?.id
             });
           }
-        } catch (e) {
+        } catch {
           // Skip invalid data points
         }
       }
@@ -204,26 +204,11 @@ function extractLineData(layers) {
     // Handle PathLayer with array data
     if (layer.props.getPath) {
       const list = Array.isArray(data) ? data : [];
-      let segmentsAdded = 0;
-      let invalidPathCount = 0;
-      const isLineageLayer = (layerId || '').includes('lineages');
-      let lineageSample = null;
       for (const d of list) {
         try {
           const path = typeof layer.props.getPath === 'function'
             ? layer.props.getPath(d)
             : d.path;
-          if (isLineageLayer && !lineageSample) {
-            const first = path ? path[0] : null;
-            lineageSample = {
-              pathType: path?.constructor?.name || null,
-              pathIsArray: Array.isArray(path),
-              pathLength: path?.length ?? null,
-              firstType: first == null ? null : typeof first,
-              firstIsArray: Array.isArray(first),
-              firstValue: Array.isArray(first) ? first.slice(0, 2) : (typeof first === 'number' ? first : null)
-            };
-          }
           const color = typeof layer.props.getColor === 'function'
             ? layer.props.getColor(d)
             : layer.props.getColor || [0, 0, 0, 255];
@@ -245,12 +230,9 @@ function extractLineData(layers) {
                 modelMatrix,
                 layerId
               });
-              segmentsAdded += 1;
             }
-          } else {
-            invalidPathCount += 1;
           }
-        } catch (e) {
+        } catch {
           // Skip invalid data points
         }
       }
@@ -332,7 +314,7 @@ function extractScatterData(layers) {
               ? layer.props.getLineWidth(d)
               : layer.props.getLineWidth || 1
           });
-        } catch (e) {
+        } catch {
           // Skip invalid data points
         }
       }
@@ -438,7 +420,7 @@ function extractTextData(layers) {
           viewportId,
           modelMatrix
         });
-      } catch (e) {
+      } catch {
         // Skip invalid data points
       }
     }
@@ -483,7 +465,7 @@ function extractIconData(layers) {
             ? layer.props.getSize(d)
             : layer.props.getSize || 8;
           icons.push({ position, color, size, viewportId, modelMatrix, layerId: layer?.id });
-        } catch (e) {
+        } catch {
           // Skip invalid data points
         }
       }
@@ -530,7 +512,7 @@ function projectToScreen(viewport, position) {
   if (!viewport?.project) return null;
   try {
     return viewport.project(position);
-  } catch (e) {
+  } catch {
     return null;
   }
 }

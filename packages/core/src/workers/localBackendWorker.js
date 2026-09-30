@@ -87,12 +87,11 @@ function getLocalData(data) {
     end,
     globalBpPerUnit,
     new_globalBp,
-    genome_length,
 
     displayOptions = {}
   } = data;
 
-  const { selectionStrategy = 'largestSpan' , showing_all_trees = false} = displayOptions;
+  const { selectionStrategy = 'largestSpan' } = displayOptions;
 
   if (!normalizedIntervals || hi <= lo) {
     return {

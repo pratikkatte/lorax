@@ -74,7 +74,7 @@ export function useSocket({
       setIsConnected(true);
     });
 
-    socket.on("disconnect", (reason) => {
+    socket.on("disconnect", () => {
       setIsConnected(false);
     });
 

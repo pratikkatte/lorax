@@ -28,13 +28,11 @@ export function ResizableBox({
   ...rest
 }) {
   const boxRef = useRef(null);
-  const [isResizing, setIsResizing] = useState(false);
 
   const startResize = useCallback((e, handle) => {
     if (disabled) return;
     e.preventDefault();
     e.stopPropagation();
-    setIsResizing(true);
 
     const startX = e.clientX;
     const startY = e.clientY;
@@ -97,7 +95,6 @@ export function ResizableBox({
     };
 
     const onMouseUp = () => {
-      setIsResizing(false);
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
       document.body.style.cursor = '';

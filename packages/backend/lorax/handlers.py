@@ -111,17 +111,6 @@ def should_shift_csv_tips(file_path: str) -> bool:
     return False
 
 
-def _is_heliconius_project(file_path: str) -> bool:
-    """Return True when the file path indicates a Heliconius project (case-insensitive)."""
-    if not file_path:
-        return False
-    parts = re.split(r"[\\/]", str(file_path))
-    for part in parts:
-        if part and str(part).lower().startswith("heliconius"):
-            return True
-    return False
-
-
 async def cache_status():
     """Return current memory usage and cache statistics."""
     process = psutil.Process(os.getpid())

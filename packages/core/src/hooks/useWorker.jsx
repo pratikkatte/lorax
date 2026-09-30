@@ -40,7 +40,7 @@ export function useWorker(getWorkerModule) {
       workerRef.current = worker;
 
       worker.onmessage = (event) => {
-        const { type, id, data, success, error: errorMsg } = event.data;
+        const { id, data, success, error: errorMsg } = event.data;
 
         // Resolve pending promise if this is a response with an id
         if (id !== undefined && pendingRequestsRef.current.has(id)) {

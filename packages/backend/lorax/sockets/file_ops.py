@@ -200,7 +200,7 @@ def register_file_events(sio):
             artifact_context = None
             if (
                 (CSR_ARTIFACTS_ENABLED or project in PHLAG_PROJECT_NAMES)
-                and not str(file_path).lower().endswith(".csv")
+                and not is_csv_session_file(file_path)
             ):
                 try:
                     resolved_artifact = await asyncio.to_thread(
@@ -343,7 +343,7 @@ def register_file_events(sio):
             session.file_path = str(file_path)
             session.dataset_backend = (
                 "csv"
-                if str(file_path).lower().endswith(".csv")
+                if is_csv_session_file(file_path)
                 else "legacy"
             )
             session.artifact_path = None

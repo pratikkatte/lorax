@@ -2,6 +2,15 @@ import { useCallback, useMemo, useRef, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useLorax } from "@lorax/core";
 
+const MAX_UPLOAD_SIZE = 25 * 1024 * 1024; // 25 MB
+
+function getFileSizeError(file) {
+    if (file?.size > MAX_UPLOAD_SIZE) {
+        return `File "${file.name}" exceeds the 25 MB limit. For larger files, please use our Python CLI tool: \`pip install lorax-arg\``;
+    }
+    return null;
+}
+
 export default function useFileUpload({
     onError,
     accept = ".trees,.tsz,.tszip,.csv",
@@ -19,7 +28,6 @@ export default function useFileUpload({
     } = useLorax();
 
     const [projects, setProjects] = useState([]);
-    const [fileUploaded, setFileUploaded] = useState(false);
 
     // Fetch projects once session is established and connected
     useEffect(() => {
@@ -37,7 +45,6 @@ export default function useFileUpload({
     const [loadingFile, setLoadingFile] = useState(null);
 
     const inputRef = useRef(null);
-    const loadingRequestRef = useRef(false);
     const [isUploading, setIsUploading] = useState(false);
     const [uploadProgress, setUploadProgress] = useState(0);
     const [selectedFileName, setSelectedFileName] = useState("");
@@ -68,18 +75,24 @@ export default function useFileUpload({
         inputRef.current?.click();
     }, []);
 
+    const navigateToFile = useCallback(
+        (filename, project, shareSid) => {
+            // Navigate immediately to FileView - it will handle loading the config
+            const params = new URLSearchParams();
+            params.set('project', project);
+            if (shareSid) params.set('sid', shareSid);
+            navigate(`/view/${encodeURIComponent(filename)}?${params.toString()}`);
+        },
+        [navigate]
+    );
+
     const _finishSuccess = useCallback(
         (resp, file) => {
             const filename = resp.filename || file.name;
             const project = file.project || "Uploads";
-
-            // Navigate immediately to FileView - it will handle loading the config
-            const params = new URLSearchParams();
-            params.set('project', project);
-            if (file.share_sid) params.set('sid', file.share_sid);
-            navigate(`/view/${encodeURIComponent(filename)}?${params.toString()}`);
+            navigateToFile(filename, project, file.share_sid);
         },
-        [navigate]
+        [navigateToFile]
     );
 
     const _finishError = useCallback(
@@ -93,7 +106,7 @@ export default function useFileUpload({
                 const status = err?.response?.status;
                 const message = apiMessage || err?.message || "Unexpected error";
                 setError(status ? `${message} (HTTP ${status})` : message);
-            } catch (_) {
+            } catch {
                 setError("Unexpected error");
             }
         },
@@ -110,13 +123,9 @@ export default function useFileUpload({
             // Set loading state for UI feedback
             setLoadingFile(filename);
 
-            // Navigate immediately to FileView - it will handle loading the config
-            const params = new URLSearchParams();
-            params.set('project', projName);
-            if (project.share_sid) params.set('sid', project.share_sid);
-            navigate(`/view/${encodeURIComponent(filename)}?${params.toString()}`);
+            navigateToFile(filename, projName, project.share_sid);
         },
-        [navigate]
+        [navigateToFile]
     );
 
     const uploadFile = useCallback(
@@ -146,7 +155,6 @@ export default function useFileUpload({
                         project: "Uploads",
                         file: response?.data?.filename,
                     }
-                    setFileUploaded(true);
 
                     // Redirect
                     _finishSuccess(response.data, payload);
@@ -166,9 +174,9 @@ export default function useFileUpload({
         async (e) => {
             const file = e?.target?.files?.[0];
 
-            const maxSize = 25 * 1024 * 1024; // 25 MB
-            if (file?.size > maxSize) {
-                setError(`File "${file.name}" exceeds the 25 MB limit. For larger files, please use our Python CLI tool: \`pip install lorax-arg\``);
+            const sizeError = getFileSizeError(file);
+            if (sizeError) {
+                setError(sizeError);
                 if (inputRef.current) inputRef.current.value = "";
                 return;
             }
@@ -198,9 +206,9 @@ export default function useFileUpload({
                 return;
             }
 
-            const maxSize = 25 * 1024 * 1024;
-            if (file.size > maxSize) {
-                setError(`File "${file.name}" exceeds the 25 MB limit. For larger files, please use our Python CLI tool: \`pip install lorax-arg\``);
+            const sizeError = getFileSizeError(file);
+            if (sizeError) {
+                setError(sizeError);
                 return;
             }
 

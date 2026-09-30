@@ -600,7 +600,7 @@ const LoraxDeckGL = forwardRef(({
       fetchReason: treeDataFetchReason,
       error: treeDataError
     },
-    render: { renderData: baseRenderData, isLoading: renderDataLoading },
+    render: { renderData: baseRenderData },
     visibleTreeIndices,
     treesInWindowCount
   } = useTreeViewportPipeline({
@@ -1835,7 +1835,7 @@ const LoraxDeckGL = forwardRef(({
       if (!Number.isFinite(width)) width = fallbackWidth;
       if (!Number.isFinite(height)) height = fallbackHeight;
       return { width, height };
-    } catch (err) {
+    } catch {
       return { width: fallbackWidth, height: fallbackHeight };
     }
   }, []);
