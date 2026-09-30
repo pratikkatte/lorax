@@ -120,6 +120,7 @@ async def cache_status():
 
     from lorax.artifacts.metrics import csr_artifact_metrics
     from lorax.artifacts.runtime import artifact_context_registry
+    from lorax.constants import CSR_ARTIFACTS_ENABLED
 
     return {
         "rss_MB": round(rss_mb, 2),
@@ -127,6 +128,7 @@ async def cache_status():
         "file_cache_size": get_file_cache_size(),
         "pid": os.getpid(),
         "csr_artifacts": {
+            "enabled": CSR_ARTIFACTS_ENABLED,
             "metrics": csr_artifact_metrics.snapshot(),
             "registry": artifact_context_registry.snapshot(),
         },

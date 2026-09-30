@@ -5,8 +5,9 @@ from __future__ import annotations
 import json
 import logging
 import threading
+import time
 from collections import OrderedDict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +16,8 @@ from lorax.artifacts.csr_builder import (
     CSR_ARTIFACT_SCHEMA_VERSION,
     CSR_ARTIFACT_V2_FORMAT,
     CSR_ARTIFACT_V2_SCHEMA_VERSION,
+    CSR_ARTIFACT_V4_FORMAT,
+    CSR_ARTIFACT_V4_SCHEMA_VERSION,
     artifact_path_for_source,
 )
 from lorax.artifacts.csr_reader import (
@@ -24,6 +27,7 @@ from lorax.artifacts.csr_reader import (
 )
 from lorax.artifacts.metrics import csr_artifact_metrics
 from lorax.artifacts.storage import (
+    ArtifactStore,
     gcs_artifact_location,
     normalize_artifact_location,
     open_artifact_store,
@@ -43,6 +47,9 @@ class ResolvedArtifact:
     fingerprint: str
     artifact_format: str
     schema_version: int
+    manifest: dict[str, Any] | None = field(default=None, repr=False, compare=False)
+    manifest_version: str | None = None
+    store: ArtifactStore | None = field(default=None, repr=False, compare=False)
 
 
 @dataclass
@@ -54,6 +61,7 @@ class ArtifactDatasetContext:
     capabilities: dict[str, bool]
     config: dict[str, Any]
     reader: CSRArtifactReader
+    validated_at: float = field(default_factory=time.monotonic)
 
     @property
     def is_artifact(self) -> bool:
@@ -79,6 +87,9 @@ class ArtifactResolver:
         source_path: str | Path,
         artifact_directory: str | Path,
         payload: dict[str, Any],
+        *,
+        manifest_version: str | None = None,
+        store: ArtifactStore | None = None,
     ) -> ResolvedArtifact | None:
         fingerprint = payload.get("fingerprint")
         artifact_format = payload.get("format")
@@ -95,6 +106,7 @@ class ArtifactResolver:
         if (str(artifact_format), int(schema_version)) not in {
             (CSR_ARTIFACT_V2_FORMAT, CSR_ARTIFACT_V2_SCHEMA_VERSION),
             (CSR_ARTIFACT_FORMAT, CSR_ARTIFACT_SCHEMA_VERSION),
+            (CSR_ARTIFACT_V4_FORMAT, CSR_ARTIFACT_V4_SCHEMA_VERSION),
         }:
             return None
         return ResolvedArtifact(
@@ -103,6 +115,9 @@ class ArtifactResolver:
             fingerprint=str(fingerprint),
             artifact_format=str(artifact_format),
             schema_version=int(schema_version),
+            manifest=payload,
+            manifest_version=manifest_version,
+            store=store,
         )
 
     def resolve(self, source: str | Path) -> ResolvedArtifact | None:
@@ -118,11 +133,15 @@ class ArtifactResolver:
                 csr_artifact_metrics.increment("resolution.missing")
                 return None
             try:
-                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                store = open_artifact_store(artifact_path)
+                data, version = store.read_manifest()
+                manifest = json.loads(data)
                 resolved = self._resolved_from_manifest(
                     source_path,
                     artifact_path,
                     manifest,
+                    manifest_version=version,
+                    store=store,
                 )
                 source_metadata = manifest["source"]
                 if str(source_metadata["sha256"]) != str(manifest["fingerprint"]):
@@ -167,13 +186,14 @@ class ArtifactResolver:
                 return None
         try:
             store = open_artifact_store(artifact_location)
-            manifest = json.loads(
-                store.read_bytes("manifest.json").decode("utf-8")
-            )
+            data, version = store.read_manifest()
+            manifest = json.loads(data)
             resolved = self._resolved_from_manifest(
                 f"gs://{bucket_name}/{source_blob_path}",
                 artifact_location,
                 manifest,
+                manifest_version=version,
+                store=store,
             )
             if resolved is None:
                 csr_artifact_metrics.increment("resolution.corrupt_manifest")
@@ -232,9 +252,11 @@ class ArtifactContextRegistry:
         *,
         max_contexts: int = CSR_CONTEXT_CACHE_SIZE,
         max_open_shards: int = CSR_MAX_OPEN_SHARDS,
+        revalidate_seconds: float = 60.0,
     ):
         self.max_contexts = max(1, int(max_contexts))
         self.max_open_shards = max(1, int(max_open_shards))
+        self.revalidate_seconds = max(0.0, float(revalidate_seconds))
         self._lock = threading.RLock()
         self._contexts: OrderedDict[str, ArtifactDatasetContext] = OrderedDict()
 
@@ -243,8 +265,18 @@ class ArtifactContextRegistry:
         with self._lock:
             cached = self._contexts.pop(artifact_key, None)
             if cached is not None:
-                if cached.fingerprint == resolved.fingerprint:
+                if (
+                    cached.fingerprint == resolved.fingerprint
+                    and cached.artifact_format == resolved.artifact_format
+                    and cached.schema_version == resolved.schema_version
+                    and (resolved.manifest is None or cached.reader.manifest == resolved.manifest)
+                    and (resolved.manifest_version is None or cached.reader.manifest_version == resolved.manifest_version)
+                ):
                     self._contexts[artifact_key] = cached
+                    if resolved.manifest is not None:
+                        cached.validated_at = time.monotonic()
+                    if resolved.store is not None and resolved.store is not cached.reader._store:
+                        resolved.store.close()
                     csr_artifact_metrics.increment("context.hit")
                     return cached
                 cached.close()
@@ -253,7 +285,13 @@ class ArtifactContextRegistry:
                 reader = CSRArtifactReader.open(
                     resolved.artifact_directory,
                     max_open_shards=self.max_open_shards,
+                    manifest=resolved.manifest,
+                    manifest_version=resolved.manifest_version,
+                    store=resolved.store,
                 )
+            if str(reader.manifest["fingerprint"]) != resolved.fingerprint:
+                reader.close()
+                raise CSRArtifactCorruptError("Artifact fingerprint changed while opening")
             context = ArtifactDatasetContext(
                 artifact_directory=resolved.artifact_directory,
                 fingerprint=resolved.fingerprint,
@@ -277,19 +315,33 @@ class ArtifactContextRegistry:
         expected_fingerprint: str | None = None,
     ) -> ArtifactDatasetContext:
         artifact_location = normalize_artifact_location(artifact_directory)
-        store = open_artifact_store(artifact_location)
-        payload = json.loads(store.read_bytes("manifest.json").decode("utf-8"))
-        fingerprint = str(payload["fingerprint"])
-        if expected_fingerprint is not None and fingerprint != expected_fingerprint:
-            raise CSRArtifactCorruptError("Artifact fingerprint does not match session")
-        resolved = ResolvedArtifact(
-            source_path=str(payload.get("source", {}).get("path", "")),
-            artifact_directory=artifact_location,
-            fingerprint=fingerprint,
-            artifact_format=str(payload["format"]),
-            schema_version=int(payload["schema_version"]),
-        )
-        return self.open(resolved)
+        with self._lock:
+            cached = self._contexts.get(artifact_location)
+            if cached is not None and time.monotonic() - cached.validated_at < self.revalidate_seconds:
+                if expected_fingerprint is not None and cached.fingerprint != expected_fingerprint:
+                    raise CSRArtifactCorruptError("Artifact fingerprint does not match session")
+                self._contexts.move_to_end(artifact_location)
+                csr_artifact_metrics.increment("context.hit")
+                return cached
+            store = open_artifact_store(artifact_location)
+            try:
+                data, version = store.read_manifest()
+                payload = json.loads(data)
+                fingerprint = str(payload["fingerprint"])
+                if expected_fingerprint is not None and fingerprint != expected_fingerprint:
+                    raise CSRArtifactCorruptError("Artifact fingerprint does not match session")
+                resolved = ArtifactResolver._resolved_from_manifest(
+                    str(payload.get("source", {}).get("path", "")),
+                    artifact_location, payload, manifest_version=version, store=store,
+                )
+                if resolved is None:
+                    raise CSRArtifactCorruptError("Unsupported artifact manifest")
+                csr_artifact_metrics.increment("context.revalidation")
+                return self.open(resolved)
+            except Exception:
+                store.close()
+                self.discard(artifact_location)
+                raise
 
     def discard(self, artifact_directory: str | Path) -> None:
         artifact_key = normalize_artifact_location(artifact_directory)
@@ -323,7 +375,7 @@ artifact_context_registry = ArtifactContextRegistry()
 
 
 def context_for_session(session: Any) -> ArtifactDatasetContext | None:
-    if getattr(session, "dataset_backend", "legacy") not in {"csr-v2", "csr-v3"}:
+    if not is_artifact_session(session):
         return None
     artifact_path = getattr(session, "artifact_path", None)
     fingerprint = getattr(session, "artifact_fingerprint", None)
@@ -336,7 +388,7 @@ def context_for_session(session: Any) -> ArtifactDatasetContext | None:
 
 
 def is_artifact_session(session: Any) -> bool:
-    return getattr(session, "dataset_backend", "legacy") in {"csr-v2", "csr-v3"}
+    return getattr(session, "dataset_backend", "legacy") in {"csr-v2", "csr-v3", "csr-v4"}
 
 
 def capability_error_payload(exc: CSRArtifactError) -> dict[str, Any]:

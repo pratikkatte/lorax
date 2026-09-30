@@ -1,9 +1,8 @@
 """Build versioned, random-access CSR genealogy artifacts.
 
-The builder is intentionally separate from the render-v1 artifact builder. It
-loads a source TreeSequence in the preprocessing process, emits one Arrow
-record batch per unsparsified genealogy, and atomically publishes an artifact
-that can later be opened without touching the source file.
+The builder loads a source TreeSequence in the preprocessing process and
+atomically publishes an artifact that can be opened without the source file.
+v2/v3 store one genealogy per Arrow batch; v4 compresses 32 genealogies together.
 """
 
 from __future__ import annotations
@@ -39,6 +38,9 @@ CSR_ARTIFACT_V2_SCHEMA_VERSION = 2
 CSR_ARTIFACT_V2_FORMAT = "lorax-csr-v2"
 CSR_ARTIFACT_SCHEMA_VERSION = 3
 CSR_ARTIFACT_FORMAT = "lorax-csr-v3"
+CSR_ARTIFACT_V4_SCHEMA_VERSION = 4
+CSR_ARTIFACT_V4_FORMAT = "lorax-csr-v4"
+V4_TREES_PER_BATCH = 32
 DEFAULT_TARGET_SHARD_MB = 48
 DEFAULT_TREES_PER_RANGE = 10_000
 SUPPORTED_COMPRESSIONS = {"zstd", "lz4", "none"}
@@ -493,6 +495,7 @@ def _write_shard(
     shard_id: int,
     records: Iterable[pa.RecordBatch],
     compression: str,
+    trees_per_batch: int = 1,
 ) -> dict[str, Any]:
     records = list(records)
     if not records:
@@ -508,8 +511,14 @@ def _write_shard(
     try:
         with pa.OSFile(str(partial), "wb") as sink:
             with pa.ipc.new_file(sink, GENEALOGY_SCHEMA, options=options) as writer:
-                for record in records:
-                    writer.write_batch(record)
+                for offset in range(0, len(records), trees_per_batch):
+                    group = records[offset:offset + trees_per_batch]
+                    batch = (
+                        group[0]
+                        if len(group) == 1
+                        else pa.Table.from_batches(group).combine_chunks().to_batches()[0]
+                    )
+                    writer.write_batch(batch)
         os.replace(partial, destination)
     finally:
         partial.unlink(missing_ok=True)
@@ -517,7 +526,7 @@ def _write_shard(
         "shard_id": shard_id,
         "first_tree": first_tree,
         "last_tree_exclusive": last_tree,
-        "batch_count": len(records),
+        "batch_count": math.ceil(len(records) / trees_per_batch),
         "name": name,
         "size_bytes": destination.stat().st_size,
         "sha256": _checksum(destination),
@@ -590,6 +599,7 @@ def _build_tree_range(task: dict[str, Any]) -> dict[str, Any]:
                 len(shards),
                 pending,
                 compression,
+                trees_per_batch=int(task.get("trees_per_batch", 1)),
             )
         )
         pending = []
@@ -615,6 +625,7 @@ def _build_tree_range(task: dict[str, Any]) -> dict[str, Any]:
         "start": start,
         "end": end,
         "compression": compression,
+        "trees_per_batch": int(task.get("trees_per_batch", 1)),
         "target_shard_bytes": target_shard_bytes,
         "shards": shards,
         "elapsed_seconds": round(time.perf_counter() - started, 6),
@@ -633,6 +644,7 @@ def _validate_range_result(
     fingerprint: str,
     compression: str,
     target_shard_bytes: int,
+    trees_per_batch: int = 1,
 ) -> None:
     if int(result.get("range_state_version", -1)) != RANGE_STATE_VERSION:
         raise CSRArtifactBuildError(
@@ -645,6 +657,7 @@ def _validate_range_result(
         or str(result.get("compression", "")) != compression
         or int(result.get("target_shard_bytes", -1))
         != target_shard_bytes
+        or int(result.get("trees_per_batch", 1)) != trees_per_batch
     ):
         raise CSRArtifactBuildError(
             f"Range [{start}, {end}) does not match this build"
@@ -675,6 +688,7 @@ def _read_completed_range(
     fingerprint: str,
     compression: str,
     target_shard_bytes: int,
+    trees_per_batch: int = 1,
 ) -> dict[str, Any] | None:
     manifest_path = _range_manifest_path(range_directory)
     if not manifest_path.is_file():
@@ -688,6 +702,7 @@ def _read_completed_range(
             fingerprint=fingerprint,
             compression=compression,
             target_shard_bytes=target_shard_bytes,
+            trees_per_batch=trees_per_batch,
         )
         for shard in result["shards"]:
             path = range_directory / str(shard["name"])
@@ -807,6 +822,7 @@ def _build_genealogy_shards(
     global _WORKER_SOURCE_PATH, _WORKER_TREE_SEQUENCE
 
     num_trees = int(tree_sequence.num_trees)
+    trees_per_batch = int(state["options"].get("trees_per_batch", 1))
     invocation_start_tree = int(state["next_tree"])
     prior_completed_ranges = state.get("completed_ranges") or []
     child_peak_rss_bytes = max(
@@ -899,6 +915,7 @@ def _build_genealogy_shards(
             len(state["shards"]),
             pending,
             compression,
+            trees_per_batch=trees_per_batch,
         )
         state["shards"].append(shard)
         state["next_tree"] = int(shard["last_tree_exclusive"])
@@ -944,6 +961,7 @@ def _build_genealogy_shards(
             fingerprint=fingerprint,
             compression=compression,
             target_shard_bytes=target_shard_bytes,
+            trees_per_batch=trees_per_batch,
         )
         if recovered is None:
             shutil.rmtree(directory, ignore_errors=True)
@@ -992,6 +1010,7 @@ def _build_genealogy_shards(
                 fingerprint=fingerprint,
                 compression=compression,
                 target_shard_bytes=target_shard_bytes,
+                trees_per_batch=trees_per_batch,
             )
             _promote_completed_range(
                 result,
@@ -1040,6 +1059,7 @@ def _build_genealogy_shards(
                             ),
                             "target_shard_bytes": target_shard_bytes,
                             "compression": compression,
+                            "trees_per_batch": trees_per_batch,
                         }
                     )
                 except Exception as exc:
@@ -1072,6 +1092,7 @@ def _build_genealogy_shards(
                             ),
                             "target_shard_bytes": target_shard_bytes,
                             "compression": compression,
+                            "trees_per_batch": trees_per_batch,
                         },
                     )
                     future_ranges[future] = (start, end)
@@ -1484,7 +1505,7 @@ def _write_v3_sidecars(
             raise CSRArtifactBuildError(
                 "Unable to build artifact frontend configuration"
             )
-        config["artifact_format"] = CSR_ARTIFACT_FORMAT
+        config["artifact_format"] = f"lorax-csr-v{state['schema_version']}"
         config["artifact_capabilities"] = capabilities
         config_path = staging / "config.json"
         _write_json_atomic(config_path, config)
@@ -1770,13 +1791,10 @@ def build_csr_artifact(
     if format_version not in {
         CSR_ARTIFACT_V2_SCHEMA_VERSION,
         CSR_ARTIFACT_SCHEMA_VERSION,
+        CSR_ARTIFACT_V4_SCHEMA_VERSION,
     }:
-        raise ValueError("format_version must be 2 or 3")
-    artifact_format = (
-        CSR_ARTIFACT_FORMAT
-        if format_version == CSR_ARTIFACT_SCHEMA_VERSION
-        else CSR_ARTIFACT_V2_FORMAT
-    )
+        raise ValueError("format_version must be 2, 3 or 4")
+    artifact_format = f"lorax-csr-v{format_version}"
     compression = compression.lower()
     if compression not in SUPPORTED_COMPRESSIONS:
         raise ValueError(
@@ -1797,7 +1815,14 @@ def build_csr_artifact(
             and manifest.get("fingerprint") == fingerprint
         ):
             if (
-                format_version == CSR_ARTIFACT_SCHEMA_VERSION
+                format_version == CSR_ARTIFACT_V4_SCHEMA_VERSION
+                and (manifest.get("build") or {}).get("trees_per_batch") != V4_TREES_PER_BATCH
+            ):
+                raise CSRArtifactBuildError(
+                    "Existing v4 artifact has an incompatible group size; use --force"
+                )
+            if (
+                format_version >= CSR_ARTIFACT_SCHEMA_VERSION
                 and not skip_node_tree_ranges
                 and not bool(
                     (manifest.get("capabilities") or {}).get(
@@ -1839,6 +1864,8 @@ def build_csr_artifact(
         "trees_per_range": trees_per_range,
         "skip_node_tree_ranges": bool(skip_node_tree_ranges),
     }
+    if format_version == CSR_ARTIFACT_V4_SCHEMA_VERSION:
+        options["trees_per_batch"] = V4_TREES_PER_BATCH
     staging = destination.with_name(f".{destination.name}.inprogress")
     state_path = staging / "build-state.json"
     if force or (staging.exists() and not resume):
@@ -1926,7 +1953,7 @@ def build_csr_artifact(
         "lineage": True,
         "topology_comparison": True,
     }
-    if format_version == CSR_ARTIFACT_SCHEMA_VERSION:
+    if format_version >= CSR_ARTIFACT_SCHEMA_VERSION:
         sidecar_indexes, v3_capabilities = _write_v3_sidecars(
             staging,
             tree_sequence,
@@ -1978,6 +2005,10 @@ def build_csr_artifact(
             "global_max_time": float(tree_sequence.max_time),
         },
         "build": {
+            **(
+                {"trees_per_batch": V4_TREES_PER_BATCH}
+                if format_version == CSR_ARTIFACT_V4_SCHEMA_VERSION else {}
+            ),
             "compression": compression,
             "target_shard_bytes": target_shard_bytes,
             "trees_per_range": trees_per_range,
@@ -2028,6 +2059,9 @@ __all__ = [
     "CSR_ARTIFACT_SCHEMA_VERSION",
     "CSR_ARTIFACT_V2_FORMAT",
     "CSR_ARTIFACT_V2_SCHEMA_VERSION",
+    "CSR_ARTIFACT_V4_FORMAT",
+    "CSR_ARTIFACT_V4_SCHEMA_VERSION",
+    "V4_TREES_PER_BATCH",
     "CSRArtifactBuildError",
     "DEFAULT_TARGET_SHARD_MB",
     "DEFAULT_TREES_PER_RANGE",

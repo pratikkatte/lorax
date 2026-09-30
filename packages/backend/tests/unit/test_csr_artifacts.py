@@ -246,15 +246,18 @@ def test_gcs_artifact_opens_without_local_source_or_artifact(tmp_path, monkeypat
                 raise FileNotFoundError(self.name)
             self.size = len(objects[self.name])
 
-        def download_as_bytes(self):
+        def download_as_bytes(self, start=None, end=None, **kwargs):
             if self.name not in objects:
                 raise FileNotFoundError(self.name)
-            downloaded_objects.append(self.name)
-            return objects[self.name]
+            if start is None:
+                downloaded_objects.append(self.name)
+            else:
+                opened_objects.append(self.name)
+            return objects[self.name][start or 0:None if end is None else end + 1]
 
         def open(self, mode, **kwargs):
             assert mode == "rb"
-            assert kwargs["chunk_size"] == 4 * 1024 * 1024
+            assert kwargs["chunk_size"] == 256 * 1024
             if self.name not in objects:
                 raise FileNotFoundError(self.name)
             opened_objects.append(self.name)
@@ -1065,17 +1068,18 @@ def _assert_arrow_tables_equal_with_nan(observed, expected):
             assert observed[field.name].to_pylist() == expected[field.name].to_pylist()
 
 
-def test_v3_config_sidecars_and_feature_indexes_are_source_free(tmp_path):
+@pytest.mark.parametrize("format_version", [3, 4])
+def test_v3_config_sidecars_and_feature_indexes_are_source_free(tmp_path, format_version):
     from lorax.artifacts import CSRArtifactReader
 
     source = tmp_path / "metadata.trees"
     tree_sequence = _metadata_tree_sequence(source)
-    result = _build(source)
+    result = _build(source, format_version=format_version)
     artifact = Path(result["artifact_dir"])
     manifest = result["manifest"]
 
-    assert manifest["format"] == "lorax-csr-v3"
-    assert manifest["schema_version"] == 3
+    assert manifest["format"] == f"lorax-csr-v{format_version}"
+    assert manifest["schema_version"] == format_version
     assert manifest["capabilities"]["metadata"] is True
     for name in (
         "config",
@@ -1292,10 +1296,12 @@ def test_v3_node_tree_range_capability_must_match_its_indexes(tmp_path):
 
 @pytest.mark.parametrize("sparsification", [False, True])
 @pytest.mark.parametrize("time_scale", ["linear", "log"])
+@pytest.mark.parametrize("format_version", [3, 4])
 def test_csr_frontend_serializer_matches_legacy_contract(
     tmp_path,
     sparsification,
     time_scale,
+    format_version,
 ):
     from lorax.artifacts import CSRArtifactReader
     from lorax.artifacts.render import serialize_csr_genealogies
@@ -1303,7 +1309,7 @@ def test_csr_frontend_serializer_matches_legacy_contract(
 
     source = tmp_path / "render.trees"
     tree_sequence = _recombining_tree_sequence(source)
-    result = _build(source)
+    result = _build(source, format_version=format_version)
 
     legacy_buffer, min_time, max_time, indices, _graphs = construct_trees_batch(
         tree_sequence,

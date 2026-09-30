@@ -1,8 +1,9 @@
-"""Memory-bounded random access to lorax-csr-v2 and lorax-csr-v3 artifacts."""
+"""Memory-bounded random access to lorax-csr-v2/v3/v4 artifacts."""
 
 from __future__ import annotations
 
 import bisect
+import io
 import json
 import threading
 from collections import OrderedDict, defaultdict
@@ -14,12 +15,15 @@ import numpy as np
 import pyarrow as pa
 
 from lorax.artifacts.metrics import csr_artifact_metrics
-from lorax.artifacts.storage import open_artifact_store
+from lorax.artifacts.storage import ArtifactStore, open_artifact_store
 from lorax.artifacts.csr_builder import (
     CSR_ARTIFACT_FORMAT,
     CSR_ARTIFACT_SCHEMA_VERSION,
     CSR_ARTIFACT_V2_FORMAT,
     CSR_ARTIFACT_V2_SCHEMA_VERSION,
+    CSR_ARTIFACT_V4_FORMAT,
+    CSR_ARTIFACT_V4_SCHEMA_VERSION,
+    V4_TREES_PER_BATCH,
 )
 from lorax.tree_graph.tree_graph import (
     LADDERIZED_LAYOUT_ORDER,
@@ -315,11 +319,23 @@ def _decode_genealogy(
 class CSRArtifactReader:
     """Random-access reader that never opens the source TreeSequence."""
 
-    def __init__(self, artifact_directory: str | Path, *, max_open_shards: int = 8):
-        self._store = open_artifact_store(artifact_directory)
+    def __init__(
+        self,
+        artifact_directory: str | Path,
+        *,
+        max_open_shards: int = 8,
+        manifest: dict[str, Any] | None = None,
+        manifest_version: str | None = None,
+        store: ArtifactStore | None = None,
+        max_batch_cache_bytes: int = 32 * 1024 * 1024,
+    ):
+        self._store = store or open_artifact_store(artifact_directory)
         self.artifact_directory = self._store.location
-        manifest_bytes = self._store.read_bytes("manifest.json")
-        self.manifest = json.loads(manifest_bytes.decode("utf-8"))
+        if manifest is None:
+            manifest_bytes, manifest_version = self._store.read_manifest()
+            manifest = json.loads(manifest_bytes.decode("utf-8"))
+        self.manifest = manifest
+        self.manifest_version = manifest_version
         version_key = (
             self.manifest.get("format"),
             int(self.manifest.get("schema_version", -1)),
@@ -327,6 +343,7 @@ class CSRArtifactReader:
         supported_versions = {
             (CSR_ARTIFACT_V2_FORMAT, CSR_ARTIFACT_V2_SCHEMA_VERSION),
             (CSR_ARTIFACT_FORMAT, CSR_ARTIFACT_SCHEMA_VERSION),
+            (CSR_ARTIFACT_V4_FORMAT, CSR_ARTIFACT_V4_SCHEMA_VERSION),
         }
         if version_key not in supported_versions:
             raise CSRArtifactError(
@@ -335,6 +352,12 @@ class CSRArtifactReader:
         self.schema_version = version_key[1]
         self.format = version_key[0]
         build_metadata = self.manifest.get("build") or {}
+        self.trees_per_batch = 1
+        if self.schema_version == CSR_ARTIFACT_V4_SCHEMA_VERSION:
+            group_size = build_metadata.get("trees_per_batch") if isinstance(build_metadata, dict) else None
+            if type(group_size) is not int or group_size != V4_TREES_PER_BATCH:
+                raise CSRArtifactCorruptError("Invalid v4 trees_per_batch")
+            self.trees_per_batch = group_size
         self.layout_order = (
             build_metadata.get("layout_order")
             if isinstance(build_metadata, dict)
@@ -360,12 +383,12 @@ class CSRArtifactReader:
             )
             if missing_capabilities:
                 raise CSRArtifactCorruptError(
-                    "lorax-csr-v3 is missing required capabilities: "
+                    f"{self.format} is missing required capabilities: "
                     + ", ".join(missing_capabilities)
                 )
             if "config" not in available_indexes:
                 raise CSRArtifactCorruptError(
-                    "lorax-csr-v3 is missing the frontend configuration"
+                    f"{self.format} is missing the frontend configuration"
                 )
             for capability, required_indexes in V3_CAPABILITY_INDEXES.items():
                 if self.capabilities.get(capability) and not required_indexes.issubset(
@@ -399,16 +422,21 @@ class CSRArtifactReader:
         self._sidecar_readers: dict[str, pa.ipc.RecordBatchFileReader] = {}
         self._sidecar_tables: dict[str, pa.Table] = {}
         self._mapped_indexes: dict[str, np.ndarray] = {}
+        self._verified_indexes: set[str] = set()
+        self._batch_cache: OrderedDict[tuple[int, int], pa.RecordBatch] = OrderedDict()
+        self._batch_cache_bytes = 0
+        self.max_batch_cache_bytes = max(0, int(max_batch_cache_bytes))
 
         breakpoints_meta = self.manifest["indexes"]["breakpoints"]
         shard_index_meta = self.manifest["indexes"]["shards"]
         breakpoints_name = str(breakpoints_meta["name"])
         shard_index_name = str(shard_index_meta["name"])
-        self._verify_object(breakpoints_name, breakpoints_meta, checksum=True)
-        self._verify_object(shard_index_name, shard_index_meta, checksum=True)
-
-        self.breakpoints = self._store.load_numpy(breakpoints_name)
-        with self._store.open_arrow(shard_index_name) as source:
+        self.breakpoints = _readonly(np.load(
+            io.BytesIO(self._read_verified(breakpoints_name, breakpoints_meta)),
+            allow_pickle=False,
+        ))
+        shard_bytes = self._read_verified(shard_index_name, shard_index_meta)
+        with pa.BufferReader(shard_bytes) as source:
             shard_table = pa.ipc.open_file(source).read_all()
         self._shards = shard_table.to_pylist()
         self._shard_first_trees = [
@@ -431,6 +459,12 @@ class CSRArtifactReader:
         for shard in self._shards:
             if int(shard["first_tree"]) != expected_tree:
                 raise CSRArtifactCorruptError("Shard tree ranges are not contiguous")
+            count = int(shard["last_tree_exclusive"]) - expected_tree
+            batch_count = (count + self.trees_per_batch - 1) // self.trees_per_batch
+            if count <= 0 or int(shard["batch_count"]) != batch_count:
+                raise CSRArtifactCorruptError(
+                    "Shard batch count is inconsistent with tree range"
+                )
             expected_tree = int(shard["last_tree_exclusive"])
         if expected_tree != self.num_trees:
             raise CSRArtifactCorruptError("Shard index does not cover every genealogy")
@@ -438,24 +472,25 @@ class CSRArtifactReader:
         config_meta = self.manifest.get("indexes", {}).get("config")
         if config_meta is not None:
             config_name = str(config_meta["name"])
-            self._verify_object(config_name, config_meta, checksum=True)
             self._stored_config = json.loads(
-                self._store.read_bytes(config_name).decode("utf-8")
+                self._read_verified(config_name, config_meta).decode("utf-8")
             )
         else:
             self._stored_config = None
 
-        for key, metadata in self.manifest.get("indexes", {}).items():
-            if key in {"breakpoints", "shards", "config"}:
-                continue
+    def _read_verified(self, name: str, metadata: dict[str, Any]) -> bytes:
+        try:
+            return self._store.read_verified(name, metadata)
+        except (FileNotFoundError, ValueError) as exc:
+            raise CSRArtifactCorruptError(str(exc)) from exc
+
+    def _verify_index_once(self, key: str) -> None:
+        if key not in self._verified_indexes:
+            metadata = self._index_metadata(key)
             self._verify_object(
-                str(metadata["name"]),
-                metadata,
-                # Checking every remote sidecar's hash would eagerly download
-                # the full artifact. GCS metadata size is checked at open; the
-                # explicit verify() operation still performs full checksums.
-                checksum=not self._store.remote,
+                str(metadata["name"]), metadata, checksum=not self._store.remote,
             )
+            self._verified_indexes.add(key)
 
     def _verify_object(
         self,
@@ -471,9 +506,9 @@ class CSRArtifactReader:
 
     @classmethod
     def open(
-        cls, artifact_directory: str | Path, *, max_open_shards: int = 8
+        cls, artifact_directory: str | Path, *, max_open_shards: int = 8, **kwargs
     ) -> "CSRArtifactReader":
-        return cls(artifact_directory, max_open_shards=max_open_shards)
+        return cls(artifact_directory, max_open_shards=max_open_shards, **kwargs)
 
     def __enter__(self) -> "CSRArtifactReader":
         return self
@@ -501,6 +536,9 @@ class CSRArtifactReader:
                 if index_mmap is not None:
                     index_mmap.close()
             self._mapped_indexes.clear()
+            self._batch_cache.clear()
+            self._batch_cache_bytes = 0
+            self._store.close()
             self._closed = True
 
     def has_capability(self, capability: str) -> bool:
@@ -647,7 +685,13 @@ class CSRArtifactReader:
             if cached is not None:
                 return cached
             metadata = self._index_metadata(key)
-            array = self._store.load_numpy(str(metadata["name"]))
+            if self._store.remote:
+                data = self._read_verified(str(metadata["name"]), metadata)
+                array = np.load(io.BytesIO(data), allow_pickle=False)
+                self._verified_indexes.add(key)
+            else:
+                self._verify_index_once(key)
+                array = self._store.load_numpy(str(metadata["name"]))
             self._mapped_indexes[key] = array
             return array
 
@@ -657,6 +701,7 @@ class CSRArtifactReader:
             if cached is not None:
                 return cached
             metadata = self._index_metadata(key)
+            self._verify_index_once(key)
             source = self._store.open_arrow(str(metadata["name"]))
             try:
                 reader = pa.ipc.open_file(source)
@@ -1128,6 +1173,39 @@ class CSRArtifactReader:
             ).to_pylist()
         ]
 
+    def _validate_genealogy_batch(self, batch, batch_index, shard) -> None:
+        first = int(shard["first_tree"]) + batch_index * self.trees_per_batch
+        stop = min(first + self.trees_per_batch, int(shard["last_tree_exclusive"]))
+        if batch.num_rows != stop - first:
+            raise CSRArtifactCorruptError("Genealogy batch row count is inconsistent")
+        if not np.array_equal(batch.column("tree_index").to_numpy(), np.arange(first, stop)):
+            raise CSRArtifactCorruptError("Genealogy batch tree indexes are inconsistent")
+        if not (
+            np.array_equal(batch.column("interval_left").to_numpy(), self.breakpoints[first:stop])
+            and np.array_equal(batch.column("interval_right").to_numpy(), self.breakpoints[first + 1:stop + 1])
+        ):
+            raise CSRArtifactCorruptError("Genealogy intervals disagree with breakpoints")
+
+    def _genealogy_batch(self, reader, shard_offset, shard, batch_index):
+        key = (shard_offset, batch_index)
+        batch = self._batch_cache.pop(key, None)
+        if batch is not None:
+            self._batch_cache[key] = batch
+            csr_artifact_metrics.increment("batch_cache.hit")
+            return batch
+        csr_artifact_metrics.increment("batch_cache.miss")
+        batch = reader.get_batch(batch_index)
+        self._validate_genealogy_batch(batch, batch_index, shard)
+        size = batch.get_total_buffer_size()
+        if size <= self.max_batch_cache_bytes:
+            self._batch_cache[key] = batch
+            self._batch_cache_bytes += size
+            while self._batch_cache_bytes > self.max_batch_cache_bytes:
+                _, old = self._batch_cache.popitem(last=False)
+                self._batch_cache_bytes -= old.get_total_buffer_size()
+                csr_artifact_metrics.increment("batch_cache.eviction")
+        return batch
+
     def trees_at_indices(self, indices: Iterable[int]) -> list[GenealogyCSR]:
         requested = [int(index) for index in indices]
         if not requested:
@@ -1147,9 +1225,10 @@ class CSRArtifactReader:
                 for request_offset, tree_index, _ in requests:
                     genealogy = decoded.get(tree_index)
                     if genealogy is None:
-                        batch = reader.get_batch(tree_index - first_tree)
+                        batch_index, row_index = divmod(tree_index - first_tree, self.trees_per_batch)
+                        batch = self._genealogy_batch(reader, shard_offset, shard, batch_index)
                         genealogy = _decode_genealogy(
-                            batch,
+                            batch.slice(row_index, 1),
                             normalize_layout=self._normalize_layout,
                         )
                         if genealogy.tree_index != tree_index:
@@ -1178,6 +1257,11 @@ class CSRArtifactReader:
                     raise CSRArtifactCorruptError(
                         f"Batch count mismatch for {shard['name']}"
                     )
+                for batch_index in range(reader.num_record_batches):
+                    batch = reader.get_batch(batch_index)
+                    self._validate_genealogy_batch(batch, batch_index, shard)
+                    for row_index in range(batch.num_rows):
+                        _decode_genealogy(batch.slice(row_index, 1))
         return {
             "ok": True,
             "fingerprint": self.manifest["fingerprint"],

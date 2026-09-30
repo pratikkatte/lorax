@@ -41,6 +41,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("input_path", type=Path)
     parser.add_argument(
+        "--format-version", type=int, choices=(2, 3, 4), default=3,
+        help="Artifact format; v4 compresses groups of 32 consecutive trees",
+    )
+    parser.add_argument(
         "--target-shard-mb",
         type=_positive_int,
         default=DEFAULT_TARGET_SHARD_MB,
@@ -98,6 +102,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         result = build_csr_artifact(
             args.input_path,
+            format_version=args.format_version,
             target_shard_mb=args.target_shard_mb,
             compression=args.compression,
             workers=args.workers,

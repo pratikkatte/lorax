@@ -273,6 +273,7 @@ class TestLoadFileEvent:
         assert emitted[0]["data"]["code"] == "FILE_NOT_FOUND"
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("format_version", [3, 4])
     async def test_load_file_uses_gcs_artifact_before_source_download(
         self,
         socket_harness,
@@ -280,6 +281,7 @@ class TestLoadFileEvent:
         session_manager_memory,
         minimal_ts_file,
         temp_dir,
+        format_version,
     ):
         from lorax.artifacts import build_csr_artifact
         from lorax.artifacts.runtime import (
@@ -290,7 +292,7 @@ class TestLoadFileEvent:
         from lorax.sockets import register_socket_events
         from lorax.sockets.load_scheduler import LoadScheduler
 
-        build_csr_artifact(minimal_ts_file, target_shard_mb=1)
+        build_csr_artifact(minimal_ts_file, target_shard_mb=1, format_version=format_version)
         local_resolved = ArtifactResolver().resolve(minimal_ts_file)
         assert local_resolved is not None
         remote_resolved = ResolvedArtifact(
@@ -427,6 +429,7 @@ class TestLoadFileEvent:
         assert any(evt["data"]["ok"] is False and evt["data"]["code"] == "SERVER_BUSY" for evt in emitted)
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("format_version", [3, 4])
     async def test_artifact_without_node_ranges_keeps_non_position_features(
         self,
         socket_harness,
@@ -435,6 +438,7 @@ class TestLoadFileEvent:
         minimal_ts_file,
         temp_dir,
         capsys,
+        format_version,
     ):
         from lorax.artifacts import build_csr_artifact
         from lorax.artifacts.runtime import ArtifactContextRegistry, ArtifactResolver
@@ -445,6 +449,7 @@ class TestLoadFileEvent:
             minimal_ts_file,
             target_shard_mb=1,
             skip_node_tree_ranges=True,
+            format_version=format_version,
         )
         resolver = ArtifactResolver()
         registry = ArtifactContextRegistry(max_contexts=2, max_open_shards=2)
@@ -587,7 +592,7 @@ class TestLoadFileEvent:
         terminal_output = capsys.readouterr().out
         restored = await session_manager_memory.get_session(session.sid)
         assert loaded["ok"] is True
-        assert "[Lorax] Dataset backend: CSR v3 artifact" in terminal_output
+        assert f"[Lorax] Dataset backend: CSR v{format_version} artifact" in terminal_output
         assert f'source="{minimal_ts_file}"' in terminal_output
         expected_artifact = Path(f"{minimal_ts_file}.artifact").resolve()
         assert f'artifact="{expected_artifact}"' in terminal_output
@@ -597,7 +602,7 @@ class TestLoadFileEvent:
             loaded["config"]["artifact_capabilities"]["node_tree_ranges"]
             is False
         )
-        assert restored.dataset_backend == "csr-v3"
+        assert restored.dataset_backend == f"csr-v{format_version}"
         assert isinstance(rendered["buffer"], bytes)
         assert rendered["tree_indices"] == [0]
         assert rendered["tree_intervals"]

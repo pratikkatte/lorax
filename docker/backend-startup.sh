@@ -52,6 +52,8 @@ AR_REGION="$(get_md AR_REGION | tr -d '\r\n')"
 AR_REPO="$(get_md AR_REPO | tr -d '\r\n')"
 REDIS_HOST="$(get_md REDIS_HOST | tr -d '\r\n')"
 GCS_BUCKET_NAME="$(get_md GCS_BUCKET_NAME | tr -d '\r\n')"
+CSR_ARTIFACTS_ENABLED="$(get_md LORAX_CSR_ARTIFACTS_ENABLED | tr -d '\r\n')"
+CSR_ARTIFACTS_ENABLED="${CSR_ARTIFACTS_ENABLED:-1}"
 ALLOWED_ORIGINS="$(get_md ALLOWED_ORIGINS | tr -d '\r\n')"
 PROJECT_ID="$(curl -fsS -H "Metadata-Flavor: Google" \
   http://metadata.google.internal/computeMetadata/v1/project/project-id)"
@@ -78,6 +80,7 @@ docker run -d --name lorax-backend --restart always \
   -p 8080:8080 \
   -e REDIS_CLUSTER="redis://${REDIS_HOST}:6379" \
   -e GCS_BUCKET_NAME="${GCS_BUCKET_NAME}" \
+  -e LORAX_CSR_ARTIFACTS_ENABLED="${CSR_ARTIFACTS_ENABLED}" \
   -e LORAX_MODE=production \
   -e ALLOWED_ORIGINS="${ALLOWED_ORIGINS}" \
   -e DISK_CACHE_DIR=/cache \
